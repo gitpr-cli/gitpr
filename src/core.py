@@ -11,10 +11,28 @@ from src.cache import get_cached_response, save_cached_response
 from src.config import get_api_key, get_api_model
 from src.ai_providers import call_ai_model
 
+
 def get_git_diff():
-    """Executa 'git diff HEAD' e retorna a saída."""
+    """Executa 'git diff HEAD' e retorna a saída, alertando sobre arquivos não monitorados (untracked)."""
     try:
-        # Adicionamos encoding="utf-8" para o Windows não chorar com caracteres especiais
+        # Verifica se existem arquivos novos não monitorados (untracked)
+        untracked_process = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard"], 
+            capture_output=True, 
+            text=True, 
+            encoding="utf-8"
+        )
+        untracked_files = untracked_process.stdout.strip()
+                
+        # Se houver arquivos novos, exibe um alerta educativo no console
+        if untracked_files:
+            click.secho("⚠️ Aviso: O Git detectou novos arquivos que não estão sendo monitorados:", fg="yellow")
+            for file in untracked_files.split('\n'):
+                click.secho(f"  - {file}", fg="yellow", dim=True)
+            click.secho("💡 Dica: Use 'git add <arquivo>' para que eles sejam incluídos na análise do GitPR.", fg="cyan")
+            click.secho("📚 Entenda o motivo: https://github.com/natanfiuza/gitpr/blob/main/docs/untracked-files.md\n", fg="blue", underline=True)
+        
+        #  Executa o diff normal que captura arquivos monitorados e em staging
         result = subprocess.run(
             ["git", "diff", "HEAD"], 
             capture_output=True, 
