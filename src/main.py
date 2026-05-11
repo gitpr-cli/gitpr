@@ -5,7 +5,7 @@ import sys
 
 # Importações dos nossos módulos internos atualizadas
 from src.config import setup_environment, check_internet_connection, get_ai_provider
-from src.updater import check_and_update, __version__
+from src.updater import check_and_update, __version__, print_update_notice
 from src.core import (
     get_git_diff, 
     get_git_full_diff,
@@ -109,17 +109,10 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
     check_internet_connection()
 
     # Módulo de Atualização (Pip-Aware)
-    if update:
-        if is_compiled:
-            click.secho("🔍 Verificando atualizações no GitHub...", fg="cyan")
-            check_and_update()
-        else:
-            click.secho("💡 Como você instalou via PIP, atualize rodando: pip install --upgrade gitpr-cli", fg="cyan", bold=True)
+    if update:    
+        click.secho("🔍 Verificando atualizações...", fg="cyan")
+        check_and_update()
         return
-    else:
-        # Verificação automática em segundo plano a cada uso (Apenas binário)
-        if is_compiled:
-            check_and_update()
 
     # Opção --skill: Gera o template e encerra
     if skill:
@@ -294,6 +287,9 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         click.secho(f"\n✅ Sucesso! O arquivo '{output_filename}' foi gerado na pasta atual.", fg="green", bold=True)
     except Exception as e:
         click.secho(f"\n❌ Erro ao guardar o arquivo: {e}", fg="red")
+    
+    if not quiet:
+        print_update_notice()    
         
 if __name__ == "__main__":
     cli()
