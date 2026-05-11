@@ -57,14 +57,17 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
     if not quiet and not hook:
         print_banner()
 
-    # Limpeza do Hot-Swap (Deleta o .old se existir)
-    if getattr(sys, 'frozen', False):
+    # Identifica se a ferramenta está rodando como binário (PyInstaller) ou via PIP
+    is_compiled = getattr(sys, 'frozen', False)
+
+    # Limpeza do Hot-Swap (Apenas no modo Binário)
+    if is_compiled:
         old_exe = sys.executable + ".old"
         if os.path.exists(old_exe):
             try:
                 os.remove(old_exe)
             except OSError:
-                pass # Falha silenciosamente se o Windows ainda estiver segurando o arquivo
+                pass
 
     if linter:
         diff_text = get_git_diff()
@@ -105,14 +108,18 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
     # Guardião de Conexão (Failing Fast)
     check_internet_connection()
 
-    # Módulo de Atualização
-    if update:    
-        click.secho("🔍 Verificando atualizações no GitHub...", fg="cyan")
-        check_and_update()
-        return # Encerra após a verificação manual
+    # Módulo de Atualização (Pip-Aware)
+    if update:
+        if is_compiled:
+            click.secho("🔍 Verificando atualizações no GitHub...", fg="cyan")
+            check_and_update()
+        else:
+            click.secho("💡 Como você instalou via PIP, atualize rodando: pip install --upgrade gitpr-cli", fg="cyan", bold=True)
+        return
     else:
-        # Verificação automática em segundo plano a cada uso
-        check_and_update()
+        # Verificação automática em segundo plano a cada uso (Apenas binário)
+        if is_compiled:
+            check_and_update()
 
     # Opção --skill: Gera o template e encerra
     if skill:

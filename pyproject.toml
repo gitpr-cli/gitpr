@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitpr-cli"
+version = "0.0.12"
+description = "Automação de PRs, Commits e Code Review com IA (Gemini e DeepSeek)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "Natan Fiuza", email = "contato@natanfiuza.dev.br"}
+]
+dependencies = [
+    "click>=8.0.0",
+    "google-genai",
+    "openai",
+    "python-dotenv",
+    "cryptography",
+    "pyyaml"
+]
+
+[project.scripts]
+gitpr = "src.main:cli"
+
+[tool.setuptools]
+packages = ["src"]
