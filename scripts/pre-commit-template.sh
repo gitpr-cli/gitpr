@@ -9,15 +9,14 @@ NC='\033[0m' # No Color
 
 echo -e "${CYAN}🔍 GitPR: A validar regras de análise estática...${NC}"
 
-# 1. Tenta executar o comando. 
-# Primeiro tenta o binário global 'gitpr', depois tenta via pipenv usando o run.py
+
+# Tenta executar o comando. 
+# Verifica se o binário/pacote global 'gitpr' está instalado
 if command -v gitpr >/dev/null 2>&1; then
     gitpr --linter --quiet
-elif [ -f "Pipfile" ] && command -v pipenv >/dev/null 2>&1; then
-    pipenv run python run.py --linter
 else
-    echo "${RED}❌ Erro: Comando 'gitpr' não encontrado.${NC}"
-    echo "Certifique-se de que o GitPR está instalado ou que o Pipenv está configurado."
+    echo -e "${RED}❌ Erro: Comando 'gitpr' não encontrado.${NC}"
+    echo "Certifique-se de que o GitPR está instalado via pip (pip install gitpr-cli) ou que o executável está no seu PATH."
     exit 1
 fi
 

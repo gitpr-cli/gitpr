@@ -15,15 +15,16 @@ from src.ai_providers import call_ai_model
 def get_git_diff():
     """Executa 'git diff HEAD' e retorna a saída, alertando sobre arquivos não monitorados (untracked)."""
     try:
-        # Verifica se existem arquivos novos não monitorados (untracked)
+        # 1. Verifica se existem arquivos novos não monitorados (untracked)
         untracked_process = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"], 
             capture_output=True, 
             text=True, 
-            encoding="utf-8"
+            encoding="utf-8",
+            errors="replace"  # <--- CORREÇÃO AQUI (Evita crash com acentos)
         )
         untracked_files = untracked_process.stdout.strip()
-                
+        
         # Se houver arquivos novos, exibe um alerta educativo no console
         if untracked_files:
             click.secho("⚠️ Aviso: O Git detectou novos arquivos que não estão sendo monitorados:", fg="yellow")
@@ -31,13 +32,14 @@ def get_git_diff():
                 click.secho(f"  - {file}", fg="yellow", dim=True)
             click.secho("💡 Dica: Use 'git add <arquivo>' para que eles sejam incluídos na análise do GitPR.", fg="cyan")
             click.secho("📚 Entenda o motivo: https://github.com/natanfiuza/gitpr/blob/main/docs/untracked-files.md\n", fg="blue", underline=True)
-        
-        #  Executa o diff normal que captura arquivos monitorados e em staging
+
+        # 2. Executa o diff normal que captura arquivos monitorados e em staging
         result = subprocess.run(
             ["git", "diff", "HEAD"], 
             capture_output=True, 
             text=True, 
             encoding="utf-8",
+            errors="replace",  # <--- CORREÇÃO AQUI (Evita crash com acentos)
             check=True
         )
         return result.stdout
@@ -97,6 +99,7 @@ def get_skill_context(action_type="pr"):
     
     # Retorna vazio se não existir
     return ""
+
 
 def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"):
     """Envia o diff para a IA usando System Instruction e retorna um JSON parseado."""
@@ -168,6 +171,7 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     
     return None
 
+
 def generate_skill_template():
     """
     Faz o download dos templates .gitpr.pr.md, .gitpr.review.md 
@@ -219,6 +223,7 @@ def generate_skill_template():
     else:
         click.echo("\nNenhum arquivo novo foi baixado.")
 
+
 def get_base_branch():
     """Descobre a branch principal remota (ex: main ou master)."""
     try:
@@ -232,6 +237,7 @@ def get_base_branch():
     except subprocess.CalledProcessError:
         click.secho("⚠️ Aviso: Branch principal remota não detectada. Assumindo 'main' como fallback padrão.", fg="yellow")
         return "main" # Fallback padrão caso não encontre
+
 
 def get_git_full_diff():
     """Faz o fetch e captura o diff entre a branch principal remota e o estado atual."""
