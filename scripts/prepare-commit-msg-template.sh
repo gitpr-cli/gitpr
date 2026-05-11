@@ -18,11 +18,10 @@ fi
 echo ""
 echo -e "${CYAN}🤖 GitPR: A pedir sugestão de commit à IA...${NC}"
 
+
 # Chama o GitPR repassando o caminho do arquivo ($1) para a nossa nova flag --hook
 if command -v gitpr >/dev/null 2>&1; then
-    gitpr --commit --hook "$COMMIT_MSG_FILE"
-elif [ -f "Pipfile" ] && command -v pipenv >/dev/null 2>&1; then
-    pipenv run python run.py --commit --hook "$COMMIT_MSG_FILE"
+    gitpr --commit --quiet --hook "$COMMIT_MSG_FILE"
 else
-    echo -e "${RED}❌ Aviso: GitPR não encontrado. Prosseguindo sem IA.${NC}"
+    echo -e "${RED}❌ Aviso: Comando 'gitpr' não encontrado. Prosseguindo sem IA.${NC}"
 fi

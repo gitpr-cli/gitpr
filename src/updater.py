@@ -6,7 +6,7 @@ import shutil
 import click
 
 # Versão atual do seu executável local (Atualize isso a cada novo build!)
-__version__ = "0.0.11"
+__version__ = "0.0.12"
 GITHUB_API_URL = "https://api.github.com/repos/natanfiuza/gitpr/releases/latest"
 
 def get_gitpr_dir():
