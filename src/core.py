@@ -188,6 +188,7 @@ def generate_skill_template():
         ".gitpr.review.md": "gitpr.review.md",
         ".gitpr.linter.yml": "gitpr.linter.yml",
         ".gitpr.filereview.md": "gitpr.filereview.md", 
+        ".gitpr.blame.md": "gitpr.blame.md", 
     }
     
     success_count = 0

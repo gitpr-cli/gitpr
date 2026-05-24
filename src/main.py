@@ -45,8 +45,9 @@ def print_banner():
 @click.option('--hook', type=click.Path(), hidden=True, help="Caminho do arquivo de commit (uso interno dos hooks).")
 @click.option('-q', '--quiet', is_flag=True, hidden=True, help="Oculta o banner e logs não essenciais (uso interno).")
 @click.option('-i', '--input', type=click.Path(exists=True), help="Caminho de um arquivo específico para análise completa.")
+@click.option('-b', '--blame', type=str, help="Analisa a origem de uma regra de negócio (ex: arquivo.py:10-20 ou apenas arquivo.py).")
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek']), help="Força a utilização de um provedor de IA específico nesta execução.")
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame):
     """
     GitPR CLI - Automação de PRs e Code Review com IA.
 
@@ -137,6 +138,45 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             click.echo("---\n")
         return
     
+    # Módulo Arqueólogo (--blame)
+    if blame:
+        # Parser para separar o arquivo das linhas
+        if ":" in blame:
+            # Modo Direto: gitpr --blame arquivo:10-20
+            file_path, lines = blame.split(":", 1)
+            try:
+                if "-" in lines:
+                    start_line, end_line = lines.split("-")
+                else:
+                    start_line = end_line = lines
+            except ValueError:
+                click.secho("❌ Formato de linhas inválido. Use inicio-fim (ex: 10-20).", fg="red")
+                return
+        else:
+            # Modo Interativo: gitpr --blame arquivo
+            file_path = blame
+            if not os.path.exists(file_path):
+                click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+                return
+            
+            click.secho(f"📂 Arquivo selecionado: {file_path}", fg="cyan", bold=True)
+            lines_input = click.prompt("Quais linhas você deseja investigar? (Ex: 10-20 ou apenas 45)")
+            
+            if "-" in lines_input:
+                start_line, end_line = lines_input.split("-")
+            else:
+                start_line = end_line = lines_input
+        
+        # Validação final do arquivo
+        if not os.path.exists(file_path):
+            click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+            return
+            
+        # Aciona o motor
+        from src.blame_engine import run_blame_analysis
+        run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip())
+        return 
+ 
     # Validação do Modo Input
     if input and not (review or fullreview):
         click.secho("\n❌ Erro: A opção --input (-i) só pode ser utilizada em conjunto com --review (-r) ou --fullreview (-f).", fg="red", bold=True)

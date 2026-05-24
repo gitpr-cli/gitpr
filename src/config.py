@@ -20,7 +20,8 @@ DEFAULT_CONFIG = {
     "OUTPUT_FILE_NAME": "{branch}_{datetime}_PR_DESC.md",
     "OUTPUT_FILE_NAME_REVIEW": "{branch}_{datetime}_PR_REVIEW.txt",
     "OUTPUT_FILE_NAME_FULLREVIEW": "{branch}_{datetime}_PR_FULLREVIEW.txt",
-    "OUTPUT_FILE_NAME_FILEREVIEW": "{branch}_{datetime}_FILE_REVIEW.txt"
+    "OUTPUT_FILE_NAME_FILEREVIEW": "{branch}_{datetime}_FILE_REVIEW.txt",
+    "OUTPUT_FILE_NAME_BLAME": "{branch}_{datetime}_BLAME_REPORT.md"
 }
 
 def get_ai_provider():
