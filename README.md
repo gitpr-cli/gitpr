@@ -173,7 +173,12 @@ Nunca mais se preocupe em baixar novas versões manualmente. O GitPR possui um G
 * Em cada execução, ele verifica silenciosamente se há um novo release oficial na API do GitHub.
 * Você pode forçar a busca e instalação rodando `gitpr --update` ou `gitpr -u`.
 * A ferramenta utiliza a técnica de *Hot-Swap*, baixando o novo `.exe` e substituindo a versão antiga de forma transparente.
+## Publicar no PyPi
 
+```bash
+pipenv run python -m build
+pipenv run twine upload dist/*
+```
 ## **🤝 Como Contribuir**
 
 Contribuições são muito bem-vindas! Para contribuir:
