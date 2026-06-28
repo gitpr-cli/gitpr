@@ -13,6 +13,8 @@ Este projeto foi desenvolvido em Python e utiliza as seguintes bibliotecas princ
 * [**Pytest**](https://docs.pytest.org/): Para execução de testes unitários de forma simples, colorida e legível no console.
 * [**Cryptography**](https://cryptography.io/): Para garantir que sua `GEMINI_API_KEY` seja armazenada de forma encriptada e segura no disco.
 * [**PyYAML**](https://pyyaml.org/): Utilizado para ler e processar as regras customizadas de análise estática do arquivo `.gitpr.linter.yml`.
+* [**Textual**](https://textual.textualize.io/): Biblioteca poderosa para a criação de Interfaces Gráficas de Terminal (TUI), utilizada no painel interativo de geração e edição de Issues.
+* [**Requests**](https://pypi.org/project/requests/): Biblioteca elegante e robusta para requisições HTTP, utilizada para a comunicação com a API REST do GitHub.
 
 ----
 
@@ -108,6 +110,7 @@ Você pode passar as seguintes *flags* para ações específicas:
 * `-l` ou `--linter`: Roda **apenas o linter estático local** (sem chamadas de IA). Ideal para usar em pipelines de CI/CD para bloquear código fora do padrão.
 * `-ih` ou `--installhooks`: Instala automaticamente os **Git Hooks locais** (`pre-commit` e `prepare-commit-msg`) no seu repositório.
 * `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`) e do Linter (`.gitpr.linter.yml`) na raiz do projeto.
+* `-is` ou `--issue`: Gera automaticamente o rascunho de uma **Issue padronizada** a partir do diff e abre uma interface interativa (TUI) para edição, salvamento ou envio direto para o repositório no GitHub via API REST.
 * `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
 * `-h` ou `--help`: Exibe o menu de ajuda.
 
@@ -159,7 +162,8 @@ Se você deseja implementar o GitPR como uma barreira de qualidade automatizada 
 
 * [**Guia de Git Hooks Locais (Shift-Left)**](docs/local-git-hooks.md): Como usar o `gitpr --installhooks` para criar travas na máquina do desenvolvedor (bloqueio de *console.log*, *localhost*, etc.) e usar a IA para escrever mensagens de commit automaticamente no editor.
 * [**Integração com CI/CD (GitHub Actions)**](docs/github-ci-linter.md): Como rodar o GitPR no seu pipeline na nuvem para realizar a validação estática e travar o botão de "Merge" de Pull Requests que violem as regras do projeto.
-
+* [**Geração de Issues e Interface TUI**](docs/issue-tui-help.md): Como utilizar a interface gráfica de terminal (TUI) para revisar e gerenciar Issues estruturadas antes do envio.
+* [**Integração e Segurança do Token GitHub (PAT)**](docs/github-pat-integration.md): Entenda como o GitPR gera issues diretamente no seu repositório de forma autenticada, mantendo suas credenciais criptografadas localmente.
 
 ## ⚡ Sistema de Cache Local (Economia de Quota)
 
@@ -173,6 +177,7 @@ Nunca mais se preocupe em baixar novas versões manualmente. O GitPR possui um G
 * Em cada execução, ele verifica silenciosamente se há um novo release oficial na API do GitHub.
 * Você pode forçar a busca e instalação rodando `gitpr --update` ou `gitpr -u`.
 * A ferramenta utiliza a técnica de *Hot-Swap*, baixando o novo `.exe` e substituindo a versão antiga de forma transparente.
+
 ## Publicar no PyPi
 
 ```bash
