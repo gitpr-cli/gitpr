@@ -8,10 +8,16 @@ class HelpScreen(ModalScreen):
     
     CSS = """
     HelpScreen { align: center middle; }
-    #help_dialog { width: 60; height: auto; padding: 1 2; background: $surface; border: thick $background 80%; }
+    #help_dialog { 
+        width: 90; height: auto; padding: 1 2; background: $surface; border: thick $background 80%; 
+        align-horizontal: center; 
+    }
     .help_title { text-align: center; text-style: bold; margin-bottom: 1; }
     .help_text { margin-bottom: 1; }
-    Button { width: 100%; }
+    Button { 
+        width: 20%; 
+        margin-top: 1; 
+    }
     """
     
     def compose(self) -> ComposeResult:

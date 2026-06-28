@@ -29,7 +29,7 @@ def print_banner():
 """
     click.secho(banner, fg="cyan", bold=True)
     click.secho(f"  🚀 Automação Inteligente de PRs com IA (v{__version__})", fg="yellow", bold=True)
-    click.secho("  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -h ou --help\n", fg="white", dim=True)
+    click.secho("  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -is,--issue | -h ou --help\n", fg="white", dim=True)
 
 
 # Configuração nativa do Click para aceitar -h além de --help

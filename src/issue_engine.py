@@ -53,7 +53,7 @@ def generate_issue_content(diff_text):
     else:
         sys_inst = "Você é um Arquiteto de Software. Siga o formato O Que / Por Que / Onde / Como para documentar a Issue."
 
-   prompt = (
+    prompt = (
         f"Gere o objeto JSON solicitado seguindo as instruções de sistema para documentar a seguinte alteração:\n\n"
         f"DIFF PARA ANÁLISE:\n{diff_text}"
     )
