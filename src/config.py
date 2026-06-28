@@ -21,7 +21,8 @@ DEFAULT_CONFIG = {
     "OUTPUT_FILE_NAME_REVIEW": "{branch}_{datetime}_PR_REVIEW.txt",
     "OUTPUT_FILE_NAME_FULLREVIEW": "{branch}_{datetime}_PR_FULLREVIEW.txt",
     "OUTPUT_FILE_NAME_FILEREVIEW": "{branch}_{datetime}_FILE_REVIEW.txt",
-    "OUTPUT_FILE_NAME_BLAME": "{branch}_{datetime}_BLAME_REPORT.md"
+    "OUTPUT_FILE_NAME_BLAME": "{branch}_{datetime}_BLAME_REPORT.md",
+    "OUTPUT_FILE_NAME_ISSUE": "{branch}_{datetime}_ISSUE.md"
 }
 
 def get_ai_provider():
@@ -153,3 +154,12 @@ def load_linter_rules():
     except Exception as e:
         click.secho(f"\n❌ Erro inesperado ao ler as regras do linter: {e}", fg="red")
         return []        
+    
+def get_github_token():
+    """Lê e desencripta o token de acesso pessoal (PAT) do GitHub."""
+    load_dotenv(ENV_FILE)
+    encrypted_token = os.getenv("GITHUB_TOKEN_ENCRYPTED")
+    
+    if encrypted_token:
+        return decrypt_data(encrypted_token)
+    return None

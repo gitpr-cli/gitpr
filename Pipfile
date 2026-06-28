@@ -10,6 +10,8 @@ google-genai = "*"
 cryptography = "*"
 pyyaml = "*"
 openai = "*"
+textual = "*"
+requests = "*"
 
 [dev-packages]
 pyinstaller = "*"

@@ -29,7 +29,7 @@ def print_banner():
 """
     click.secho(banner, fg="cyan", bold=True)
     click.secho(f"  🚀 Automação Inteligente de PRs com IA (v{__version__})", fg="yellow", bold=True)
-    click.secho("  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -h ou --help\n", fg="white", dim=True)
+    click.secho("  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -is,--issue | -h ou --help\n", fg="white", dim=True)
 
 
 # Configuração nativa do Click para aceitar -h além de --help
@@ -46,8 +46,9 @@ def print_banner():
 @click.option('-q', '--quiet', is_flag=True, hidden=True, help="Oculta o banner e logs não essenciais (uso interno).")
 @click.option('-i', '--input', type=click.Path(exists=True), help="Caminho de um arquivo específico para análise completa.")
 @click.option('-b', '--blame', type=str, help="Analisa a origem de uma regra de negócio (ex: arquivo.py:10-20 ou apenas arquivo.py).")
+@click.option('-is', '--issue', is_flag=True, help="Gera uma Issue padronizada das alterações atuais e abre a interface interativa.")
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek']), help="Força a utilização de um provedor de IA específico nesta execução.")
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, issue):
     """
     GitPR CLI - Automação de PRs e Code Review com IA.
 
@@ -175,6 +176,46 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         # Aciona o motor
         from src.blame_engine import run_blame_analysis
         run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip())
+        return 
+ 
+    # Módulo Issue (--issue)
+    if issue:
+        # Importações sob demanda para não atrasar a CLI se não for usar a TUI
+        from src.issue_engine import generate_issue_content, get_github_repo_info
+        from src.tui_issue import validate_or_request_github_token, IssueApp
+        
+        diff_text = get_git_diff()
+        if not diff_text or not diff_text.strip():
+            click.secho("\n⚠️ Nenhum código novo encontrado. Faça alguma alteração antes de gerar a issue.\n", fg="yellow")
+            return
+
+        # Garante que as chaves da IA estão configuradas antes de chamar o motor
+        setup_environment()
+        
+        # Gera o conteúdo com a IA
+        issue_data = generate_issue_content(diff_text)
+        if not issue_data:
+            return
+            
+        # Pega informações do repositório
+        repo_info = get_github_repo_info()
+        
+        # Valida ou solicita o Token PAT
+        github_token = validate_or_request_github_token(repo_info)
+        
+        if not github_token:
+            click.secho("❌ Acesso cancelado. O Token do GitHub é obrigatório para esta ação.", fg="red")
+            return
+            
+        # Roda a Interface Gráfica do Terminal
+        app = IssueApp(issue_data=issue_data, repo_info=repo_info, github_token=github_token)
+        app.run()
+        
+        # Exibe a mensagem de retorno após fechar a TUI
+        if app.final_message:
+            cor = "green" if app.final_action in ["saved", "created"] else "red"
+            click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
+            
         return 
  
     # Validação do Modo Input

@@ -76,6 +76,8 @@ def get_skill_context(action_type="pr"):
         target_file = ".gitpr.pr.md"
     elif action_type == "filereview": # NOVO!
         target_file = ".gitpr.filereview.md"        
+    elif action_type == "issue":
+        target_file = ".gitpr.issue.md"        
     else: # review ou fullreview
         target_file = ".gitpr.review.md"
 
@@ -189,6 +191,7 @@ def generate_skill_template():
         ".gitpr.linter.yml": "gitpr.linter.yml",
         ".gitpr.filereview.md": "gitpr.filereview.md", 
         ".gitpr.blame.md": "gitpr.blame.md", 
+        ".gitpr.issue.md": "gitpr.issue.md",
     }
     
     success_count = 0
