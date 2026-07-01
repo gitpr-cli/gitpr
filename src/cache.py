@@ -3,8 +3,6 @@ import json
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from src.core import get_current_branch
-
 def get_cache_base_dir():
     """Retorna o caminho ~/.gitpr/cache/prompts/"""
     path = Path.home() / ".gitpr" / "cache" / "prompts"
@@ -35,6 +33,7 @@ def save_cached_response(action_folder, action_type, prompt_text, response_dict)
     folder_path.mkdir(parents=True, exist_ok=True)
     
     cache_file = folder_path / f"{md5_hash}.json"
+    from src.core import get_current_branch
     current_branch = get_current_branch()
     
     cache_data = {

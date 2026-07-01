@@ -109,11 +109,12 @@ Você pode passar as seguintes *flags* para ações específicas:
 * `--provider <gemini|deepseek>`: Força a utilização de uma IA específica apenas para esta execução, ignorando o seu padrão guardado no `.env`.
 * `-l` ou `--linter`: Roda **apenas o linter estático local** (sem chamadas de IA). Ideal para usar em pipelines de CI/CD para bloquear código fora do padrão.
 * `-ih` ou `--installhooks`: Instala automaticamente os **Git Hooks locais** (`pre-commit` e `prepare-commit-msg`) no seu repositório.
-* `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`) e do Linter (`.gitpr.linter.yml`) na raiz do projeto.
+* `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) e do Linter (`.gitpr.linter.yml`) na raiz do projeto.
 * `-is` ou `--issue`: Gera automaticamente o rascunho de uma **Issue padronizada** e abre uma interface interativa (TUI) para edição ou envio direto via API REST. Esta funcionalidade possui **3 motores de contexto** dependendo da combinação de comandos:
   * **Issue de Código Novo (`gitpr -is`):** Lê o `git diff` atual. **Por que usar:** Ideal para documentar rapidamente a tarefa que você acabou de programar, antes de commitar.
   * **Issue de Épico/Release (`gitpr -is -ht`):** Lê o histórico completo da branch atual (Git Log + Cache de PRs). **Por que usar:** Ideal para gerar uma documentação consolidada de uma release inteira ou de uma *feature* grande que levou vários dias/commits para ser concluída.
   * **Issue Arqueológica/Dívida Técnica (`gitpr -is -b arquivo:linhas`):** Lê a linha do tempo de uma regra específica. **Por que usar:** Ideal para documentar dívidas técnicas, explicando como um bloco de código legado evoluiu e por que precisa ser refatorado.
+* `-h` ou `--help`: Mostra a ajuda geral com todas as opções. Use em conjunto com outra flag para **ajuda contextual** (ex: `gitpr -h --issue`, `gitpr -h --linter`) com link direto para a documentação detalhada de cada funcionalidade.
 * `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
 * `-h` ou `--help`: Exibe o menu de ajuda.
 
@@ -156,6 +157,8 @@ Em vez de esconder as instruções da IA no código fonte, o GitPR utiliza arqui
 * `.gitpr.pr.md`: Estrutura de tópicos exigida para a descrição do Pull Request.
 * `.gitpr.review.md`: Define o foco de arquitetura (ex: SOLID, Clean Code) para a análise de diffs.
 * `.gitpr.filereview.md`: Define regras rígidas de coesão e acoplamento para auditoria de um ficheiro completo (usado com `--input`).
+* `.gitpr.issue.md`: Define a estrutura e o nível de detalhe exigido para a geração de Issues padronizadas (usado com `--issue`).
+* `.gitpr.blame.md`: Define o foco da análise arqueológica para o rastreamento de código legado (usado com `--blame`).
 
 ## 📚 Documentação Técnica e Guias Avançados
 
@@ -163,10 +166,18 @@ Para manter este README conciso, detalhamos as implementações mais avançadas 
 
 Se você deseja implementar o GitPR como uma barreira de qualidade automatizada na sua equipe, consulte os guias abaixo:
 
-* [**Guia de Git Hooks Locais (Shift-Left)**](docs/local-git-hooks.md): Como usar o `gitpr --installhooks` para criar travas na máquina do desenvolvedor (bloqueio de *console.log*, *localhost*, etc.) e usar a IA para escrever mensagens de commit automaticamente no editor.
-* [**Integração com CI/CD (GitHub Actions)**](docs/github-ci-linter.md): Como rodar o GitPR no seu pipeline na nuvem para realizar a validação estática e travar o botão de "Merge" de Pull Requests que violem as regras do projeto.
-* [**Geração de Issues e Interface TUI**](docs/issue-tui-help.md): Como utilizar a interface gráfica de terminal (TUI) para revisar e gerenciar Issues estruturadas antes do envio.
-* [**Integração e Segurança do Token GitHub (PAT)**](docs/github-pat-integration.md): Entenda como o GitPR gera issues diretamente no seu repositório de forma autenticada, mantendo suas credenciais criptografadas localmente.
+* [**Git Hooks Locais (Shift-Left)**](docs/git-hooks-locais.md): Como usar o `gitpr --installhooks` para criar travas na máquina do desenvolvedor e usar a IA para escrever mensagens de commit automaticamente.
+* [**Linter Estático Customizável**](docs/linter-regras-customizadas.md): Como criar regras de validação no `.gitpr.linter.yml` para CI/CD e hooks de pre-commit.
+* [**Geração de Issues e Interface TUI**](docs/issue-tui-help.md): Como utilizar a interface gráfica de terminal (TUI) e os 3 motores de contexto para gerir Issues estruturadas.
+* [**Code Review com IA**](docs/code-review-ia.md): Guia dos modos de revisão (`--review`, `--fullreview`) e auditoria de arquivo (`--input`).
+* [**Mensagens de Commit com IA**](docs/commit-message-ia.md): Como gerar mensagens no padrão Conventional Commits e integrar com Git Hooks.
+* [**Arqueólogo de Código (Git Blame)**](docs/blame-arqueologo.md): Como rastrear a origem de regras de negócio com `git blame` e IA.
+* [**Sistema de Skills e Templates**](docs/skill-template.md): Como customizar o comportamento da IA com arquivos `.gitpr.*.md`.
+* [**Auto-Updater**](docs/auto-update.md): Como funciona a atualização automática (hot-swap) do GitPR.
+* [**Provedores de IA**](docs/providers-ia.md): Configuração e seleção entre Google Gemini e DeepSeek.
+* [**Pull Request (Modo Padrão)**](docs/pr-descricao-padrao.md): Fluxo completo de geração de descrição de PR sem flags.
+* [**Integração com CI/CD (GitHub Actions)**](docs/github-ci-linter.md): Como rodar o GitPR no pipeline para travar o "Merge" de PRs com violações.
+* [**Integração e Segurança do Token GitHub (PAT)**](docs/github-pat-integration.md): Entenda como o GitPR gera issues diretamente no repositório de forma autenticada.
 
 ## ⚡ Sistema de Cache Local (Economia de Quota)
 

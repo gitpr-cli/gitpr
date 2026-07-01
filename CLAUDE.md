@@ -109,9 +109,8 @@ pipenv install --dev
 pip install -e .
 
 # Executar (modo dev)
-pipenv run python src/main.py
-# ou
-python -m src.main
+pipenv run python run.py
+
 
 # Rodar testes
 pipenv run pytest -v

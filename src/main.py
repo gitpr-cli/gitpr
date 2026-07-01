@@ -20,22 +20,158 @@ from src.linter_engine import parse_diff_and_lint
 
 def print_banner():
     """Exibe a assinatura ASCII Art do projeto"""
-    banner = """
- ,----.   ,--.  ,--.  ,------. ,------.  
-'  .-./   `--',-'  '-.|  .--. '|  .--. ' 
-|  | .---.,--.'-.  .-'|  '--' ||  '--'.' 
-'  '--'  ||  |  |  |  |  | --' |  |\  \  
- `------' `--'  `--'  `--'     `--' '--' 
-                                         
+    banner = r"""
+ ,----.   ,--.  ,--.  ,------. ,------.
+'  .-./   `--',-'  '-.|  .--. '|  .--. '
+|  | .---.,--.'-.  .-'|  '--' ||  '--'.'
+'  '--'  ||  |  |  |  |  | --' |  |\  \
+ `------' `--'  `--'  `--'     `--' '--'
+
 """
     click.secho(banner, fg="cyan", bold=True)
     click.secho(f"  🚀 Automação Inteligente de PRs com IA (v{__version__})", fg="yellow", bold=True)
-    click.secho("  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -is,--issue | -h ou --help\n", fg="white", dim=True)
+    click.secho("  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -is,--issue | -h,--help (use -h --flag para ajuda contextual)\n", fg="white", dim=True)
+
+
+# ============================================================
+# Mapeamento de ajuda contextual (flag -> doc URL e descricao)
+# ============================================================
+HELP_MAP: dict[str, dict[str, str]] = {
+    'commit': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/commit-message-ia.md',
+        'title': 'Geracao de Mensagens de Commit com IA',
+        'description': (
+            'Gera automaticamente mensagens de commit no formato Conventional '
+            'Commits usando inteligencia artificial. Suporta integracao com Git '
+            'Hooks (prepare-commit-msg) para injecao direta no editor.'
+        ),
+    },
+    'review': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md',
+        'title': 'Code Review com IA (Alteracoes Locais)',
+        'description': (
+            'Realiza uma revisao de codigo inteligente das alteracoes locais '
+            'nao commitadas (git diff HEAD). Integra automaticamente o Linter '
+            'Estatico (.gitpr.linter.yml) no topo do relatorio.'
+        ),
+    },
+    'fullreview': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md',
+        'title': 'Code Review Completo com IA (Full Diff)',
+        'description': (
+            'Realiza uma revisao profunda comparando toda a branch atual com '
+            'a branch principal remota (origin/main). Faz git fetch antes da '
+            'analise. Ideal para revisar antes de abrir um Pull Request.'
+        ),
+    },
+    'input': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md',
+        'title': 'Analise de Arquivo Especifico (--input)',
+        'description': (
+            'Analisa um arquivo inteiro do sistema local, ignorando o diff do '
+            'Git. REQUER --review (-r) ou --fullreview (-f) para funcionar. '
+            'Excelente para auditoria de codigo legado e refatoracoes.'
+        ),
+    },
+    'linter': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md',
+        'title': 'Linter Estatico Customizavel',
+        'description': (
+            'Motor de analise estatica local que verifica regras definidas no '
+            'arquivo .gitpr.linter.yml. Nao consome cotas de IA nem requer '
+            'internet. Ideal para CI/CD e hooks de pre-commit.'
+        ),
+    },
+    'skill': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/skill-template.md',
+        'title': 'Sistema de Skills e Templates (--skill)',
+        'description': (
+            'Faz download dos arquivos de template (.gitpr.*.md e .gitpr.linter.yml) '
+            'do repositorio oficial para a raiz do projeto. Estes arquivos permitem '
+            'customizar o comportamento da IA conforme as regras da sua equipa.'
+            'NUNCA sobrescreve arquivos locais existentes.'
+        ),
+    },
+    'update': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/auto-update.md',
+        'title': 'Auto-Update do GitPR',
+        'description': (
+            'Verifica e instala automaticamente a versao mais recente do GitPR. '
+            'Suporta atualizacao via pip (PyPI) e binario standalone (GitHub Releases) '
+            'com hot-swap e rollback automatico em caso de falha.'
+        ),
+    },
+    'installhooks': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/git-hooks-locais.md',
+        'title': 'Instalacao de Git Hooks Locais',
+        'description': (
+            'Instala hooks de pre-commit (linter estatico automatico) e '
+            'prepare-commit-msg (geracao de mensagens com IA) no repositorio '
+            'local. Adota a pratica de Shift Left para validacao antes do push.'
+        ),
+    },
+    'blame': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/blame-arqueologo.md',
+        'title': 'Arqueologo de Codigo (Git Blame com IA)',
+        'description': (
+            'Rastreia a origem e evolucao de regras de negocio no codigo usando '
+            'git blame com classificacao por IA (ORIGEM vs REFATORACAO). Suporta '
+            'modo direto (arquivo:10-20) e modo interativo. Pode alimentar o '
+            'contexto de Issues de divida tecnica com --issue.'
+        ),
+    },
+    'issue': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md',
+        'title': 'Geracao de Issues com TUI Interativa',
+        'description': (
+            'Gera issues padronizadas (O Que / Por Que / Onde / Como) usando IA '
+            'e abre uma interface interativa no terminal (Textual) para revisao. '
+            'Possui 3 motores de contexto: diff atual, historico da branch (--history) '
+            'e arqueologia de codigo (--blame). Permite salvar .md local ou publicar '
+            'diretamente no GitHub via API.'
+        ),
+    },
+    'history': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md',
+        'title': 'Contexto de Historico para Issues (--history)',
+        'description': (
+            'Modificador do --issue (-is): usa todo o historico da branch atual '
+            '(git log + cache de PRs anteriores) como contexto para gerar a issue. '
+            'Ideal para documentar epicos, releases e features grandes com '
+            'varios commits ao longo de dias.'
+        ),
+    },
+    'provider': {
+        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/providers-ia.md',
+        'title': 'Selecao de Provedor de IA (--provider)',
+        'description': (
+            'Forca o uso de um provedor de IA especifico para esta execucao: '
+            'gemini (Google Gemini) ou deepseek (DeepSeek). Sobrescreve '
+            'temporariamente o provider padrao definido no ficheiro .env.'
+        ),
+    },
+}
+
+# Prioridade para help contextual quando multiplas flags sao usadas com -h
+# Menor valor = maior prioridade
+HELP_PRIORITY: dict[str, int] = {
+    'linter': 1,
+    'skill': 2,
+    'update': 3,
+    'installhooks': 4,
+    'issue': 5,
+    'blame': 6,
+    'commit': 7,
+    'fullreview': 8,
+    'review': 9,
+    'input': 10,
+    'history': 11,
+    'provider': 12,
+}
 
 
 # Configuração nativa do Click para aceitar -h além de --help
 @click.command()
-@click.help_option('-h', '--help', help='Mostra esta mensagem e sai.')
 @click.option('-c', '--commit', is_flag=True, help="Gera apenas a mensagem de commit e exibe no console.")
 @click.option('-r', '--review', is_flag=True, help="Faz um code review das alterações locais (git diff).")
 @click.option('-f', '--fullreview', is_flag=True, help="Faz um code review de todas as alterações desde a branch principal (origin/main).")
@@ -45,18 +181,75 @@ def print_banner():
 @click.option('-ih', '--installhooks', is_flag=True, help="Instala automaticamente os Git Hooks de validação no projeto.")
 @click.option('--hook', type=click.Path(), hidden=True, help="Caminho do arquivo de commit (uso interno dos hooks).")
 @click.option('-q', '--quiet', is_flag=True, hidden=True, help="Oculta o banner e logs não essenciais (uso interno).")
-@click.option('-i', '--input', type=click.Path(exists=True), help="Caminho de um arquivo específico para análise completa.")
+@click.option('-i', '--input', type=click.Path(), help="Caminho de um arquivo específico para análise completa.")
 @click.option('-b', '--blame', type=str, help="Analisa a origem de uma regra de negócio (ex: arquivo.py:10-20 ou apenas arquivo.py).")
 @click.option('-ht', '--history', is_flag=True, help="Usa todo o histórico da branch (Git Log + Cache de PR) como contexto para gerar a issue.")
 @click.option('-is', '--issue', is_flag=True, help="Gera uma Issue padronizada das alterações atuais e abre a interface interativa.")
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek']), help="Força a utilização de um provedor de IA específico nesta execução.")
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame,history, issue):
+@click.option('-h', '--help', 'help_flag', is_flag=True, help="Mostra esta mensagem e sai. Use com outra flag para ajuda contextual (ex: -h --issue).")
+def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, history, issue, help_flag):
     """
     GitPR CLI - Automação de PRs e Code Review com IA.
 
     COMPORTAMENTO PADRÃO (Sem opções):
     Faz o fetch, compara com a branch principal remota e gera um arquivo Markdown (.md) com a descrição completa para o Pull Request.
     """
+
+    # ============================================================
+    # MANIPULADOR DE AJUDA CONTEXTUAL
+    # ============================================================
+    if help_flag:
+        # Identifica quais outras flags estao ativas (excluindo hidden: hook, quiet)
+        active_flags: list[str] = []
+        for param_name, help_info in HELP_MAP.items():
+            value = locals().get(param_name)
+            # Trata tanto flags booleanas (True) quanto parametros string (blame, input, provider)
+            if value:
+                active_flags.append(param_name)
+
+        if not active_flags:
+            # gitpr -h puro (sem outras flags): mostra help padrao do Click
+            ctx = click.get_current_context()
+            click.echo(ctx.get_help())
+            ctx.exit()
+
+        # Ordena por prioridade e seleciona a flag mais especifica
+        active_flags.sort(key=lambda f: HELP_PRIORITY.get(f, 99))
+        primary_flag = active_flags[0]
+        help_info = HELP_MAP.get(primary_flag)
+
+        if help_info:
+            click.secho(f"\n{'=' * 60}", bold=True)
+            click.secho(f"  {help_info['title']}", fg="cyan", bold=True)
+            click.secho(f"{'=' * 60}\n", bold=True)
+            click.echo(help_info['description'])
+            click.echo("")
+            click.secho(">> Documentacao completa:", fg="green")
+            click.secho(f"  {help_info['url']}", fg="blue", underline=True)
+            click.echo("")
+
+            if len(active_flags) > 1:
+                click.secho(
+                    ">> Dica: Para ajuda sobre uma unica opcao, "
+                    "use -h apenas com ela.",
+                    fg="yellow", dim=True,
+                )
+
+            # Exibe a URL da documentacao principal do GitPR como rodape
+            click.secho(
+                ">> Repositorio: https://github.com/natanfiuza/gitpr",
+                fg="bright_black",
+            )
+            click.echo("")
+        else:
+            # Fallback: mostra help padrao (nao deveria acontecer)
+            ctx = click.get_current_context()
+            click.echo(ctx.get_help())
+
+        # Garante saida limpa apos exibir ajuda contextual
+        ctx = click.get_current_context()
+        ctx.exit()
+
     # Silencia o banner se estiver no modo quiet ou via hook
     if not quiet and not hook:
         print_banner()
@@ -129,7 +322,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             click.echo("O Linter será agora executado automaticamente antes de cada commit.")
             
             click.echo("\n---")
-            click.echo("📚 Guias de Utilização:")
+            click.echo(">> Guias de Utilização:")
             
             # Link da documentação geral de Hooks
             click.echo("• Como utilizar Git Hooks:")
@@ -162,7 +355,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
                 click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
                 return
             
-            click.secho(f"📂 Arquivo selecionado: {file_path}", fg="cyan", bold=True)
+            click.secho(f">> Arquivo selecionado: {file_path}", fg="cyan", bold=True)
             lines_input = click.prompt("Quais linhas você deseja investigar? (Ex: 10-20 ou apenas 45)")
             
             if "-" in lines_input:
@@ -213,7 +406,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
                 if not os.path.exists(file_path):
                     click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
                     return
-                click.secho(f"📂 Arquivo selecionado: {file_path}", fg="cyan", bold=True)
+                click.secho(f">> Arquivo selecionado: {file_path}", fg="cyan", bold=True)
                 lines_input = click.prompt("Quais linhas você deseja investigar? (Ex: 10-20)")
                 start_line, end_line = lines_input.split("-") if "-" in lines_input else (lines_input, lines_input)
                     
@@ -274,10 +467,18 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             
         return 
 
-    # Validação do Modo Input
-    if input and not (review or fullreview):
-        click.secho("\n❌ Erro: A opção --input (-i) só pode ser utilizada em conjunto com --review (-r) ou --fullreview (-f).", fg="red", bold=True)
-        return
+    # Validação do Modo Input (com guard para nao atrapalhar o -h contextual)
+    if input and not help_flag:
+        if not os.path.exists(input):
+            click.secho(
+                f"\n❌ Erro: O arquivo '{input}' nao foi encontrado.",
+                fg="red", bold=True,
+            )
+            return
+
+        if not (review or fullreview):
+            click.secho("\n❌ Erro: A opção --input (-i) só pode ser utilizada em conjunto com --review (-r) ou --fullreview (-f).", fg="red", bold=True)
+            return
     
     # Garante que o ambiente e as chaves estão configurados
     setup_environment()
@@ -349,7 +550,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
                 click.secho(f"❌ Erro ao injetar no hook: {e}", fg="red")
         else:
             # MODO CONSOLE: O comportamento original que já existia
-            click.secho("\n💡 Dica: Use sem --commit para gerar o PR completo.\n", fg="yellow")
+            click.secho("\n>> Dica: Use sem --commit para gerar o PR completo.\n", fg="yellow")
             click.secho("\n📝 Sugestão de Commit:\n", fg="green", bold=True)
             click.echo(msg)
             click.echo("\n")
