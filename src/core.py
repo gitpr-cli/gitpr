@@ -7,9 +7,10 @@ import urllib.request
 import urllib.error
 from google import genai
 from src.security import decrypt_data
-from src.cache import get_cached_response, save_cached_response
+from src.cache import get_cached_response, save_cached_response, get_cached_pr_descriptions
 from src.config import get_api_key, get_api_model
 from src.ai_providers import call_ai_model
+
 
 
 def get_git_diff():
@@ -313,3 +314,46 @@ def install_git_hooks():
             click.secho(f"⚠️ Falha ao instalar {hook_name}: {e}", fg="yellow")
 
     return success_count == len(hooks_to_install)
+
+def get_branch_history_text():
+    """Compila o Git Log e o Cache de PRs da branch atual para gerar o contexto épico."""
+    branch = get_current_branch()
+    base_branch = get_base_branch()
+    
+    click.secho(f"🔄 Compilando histórico da branch '{branch}' contra '{base_branch}'...", fg="cyan")
+    
+    hybrid_context = f"Resumo Histórico da Branch: {branch}\n\n"
+    
+    # Pega os Commits reais do Git
+    try:
+        # Pega a linha do tempo desde o merge base
+        merge_base_res = subprocess.run(
+            ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
+            capture_output=True, text=True, check=True
+        )
+        ancestor_hash = merge_base_res.stdout.strip()
+        
+        # Formato: Hash | Data | Autor | Mensagem
+        git_log_res = subprocess.run(
+            ["git", "log", f"{ancestor_hash}..HEAD", "--format=%h | %ad | %an | %s", "--date=short"],
+            capture_output=True, text=True, encoding="utf-8", check=True
+        )
+        git_log = git_log_res.stdout.strip()
+        
+        hybrid_context += "=== COMMITS REGISTRADOS ===\n"
+        if git_log:
+            hybrid_context += f"{git_log}\n\n"
+        else:
+            hybrid_context += "Nenhum commit exclusivo encontrado nesta branch.\n\n"
+            
+    except subprocess.CalledProcessError as e:
+        click.secho(f"⚠️ Aviso: Não foi possível obter o Git Log: {e.stderr}", fg="yellow")
+    
+    # Pega a memória histórica da IA (Cache de PRs antigos dessa branch)
+    cached_prs = get_cached_pr_descriptions(branch)
+    if cached_prs:
+        hybrid_context += f"{cached_prs}\n"
+    else:
+        hybrid_context += "=== HISTÓRICO DE PRs DA IA ===\nNenhum PR anterior gerado por IA encontrado em cache para esta branch.\n"
+        
+    return hybrid_context

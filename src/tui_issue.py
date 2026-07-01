@@ -20,7 +20,7 @@ def validate_or_request_github_token(repo_info):
     url_token = f"https://github.com/settings/tokens/new?scopes=repo&description=GitPR+Token+({repo_param})"
     click.secho(f"👉 {url_token}\n", fg="blue", underline=True)
     
-    # --- NOVO: Link dinâmico para a documentação técnica ---
+    # Link dinâmico para a documentação técnica
     click.secho("📚 Entenda por que precisamos do Token e como ele é protegido por criptografia:", fg="cyan", dim=True)
     click.secho("👉 https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md\n", fg="blue", underline=True)
     

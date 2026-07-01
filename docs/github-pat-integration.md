@@ -2,6 +2,8 @@
 
 Para que a funcionalidade de criação direta de Issues (`gitpr --issue`) funcione de forma automatizada, o GitPR precisa se comunicar com a **API REST do GitHub**. Esta documentação explica como essa autenticação ocorre e como as suas credenciais são protegidas localmente.
 
+📖 **Documentação relacionada:** [Guia da opção `--issue` (gitpr-issue-option.md)](gitpr-issue-option.md)
+
 ## 1. Por que precisamos de um Token (PAT)?
 A criação de issues em repositórios remotos de forma programática exige autenticação. O GitHub recomenda a utilização de um **Personal Access Token (PAT)** para que ferramentas de linha de comando (CLI) possam interagir com a sua conta de desenvolvedor de forma segura.
 
