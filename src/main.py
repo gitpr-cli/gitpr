@@ -12,7 +12,8 @@ from src.core import (
     get_current_branch, 
     generate_pr_content,  
     generate_skill_template,
-    install_git_hooks
+    install_git_hooks,
+    get_branch_history_text
 )
 from src.linter_engine import parse_diff_and_lint
 
@@ -46,9 +47,10 @@ def print_banner():
 @click.option('-q', '--quiet', is_flag=True, hidden=True, help="Oculta o banner e logs não essenciais (uso interno).")
 @click.option('-i', '--input', type=click.Path(exists=True), help="Caminho de um arquivo específico para análise completa.")
 @click.option('-b', '--blame', type=str, help="Analisa a origem de uma regra de negócio (ex: arquivo.py:10-20 ou apenas arquivo.py).")
+@click.option('-ht', '--history', is_flag=True, help="Usa todo o histórico da branch (Git Log + Cache de PR) como contexto para gerar a issue.")
 @click.option('-is', '--issue', is_flag=True, help="Gera uma Issue padronizada das alterações atuais e abre a interface interativa.")
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek']), help="Força a utilização de um provedor de IA específico nesta execução.")
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, issue):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame,history, issue):
     """
     GitPR CLI - Automação de PRs e Code Review com IA.
 
@@ -140,7 +142,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         return
     
     # Módulo Arqueólogo (--blame)
-    if blame:
+    if blame and not issue:
         # Parser para separar o arquivo das linhas
         if ":" in blame:
             # Modo Direto: gitpr --blame arquivo:10-20
@@ -177,23 +179,77 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         from src.blame_engine import run_blame_analysis
         run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip())
         return 
- 
-    # Módulo Issue (--issue)
+
+# Módulo Issue (Híbrido)
     if issue:
-        # Importações sob demanda para não atrasar a CLI se não for usar a TUI
         from src.issue_engine import generate_issue_content, get_github_repo_info
         from src.tui_issue import validate_or_request_github_token, IssueApp
         
-        diff_text = get_git_diff()
-        if not diff_text or not diff_text.strip():
-            click.secho("\n⚠️ Nenhum código novo encontrado. Faça alguma alteração antes de gerar a issue.\n", fg="yellow")
-            return
-
-        # Garante que as chaves da IA estão configuradas antes de chamar o motor
         setup_environment()
         
-        # Gera o conteúdo com a IA
-        issue_data = generate_issue_content(diff_text)
+        context_text = ""
+        context_type = "diff"
+        
+        # Roteador de Contexto Inteligente
+        if history:
+            context_type = "history"
+            context_text = get_branch_history_text()
+            if not context_text or ("Nenhum commit exclusivo" in context_text and "Nenhum PR anterior" in context_text):
+                click.secho("\n⚠️ Nenhum histórico encontrado para esta branch.\n", fg="yellow")
+                return
+                
+        elif blame:
+            context_type = "blame"
+            # Reaproveita o parser de arquivo/linhas da opção blame
+            if ":" in blame:
+                file_path, lines = blame.split(":", 1)
+                try:
+                    start_line, end_line = lines.split("-") if "-" in lines else (lines, lines)
+                except ValueError:
+                    click.secho("❌ Formato de linhas inválido. Use inicio-fim (ex: 10-20).", fg="red")
+                    return
+            else:
+                file_path = blame
+                if not os.path.exists(file_path):
+                    click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+                    return
+                click.secho(f"📂 Arquivo selecionado: {file_path}", fg="cyan", bold=True)
+                lines_input = click.prompt("Quais linhas você deseja investigar? (Ex: 10-20)")
+                start_line, end_line = lines_input.split("-") if "-" in lines_input else (lines_input, lines_input)
+                    
+            if not os.path.exists(file_path.strip()):
+                click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+                return
+                
+            from src.blame_engine import run_blame_analysis
+            click.secho("🔍 Extraindo linha do tempo arqueológica em background...", fg="cyan")
+            
+            # Aciona o arqueólogo no modo silencioso
+            timeline = run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip(), return_data=True)
+            
+            if not timeline:
+                click.secho("\n⚠️ Nenhum histórico rastreável para alimentar a issue.\n", fg="yellow")
+                return
+            
+            # Traduz a lista de dicionários para um texto legível para a IA
+            formatted_timeline = []
+            for item in timeline:
+                formatted_timeline.append(
+                    f"[{item['raw_date']}] Commit {item['hash']} por {item['info']['author']}:\n"
+                    f"Ação: {item['status']}\n"
+                    f"Motivo IA: {item['motivo']}\n"
+                )
+            context_text = "\n".join(formatted_timeline)
+
+        else:
+            context_type = "diff"
+            context_text = get_git_diff()
+            if not context_text or not context_text.strip():
+                click.secho("\n⚠️ Nenhum código novo encontrado. Faça alguma alteração antes de gerar a issue.\n", fg="yellow")
+                return
+
+        # Gera o conteúdo com a IA enviando o idioma correto
+        issue_data = generate_issue_content(context_text, context_type=context_type)
         if not issue_data:
             return
             
@@ -217,7 +273,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
             
         return 
- 
+
     # Validação do Modo Input
     if input and not (review or fullreview):
         click.secho("\n❌ Erro: A opção --input (-i) só pode ser utilizada em conjunto com --review (-r) ou --fullreview (-f).", fg="red", bold=True)

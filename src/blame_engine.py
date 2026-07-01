@@ -89,19 +89,23 @@ def analyze_commit_with_ai(commit_hash, file_path):
         
     return {"status": "ORIGEM", "motivo": "IA não retornou formato válido."}
 
-def run_blame_analysis(file_path, start_line, end_line):
+def run_blame_analysis(file_path, start_line, end_line, return_data=False):
     """Motor de Loop Temporal que constrói a Timeline consolidada."""
-    click.secho(f"\n🔍 Iniciando Arqueologia de Código...", fg="cyan", bold=True)
-    click.echo(f"📍 Arquivo: {file_path} (Linhas: {start_line} até {end_line})")
+    
+    # Se for acionado para retorno de dados (via --issue), silencia os prints
+    if not return_data:
+        click.secho(f"\n🔍 Iniciando Arqueologia de Código...", fg="cyan", bold=True)
+        click.echo(f"📍 Arquivo: {file_path} (Linhas: {start_line} até {end_line})")
     
     initial_commits = execute_git_blame(file_path, start_line, end_line)
     
     if not initial_commits:
-        click.secho("⚠️ Nenhum commit rastreável encontrado nestas linhas.", fg="yellow")
-        return
+        if not return_data: 
+            click.secho("⚠️ Nenhum commit rastreável encontrado nestas linhas.", fg="yellow")
+        return [] if return_data else None
         
-    click.secho(f"✅ Encontrado(s) {len(initial_commits)} commit(s) na superfície. Iniciando viagem no tempo...\n", fg="green")
-    
+    if not return_data:
+        click.secho(f"✅ Encontrado(s) {len(initial_commits)} commit(s) na superfície. Iniciando viagem no tempo...\n", fg="green")
     master_timeline = []
     seen_hashes = set()
     
@@ -145,6 +149,10 @@ def run_blame_analysis(file_path, start_line, end_line):
             
     # ORDENAÇÃO CRONOLÓGICA (Do mais antigo para o mais novo)
     master_timeline.sort(key=lambda x: x["raw_date"])
+    
+    # Retorno Direto para a IA
+    if return_data:
+        return master_timeline
     
     # EXIBIÇÃO VISUAL NO TERMINAL (ÚNICA)
     click.secho(f"\n📜 Histórico Consolidado da Regra (Linhas {start_line}-{end_line}):", fg="magenta", bold=True)

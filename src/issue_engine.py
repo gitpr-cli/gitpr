@@ -29,9 +29,9 @@ def get_github_repo_info():
     except subprocess.CalledProcessError:
         return None
 
-def generate_issue_content(diff_text):
-    """Envia o diff para a IA e retorna um dicionário com título e corpo da issue."""
-    if not diff_text or not diff_text.strip():
+def generate_issue_content(context_text, context_type="diff"):
+    """Envia o contexto (diff, blame ou history) para a IA e retorna um dicionário da issue."""
+    if not context_text or not str(context_text).strip():
         return None
 
     provider = get_ai_provider()
@@ -53,12 +53,23 @@ def generate_issue_content(diff_text):
     else:
         sys_inst = "Você é um Arquiteto de Software. Siga o formato O Que / Por Que / Onde / Como para documentar a Issue."
 
-    prompt = (
-        f"Gere o objeto JSON solicitado seguindo as instruções de sistema para documentar a seguinte alteração:\n\n"
-        f"DIFF PARA ANÁLISE:\n{diff_text}"
-    )
+    # Cérebro Adaptativo (Prompt Dinâmico)
+    if context_type == "blame":
+        target_action = "documentar a evolução arquitetural, refatorações e a dívida técnica desta regra de negócio baseando-se no histórico de commits."
+        data_label = "LINHA DO TEMPO DA REGRA (DO MAIS ANTIGO PARA O MAIS NOVO):"
+    elif context_type == "history":
+        target_action = "documentar o Épico/Release detalhando todas as funcionalidades implementadas baseando-se no histórico integral da branch."
+        data_label = "HISTÓRICO CONSOLIDADO DA BRANCH (COMMITS + PRS ANTIGOS):"
+    else:
+        target_action = "documentar a seguinte alteração de código recém introduzida."
+        data_label = "DIFF PARA ANÁLISE:"
 
-    # --- NOVO: Tenta recuperar do Cache ---
+    prompt = (
+        f"Gere o objeto JSON solicitado seguindo as instruções de sistema para {target_action}\n\n"
+        f"{data_label}\n{context_text}"
+    )
+    
+    # Tenta recuperar do Cache
     cached_data = get_cached_response("issue", prompt)
     if cached_data:
         click.secho("⚡ Resposta da Issue recuperada do cache local.", fg="green", dim=True)
@@ -69,7 +80,7 @@ def generate_issue_content(diff_text):
     result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst)
     
     if result_json and "titulo" in result_json and "corpo" in result_json:
-        # --- NOVO: Salva no Cache ---
+        # Salva no Cache 
         save_cached_response("issue", "issue", prompt, result_json)
         return result_json
         

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: gitpr-cli
-Version: 0.0.14
+Version: 0.0.16
 Summary: Automação de PRs, Commits e Code Review com IA (Gemini e DeepSeek)
 Author-email: Natan Fiuza <contato@natanfiuza.dev.br>
 Requires-Python: >=3.10
@@ -126,7 +126,10 @@ Você pode passar as seguintes *flags* para ações específicas:
 * `-l` ou `--linter`: Roda **apenas o linter estático local** (sem chamadas de IA). Ideal para usar em pipelines de CI/CD para bloquear código fora do padrão.
 * `-ih` ou `--installhooks`: Instala automaticamente os **Git Hooks locais** (`pre-commit` e `prepare-commit-msg`) no seu repositório.
 * `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`) e do Linter (`.gitpr.linter.yml`) na raiz do projeto.
-* `-is` ou `--issue`: Gera automaticamente o rascunho de uma **Issue padronizada** a partir do diff e abre uma interface interativa (TUI) para edição, salvamento ou envio direto para o repositório no GitHub via API REST.
+* `-is` ou `--issue`: Gera automaticamente o rascunho de uma **Issue padronizada** e abre uma interface interativa (TUI) para edição ou envio direto via API REST. Esta funcionalidade possui **3 motores de contexto** dependendo da combinação de comandos:
+  * **Issue de Código Novo (`gitpr -is`):** Lê o `git diff` atual. **Por que usar:** Ideal para documentar rapidamente a tarefa que você acabou de programar, antes de commitar.
+  * **Issue de Épico/Release (`gitpr -is -ht`):** Lê o histórico completo da branch atual (Git Log + Cache de PRs). **Por que usar:** Ideal para gerar uma documentação consolidada de uma release inteira ou de uma *feature* grande que levou vários dias/commits para ser concluída.
+  * **Issue Arqueológica/Dívida Técnica (`gitpr -is -b arquivo:linhas`):** Lê a linha do tempo de uma regra específica. **Por que usar:** Ideal para documentar dívidas técnicas, explicando como um bloco de código legado evoluiu e por que precisa ser refatorado.
 * `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
 * `-h` ou `--help`: Exibe o menu de ajuda.
 
