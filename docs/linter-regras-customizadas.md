@@ -82,7 +82,7 @@ Para entender como criar as suas, veja como essa foi construída peça por peça
 
 ```YAML
 
-  \- name: "check-js-console"  
+  - name: "check-js-console"  
     extensions: \["js", "ts", "vue"\]  
     regex: 'console\\.(log|debug|info)\\s\*\\('  
     message: "🚨 Uso de console.log não permitido em produção ({file\_name}, Linha {line\_number})."  
