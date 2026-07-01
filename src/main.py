@@ -190,7 +190,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         context_text = ""
         context_type = "diff"
         
-        # 1. Roteador de Contexto Inteligente
+        # Roteador de Contexto Inteligente
         if history:
             context_type = "history"
             context_text = get_branch_history_text()
@@ -248,26 +248,26 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
                 click.secho("\n⚠️ Nenhum código novo encontrado. Faça alguma alteração antes de gerar a issue.\n", fg="yellow")
                 return
 
-        # 2. Gera o conteúdo com a IA enviando o idioma correto
+        # Gera o conteúdo com a IA enviando o idioma correto
         issue_data = generate_issue_content(context_text, context_type=context_type)
         if not issue_data:
             return
             
-        # 3. Pega informações do repositório
+        # Pega informações do repositório
         repo_info = get_github_repo_info()
         
-        # 4. Valida ou solicita o Token PAT
+        # Valida ou solicita o Token PAT
         github_token = validate_or_request_github_token(repo_info)
         
         if not github_token:
             click.secho("❌ Acesso cancelado. O Token do GitHub é obrigatório para esta ação.", fg="red")
             return
             
-        # 5. Roda a Interface Gráfica do Terminal
+        # Roda a Interface Gráfica do Terminal
         app = IssueApp(issue_data=issue_data, repo_info=repo_info, github_token=github_token)
         app.run()
         
-        # 6. Exibe a mensagem de retorno após fechar a TUI
+        # Exibe a mensagem de retorno após fechar a TUI
         if app.final_message:
             cor = "green" if app.final_action in ["saved", "created"] else "red"
             click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
