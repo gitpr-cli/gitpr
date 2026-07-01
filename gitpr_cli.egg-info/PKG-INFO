@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: gitpr-cli
-Version: 0.0.17
+Version: 0.0.19
 Summary: Automação de PRs, Commits e Code Review com IA (Gemini e DeepSeek)
 Author-email: Natan Fiuza <contato@natanfiuza.dev.br>
 Requires-Python: >=3.10
@@ -12,6 +12,8 @@ Requires-Dist: openai
 Requires-Dist: python-dotenv
 Requires-Dist: cryptography
 Requires-Dist: pyyaml
+Requires-Dist: textual
+Requires-Dist: requests
 Dynamic: license-file
 
 # **GitPR CLI 🚀**

@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import stat
 import click
@@ -56,15 +57,35 @@ def get_current_branch():
     """Retorna o nome da branch atual."""
     try:
         result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"], 
-            capture_output=True, 
-            text=True, 
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
             encoding="utf-8",
             check=True
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError:
         return "main" # Fallback
+
+
+def get_repo_name():
+    """Extrai o nome owner/repo do git remote origin."""
+    try:
+        result = subprocess.run(
+            ["git", "remote", "-v"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True
+        )
+        match = re.search(r'github\.com[:/](.+?)/(.+?)(\.git)?\s+\(push\)', result.stdout)
+        if match:
+            owner = match.group(1)
+            repo = match.group(2).replace('.git', '')
+            return f"{owner}/{repo}"
+        return "unknown/repo"
+    except subprocess.CalledProcessError:
+        return "unknown/repo"
 
 
 def get_skill_context(action_type="pr"):
@@ -316,14 +337,15 @@ def install_git_hooks():
     return success_count == len(hooks_to_install)
 
 def get_branch_history_text():
-    """Compila o Git Log e o Cache de PRs da branch atual para gerar o contexto épico."""
+    """Compila o Git Log e o Cache de PRs da branch atual para gerar o contexto epico."""
     branch = get_current_branch()
     base_branch = get_base_branch()
-    
-    click.secho(f"🔄 Compilando histórico da branch '{branch}' contra '{base_branch}'...", fg="cyan")
-    
-    hybrid_context = f"Resumo Histórico da Branch: {branch}\n\n"
-    
+    repo_name = get_repo_name()
+
+    click.secho(f"🔄 Compilando historico do repositorio '{repo_name}', branch '{branch}' contra '{base_branch}'...", fg="cyan")
+
+    hybrid_context = f"Repositorio: {repo_name}\nResumo Historico da Branch: {branch}\n\n"
+
     # Pega os Commits reais do Git
     try:
         # Pega a linha do tempo desde o merge base
@@ -349,8 +371,8 @@ def get_branch_history_text():
     except subprocess.CalledProcessError as e:
         click.secho(f"⚠️ Aviso: Não foi possível obter o Git Log: {e.stderr}", fg="yellow")
     
-    # Pega a memória histórica da IA (Cache de PRs antigos dessa branch)
-    cached_prs = get_cached_pr_descriptions(branch)
+    # Pega a memoria historica da IA (Cache de PRs antigos desse repo + branch)
+    cached_prs = get_cached_pr_descriptions(repo_name, branch)
     if cached_prs:
         hybrid_context += f"{cached_prs}\n"
     else:

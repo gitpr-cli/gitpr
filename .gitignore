@@ -20,3 +20,4 @@ dist/
 
 *.log
 *.txt
+gitpr_cli.egg-info
