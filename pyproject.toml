@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gitpr-cli"
-version = "0.0.18"
+version = "0.0.19"
 description = "Automação de PRs, Commits e Code Review com IA (Gemini e DeepSeek)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,9 @@ dependencies = [
     "openai",
     "python-dotenv",
     "cryptography",
-    "pyyaml"
+    "pyyaml",
+    "textual",
+    "requests"
 ]
 
 [project.scripts]

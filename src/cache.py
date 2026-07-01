@@ -33,11 +33,13 @@ def save_cached_response(action_folder, action_type, prompt_text, response_dict)
     folder_path.mkdir(parents=True, exist_ok=True)
     
     cache_file = folder_path / f"{md5_hash}.json"
-    from src.core import get_current_branch
+    from src.core import get_current_branch, get_repo_name
     current_branch = get_current_branch()
-    
+    repo_name = get_repo_name()
+
     cache_data = {
         "md5": md5_hash,
+        "repo": repo_name,
         "branch": current_branch,
         "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "action_type": action_type,
@@ -51,21 +53,21 @@ def save_cached_response(action_folder, action_type, prompt_text, response_dict)
     except IOError:
         pass # Falha silenciosa no cache para não travar a ferramenta
     
-def get_cached_pr_descriptions(branch_name):
-    """Busca no cache todos os PRs gerados historicamente para esta branch."""
+def get_cached_pr_descriptions(repo_name, branch_name):
+    """Busca no cache todos os PRs gerados historicamente para este repositorio e branch."""
     pr_cache_folder = get_cache_base_dir() / "pr_desc"
     history_texts = []
-    
+
     if not pr_cache_folder.exists():
         return ""
-        
+
     for cache_file in pr_cache_folder.glob("*.json"):
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                
-                # Verifica se o cache pertence à branch solicitada
-                if data.get("branch") == branch_name:
+
+                # Filtra por repositorio E branch (evita misturar projetos diferentes)
+                if data.get("repo") == repo_name and data.get("branch") == branch_name:
                     response_dict = data.get("response", {})
                     pr_desc = response_dict.get("pr_description")
                     if pr_desc:
@@ -73,10 +75,10 @@ def get_cached_pr_descriptions(branch_name):
                         history_texts.append(f"[{date_str}]\n{pr_desc}\n")
         except (json.JSONDecodeError, IOError):
             continue
-            
+
     if history_texts:
-        # Ordena cronologicamente (usando a data extraída no colchete)
+        # Ordena cronologicamente (usando a data extraida no colchete)
         history_texts.sort()
         return "=== HISTÓRICO DE PRs DA IA ===\n" + "\n".join(history_texts)
-        
+
     return ""
