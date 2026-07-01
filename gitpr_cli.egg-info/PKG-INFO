@@ -125,7 +125,7 @@ Você pode passar as seguintes *flags* para ações específicas:
 * `--provider <gemini|deepseek>`: Força a utilização de uma IA específica apenas para esta execução, ignorando o seu padrão guardado no `.env`.
 * `-l` ou `--linter`: Roda **apenas o linter estático local** (sem chamadas de IA). Ideal para usar em pipelines de CI/CD para bloquear código fora do padrão.
 * `-ih` ou `--installhooks`: Instala automaticamente os **Git Hooks locais** (`pre-commit` e `prepare-commit-msg`) no seu repositório.
-* `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`) e do Linter (`.gitpr.linter.yml`) na raiz do projeto.
+* `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) e do Linter (`.gitpr.linter.yml`) na raiz do projeto.
 * `-is` ou `--issue`: Gera automaticamente o rascunho de uma **Issue padronizada** e abre uma interface interativa (TUI) para edição ou envio direto via API REST. Esta funcionalidade possui **3 motores de contexto** dependendo da combinação de comandos:
   * **Issue de Código Novo (`gitpr -is`):** Lê o `git diff` atual. **Por que usar:** Ideal para documentar rapidamente a tarefa que você acabou de programar, antes de commitar.
   * **Issue de Épico/Release (`gitpr -is -ht`):** Lê o histórico completo da branch atual (Git Log + Cache de PRs). **Por que usar:** Ideal para gerar uma documentação consolidada de uma release inteira ou de uma *feature* grande que levou vários dias/commits para ser concluída.
@@ -172,6 +172,8 @@ Em vez de esconder as instruções da IA no código fonte, o GitPR utiliza arqui
 * `.gitpr.pr.md`: Estrutura de tópicos exigida para a descrição do Pull Request.
 * `.gitpr.review.md`: Define o foco de arquitetura (ex: SOLID, Clean Code) para a análise de diffs.
 * `.gitpr.filereview.md`: Define regras rígidas de coesão e acoplamento para auditoria de um ficheiro completo (usado com `--input`).
+* `.gitpr.issue.md`: Define a estrutura e o nível de detalhe exigido para a geração de Issues padronizadas (usado com `--issue`).
+* `.gitpr.blame.md`: Define o foco da análise arqueológica para o rastreamento de código legado (usado com `--blame`).
 
 ## 📚 Documentação Técnica e Guias Avançados
 
