@@ -1,0 +1,1 @@
+Fabuloso,Pensando,Analisando,Raciocinando,Elaborando,Processando,Decifrando,Calculando,Refletindo,Maquinando,Engenhando,Arquitetando,Destilando,Codificando,Iterando,Purificando,Contextualizando,Apreciando,Desmitificando,Aglomerado,Sofisticando,Populando,Sincronizando,Bufferizando
