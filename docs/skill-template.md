@@ -1,74 +1,74 @@
-# Documentação Técnica: Sistema de Skills e Templates (--skill)
+# Technical Documentation: Skills and Templates System (--skill)
 
-O GitPR utiliza um sistema de **Skills** (Prompt Engineering) que permite customizar o comportamento da inteligência artificial de acordo com as regras de negócio da sua empresa. Os arquivos de template atuam como *System Instructions* da IA.
+GitPR uses a **Skills** (Prompt Engineering) system that allows customizing the artificial intelligence behavior according to your company's business rules. The template files act as the AI's *System Instructions*.
 
 ---
 
-## 1. Baixar os Templates
+## 1. Downloading Templates
 
 ```bash
 gitpr -s
-# ou
+# or
 gitpr --skill
 ```
 
-Este comando cria os seguintes arquivos na raiz do seu projeto:
+This command creates the following files at the root of your project:
 
-| Arquivo | Função |
+| File | Function |
 | --- | --- |
-| `.gitpr.commit.md` | Regras para geração de mensagens de commit |
-| `.gitpr.pr.md` | Estrutura exigida para descrição de Pull Request |
-| `.gitpr.review.md` | Foco de arquitetura para code review de diffs |
-| `.gitpr.filereview.md` | Regras de coesão para auditoria de arquivo completo |
-| `.gitpr.issue.md` | Estrutura e detalhe para geração de Issues |
-| `.gitpr.blame.md` | Foco da análise arqueológica de código |
-| `.gitpr.linter.yml` | Regras de regex para validação estática |
+| `.gitpr.commit.md` | Rules for commit message generation |
+| `.gitpr.pr.md` | Required structure for Pull Request description |
+| `.gitpr.review.md` | Architecture focus for diff code review |
+| `.gitpr.filereview.md` | Cohesion rules for full file auditing |
+| `.gitpr.issue.md` | Structure and detail for Issue generation |
+| `.gitpr.blame.md` | Focus of archaeological code analysis |
+| `.gitpr.linter.yml` | Regex rules for static validation |
 
-> **Importante:** O comando `--skill` **nunca sobrescreve** arquivos locais existentes. Se um `.gitpr.*.md` já existir, ele é preservado.
+> **Important:** The `--skill` command **never overwrites** existing local files. If a `.gitpr.*.md` already exists, it is preserved.
 
 ---
 
-## 2. Como Funciona
+## 2. How It Works
 
-Cada comando do GitPR procura automaticamente pelo arquivo de skill correspondente:
+Each GitPR command automatically looks for the corresponding skill file:
 
-| Comando | Arquivo de skill usado |
+| Command | Skill file used |
 | --- | --- |
 | `gitpr -c` | `.gitpr.commit.md` |
-| `gitpr` (padrão) | `.gitpr.pr.md` |
+| `gitpr` (default) | `.gitpr.pr.md` |
 | `gitpr -r` / `gitpr -f` | `.gitpr.review.md` |
-| `gitpr -r -i arquivo` | `.gitpr.filereview.md` |
+| `gitpr -r -i file` | `.gitpr.filereview.md` |
 | `gitpr -is` | `.gitpr.issue.md` |
-| `gitpr -b arquivo` | `.gitpr.blame.md` |
+| `gitpr -b file` | `.gitpr.blame.md` |
 | `gitpr -l` / `gitpr -r` | `.gitpr.linter.yml` |
 
-Se o arquivo de skill não existir, o GitPR usa um template interno padrão.
+If the skill file does not exist, GitPR uses a default internal template.
 
 ---
 
-## 3. Exemplo de Customização
+## 3. Customization Example
 
-**Ficheiro `.gitpr.commit.md`:**
+**File `.gitpr.commit.md`:**
 
 ```markdown
-Todas as mensagens de commit DEVEM:
-- Usar prefixo JIRA obrigatório: [PROJ-1234]
-- Seguir Conventional Commits (feat, fix, refactor...)
-- Ser escritas em português (Brasil)
-- Não exceder 72 caracteres na linha de assunto
+All commit messages MUST:
+- Use mandatory JIRA prefix: [PROJ-1234]
+- Follow Conventional Commits (feat, fix, refactor...)
+- Be written in English
+- Not exceed 72 characters in the subject line
 ```
 
-Após criar este arquivo, todas as execuções de `gitpr -c` seguirão estas regras.
+After creating this file, all `gitpr -c` executions will follow these rules.
 
 ---
 
-## 4. Templates Remotos
+## 4. Remote Templates
 
-Os templates oficiais estão disponíveis em:
+The official templates are available at:
 ```
 https://github.com/natanfiuza/gitpr/tree/main/templates/
 ```
 
-O comando `--skill` faz download da versão mais recente de cada template do repositório oficial.
+The `--skill` command downloads the latest version of each template from the official repository.
 
-> **Nota:** Os arquivos de skill podem ser commitados no repositório da sua equipa para partilhar as regras com todos os developers.
+> **Note:** Skill files can be committed to your team's repository to share the rules with all developers.

@@ -1,79 +1,77 @@
-# Documentação Técnica: Integração de Git Hooks Locais (GitPR)
+# Technical Documentation: Local Git Hooks Integration (GitPR)
 
-Esta documentação detalha a arquitetura e o uso da funcionalidade de Git Hooks automáticos do GitPR CLI. A implementação adota a prática de ****Shift Left****, trazendo a validação de código e a geração de mensagens (IA) para o momento exato do commit, antes de qualquer integração com o servidor remoto.
+This documentation details the architecture and usage of GitPR CLI's automatic Git Hooks functionality. The implementation adopts the **Shift Left** practice, bringing code validation and message generation (AI) to the exact moment of commit, before any integration with the remote server.
 
 ---
 
-## 1. Instalação Automatizada
+## 1. Automated Installation
 
-Para instalar os hooks no seu repositório local, navegue até a raiz do projeto (onde a pasta oculta `.git` reside) e execute:
+To install the hooks in your local repository, navigate to the project root (where the hidden `.git` folder resides) and run:
 
-```bash  
-gitpr --installhooks  
-# ou  
-gitpr -ih  
+```bash
+gitpr --installhooks
+# or
+gitpr -ih
 ```
 
-**O que este comando faz sob o capô:**
+**What this command does under the hood:**
 
-1. Verifica a integridade do diretório .git/hooks.  
-2. Faz o download da versão mais recente dos scripts pre-commit e prepare-commit-msg diretamente do repositório oficial do GitPR.  
-3. Aplica automaticamente as permissões de execução POSIX (chmod +x) aos arquivos, garantindo compatibilidade entre Linux, macOS e ambientes Git Bash no Windows.
-
----
-
-## **2. Hook: pre-commit (Linter Estático)**
-
-O hook de pre-commit atua como um "guarda-costas" local. Ele é disparado instantaneamente ao executar git commit, antes da mensagem de commit ser solicitada.
-
-### **Como funciona:**
-
-* O script invoca o comando gitpr --linter.  
-* O GitPR analisa o diff atual (arquivos em *stage*) contra as regras definidas no arquivo .gitpr.linter.yml.  
-* **Exit Code 0:** Se não houver violações, o fluxo do Git continua normalmente.  
-* **Exit Code 1:** Se strings proibidas (ex: console.log, senhas, localhost) forem detectadas, o script intercepta a ação, exibe os alertas no terminal e **aborta o commit**.
-
-### **Rota de Fuga (Bypass)**
-
-Se houver uma necessidade estrita de contornar a validação do Linter local (por exemplo, ao subir um código temporário de debug numa branch isolada), utilize a flag nativa do Git:
-
-Bash
-
-git commit --no-verify -m "Sua mensagem aqui"
+1. Checks the integrity of the .git/hooks directory.
+2. Downloads the latest version of the pre-commit and prepare-commit-msg scripts directly from the official GitPR repository.
+3. Automatically applies POSIX execution permissions (chmod +x) to the files, ensuring compatibility across Linux, macOS, and Git Bash environments on Windows.
 
 ---
 
-## **3. Hook: prepare-commit-msg (IA Auto-Commit)**
+## **2. Hook: pre-commit (Static Linter)**
 
-Este hook elimina a necessidade de escrever mensagens de commit manualmente. Ele integra a inteligência artificial do Gemini diretamente no ciclo de vida do Git, gerando mensagens no padrão *Conventional Commits* baseadas no seu código.
+The pre-commit hook acts as a local "bodyguard". It is triggered instantly when running git commit, before the commit message is requested.
 
-### **Como funciona:**
+### **How it works:**
 
-1. Adicione os seus arquivos ao stage (git add .).  
-2. Execute apenas o comando base de commit, sem passar a mensagem:  
-   ```bash  
+* The script invokes the gitpr --linter command.
+* GitPR analyzes the current diff (staged files) against the rules defined in the .gitpr.linter.yml file.
+* **Exit Code 0:** If there are no violations, the Git flow continues normally.
+* **Exit Code 1:** If forbidden strings (e.g.: console.log, passwords, localhost) are detected, the script intercepts the action, displays the alerts in the terminal, and **aborts the commit**.
+
+### **Bypass Route**
+
+If there is a strict need to bypass the local Linter validation (for example, when uploading temporary debug code on an isolated branch), use the native Git flag:
+
+```bash
+git commit --no-verify -m "Your message here"
+```
+
+---
+
+## **3. Hook: prepare-commit-msg (AI Auto-Commit)**
+
+This hook eliminates the need to manually write commit messages. It integrates Gemini's artificial intelligence directly into the Git lifecycle, generating messages in the *Conventional Commits* standard based on your code.
+
+### **How it works:**
+
+1. Add your files to stage (git add .).
+2. Run only the base commit command, without passing the message:
+   ```bash
    git commit
    ```
 
-3. O hook entra em ação exibindo a mensagem: 🤖 GitPR: A pedir sugestão de commit à IA...  
-4. O GitPR roda a flag oculta --hook, enviando o seu *diff* para o Gemini.  
-5. A IA gera a mensagem e o script injeta o resultado de forma limpa na primeira linha do arquivo temporário do Git.  
-6. O seu editor de texto padrão (Vim, Nano, VS Code) abrirá com a mensagem já preenchida. Basta salvar e fechar para confirmar o commit.
+3. The hook kicks in displaying the message: 🤖 GitPR: Requesting commit suggestion from AI...
+4. GitPR runs the hidden --hook flag, sending your *diff* to Gemini.
+5. The AI generates the message and the script cleanly injects the result into the first line of Git's temporary file.
+6. Your default text editor (Vim, Nano, VS Code) will open with the message already filled in. Just save and close to confirm the commit.
 
-### **Preservação do Fluxo Manual**
+### **Preserving Manual Flow**
 
-O script é inteligente o suficiente para não sobrescrever a sua intenção. Se você executar o commit passando a flag de mensagem explícita (-m), o hook reconhece a origem como "message" e **desativa o processamento da IA silenciosamente**:
+The script is smart enough not to overwrite your intention. If you run the commit passing the explicit message flag (-m), the hook recognizes the source as "message" and **silently disables AI processing**:
 
 ```bash
-
-# A IA NÃO será acionada neste caso, respeitando a sua mensagem.  
-git commit -m "fix: corrige problema de concorrência na API"
+# The AI will NOT be triggered in this case, respecting your message.
+git commit -m "fix: resolves API concurrency issue"
 ```
 
 ---
 
-## **4. Resolução de Problemas (Troubleshooting)**
+## **4. Troubleshooting**
 
-* **O Hook não executa (Linux/macOS):** Certifique-se de que os arquivos em .git/hooks têm permissão de execução. Você pode forçar com chmod \+x .git/hooks/pre-commit.  
-* **Comando não encontrado:** Os scripts dos hooks estão configurados para procurar tanto a instalação global (gitpr) quanto a execução local via ambiente virtual (pipenv run python run.py). Se você estiver usando um gerenciador de dependências diferente (como Poetry), poderá ser necessário editar os scripts dentro da pasta .git/hooks para refletir o seu ambiente.
-
+* **Hook does not run (Linux/macOS):** Make sure the files in .git/hooks have execution permission. You can force it with chmod +x .git/hooks/pre-commit.
+* **Command not found:** The hook scripts are configured to search for both the global installation (gitpr) and local execution via virtual environment (pipenv run python run.py). If you are using a different dependency manager (such as Poetry), you may need to edit the scripts inside the .git/hooks folder to reflect your environment.

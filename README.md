@@ -1,219 +1,220 @@
 # **GitPR CLI 🚀**
 
-GitPR CLI é uma ferramenta de automação de linha de comando que utiliza a inteligência artificial do **Google Gemini** e do **DeepSeek** para analisar as suas alterações de código (git diff) ou ficheiros completos. A ferramenta gera automaticamente mensagens de commit no padrão *Conventional Commits*, descrições detalhadas para Pull Requests e Code Reviews profundos visando a redução de dívida técnica.
+GitPR CLI is a command-line automation tool that uses **Google Gemini** and **DeepSeek** artificial intelligence to analyze your code changes (git diff) or entire files. The tool automatically generates commit messages in the *Conventional Commits* standard, detailed Pull Request descriptions, and deep Code Reviews aimed at reducing technical debt.
 
-## **🛠️ Tecnologias e Bibliotecas Utilizadas**
+## **🛠️ Technologies and Libraries Used**
 
-Este projeto foi desenvolvido em Python e utiliza as seguintes bibliotecas principais:
+This project was developed in Python and uses the following main libraries:
 
-* [**Click**](https://click.palletsprojects.com/): Para criar uma interface de linha de comando (CLI) robusta e amigável.  
-* [**Google GenAI**](https://pypi.org/project/google-genai/): SDK oficial para integração direta com a API do Gemini.  
-* [**OpenAI**](https://pypi.org/project/openai/): Biblioteca utilizada devido à sua total compatibilidade com a poderosa API do **DeepSeek**.
-* [**Python-dotenv**](https://pypi.org/project/python-dotenv/): Para a gestão segura de variáveis de ambiente.
-* [**Pytest**](https://docs.pytest.org/): Para execução de testes unitários de forma simples, colorida e legível no console.
-* [**Cryptography**](https://cryptography.io/): Para garantir que sua `GEMINI_API_KEY` seja armazenada de forma encriptada e segura no disco.
-* [**PyYAML**](https://pyyaml.org/): Utilizado para ler e processar as regras customizadas de análise estática do arquivo `.gitpr.linter.yml`.
-* [**Textual**](https://textual.textualize.io/): Biblioteca poderosa para a criação de Interfaces Gráficas de Terminal (TUI), utilizada no painel interativo de geração e edição de Issues.
-* [**Requests**](https://pypi.org/project/requests/): Biblioteca elegante e robusta para requisições HTTP, utilizada para a comunicação com a API REST do GitHub.
+* [**Click**](https://click.palletsprojects.com/): To create a robust and user-friendly command-line interface (CLI).
+* [**Google GenAI**](https://pypi.org/project/google-genai/): Official SDK for direct integration with the Gemini API.
+* [**OpenAI**](https://pypi.org/project/openai/): Library used due to its full compatibility with the powerful **DeepSeek** API.
+* [**Python-dotenv**](https://pypi.org/project/python-dotenv/): For secure environment variable management.
+* [**Pytest**](https://docs.pytest.org/): For running unit tests in a simple, colorful, and readable way in the console.
+* [**Cryptography**](https://cryptography.io/): To ensure your `GEMINI_API_KEY` is stored encrypted and securely on disk.
+* [**PyYAML**](https://pyyaml.org/): Used to read and process the custom static analysis rules from the `.gitpr.linter.yml` file.
+* [**Textual**](https://textual.textualize.io/): Powerful library for creating Terminal Graphical Interfaces (TUI), used in the interactive issue generation and editing panel.
+* [**Requests**](https://pypi.org/project/requests/): Elegant and robust library for HTTP requests, used to communicate with the GitHub REST API.
 
 ----
 
-## 📦 Como Compilar o Executável Localmente
+## 📦 How to Compile the Executable Locally
 
-Se você deseja gerar o seu próprio binário a partir do código-fonte, utilizamos o **PyInstaller**. Certifique-se de estar no diretório raiz do projeto e com o ambiente virtual configurado.
+If you want to generate your own binary from the source code, we use **PyInstaller**. Make sure you are in the project root directory with the virtual environment configured.
 
-1. Instale as dependências de desenvolvimento (caso ainda não tenha feito):
+1. Install development dependencies (if you haven't already):
    ```bash
    pipenv install --dev
    ```
 
-2. Execute o comando de build apontando para o nosso ponto de entrada (`run.py`):
+2. Run the build command pointing to our entry point (`run.py`):
    ```bash
    pipenv run pyinstaller --noconfirm --onefile --icon=icon.ico --name gitpr run.py
    ```
-> **Nota técnica:** A flag `--onefile` garante que todo o Python, bibliotecas e dependências ficam comprimidos num único binário, enquanto `--paths src` ajuda o compilador a encontrar os nossos arquivos `core.py` e `config.py`. 🛠️
+> **Technical note:** The `--onefile` flag ensures all Python, libraries, and dependencies are compressed into a single binary, while `--paths src` helps the compiler find our `core.py` and `config.py` files. 🛠️
 
-Após a execução deste comando, o PyInstaller vai criar algumas pastas (`build` e `dist`). 
-O seu arquivo final e pronto a usar estará dentro da pasta **`dist/`** com o nome `gitpr` (ou `gitpr.exe` no Windows). 
+After running this command, PyInstaller will create some folders (`build` and `dist`).
+Your final ready-to-use file will be inside the **`dist/`** folder named `gitpr` (or `gitpr.exe` on Windows).
 
 
 ----
 
-## 🧪 Executando Testes
+## 🧪 Running Tests
 
-Para garantir que a lógica de captura do Git e a integração com a IA estejam funcionando corretamente, utilizamos testes unitários.
+To ensure the Git capture logic and AI integration are working correctly, we use unit tests.
 
-1. Instale as dependências de teste (caso ainda não tenha feito):
+1. Install test dependencies (if you haven't already):
    ```bash
    pipenv install --dev pytest
    ```
 
-2. Execute os testes com o comando:
+2. Run the tests with the command:
    ```bash
    pipenv run pytest -v
    ```
-O Pytest irá detectar automaticamente os arquivos dentro da pasta `tests/` e apresentará um relatório detalhado da execução.
+Pytest will automatically detect files inside the `tests/` folder and display a detailed execution report.
 
 ----
-## **⚙️ Instalação e Configuração**
+## **⚙️ Installation and Configuration**
 
-### **Usando o Executável (Recomendado)**
+### **Using the Executable (Recommended)**
 
-1. Faça o download do arquivo executável gitpr na aba "Releases" do GitHub.  
-2. Mova o executável para uma pasta que esteja no seu PATH (ex: /usr/local/bin no Linux/Mac ou na pasta do seu utilizador no Windows).  
-3. Na primeira execução, o assistente irá guiá-lo:  
+1. Download the gitpr executable file from the "Releases" tab on GitHub.
+2. Move the executable to a folder that is in your PATH (e.g.: /usr/local/bin on Linux/Mac or your user folder on Windows).
+3. On the first run, the wizard will guide you:
+   ```bash
    $ gitpr
+   ```
 ```bash
-🚀 Automação Inteligente de PRs com IA
+🚀 Intelligent PR Automation with AI
 
-🔧 Primeira execução detetada! Vamos configurar o GitPR CLI.
+🔧 First run detected! Let's configure GitPR CLI.
 
-🔑 Insira sua GEMINI_API_KEY:
+🔑 Enter your GEMINI_API_KEY:
 
-📄 Padrão do nome do arquivo de saída [{branch}_{datetime}_PR_DESC.md]:
-```` 
-*Nota: A sua configuração será guardada em segurança no arquivo `~/.gitpr/.env`.*
+📄 Default output filename pattern [{branch}_{datetime}_PR_DESC.md]:
+```
+*Note: Your configuration will be securely saved in the `~/.gitpr/.env` file.*
 
-> **🔒 Nota sobre Segurança:** O GitPR CLI utiliza criptografia simétrica (Fernet). Sua chave de API é armazenada como um hash no arquivo `.env`, e a chave mestra para desencriptação é gerada automaticamente em `~/.gitpr/secret.key`. **Nunca compartilhe seu arquivo secret.key.**
+> **🔒 Security Note:** GitPR CLI uses symmetric encryption (Fernet). Your API key is stored as a hash in the `.env` file, and the master key for decryption is automatically generated in `~/.gitpr/secret.key`. **Never share your secret.key file.**
 
-### A partir do Código-Fonte
+### From Source Code
 
-1. Clone o repositório: `git clone https://github.com/natanfiuza/gitpr.git`
+1. Clone the repository: `git clone https://github.com/natanfiuza/gitpr.git`
 
-2. Entre na pasta: `cd gitpr`
+2. Enter the folder: `cd gitpr`
 
-3. Atualize o ambiente:  
-```bash  
+3. Set up the environment:
+```bash
 pipenv install google-genai openai python-dotenv click cryptography
-``` 
-4. Execute: pipenv run python src/main.py
+```
+4. Run: pipenv run python src/main.py
 
-## **💻 Como Usar**
+## **💻 How to Use**
 
-O GitPR possui um comportamento padrão poderoso e diversas opções avançadas para auxiliar no seu dia a dia como desenvolvedor.
+GitPR has a powerful default behavior and several advanced options to assist you in your day-to-day as a developer.
 
-### **Comportamento Padrão (Pull Request)**
-Basta executar o comando puro no seu terminal:
+### **Default Behavior (Pull Request)**
+Simply run the bare command in your terminal:
 ```bash
 gitpr
 ```
-A ferramenta irá sincronizar com o remoto (`git fetch`), comparar as suas alterações com a branch principal remota (ex: `origin/main`), e gerar um arquivo Markdown (ex: `feature-login_20260421110134_PR_DESC.md`) na raiz do seu projeto com a sugestão completa para o seu Pull Request.
+The tool will sync with the remote (`git fetch`), compare your changes with the remote main branch (e.g.: `origin/main`), and generate a Markdown file (e.g.: `feature-login_20260421110134_PR_DESC.md`) at the root of your project with the complete suggestion for your Pull Request.
 
-### **Opções e Comandos Avançados**
-Você pode passar as seguintes *flags* para ações específicas:
+### **Advanced Options and Commands**
+You can pass the following *flags* for specific actions:
 
-* `-c` ou `--commit`: Executa um `git diff` local e exibe **apenas a mensagem de commit** sugerida.
-* `-r` ou `--review`: Realiza um **Code Review** detalhado das alterações locais.
-* `-f` ou `--fullreview`: Realiza um **Code Review completo** analisando todas as alterações desde a branch remota.
-* `-i <arquivo>` ou `--input <arquivo>`: **Auditoria de Ficheiro Completo.** Usado obrigatoriamente em conjunto com `-r` ou `-f`, ele ignora o histórico do git e faz um Code Review do ficheiro inteiro. Excelente para atuar como consultor em refatoração de código legado.
-* `--provider <gemini|deepseek>`: Força a utilização de uma IA específica apenas para esta execução, ignorando o seu padrão guardado no `.env`.
-* `-l` ou `--linter`: Roda **apenas o linter estático local** (sem chamadas de IA). Ideal para usar em pipelines de CI/CD para bloquear código fora do padrão.
-* `-ih` ou `--installhooks`: Instala automaticamente os **Git Hooks locais** (`pre-commit` e `prepare-commit-msg`) no seu repositório.
-* `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) e do Linter (`.gitpr.linter.yml`) na raiz do projeto.
-* `-is` ou `--issue`: Gera automaticamente o rascunho de uma **Issue padronizada** e abre uma interface interativa (TUI) para edição ou envio direto via API REST. Esta funcionalidade possui **3 motores de contexto** dependendo da combinação de comandos:
-  * **Issue de Código Novo (`gitpr -is`):** Lê o `git diff` atual. **Por que usar:** Ideal para documentar rapidamente a tarefa que você acabou de programar, antes de commitar.
-  * **Issue de Épico/Release (`gitpr -is -ht`):** Lê o histórico completo da branch atual (Git Log + Cache de PRs). **Por que usar:** Ideal para gerar uma documentação consolidada de uma release inteira ou de uma *feature* grande que levou vários dias/commits para ser concluída.
-  * **Issue Arqueológica/Dívida Técnica (`gitpr -is -b arquivo:linhas`):** Lê a linha do tempo de uma regra específica. **Por que usar:** Ideal para documentar dívidas técnicas, explicando como um bloco de código legado evoluiu e por que precisa ser refatorado.
-* `-h` ou `--help`: Mostra a ajuda geral com todas as opções. Use em conjunto com outra flag para **ajuda contextual** (ex: `gitpr -h --issue`, `gitpr -h --linter`) com link direto para a documentação detalhada de cada funcionalidade.
-* `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
-* `-h` ou `--help`: Exibe o menu de ajuda.
+* `-c` or `--commit`: Runs a local `git diff` and displays **only the suggested commit message**.
+* `-r` or `--review`: Performs a detailed **Code Review** of local changes.
+* `-f` or `--fullreview`: Performs a **Full Code Review** analyzing all changes since the remote branch.
+* `-i <file>` or `--input <file>`: **Full File Audit.** Must be used together with `-r` or `-f`; it ignores git history and does a Code Review of the entire file. Excellent for acting as a consultant on legacy code refactoring.
+* `--provider <gemini|deepseek>`: Forces the use of a specific AI only for this execution, ignoring your default saved in `.env`.
+* `-l` or `--linter`: Runs **only the local static linter** (no AI calls). Ideal for use in CI/CD pipelines to block non-compliant code.
+* `-ih` or `--installhooks`: Automatically installs **local Git Hooks** (`pre-commit` and `prepare-commit-msg`) in your repository.
+* `-s` or `--skill`: Creates the AI context template files (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) and the Linter (`.gitpr.linter.yml`) at the project root.
+* `-is` or `--issue`: Automatically generates a draft of a **standardized Issue** and opens an interactive interface (TUI) for editing or direct submission via REST API. This feature has **3 context engines** depending on the command combination:
+  * **New Code Issue (`gitpr -is`):** Reads the current `git diff`. **Why use:** Ideal for quickly documenting the task you just finished programming, before committing.
+  * **Epic/Release Issue (`gitpr -is -ht`):** Reads the full history of the current branch (Git Log + PR Cache). **Why use:** Ideal for generating consolidated documentation of an entire release or a large *feature* that took several days/commits to complete.
+  * **Archaeological/Technical Debt Issue (`gitpr -is -b file:lines`):** Reads the timeline of a specific business rule. **Why use:** Ideal for documenting technical debt, explaining how a legacy code block evolved and why it needs to be refactored.
+* `-h` or `--help`: Shows the general help with all options. Use together with another flag for **contextual help** (e.g.: `gitpr -h --issue`, `gitpr -h --linter`) with a direct link to the detailed documentation of each feature.
+* `-u` or `--update`: Checks and installs the latest version of GitPR (Auto-Updater).
 
-> **⚙️ Nota Técnica (--hook):** O GitPR possui uma flag oculta `--hook <arquivo>` que é acionada exclusivamente pelo sistema de Git Hooks em background. Ela permite que a IA injete a mensagem sugerida diretamente no arquivo temporário do Git, sem poluir o seu terminal.
+> **⚙️ Technical Note (--hook):** GitPR has a hidden flag `--hook <file>` that is triggered exclusively by the Git Hooks system in the background. It allows the AI to inject the suggested message directly into Git's temporary file, without cluttering your terminal.
 
-## 🛡️ Linter Local (Análise Estática)
+## 🛡️ Local Linter (Static Analysis)
 
-O GitPR CLI permite que você defina regras rígidas que serão validadas instantaneamente durante o `--review` ou `--fullreview`, sem depender da IA. Isso é ideal para evitar que erros comuns (como `console.log` ou IPs de teste) cheguem ao repositório.
+GitPR CLI allows you to define strict rules that will be validated instantly during `--review` or `--fullreview`, without depending on AI. This is ideal for preventing common errors (like `console.log` or test IPs) from reaching the repository.
 
-### Como configurar o `.gitpr.linter.yml`:
-Ao rodar `gitpr --skill`, um modelo será gerado. Você pode configurar regras usando Expressões Regulares (Regex):
+### How to configure `.gitpr.linter.yml`:
+When running `gitpr --skill`, a template will be generated. You can configure rules using Regular Expressions (Regex):
 
 ```yaml
 rules:
   - name: "check-localhost"
-    extensions: ["js", "php"] # Extensões que serão validadas
-    regex: 'http(s)?://(localhost|127\.0\.0\.1)' # O que procurar
-    message: "🚨 Uso de localhost detectado no arquivo {file_name}"
-    ignore_comments: true # Ignora se a linha estiver comentada
-    ignore_paths: # Pastas ou arquivos ignorados (aceita *)
+    extensions: ["js", "php"] # Extensions to be validated
+    regex: 'http(s)?://(localhost|127\.0\.0\.1)' # What to look for
+    message: "🚨 Localhost usage detected in file {file_name}"
+    ignore_comments: true # Ignores if the line is commented
+    ignore_paths: # Folders or files ignored (accepts *)
       - "vendor/*"
       - "node_modules/*"
 ```
 
-O Linter analisa apenas as **linhas adicionadas** no seu `git diff`, garantindo uma execução focada e extremamente rápida. Se houver violações, elas aparecerão com destaque no topo do seu arquivo de revisão.
+The Linter analyzes only the **added lines** in your `git diff`, ensuring a focused and extremely fast execution. If there are violations, they will appear highlighted at the top of your review file.
 
-## 🧠 Arquitetura Multi-Model (Agnóstico de IA)
+## 🧠 Multi-Model Architecture (AI-Agnostic)
 
-O GitPR não está preso a uma única Inteligência Artificial. Durante a configuração inicial, o utilizador pode escolher o seu motor padrão. Atualmente suportamos:
-* **Google Gemini** (Padrão: `gemini-2.5-flash`)
-* **DeepSeek** (Padrão: `deepseek-chat`)
+GitPR is not tied to a single Artificial Intelligence. During initial setup, the user can choose their default engine. We currently support:
+* **Google Gemini** (Default: `gemini-2.5-flash`)
+* **DeepSeek** (Default: `deepseek-chat`)
 
-Pode alternar dinamicamente os modelos configurando as variáveis `GEMINI_API_MODEL` ou `DEEPSEEK_API_MODEL` no seu arquivo `~/.gitpr/.env`, ou alternar em tempo real usando a flag `--provider`.
+You can dynamically switch models by configuring the `GEMINI_API_MODEL` or `DEEPSEEK_API_MODEL` variables in your `~/.gitpr/.env` file, or switch in real-time using the `--provider` flag.
 
-## 🎯 Sistema de "Skills" Customizáveis (Prompt Engineering)
+## 🎯 Customizable "Skills" System (Prompt Engineering)
 
-Em vez de esconder as instruções da IA no código fonte, o GitPR utiliza arquivos Markdown locais que atuam como *System Instructions*. Ao rodar `gitpr -s`, os seguintes arquivos são gerados na raiz do seu projeto para poder customizar a "persona" da IA de acordo com as regras de negócio da sua empresa:
+Instead of hiding AI instructions in the source code, GitPR uses local Markdown files that act as *System Instructions*. When running `gitpr -s`, the following files are generated at the root of your project to customize the AI's "persona" according to your company's business rules:
 
-* `.gitpr.commit.md`: Regras para geração das mensagens curtas de commit.
-* `.gitpr.pr.md`: Estrutura de tópicos exigida para a descrição do Pull Request.
-* `.gitpr.review.md`: Define o foco de arquitetura (ex: SOLID, Clean Code) para a análise de diffs.
-* `.gitpr.filereview.md`: Define regras rígidas de coesão e acoplamento para auditoria de um ficheiro completo (usado com `--input`).
-* `.gitpr.issue.md`: Define a estrutura e o nível de detalhe exigido para a geração de Issues padronizadas (usado com `--issue`).
-* `.gitpr.blame.md`: Define o foco da análise arqueológica para o rastreamento de código legado (usado com `--blame`).
+* `.gitpr.commit.md`: Rules for generating short commit messages.
+* `.gitpr.pr.md`: Required topic structure for the Pull Request description.
+* `.gitpr.review.md`: Defines the architectural focus (e.g.: SOLID, Clean Code) for diff analysis.
+* `.gitpr.filereview.md`: Defines strict cohesion and coupling rules for full file auditing (used with `--input`).
+* `.gitpr.issue.md`: Defines the structure and level of detail required for generating standardized Issues (used with `--issue`).
+* `.gitpr.blame.md`: Defines the focus of archaeological analysis for legacy code tracing (used with `--blame`).
 
-## 📚 Documentação Técnica e Guias Avançados
+## 📚 Technical Documentation and Advanced Guides
 
-Para manter este README conciso, detalhamos as implementações mais avançadas e focadas em **DevOps** e **Integração Contínua** em documentos separados. 
+To keep this README concise, we detail the most advanced **DevOps** and **Continuous Integration** focused implementations in separate documents.
 
-Se você deseja implementar o GitPR como uma barreira de qualidade automatizada na sua equipe, consulte os guias abaixo:
+If you want to implement GitPR as an automated quality barrier in your team, check out the guides below:
 
-* [**Git Hooks Locais (Shift-Left)**](docs/git-hooks-locais.md): Como usar o `gitpr --installhooks` para criar travas na máquina do desenvolvedor e usar a IA para escrever mensagens de commit automaticamente.
-* [**Linter Estático Customizável**](docs/linter-regras-customizadas.md): Como criar regras de validação no `.gitpr.linter.yml` para CI/CD e hooks de pre-commit.
-* [**Geração de Issues e Interface TUI**](docs/issue-tui-help.md): Como utilizar a interface gráfica de terminal (TUI) e os 3 motores de contexto para gerir Issues estruturadas.
-* [**Code Review com IA**](docs/code-review-ia.md): Guia dos modos de revisão (`--review`, `--fullreview`) e auditoria de arquivo (`--input`).
-* [**Mensagens de Commit com IA**](docs/commit-message-ia.md): Como gerar mensagens no padrão Conventional Commits e integrar com Git Hooks.
-* [**Arqueólogo de Código (Git Blame)**](docs/blame-arqueologo.md): Como rastrear a origem de regras de negócio com `git blame` e IA.
-* [**Sistema de Skills e Templates**](docs/skill-template.md): Como customizar o comportamento da IA com arquivos `.gitpr.*.md`.
-* [**Auto-Updater**](docs/auto-update.md): Como funciona a atualização automática (hot-swap) do GitPR.
-* [**Provedores de IA**](docs/providers-ia.md): Configuração e seleção entre Google Gemini e DeepSeek.
-* [**Pull Request (Modo Padrão)**](docs/pr-descricao-padrao.md): Fluxo completo de geração de descrição de PR sem flags.
-* [**Integração com CI/CD (GitHub Actions)**](docs/github-ci-linter.md): Como rodar o GitPR no pipeline para travar o "Merge" de PRs com violações.
-* [**Integração e Segurança do Token GitHub (PAT)**](docs/github-pat-integration.md): Entenda como o GitPR gera issues diretamente no repositório de forma autenticada.
+* [**Local Git Hooks (Shift-Left)**](docs/git-hooks-locais.md): How to use `gitpr --installhooks` to create guardrails on the developer's machine and use AI to automatically write commit messages.
+* [**Customizable Static Linter**](docs/linter-regras-customizadas.md): How to create validation rules in `.gitpr.linter.yml` for CI/CD and pre-commit hooks.
+* [**Issue Generation and TUI Interface**](docs/issue-tui-help.md): How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
+* [**AI Code Review**](docs/code-review-ia.md): Guide to review modes (`--review`, `--fullreview`) and file auditing (`--input`).
+* [**AI Commit Messages**](docs/commit-message-ia.md): How to generate messages in the Conventional Commits standard and integrate with Git Hooks.
+* [**Code Archaeologist (Git Blame)**](docs/blame-arqueologo.md): How to trace the origin of business rules with `git blame` and AI.
+* [**Skills and Templates System**](docs/skill-template.md): How to customize AI behavior with `.gitpr.*.md` files.
+* [**Auto-Updater**](docs/auto-update.md): How GitPR's automatic update (hot-swap) works.
+* [**AI Providers**](docs/providers-ia.md): Configuration and selection between Google Gemini and DeepSeek.
+* [**Pull Request (Default Mode)**](docs/pr-descricao-padrao.md): Complete flow for generating PR descriptions without flags.
+* [**CI/CD Integration (GitHub Actions)**](docs/github-ci-linter.md): How to run GitPR in the pipeline to block "Merge" of PRs with violations.
+* [**GitHub Token (PAT) Integration and Security**](docs/github-pat-integration.md): Understand how GitPR creates issues directly in the repository with authentication.
 
-## ⚡ Sistema de Cache Local (Economia de Quota)
+## ⚡ Local Cache System (Quota Savings)
 
-O GitPR possui um motor inteligente de cache baseado em **MD5**. Sempre que você rodar um comando (`--review`, `--commit`, etc.), a ferramenta gera um hash exato do seu código atual (diff) e das instruções. 
-Se você rodar o mesmo comando novamente sem ter alterado o código, o GitPR intercepta a requisição e devolve o resultado instantaneamente (em milissegundos) a partir da pasta `~/.gitpr/cache/prompts/`, poupando seu tempo e suas cotas da API do Gemini!
+GitPR has an intelligent **MD5**-based cache engine. Whenever you run a command (`--review`, `--commit`, etc.), the tool generates an exact hash of your current code (diff) and instructions.
+If you run the same command again without changing the code, GitPR intercepts the request and returns the result instantly (in milliseconds) from the `~/.gitpr/cache/prompts/` folder, saving you time and your Gemini API quotas!
 
-## 🔄 Auto-Updater (Atualização Over-The-Air)
+## 🔄 Auto-Updater (Over-The-Air Update)
 
-Nunca mais se preocupe em baixar novas versões manualmente. O GitPR possui um Guardião de Conexão e um atualizador embutido:
-* Ele verifica a disponibilidade de rede antes de iniciar para não travar seu fluxo offline.
-* Em cada execução, ele verifica silenciosamente se há um novo release oficial na API do GitHub.
-* Você pode forçar a busca e instalação rodando `gitpr --update` ou `gitpr -u`.
-* A ferramenta utiliza a técnica de *Hot-Swap*, baixando o novo `.exe` e substituindo a versão antiga de forma transparente.
+Never worry about manually downloading new versions again. GitPR has a Connection Guardian and a built-in updater:
+* It checks network availability before starting so it doesn't block your offline workflow.
+* On each execution, it silently checks if there is a new official release on the GitHub API.
+* You can force the check and installation by running `gitpr --update` or `gitpr -u`.
+* The tool uses the *Hot-Swap* technique, downloading the new `.exe` and transparently replacing the old version.
 
-## Publicar no PyPi
+## Publishing to PyPI
 
 ```bash
 pipenv run python -m build
 pipenv run twine upload dist/*
 ```
-## **🤝 Como Contribuir**
+## **🤝 How to Contribute**
 
-Contribuições são muito bem-vindas! Para contribuir:
+Contributions are very welcome! To contribute:
 
-1. Faça um Fork do projeto.  
-2. Crie uma branch para a sua *feature* (git checkout \-b feature/NovaFuncionalidade).  
-3. Faça o commit das suas alterações (git commit \-m 'feat: adiciona nova funcionalidade'). Sugestão: Use o próprio GitPR para gerar esta mensagem! 😄  
-4. Faça o Push para a branch (git push origin feature/NovaFuncionalidade).  
-5. Abra um Pull Request.
+1. Fork the project.
+2. Create a branch for your *feature* (git checkout -b feature/NewFeature).
+3. Commit your changes (git commit -m 'feat: add new feature'). Tip: Use GitPR itself to generate this message! 😄
+4. Push to the branch (git push origin feature/NewFeature).
+5. Open a Pull Request.
 
-## **✨ Agradecimentos e Autoria**
+## **✨ Acknowledgments and Authorship**
 
-Projeto idealizado e desenvolvido por:
+Project conceived and developed by:
 
-**Natan Fiuza** \- [contato@natanfiuza.dev.br](mailto:contato@natanfiuza.dev.br)
+**Natan Fiuza** - [contato@natanfiuza.dev.br](mailto:contato@natanfiuza.dev.br)
 
-## **📄 Licença**
+## **📄 License**
 
-Este projeto está licenciado sob a **GNU Lesser General Public License v2.1 (LGPL-2.1)**. Consulte o arquivo LICENSE para mais detalhes.
+This project is licensed under the **GNU Lesser General Public License v2.1 (LGPL-2.1)**. See the LICENSE file for more details.

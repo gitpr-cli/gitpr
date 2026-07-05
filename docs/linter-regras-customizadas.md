@@ -1,102 +1,102 @@
-# **Documentação Técnica: Linter Estático Customizável (--linter)**
+# **Technical Documentation: Customizable Static Linter (--linter)**
 
+The GitPR CLI has an ultra-fast static analysis engine that runs locally, without consuming AI quotas or requiring an internet connection. It analyzes only the **modified or added lines** in your git diff, ensuring instant feedback.
 
-O GitPR CLI possui um motor de análise estática ultrarrápido que roda localmente, sem consumir cotas de IA ou necessitar de conexão com a internet. Ele analisa apenas as **linhas modificadas ou adicionadas** no seu git diff, garantindo feedback instantâneo.
+## **1. How to Run the Linter**
 
-## **1. Como Executar o Linter**
+You can trigger the linter in three ways:
 
-Você pode acionar o linter de três formas:
-
-1. **Manualmente:** Executando gitpr --linter no terminal.  
-2. **Via Pre-commit Hook:** Automaticamente antes de cada commit (instalado via gitpr -ih).  
-3. **Via CI/CD:** No GitHub Actions, bloqueando o merge caso o código retorne exit code 1.
-
----
-
-## **2. Estrutura do Arquivo .gitpr.linter.yml**
-
-As regras do Linter vivem no arquivo .gitpr.linter.yml na raiz do seu projeto. O arquivo é lido a cada execução e possui a seguinte estrutura YAML:
-
-```YAML
-
-rules:  
-  - name: "identificador-da-regra"  
-    extensions: ["js", "php", "py"] \# Extensões onde a regra se aplica  
-    regex: 'sua-expressao-regular-aqui'  
-    message: "🚨 Mensagem de erro que aparecerá no terminal ({file\_name}, Linha {line\_number})"  
-    ignore\_comments: true \# Ignora se a regex der match dentro de um comentário (//, \#, /\*)  
-    ignore\_paths: \# Opcional: Pastas onde esta regra NÃO deve rodar  
-      \- "vendor/\*"  
-    require\_paths: \# Opcional: Pastas exclusivas onde esta regra DEVE rodar  
-      \- "routes/\*"
-
-## ---
-
-## **3. Tutorial: Criando Regras com Expressões Regulares (Regex)**
-
-O motor do GitPR usa a biblioteca nativa de Regex do Python (re). O segredo de uma boa regra de Linter é ser restritiva o suficiente para pegar o erro, mas flexível o suficiente para ignorar espaços em branco extras.
-
-### **Exemplo Prático 1: Proibindo Verbos em Rotas (Padrão RESTful)**
-
-**O Problema:** No padrão REST, as URLs não devem conter verbos (ex: /api/buscar-usuarios), mas sim substantivos e métodos HTTP adequados (GET /api/usuarios).
-
-Veja como configurar uma regra no Laravel (PHP) para impedir isso:
-
-```YAML
-
-  \- name: "check-route-verbs"  
-    extensions: \["php"\]  
-    require\_paths:  
-      \- "routes/\*"  
-    regex: 'Route::\[a-zA-Z\]+\\s\*\\(\\s\*\[''"\](get|get-|busca|buscar|procura|procurar|pesquisa|pesquisar|lista|listar)'  
-    message: "🚨 URI inadequada em {file\_name} (Linha {line\_number}). Evite verbos como 'buscar' ou 'listar' na URL. Use o padrão RESTful."  
-    ignore\_comments: true
-
-#### **Dissecando a Regex acima:**
-
-Para entender como criar as suas, veja como essa foi construída peça por peça:
-
-* Route:: → Procura exatamente pela chamada da Facade do Laravel.  
-* [a-zA-Z]+ → Captura qualquer método HTTP que venha depois (ex: get, post, put).  
-* \s\*(\s\* → O \s\* significa "zero ou mais espaços". Isso garante que o Linter pegue tanto Route::get(' quanto Route::get ( '.  
-* [''"] → Aceita tanto aspas simples quanto duplas para abrir a string da URL.  
-* (get|get-|busca|buscar...) → O grupo de captura principal. O pipe | funciona como um "OU". Se qualquer uma dessas palavras logo no início da URL for detectada, a regra falha.
-
-### **Exemplo Prático 2: Bloqueando Logs de Debug Esquecidos**
-
-**O Problema:** Desenvolvedores frequentemente esquecem comandos de debug no código antes de fazer o commit.
-
-**Regra para PHP (dd ou dump):**
-
-```YAML
-
-  \- name: "check-php-debug"  
-    extensions: \["php"\]  
-    regex: '\\b(dd|dump|var\_dump|print\_r)\\s\*\\('  
-    message: "🚨 Código de debug esquecido ({file\_name}, Linha {line\_number})."  
-    ignore\_comments: true
-
-*Dica Regex:* O \b (Word Boundary) garante que a palavra seja exata. Ele pega o comando dd(), mas ignora a palavra add(), evitando falsos positivos.
-
-**Regra para JavaScript (console.log):**
-
-```YAML
-
-  - name: "check-js-console"  
-    extensions: \["js", "ts", "vue"\]  
-    regex: 'console\\.(log|debug|info)\\s\*\\('  
-    message: "🚨 Uso de console.log não permitido em produção ({file\_name}, Linha {line\_number})."  
-    ignore\_comments: true
-
-*Dica Regex:* O ponto \. precisa de uma barra invertida (escape), pois na linguagem Regex, um ponto sozinho significa "qualquer caractere".
+1. **Manually:** Running gitpr --linter in the terminal.
+2. **Via Pre-commit Hook:** Automatically before each commit (installed via gitpr -ih).
+3. **Via CI/CD:** In GitHub Actions, blocking the merge if the code returns exit code 1.
 
 ---
 
-## **4. Dicas de Ouro para Regex no Linter**
+## **2. .gitpr.linter.yml File Structure**
 
-1. **Escape os caracteres especiais:** Símbolos como ( ) [ ] { } . \* \+ ? ^ $ têm funções matemáticas na Regex. Se quiser procurar por eles no código, coloque uma barra antes (ex: \( para achar um parêntese aberto).  
-2. **Cuidado com aspas no YAML:** No arquivo .yml, envolva a sua regex: sempre com aspas simples '...'. Se a sua regex precisar de uma aspa simples dentro dela, duplique-a '' ou use aspas duplas por fora "...".  
-3. **Use o \s\* sem moderação:** Nunca presuma que a formatação do código está perfeita. Use \s\* para cobrir espaços em branco, tabs e quebras de linha entre comandos.
+The Linter rules live in the .gitpr.linter.yml file at the root of your project. The file is read on each execution and has the following YAML structure:
+
+```YAML
+
+rules:
+  - name: "rule-identifier"
+    extensions: ["js", "php", "py"] # Extensions where the rule applies
+    regex: 'your-regular-expression-here'
+    message: "🚨 Error message that will appear in the terminal ({file_name}, Line {line_number})"
+    ignore_comments: true # Ignores if regex matches inside a comment (//, #, /*)
+    ignore_paths: # Optional: Folders where this rule should NOT run
+      - "vendor/*"
+    require_paths: # Optional: Exclusive folders where this rule MUST run
+      - "routes/*"
+```
 
 ---
 
+## **3. Tutorial: Creating Rules with Regular Expressions (Regex)**
+
+The GitPR engine uses Python's native Regex library (re). The secret of a good Linter rule is being restrictive enough to catch the error, but flexible enough to ignore extra whitespace.
+
+### **Practical Example 1: Prohibiting Verbs in Routes (RESTful Standard)**
+
+**The Problem:** In the REST standard, URLs should not contain verbs (e.g.: /api/search-users), but rather nouns and appropriate HTTP methods (GET /api/users).
+
+See how to configure a rule in Laravel (PHP) to prevent this:
+
+```YAML
+
+  - name: "check-route-verbs"
+    extensions: ["php"]
+    require_paths:
+      - "routes/*"
+    regex: 'Route::[a-zA-Z]+\s*\(\s*[''"](get|get-|busca|buscar|procura|procurar|pesquisa|pesquisar|lista|listar)'
+    message: "🚨 Inappropriate URI in {file_name} (Line {line_number}). Avoid verbs like 'search' or 'list' in the URL. Use RESTful standards."
+    ignore_comments: true
+```
+
+#### **Dissecting the Regex above:**
+
+To understand how to create your own, see how this one was built piece by piece:
+
+* Route:: → Searches exactly for the Laravel Facade call.
+* [a-zA-Z]+ → Captures any HTTP method that comes after (e.g.: get, post, put).
+* \s*\(\s* → The \s* means "zero or more spaces". This ensures the Linter catches both Route::get(' and Route::get ( '.
+* ['"] → Accepts both single and double quotes to open the URL string.
+* (get|get-|busca|buscar...) → The main capture group. The pipe | works as an "OR". If any of these words right at the beginning of the URL is detected, the rule fails.
+
+### **Practical Example 2: Blocking Forgotten Debug Logs**
+
+**The Problem:** Developers frequently forget debug commands in the code before committing.
+
+**Rule for PHP (dd or dump):**
+
+```YAML
+
+  - name: "check-php-debug"
+    extensions: ["php"]
+    regex: '\b(dd|dump|var_dump|print_r)\s*\('
+    message: "🚨 Debug code left behind ({file_name}, Line {line_number})."
+    ignore_comments: true
+```
+
+*Regex Tip:* The \b (Word Boundary) ensures the word is exact. It catches the dd() command, but ignores the word add(), avoiding false positives.
+
+**Rule for JavaScript (console.log):**
+
+```YAML
+
+  - name: "check-js-console"
+    extensions: ["js", "ts", "vue"]
+    regex: 'console\.(log|debug|info)\s*\('
+    message: "🚨 console.log usage not allowed in production ({file_name}, Line {line_number})."
+    ignore_comments: true
+```
+
+*Regex Tip:* The dot \. needs a backslash (escape), because in Regex language, a standalone dot means "any character".
+
+---
+
+## **4. Golden Tips for Regex in the Linter**
+
+1. **Escape special characters:** Symbols like ( ) [ ] { } . \* \+ ? ^ $ have mathematical functions in Regex. If you want to search for them in code, put a backslash before them (e.g.: \( to find an open parenthesis).
+2. **Be careful with quotes in YAML:** In the .yml file, always wrap your regex with single quotes '...'. If your regex needs a single quote inside it, double it up '' or use double quotes on the outside "...".
+3. **Use \s\* generously:** Never assume code formatting is perfect. Use \s\* to cover whitespace, tabs, and line breaks between commands.

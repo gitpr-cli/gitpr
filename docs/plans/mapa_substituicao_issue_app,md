@@ -1,0 +1,21 @@
+
+### 🛠️ Mapa de Substituição (`issue_app.py`)
+
+Abaixo está a lista exata das linhas que devem ser alteradas no arquivo:
+
+| Linha Aprox. | Linha Original (Português) | Nova Linha (Inglês com `__()`) |
+| --- | --- | --- |
+| `15` | `TITLE = "GitPR - Gerador de Issues"` | `TITLE = __("GitPR - Issue Generator")` |
+| `22` | `Binding("f4", "show_help", "Ajuda"),` | `Binding("f4", "show_help", __("Help")),` |
+| `23` | `Binding("f2", "save_local", "Salvar Local"),` | `Binding("f2", "save_local", __("Save Local")),` |
+| `24` | `Binding("f3", "create_issue", "Criar no GitHub"),` | `Binding("f3", "create_issue", __("Create on GitHub")),` |
+| `25` | `Binding("escape", "quit", "Sair")` | `Binding("escape", "quit", __("Exit"))` |
+| `35` | `repo_display = self.repo_info if self.repo_info else "Repositório Local"` | `repo_display = self.repo_info if self.repo_info else __("Local Repository")` |
+| `40` | `yield Label("📌 Título da Issue")` | `yield Label(__("📌 Issue Title"))` |
+| `43` | `yield Label("📝 Corpo da Issue")` | `yield Label(__("📝 Issue Body"))` |
+| `61` | `self.final_message = f"✅ Issue salva localmente: {output_filename}"` | `self.final_message = __("✅ Issue saved locally: {output_filename}", output_filename=output_filename)` |
+| `64` | `self.final_message = f"❌ Erro ao salvar arquivo: {e}"` | `self.final_message = __("❌ Error saving file: {error}", error=str(e))` |
+| `73` | `self.final_message = "❌ Repositório remoto não identificado para criar a issue via API."` | `self.final_message = __("❌ Remote repository not identified to create the issue via API.")` |
+| `89` | `self.final_message = f"✅ Issue criada com sucesso no GitHub:\n👉 {issue_url}"` | `self.final_message = __("✅ Issue successfully created on GitHub:\n👉 {issue_url}", issue_url=issue_url)` |
+| `92` | `self.final_message = f"❌ Erro na API do GitHub ({response.status_code}): {response.text}"` | `self.final_message = __("❌ GitHub API Error ({status_code}): {response_text}", status_code=response.status_code, response_text=response.text)` |
+| `95` | `self.final_message = f"❌ Falha na conexão com o GitHub: {e}"` | `self.final_message = __("❌ Failed to connect to GitHub: {error}", error=str(e))` |

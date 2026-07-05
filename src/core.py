@@ -11,13 +11,23 @@ from src.security import decrypt_data
 from src.cache import get_cached_response, save_cached_response, get_cached_pr_descriptions
 from src.config import get_api_key, get_api_model
 from src.ai_providers import call_ai_model
+from src.i18n import __, CURRENT_LANG
 
+
+def get_doc_url(filename):
+    """Returns the complete URL for a docs/ file, with language suffix if needed."""
+    # e.g.: get_doc_url("untracked-files.md") -> ".../docs/untracked-files.md" (EN) or ".../docs/untracked-files.pt_br.md" (PT)
+    if CURRENT_LANG.startswith("en"):
+        return f"https://github.com/natanfiuza/gitpr/blob/main/docs/{filename}"
+    else:
+        base, ext = filename.rsplit(".", 1)
+        return f"https://github.com/natanfiuza/gitpr/blob/main/docs/{base}.{CURRENT_LANG}.{ext}"
 
 
 def get_git_diff():
-    """Executa 'git diff HEAD' e retorna a saída, alertando sobre arquivos não monitorados (untracked)."""
+    """Runs 'git diff HEAD' and returns the output, warning about untracked files."""
     try:
-        # 1. Verifica se existem arquivos novos não monitorados (untracked)
+        # Check if there are new untracked files
         untracked_process = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"], 
             capture_output=True, 
@@ -27,15 +37,15 @@ def get_git_diff():
         )
         untracked_files = untracked_process.stdout.strip()
         
-        # Se houver arquivos novos, exibe um alerta educativo no console
+        # If there are new files, display an educational warning in the console
         if untracked_files:
-            click.secho("⚠️ Aviso: O Git detectou novos arquivos que não estão sendo monitorados:", fg="yellow")
+            click.secho(__("⚠️ Warning: Git detected new untracked files:"), fg="yellow")
             for file in untracked_files.split('\n'):
                 click.secho(f"  - {file}", fg="yellow", dim=True)
-            click.secho("💡 Dica: Use 'git add <arquivo>' para que eles sejam incluídos na análise do GitPR.", fg="cyan")
-            click.secho("📚 Entenda o motivo: https://github.com/natanfiuza/gitpr/blob/main/docs/untracked-files.md\n", fg="blue", underline=True)
+            click.secho(__("💡 Tip: Use 'git add <file>' to include them in the GitPR analysis."), fg="cyan")
+            click.secho(f"📚 {__('Understand why:')} {get_doc_url('untracked-files.md')}\n", fg="blue", underline=True)
 
-        # 2. Executa o diff normal que captura arquivos monitorados e em staging
+        # Run the normal diff that captures tracked and staged files
         result = subprocess.run(
             ["git", "diff", "HEAD"], 
             capture_output=True, 
@@ -46,15 +56,15 @@ def get_git_diff():
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
-        click.secho(f"❌ Erro ao executar o Git: {e.stderr}", fg="red")
+        click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
         return None
     except FileNotFoundError:
-        click.secho("❌ Git não encontrado. Certifique-se de que está instalado e no PATH.", fg="red")
+        click.secho(__("❌ Git not found. Make sure it is installed and in the PATH."), fg="red")
         return None
 
 
 def get_current_branch():
-    """Retorna o nome da branch atual."""
+    """Returns the current branch name."""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -69,7 +79,7 @@ def get_current_branch():
 
 
 def get_repo_name():
-    """Extrai o nome owner/repo do git remote origin."""
+    """Extracts the owner/repo name from git remote origin."""
     try:
         result = subprocess.run(
             ["git", "remote", "-v"],
@@ -89,49 +99,49 @@ def get_repo_name():
 
 
 def get_skill_context(action_type="pr"):
-    """Lê o arquivo de contexto correto baseado na ação (PR/Commit ou Review)."""
-    
-    # Define qual arquivo procurar
+    """Reads the correct context file based on the action (PR/Commit or Review)."""
+
+    # Define which file to look for
     if action_type == "commit":
         target_file = ".gitpr.commit.md"
     elif action_type == "pr":
         target_file = ".gitpr.pr.md"
-    elif action_type == "filereview": # NOVO!
-        target_file = ".gitpr.filereview.md"        
+    elif action_type == "filereview":  # NEW!
+        target_file = ".gitpr.filereview.md"
     elif action_type == "issue":
-        target_file = ".gitpr.issue.md"        
-    else: # review ou fullreview
+        target_file = ".gitpr.issue.md"
+    else:  # review or fullreview
         target_file = ".gitpr.review.md"
 
     skill_file = os.path.join(os.getcwd(), target_file)
-    
-    # Fallback para o arquivo antigo (para retrocompatibilidade com usuários da versão anterior)
+
+    # Fallback to the old file (for backward compatibility with previous version users)
     legacy_file = os.path.join(os.getcwd(), ".gitpr.md")
 
-    # Verifica o novo primeiro; se não achar, tenta o antigo
+    # Check the new one first; if not found, try the old one
     file_to_load = skill_file if os.path.exists(skill_file) else (legacy_file if os.path.exists(legacy_file) else None)
-    
+
     if file_to_load:
         try:
             with open(file_to_load, "r", encoding="utf-8") as f:
                 conteudo = f.read()
                 nome_arquivo = os.path.basename(file_to_load)
-                click.secho(f"🧠 Arquivo {nome_arquivo} (Skill) encontrado e carregado!", fg="blue")
+                click.secho(__("🧠 File {file_name} (Skill) found and loaded!", file_name=nome_arquivo), fg="blue")
                 return conteudo
         except Exception as e:
-            click.secho(f"⚠️ Aviso: Falha ao ler o arquivo {nome_arquivo} ({e})", fg="yellow")
-    
-    # Retorna vazio se não existir
+            click.secho(__("⚠️ Warning: Failed to read file {file_name} ({error})", file_name=nome_arquivo, error=str(e)), fg="yellow")
+
+    # Return empty if it does not exist
     return ""
 
 
 def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"):
-    """Envia o diff para a IA usando System Instruction e retorna um JSON parseado."""
+    """Sends the diff to the AI using System Instruction and returns a parsed JSON."""
     if not diff_text or not diff_text.strip():
-        click.secho("⚠️ Nenhum diff encontrado. Faça alguma alteração antes de rodar o comando.", fg="yellow")
+        click.secho(__("⚠️ No diff found. Make some changes before running the command."), fg="yellow")
         return None
 
-    # Configuração de pastas para o Cache
+    # Cache folder configuration
     action_folder_map = {
         "pr": "pr_desc",
         "commit": "commit",
@@ -141,54 +151,54 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     }
     action_folder = action_folder_map.get(action_type, "misc")
 
-    # Busca o contexto do arquivo correspondente à ação (PR, Commit ou Review)
+    # Fetch the context from the file corresponding to the action (PR, Commit, or Review)
     skill_context = get_skill_context(action_type)
 
-    # Definição da Complexidade da Tarefa (NOVO)
-    # Commits usam modelos mais rápidos/baratos. Reviews e PRs usam modelos avançados.
+    # Task Complexity Definition (NEW)
+    # Commits use faster/cheaper models. Reviews and PRs use advanced models.
     task_complexity = "simple" if action_type == "commit" else "advanced"
 
-    # Definição da Instrução de Sistema (Persona e Regras)
+    # System Instruction Definition (Persona and Rules)
     if action_type == "commit":
-        instrucao_sistema = skill_context if skill_context else "Você é um especialista em Git. Gere mensagens de commit concisas."
-        prompt = f"Gere APENAS um objeto JSON no formato {{\"commit_message\": \"...\"}} para este diff:\n{diff_text}"
-        
-    elif action_type in ["review", "fullreview", "filereview"]:
-        instrucao_sistema = skill_context if skill_context else "Você é um Arquiteto de Software Sênior. Foque em apontar melhorias."
-        
-        if action_type == "filereview":
-            prompt = f"Gere APENAS um objeto JSON no formato {{\"review\": \"...\"}} com a análise e melhorias para o código integral deste arquivo:\n{diff_text}"
-        else:
-            prompt = f"Gere APENAS um objeto JSON no formato {{\"review\": \"...\"}} apontando erros e melhorias para este diff:\n{diff_text}"       
-    else: # pr
-        instrucao_sistema = skill_context if skill_context else "Você é um Tech Lead redigindo descrições de PR limpas e técnicas."
-        prompt = f"Gere APENAS um objeto JSON no formato {{\"commit_message\": \"...\", \"pr_description\": \"...\"}} para este diff:\n{diff_text}"
+        instrucao_sistema = skill_context if skill_context else __("You are a Git expert. Generate concise commit messages.")
+        prompt = __("Generate ONLY a JSON object in the format {json_format} for this diff:\n", json_format='{"commit_message": "..."}') + f"{diff_text}"
 
-    # TENTA RECUPERAR DO CACHE
+    elif action_type in ["review", "fullreview", "filereview"]:
+        instrucao_sistema = skill_context if skill_context else __("You are a Senior Software Architect. Focus on pointing out improvements.")
+
+        if action_type == "filereview":
+            prompt = __("Generate ONLY a JSON object in the format {json_format} with the analysis and improvements for the entire code of this file:\n", json_format='{"review": "..."}') + f"{diff_text}"
+        else:
+            prompt = __("Generate ONLY a JSON object in the format {json_format} pointing out errors and improvements for this diff:\n", json_format='{"review": "..."}') + f"{diff_text}"
+    else:  # pr
+        instrucao_sistema = skill_context if skill_context else __("You are a Tech Lead writing clean and technical PR descriptions.")
+        prompt = __("Generate ONLY a JSON object in the format {json_format} for this diff:\n", json_format='{"commit_message": "...", "pr_description": "..."}') + f"{diff_text}"
+
+    # TRY TO RETRIEVE FROM CACHE
     cached_data = get_cached_response(action_folder, prompt)
     if cached_data:
-        click.secho("⚡ Resposta recuperada do cache local.", fg="green", dim=True)
+        click.secho(__("⚡ Response retrieved from local cache."), fg="green", dim=True)
         return cached_data
 
-    # Preparação das Chaves (Agora dinâmico por Provedor)
+    # Key Preparation (Now dynamic per Provider)
     api_key = get_api_key(provider)
     if not api_key:
-        click.secho(f"❌ Erro: Chave de API para o provedor '{provider.capitalize()}' não encontrada.", fg="red")
-        return None
-    
-    # Busca o Modelo Inteligente (NOVO)
-    # Envia a complexidade para o config.py devolver o modelo primário ou secundário
-    api_model = get_api_model(provider, task_complexity)
-    if not api_model:
-        click.secho(f"❌ Erro: Não foi possível determinar o modelo para o provedor '{provider}'.", fg="red")
+        click.secho(__("❌ Error: API Key for provider '{provider}' not found.", provider=provider.capitalize()), fg="red")
         return None
 
-    # CHAMADA À API
-    click.secho(f"🤖 O GitPR está analisando o seu código usando {provider.capitalize()} ({api_model})...\n", fg="cyan")
+    # Fetch the Smart Model (NEW)
+    # Send complexity to config.py to return the primary or secondary model
+    api_model = get_api_model(provider, task_complexity)
+    if not api_model:
+        click.secho(__("❌ Error: Could not determine model for provider '{provider}'.", provider=provider), fg="red")
+        return None
+
+    # API CALL
+    click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...\n", provider=provider.capitalize(), model=api_model), fg="cyan")
     
     result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema)
 
-    # SALVA NO CACHE E RETORNA
+    # SAVE TO CACHE AND RETURN
     if result_json:
         save_cached_response(action_folder, action_type, prompt, result_json)
         return result_json
@@ -198,22 +208,30 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
 
 def generate_skill_template():
     """
-    Faz o download dos templates .gitpr.pr.md, .gitpr.review.md 
-    e .gitpr.linter.yml diretamente do repositório oficial.
+    Downloads templates directly from the official repository.
+    Now dynamically supports languages.
     """
-    click.secho("\n📥 Iniciando a configuração dos templates do GitPR...", fg="cyan", bold=True)
+    click.secho(__("\n📥 Starting GitPR templates configuration..."), fg="cyan", bold=True)
     
     base_url = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/"
     
-    # Atualizado para contemplar os 3 arquivos
+    # Language logic:
+    # - English (en) = original file without suffix (e.g.: gitpr.issue.md)
+    # - Other languages = file with suffix (e.g.: gitpr.issue.pt_br.md)
+    # - Linter and thinking-words are language-independent
+    if CURRENT_LANG.startswith("en"):
+        lang_suffix = ""  # english is the default, no suffix
+    else:
+        lang_suffix = f".{CURRENT_LANG}"  # e.g.: .pt_br
+
     files_to_download = {
-        ".gitpr.commit.md": "gitpr.commit.md",
-        ".gitpr.pr.md": "gitpr.pr.md",
-        ".gitpr.review.md": "gitpr.review.md",
-        ".gitpr.linter.yml": "gitpr.linter.yml",
-        ".gitpr.filereview.md": "gitpr.filereview.md", 
-        ".gitpr.blame.md": "gitpr.blame.md", 
-        ".gitpr.issue.md": "gitpr.issue.md",
+        ".gitpr.commit.md": f"gitpr.commit{lang_suffix}.md",
+        ".gitpr.pr.md": f"gitpr.pr{lang_suffix}.md",
+        ".gitpr.review.md": f"gitpr.review{lang_suffix}.md",
+        ".gitpr.linter.yml": f"gitpr.linter{lang_suffix}.yml",
+        ".gitpr.filereview.md": f"gitpr.filereview{lang_suffix}.md",
+        ".gitpr.blame.md": f"gitpr.blame{lang_suffix}.md",
+        ".gitpr.issue.md": f"gitpr.issue{lang_suffix}.md",
     }
     
     success_count = 0
@@ -223,11 +241,11 @@ def generate_skill_template():
         url = base_url + remote_name
         
         if os.path.exists(file_path):
-            click.secho(f"⚠️ O arquivo {local_name} já existe neste diretório. Ele não será sobrescrito.", fg="yellow")
+            click.secho(__("⚠️ File {local_name} already exists in this directory. It will not be overwritten.", local_name=local_name), fg="yellow")
             continue
             
         try:
-            click.echo(f"A descarregar {local_name}...")
+            click.echo(__("Downloading {local_name}...", local_name=local_name))
             with urllib.request.urlopen(url, timeout=5) as response:
                 content = response.read().decode('utf-8')
                 
@@ -237,52 +255,52 @@ def generate_skill_template():
             success_count += 1
             
         except urllib.error.URLError as e:
-            click.secho(f"❌ Erro de rede ao baixar {local_name}: {e.reason}", fg="red")
+            click.secho(__("❌ Network error while downloading {local_name}: {error}", local_name=local_name, error=e.reason), fg="red")
         except Exception as e:
-            click.secho(f"❌ Falha ao processar {local_name}: {e}", fg="red")
+            click.secho(__("❌ Failed to process {local_name}: {error}", local_name=local_name, error=str(e)), fg="red")
 
     if success_count > 0:
-        click.secho("\n✅ Templates base configurados com sucesso!", fg="green", bold=True)
-        click.echo("Você pode agora abrir os arquivos gerados e personalizar o comportamento da ferramenta para o seu projeto:\n")       
-        click.echo("  1. As regras de arquitetura para a IA no arquivo '.gitpr.pr.md' e '.gitpr.review.md'\n")
-        click.echo("  2. As regras de regex locais no arquivo '.gitpr.linter.yml'\n")
+        click.secho(__("\n✅ Base templates successfully configured!"), fg="green", bold=True)
+        click.echo(__("You can now open the generated files and customize the tool's behavior for your project:\n"))       
+        click.echo(__("  1. Architecture rules for AI in '.gitpr.pr.md' and '.gitpr.review.md'\n"))
+        click.echo(__("  2. Local regex rules in '.gitpr.linter.yml'\n"))
     else:
-        click.echo("\nNenhum arquivo novo foi baixado.")
+        click.echo(__("\nNo new files were downloaded."))
 
 
 def get_base_branch():
-    """Descobre a branch principal remota (ex: main ou master)."""
+    """Discovers the remote main branch (e.g.: main or master)."""
     try:
-        # Busca a referência da branch default do remote
+        # Fetch the default branch reference from the remote
         result = subprocess.run(
             ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
             capture_output=True, text=True, check=True
         )
-        # O retorno é algo como 'refs/remotes/origin/main', então pegamos a última parte
+        # The return is something like 'refs/remotes/origin/main', so we get the last part
         return result.stdout.strip().split('/')[-1]
     except subprocess.CalledProcessError:
-        click.secho("⚠️ Aviso: Branch principal remota não detectada. Assumindo 'main' como fallback padrão.", fg="yellow")
-        return "main" # Fallback padrão caso não encontre
+        click.secho(__("⚠️ Warning: Remote main branch not detected. Assuming 'main' as default fallback."), fg="yellow")
+        return "main"  # Default fallback if not found
 
 
 def get_git_full_diff():
-    """Faz o fetch e captura o diff entre a branch principal remota e o estado atual."""
-    click.secho("🔄 Sincronizando com o repositório remoto (git fetch)...", fg="cyan")
+    """Fetches and captures the diff between the remote main branch and the current state."""
+    click.secho(__("🔄 Synchronizing with remote repository (git fetch)..."), fg="cyan")
     try:
-        # Faz o fetch para garantir que sabemos onde a origin/main está
+        # Fetch to ensure we know where origin/main is
         subprocess.run(["git", "fetch", "origin"], check=True, capture_output=True)
         
         base_branch = get_base_branch()
         
-        # Encontra o HASH do commit onde a sua branch nasceu (o ancestral comum)
+        # Find the commit HASH where your branch was born (the common ancestor)
         merge_base_res = subprocess.run(
             ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
             capture_output=True, text=True, check=True
         )
         ancestor_hash = merge_base_res.stdout.strip()
 
-        # Faz o diff entre esse HASH e o seu WORKSPACE ATUAL (sem usar HEAD)
-        # Ao passar apenas o hash, o Git compara esse commit com os arquivos no seu disco.
+        # Diff between that HASH and your CURRENT WORKSPACE (without using HEAD)
+        # By passing only the hash, Git compares that commit with the files on your disk.
         result = subprocess.run(
             ["git", "diff", ancestor_hash], 
             capture_output=True, 
@@ -293,18 +311,18 @@ def get_git_full_diff():
         return result.stdout
         
     except subprocess.CalledProcessError as e:
-        click.secho(f"❌ Erro ao calcular o diff: {e.stderr}", fg="red")
+        click.secho(__("❌ Error calculating diff: {error}", error=e.stderr), fg="red")
         return None
     
 def install_git_hooks():
-    """Faz o download e instala os scripts de pre-commit e prepare-commit-msg."""
+    """Downloads and installs the pre-commit and prepare-commit-msg scripts."""
     hooks_dir = os.path.join(os.getcwd(), ".git", "hooks")
     
     if not os.path.exists(hooks_dir):
-        click.secho("❌ Erro: Pasta .git não encontrada. Execute na raiz do projeto.", fg="red")
+        click.secho(__("❌ Error: .git folder not found. Run at the project root."), fg="red")
         return False
 
-    # Mapeamento: Nome do Hook no Git -> Nome do Template no seu GitHub
+    # Mapping: Hook Name in Git -> Template Name on your GitHub
     hooks_to_install = {
         "pre-commit": "pre-commit-template.sh",
         "prepare-commit-msg": "prepare-commit-msg-template.sh"
@@ -318,7 +336,7 @@ def install_git_hooks():
         url = base_url + template_name
 
         try:
-            click.secho(f"📥 A descarregar {hook_name}...", fg="cyan")
+            click.secho(__("📥 Downloading {hook_name}...", hook_name=hook_name), fg="cyan")
             
             with urllib.request.urlopen(url) as response:
                 content = response.read().decode('utf-8')
@@ -326,56 +344,56 @@ def install_git_hooks():
             with open(hook_path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            # Atribui permissão de execução (chmod +x)
+            # Apply execution permission (chmod +x)
             st = os.stat(hook_path)
             os.chmod(hook_path, st.st_mode | stat.S_IEXEC)
             
             success_count += 1
         except Exception as e:
-            click.secho(f"⚠️ Falha ao instalar {hook_name}: {e}", fg="yellow")
+            click.secho(__("⚠️ Failed to install {hook_name}: {error}", hook_name=hook_name, error=str(e)), fg="yellow")
 
     return success_count == len(hooks_to_install)
 
 def get_branch_history_text():
-    """Compila o Git Log e o Cache de PRs da branch atual para gerar o contexto epico."""
+    """Compiles the Git Log and PR Cache of the current branch to generate the epic context."""
     branch = get_current_branch()
     base_branch = get_base_branch()
     repo_name = get_repo_name()
 
-    click.secho(f"🔄 Compilando historico do repositorio '{repo_name}', branch '{branch}' contra '{base_branch}'...", fg="cyan")
+    click.secho(__("🔄 Compiling history of repository '{repo_name}', branch '{branch}' against '{base_branch}'...", repo_name=repo_name, branch=branch, base_branch=base_branch), fg="cyan")
 
-    hybrid_context = f"Repositorio: {repo_name}\nResumo Historico da Branch: {branch}\n\n"
+    hybrid_context = __("Repository: {repo_name}\nBranch History Summary: {branch}\n\n", repo_name=repo_name, branch=branch)
 
-    # Pega os Commits reais do Git
+    # Get the real Git Commits
     try:
-        # Pega a linha do tempo desde o merge base
+        # Get the timeline since the merge base
         merge_base_res = subprocess.run(
             ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
             capture_output=True, text=True, check=True
         )
         ancestor_hash = merge_base_res.stdout.strip()
         
-        # Formato: Hash | Data | Autor | Mensagem
+        # Format: Hash | Date | Author | Message
         git_log_res = subprocess.run(
             ["git", "log", f"{ancestor_hash}..HEAD", "--format=%h | %ad | %an | %s", "--date=short"],
             capture_output=True, text=True, encoding="utf-8", check=True
         )
         git_log = git_log_res.stdout.strip()
         
-        hybrid_context += "=== COMMITS REGISTRADOS ===\n"
+        hybrid_context += __("=== REGISTERED COMMITS ===\n")
         if git_log:
             hybrid_context += f"{git_log}\n\n"
         else:
-            hybrid_context += "Nenhum commit exclusivo encontrado nesta branch.\n\n"
+            hybrid_context += __("No exclusive commits found in this branch.\n\n")
             
     except subprocess.CalledProcessError as e:
-        click.secho(f"⚠️ Aviso: Não foi possível obter o Git Log: {e.stderr}", fg="yellow")
+        click.secho(__("⚠️ Warning: Could not get Git Log: {error}", error=e.stderr), fg="yellow")
     
-    # Pega a memoria historica da IA (Cache de PRs antigos desse repo + branch)
+    # Get the historical AI memory (Cache of old PRs from this repo + branch)
     cached_prs = get_cached_pr_descriptions(repo_name, branch)
     if cached_prs:
         hybrid_context += f"{cached_prs}\n"
     else:
-        hybrid_context += "=== HISTÓRICO DE PRs DA IA ===\nNenhum PR anterior gerado por IA encontrado em cache para esta branch.\n"
+        hybrid_context += __("=== AI PR HISTORY ===\nNo previous AI-generated PR found in cache for this branch.\n")
         
     return hybrid_context

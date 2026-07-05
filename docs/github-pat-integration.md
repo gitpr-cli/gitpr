@@ -1,21 +1,21 @@
-# Documentação Técnica: Integração e Segurança do Token GitHub (PAT)
+# Technical Documentation: GitHub Token (PAT) Integration and Security
 
-Para que a funcionalidade de criação direta de Issues (`gitpr --issue`) funcione de forma automatizada, o GitPR precisa se comunicar com a **API REST do GitHub**. Esta documentação explica como essa autenticação ocorre e como as suas credenciais são protegidas localmente.
+For the direct Issue creation feature (`gitpr --issue`) to work automatically, GitPR needs to communicate with the **GitHub REST API**. This documentation explains how this authentication occurs and how your credentials are protected locally.
 
-📖 **Documentação relacionada:** [Guia da opção `--issue` (gitpr-issue-option.md)](gitpr-issue-option.md)
+📖 **Related documentation:** [`--issue` option guide (gitpr-issue-option.md)](gitpr-issue-option.md)
 
-## 1. Por que precisamos de um Token (PAT)?
-A criação de issues em repositórios remotos de forma programática exige autenticação. O GitHub recomenda a utilização de um **Personal Access Token (PAT)** para que ferramentas de linha de comando (CLI) possam interagir com a sua conta de desenvolvedor de forma segura.
+## 1. Why do we need a Token (PAT)?
+Creating issues in remote repositories programmatically requires authentication. GitHub recommends using a **Personal Access Token (PAT)** so that command-line tools (CLI) can interact with your developer account securely.
 
-## 2. Escopo Necessário (`repo`)
-O GitPR precisa apenas do escopo **`repo`** habilitado no momento da criação do seu PAT. Isso garante permissão para ler os metadados e criar a Issue no projeto correto (seja ele privado ou público). 
-Para agilizar este processo, o próprio CLI gera uma URL de configuração dinâmica. Ele extrai o nome do seu repositório local e monta um link que abre no seu navegador com as opções corretas já pré-selecionadas.
+## 2. Required Scope (`repo`)
+GitPR only needs the **`repo`** scope enabled when creating your PAT. This guarantees permission to read metadata and create the Issue in the correct project (whether private or public).
+To speed up this process, the CLI itself generates a dynamic configuration URL. It extracts your local repository name and builds a link that opens in your browser with the correct options already pre-selected.
 
-## 3. Segurança e Criptografia Local (Design Patterns)
-A segurança das suas credenciais é tratada com extrema seriedade. O GitPR **nunca** envia a sua chave para servidores de terceiros que não sejam a própria API do GitHub.
+## 3. Local Security and Encryption (Design Patterns)
+The security of your credentials is treated with the utmost seriousness. GitPR **never** sends your key to third-party servers other than the GitHub API itself.
 
-* **Criptografia Simétrica (Fernet):** Assim que você cola o seu Token no terminal, o GitPR utiliza a biblioteca nativa `cryptography` para encriptar a string em tempo real.
-* **Armazenamento Seguro:** O token encriptado é salvo de forma permanente no arquivo global `~/.gitpr/.env` (na pasta raiz do seu usuário, inacessível a outros usuários do sistema operacional).
-* **Chave Mestra de Descriptografia:** A chave mestra necessária para reverter essa criptografia fica isolada na sua máquina local (`~/.gitpr/secret.key`). 
-    
-Graças a esta arquitetura, caso ocorra um vazamento local e um script malicioso leia o seu arquivo `.env`, o seu Token do GitHub continuará absolutamente ilegível e protegido.
+* **Symmetric Encryption (Fernet):** As soon as you paste your Token in the terminal, GitPR uses the native `cryptography` library to encrypt the string in real time.
+* **Secure Storage:** The encrypted token is permanently saved in the global file `~/.gitpr/.env` (in your user's root folder, inaccessible to other operating system users).
+* **Master Decryption Key:** The master key required to reverse this encryption is isolated on your local machine (`~/.gitpr/secret.key`).
+
+Thanks to this architecture, if a local leak occurs and a malicious script reads your `.env` file, your GitHub Token will remain completely unreadable and protected.

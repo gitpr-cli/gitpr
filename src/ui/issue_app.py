@@ -8,24 +8,25 @@ from textual.binding import Binding
 
 from src.core import get_current_branch
 from src.ui.help_screen import HelpScreen
+from src.i18n import __
 
 class IssueApp(App):
-    """Interface de Terminal para edição e submissão da Issue."""
+    """Terminal Interface for editing and submitting Issues."""
     
-    TITLE = "GitPR - Gerador de Issues"
+    TITLE = __("GitPR - Issue Generator")
     ENABLE_COMMAND_PALETTE = False
-    
+
     CSS = """
     Input { margin-bottom: 1; }
     TextArea { height: 1fr; }
     Label { margin-top: 1; text-style: bold; color: $accent; }
     """
-    
+
     BINDINGS = [
-        Binding("f4", "show_help", "Ajuda"),
-        Binding("f2", "save_local", "Salvar Local"),
-        Binding("f3", "create_issue", "Criar no GitHub"),
-        Binding("escape", "quit", "Sair")
+        Binding("f1", "show_help", __("Help")),
+        Binding("f2", "save_local", __("Save Local")),
+        Binding("f3", "create_issue", __("Create on GitHub")),
+        Binding("escape", "quit", __("Exit"))
     ]
 
     def __init__(self, issue_data, repo_info, github_token, **kwargs):
@@ -37,26 +38,26 @@ class IssueApp(App):
         self.final_message = ""
         
         branch = get_current_branch()
-        repo_display = self.repo_info if self.repo_info else "Repositório Local"
+        repo_display = self.repo_info if self.repo_info else __("Local Repository")
         self.sub_title = f"{repo_display} | Branch: {branch}"
 
     def compose(self) -> ComposeResult:
-        """Monta o layout da interface."""
+        """Builds the interface layout."""
         yield Header(show_clock=True)
         with Vertical():
-            yield Label("📌 Título da Issue")
+            yield Label(__("📌 Issue Title"))
             yield Input(value=self.issue_data.get("titulo", ""), id="issue_title")
-            
-            yield Label("📝 Corpo da Issue")
+
+            yield Label(__("📝 Issue Body"))
             yield TextArea(text=self.issue_data.get("corpo", ""), id="issue_body")
         yield Footer()
 
     def action_show_help(self):
-        """Ação do botão F1: Exibe o modal de ajuda."""
+        """F1 button action: Displays the help modal."""
         self.push_screen(HelpScreen())
 
     def action_save_local(self):
-        """Ação do botão F2: Salva o conteúdo em um arquivo markdown local."""
+        """F2 button action: Saves the content to a local markdown file."""
         title_input = self.query_one("#issue_title", Input)
         body_input = self.query_one("#issue_body", TextArea)
         
@@ -71,21 +72,21 @@ class IssueApp(App):
         try:
             with open(output_filename, "w", encoding="utf-8") as f:
                 f.write(md_content)
-            self.final_message = f"✅ Issue salva localmente: {output_filename}"
+            self.final_message = __("✅ Issue saved locally: {output_filename}", output_filename=output_filename)
             self.final_action = "saved"
         except Exception as e:
-            self.final_message = f"❌ Erro ao salvar arquivo: {e}"
+            self.final_message = __("❌ Error saving file: {error}", error=str(e))
             self.final_action = "error"
         
         self.exit()
 
     def action_create_issue(self):
-        """Ação do botão F3: Envia a issue via API REST para o GitHub."""
+        """F3 button action: Sends the issue via REST API to GitHub."""
         title_input = self.query_one("#issue_title", Input)
         body_input = self.query_one("#issue_body", TextArea)
         
         if not self.repo_info:
-            self.final_message = "❌ Repositório remoto não identificado para criar a issue via API."
+            self.final_message = __("❌ Remote repository not identified to create the issue via API.")
             self.final_action = "error"
             self.exit()
             return
@@ -104,13 +105,13 @@ class IssueApp(App):
             response = requests.post(api_url, json=payload, headers=headers)
             if response.status_code == 201:
                 issue_url = response.json().get("html_url")
-                self.final_message = f"✅ Issue criada com sucesso no GitHub:\n👉 {issue_url}"
+                self.final_message = __("✅ Issue successfully created on GitHub:\n👉 {issue_url}", issue_url=issue_url)
                 self.final_action = "created"
             else:
-                self.final_message = f"❌ Erro na API do GitHub ({response.status_code}): {response.text}"
+                self.final_message = __("❌ GitHub API Error ({status_code}): {response_text}", status_code=response.status_code, response_text=response.text)
                 self.final_action = "error"
         except Exception as e:
-            self.final_message = f"❌ Falha na conexão com o GitHub: {e}"
+            self.final_message = __("❌ Failed to connect to GitHub: {error}", error=str(e))
             self.final_action = "error"
         
         self.exit()
