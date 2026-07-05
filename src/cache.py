@@ -3,17 +3,18 @@ import json
 import hashlib
 from datetime import datetime
 from pathlib import Path
+
 def get_cache_base_dir():
-    """Retorna o caminho ~/.gitpr/cache/prompts/"""
+    """Returns the ~/.gitpr/cache/prompts/ path."""
     path = Path.home() / ".gitpr" / "cache" / "prompts"
     return path
 
 def generate_md5(text):
-    """Gera o hash MD5 de uma string."""
+    """Generates the MD5 hash of a string."""
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
 def get_cached_response(action_folder, prompt_text):
-    """Verifica se existe um cache válido para o prompt e retorna o conteúdo."""
+    """Checks if a valid cache exists for the prompt and returns the content."""
     md5_hash = generate_md5(prompt_text)
     cache_file = get_cache_base_dir() / action_folder / f"{md5_hash}.json"
 
@@ -27,7 +28,7 @@ def get_cached_response(action_folder, prompt_text):
     return None
 
 def save_cached_response(action_folder, action_type, prompt_text, response_dict):
-    """Salva a resposta da IA no cache local."""
+    """Saves the AI response to the local cache."""
     md5_hash = generate_md5(prompt_text)
     folder_path = get_cache_base_dir() / action_folder
     folder_path.mkdir(parents=True, exist_ok=True)
@@ -51,10 +52,11 @@ def save_cached_response(action_folder, action_type, prompt_text, response_dict)
         with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(cache_data, f, indent=2, ensure_ascii=False)
     except IOError:
-        pass # Falha silenciosa no cache para não travar a ferramenta
+        pass  # Silent cache failure to avoid crashing the tool
     
 def get_cached_pr_descriptions(repo_name, branch_name):
-    """Busca no cache todos os PRs gerados historicamente para este repositorio e branch."""
+    """Searches the cache for all historically generated PRs for this repository and branch."""
+    from src.i18n import __
     pr_cache_folder = get_cache_base_dir() / "pr_desc"
     history_texts = []
 
@@ -66,19 +68,19 @@ def get_cached_pr_descriptions(repo_name, branch_name):
             with open(cache_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-                # Filtra por repositorio E branch (evita misturar projetos diferentes)
+                # Filter by repository AND branch (avoids mixing different projects)
                 if data.get("repo") == repo_name and data.get("branch") == branch_name:
                     response_dict = data.get("response", {})
                     pr_desc = response_dict.get("pr_description")
                     if pr_desc:
-                        date_str = data.get("datetime", "Data desconhecida")
+                        date_str = data.get("datetime", __("Unknown date"))
                         history_texts.append(f"[{date_str}]\n{pr_desc}\n")
         except (json.JSONDecodeError, IOError):
             continue
 
     if history_texts:
-        # Ordena cronologicamente (usando a data extraida no colchete)
+        # Sort chronologically (using the date extracted from the bracket)
         history_texts.sort()
-        return "=== HISTÓRICO DE PRs DA IA ===\n" + "\n".join(history_texts)
+        return __("=== AI PR HISTORY ===\n") + "\n".join(history_texts)
 
     return ""

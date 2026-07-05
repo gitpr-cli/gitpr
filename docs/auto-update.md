@@ -1,65 +1,65 @@
-# Documentação Técnica: Auto-Updater (--update)
+# Technical Documentation: Auto-Updater (--update)
 
-O GitPR possui um sistema de atualização automática (**Auto-Updater**) que mantém a ferramenta sempre na versão mais recente, com verificação diária e atualização via *hot-swap*.
+GitPR has an automatic update system (**Auto-Updater**) that keeps the tool always on the latest version, with daily verification and *hot-swap* updates.
 
 ---
 
-## 1. Atualização Manual
+## 1. Manual Update
 
 ```bash
 gitpr -u
-# ou
+# or
 gitpr --update
 ```
 
-O comando força a verificação e instalação imediata da versão mais recente.
+The command forces immediate verification and installation of the latest version.
 
 ---
 
-## 2. Verificação Automática Diária
+## 2. Automatic Daily Verification
 
-Em cada execução do GitPR (exceto modos `--quiet` e `--hook`), a ferramenta verifica silenciosamente se há uma nova versão disponível. O resultado é cacheado por **24 horas** no arquivo `~/.gitpr/update_cache.json` para evitar chamadas repetidas à API.
+On every GitPR execution (except `--quiet` and `--hook` modes), the tool silently checks if a new version is available. The result is cached for **24 hours** in the `~/.gitpr/update_cache.json` file to avoid repeated API calls.
 
-Se houver uma nova versão, uma notificação é exibida no final da execução.
+If a new version is available, a notification is displayed at the end of the execution.
 
 ---
 
-## 3. Métodos de Atualização
+## 3. Update Methods
 
-O Auto-Updater deteta automaticamente o método de instalação:
+The Auto-Updater automatically detects the installation method:
 
-### 3.1 Instalação via pip
+### 3.1 pip Installation
 
 ```bash
 pip install --upgrade gitpr-cli
 ```
 
-### 3.2 Instalação via Binário (PyInstaller)
+### 3.2 Binary Installation (PyInstaller)
 
-O GitPR usa a técnica de **Hot-Swap** para binários standalone:
+GitPR uses the **Hot-Swap** technique for standalone binaries:
 
-1. Verifica a versão mais recente na [GitHub Releases](https://github.com/natanfiuza/gitpr/releases)
-2. Baixa o novo executável
-3. Renomeia o `.exe` atual para `.exe.old`
-4. Move o novo binário para o lugar
-5. Em caso de falha, reverte para o `.exe.old` (rollback automático)
-6. Na próxima execução, remove o `.old` automaticamente (limpeza)
-
----
-
-## 4. Guardião de Conexão
-
-Antes de qualquer operação de rede, o GitPR verifica a conectividade via socket `8.8.8.8:53`. Se não houver internet, a ferramenta opera normalmente em modo offline — sem travar ou mostrar erros de conexão.
+1. Checks the latest version on [GitHub Releases](https://github.com/natanfiuza/gitpr/releases)
+2. Downloads the new executable
+3. Renames the current `.exe` to `.exe.old`
+4. Moves the new binary into place
+5. In case of failure, reverts to `.exe.old` (automatic rollback)
+6. On the next execution, removes `.old` automatically (cleanup)
 
 ---
 
-## 5. Fontes de Versão
+## 4. Connection Guardian
 
-| Fonte | Uso |
+Before any network operation, GitPR checks connectivity via socket `8.8.8.8:53`. If there is no internet, the tool operates normally in offline mode — without freezing or showing connection errors.
+
+---
+
+## 5. Version Sources
+
+| Source | Usage |
 | --- | --- |
-| **PyPI** | Versão para instalações pip (`pip install gitpr-cli`) |
-| **GitHub Releases** | Versão para binários standalone (`.exe`) |
+| **PyPI** | Version for pip installations (`pip install gitpr-cli`) |
+| **GitHub Releases** | Version for standalone binaries (`.exe`) |
 
-A versão local é definida em `src/updater.py` (`__version__`) e incrementada a cada release.
+The local version is defined in `src/updater.py` (`__version__`) and incremented with each release.
 
-> **Nota:** Consulte também a [documentação principal (README.md)](../README.md) para informações sobre instalação e configuração inicial.
+> **Note:** See also the [main documentation (README.md)](../README.md) for installation and initial setup information.

@@ -3,23 +3,24 @@ from datetime import datetime
 import click
 import sys
 
-# Importações dos nossos módulos internos atualizadas
+# Internal module imports
 from src.config import setup_environment, check_internet_connection, get_ai_provider
 from src.updater import check_and_update, __version__, print_update_notice
 from src.core import (
-    get_git_diff, 
+    get_git_diff,
     get_git_full_diff,
-    get_current_branch, 
-    generate_pr_content,  
+    get_current_branch,
+    generate_pr_content,
     generate_skill_template,
     install_git_hooks,
-    get_branch_history_text
+    get_branch_history_text,
+    get_doc_url
 )
 from src.linter_engine import parse_diff_and_lint
-
+from src.i18n import __
 
 def print_banner():
-    """Exibe a assinatura ASCII Art do projeto"""
+    """Displays the project ASCII Art signature"""
     banner = r"""
  ,----.   ,--.  ,--.  ,------. ,------.
 '  .-./   `--',-'  '-.|  .--. '|  .--. '
@@ -29,131 +30,78 @@ def print_banner():
 
 """
     click.secho(banner, fg="cyan", bold=True)
-    click.secho(f"  🚀 Automação Inteligente de PRs com IA (v{__version__})", fg="yellow", bold=True)
-    click.secho("  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -is,--issue | -h,--help (use -h --flag para ajuda contextual)\n", fg="white", dim=True)
+    click.secho(__("  🚀 Intelligent PR Automation with AI (v{version})", version=__version__), fg="yellow", bold=True)
+    click.secho(__("  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -is,--issue | -h,--help (use -h --flag for contextual help)\n"), fg="white", dim=True)
 
 
 # ============================================================
-# Mapeamento de ajuda contextual (flag -> doc URL e descricao)
+# Contextual help mapping (flag -> doc URL and description)
 # ============================================================
 HELP_MAP: dict[str, dict[str, str]] = {
     'commit': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/commit-message-ia.md',
-        'title': 'Geracao de Mensagens de Commit com IA',
-        'description': (
-            'Gera automaticamente mensagens de commit no formato Conventional '
-            'Commits usando inteligencia artificial. Suporta integracao com Git '
-            'Hooks (prepare-commit-msg) para injecao direta no editor.'
-        ),
+        'url': get_doc_url('commit-message-ia.md'),
+        'title': __('AI Commit Message Generation'),
+        'description': __('Generates commit messages in the Conventional Commits format automatically using AI. Supports integration with Git Hooks (prepare-commit-msg) for direct injection into the editor.'),
     },
     'review': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md',
-        'title': 'Code Review com IA (Alteracoes Locais)',
-        'description': (
-            'Realiza uma revisao de codigo inteligente das alteracoes locais '
-            'nao commitadas (git diff HEAD). Integra automaticamente o Linter '
-            'Estatico (.gitpr.linter.yml) no topo do relatorio.'
-        ),
+        'url': get_doc_url('code-review-ia.md'),
+        'title': __('AI Code Review (Local Changes)'),
+        'description': __('Performs smart code review of uncommitted local changes (git diff HEAD). Automatically integrates the Static Linter (.gitpr.linter.yml) at the top of the report.'),
     },
     'fullreview': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md',
-        'title': 'Code Review Completo com IA (Full Diff)',
-        'description': (
-            'Realiza uma revisao profunda comparando toda a branch atual com '
-            'a branch principal remota (origin/main). Faz git fetch antes da '
-            'analise. Ideal para revisar antes de abrir um Pull Request.'
-        ),
+        'url': get_doc_url('code-review-ia.md'),
+        'title': __('Full AI Code Review (Full Diff)'),
+        'description': __('Performs a deep review comparing the current branch with the remote main branch (origin/main). Runs git fetch before analysis. Ideal for reviewing before opening a Pull Request.'),
     },
     'input': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md',
-        'title': 'Analise de Arquivo Especifico (--input)',
-        'description': (
-            'Analisa um arquivo inteiro do sistema local, ignorando o diff do '
-            'Git. REQUER --review (-r) ou --fullreview (-f) para funcionar. '
-            'Excelente para auditoria de codigo legado e refatoracoes.'
-        ),
+        'url': get_doc_url('code-review-ia.md'),
+        'title': __('Specific File Analysis (--input)'),
+        'description': __('Analyzes an entire file from the local system, ignoring the Git diff. REQUIRES --review (-r) or --fullreview (-f) to work. Excellent for auditing legacy code and refactoring.'),
     },
     'linter': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md',
-        'title': 'Linter Estatico Customizavel',
-        'description': (
-            'Motor de analise estatica local que verifica regras definidas no '
-            'arquivo .gitpr.linter.yml. Nao consome cotas de IA nem requer '
-            'internet. Ideal para CI/CD e hooks de pre-commit.'
-        ),
+        'url': get_doc_url('linter-regras-customizadas.md'),
+        'title': __('Customizable Static Linter'),
+        'description': __('Local static analysis engine that checks rules defined in the .gitpr.linter.yml file. Does not consume AI quotas or require internet. Ideal for CI/CD and pre-commit hooks.'),
     },
     'skill': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/skill-template.md',
-        'title': 'Sistema de Skills e Templates (--skill)',
-        'description': (
-            'Faz download dos arquivos de template (.gitpr.*.md e .gitpr.linter.yml) '
-            'do repositorio oficial para a raiz do projeto. Estes arquivos permitem '
-            'customizar o comportamento da IA conforme as regras da sua equipa.'
-            'NUNCA sobrescreve arquivos locais existentes.'
-        ),
+        'url': get_doc_url('skill-template.md'),
+        'title': __('Skills and Templates System (--skill)'),
+        'description': __('Downloads template files (.gitpr.*.md and .gitpr.linter.yml) from the official repository to the project root. These files allow customizing the AI behavior according to your team\'s rules. NEVER overwrites existing local files.'),
     },
     'update': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/auto-update.md',
-        'title': 'Auto-Update do GitPR',
-        'description': (
-            'Verifica e instala automaticamente a versao mais recente do GitPR. '
-            'Suporta atualizacao via pip (PyPI) e binario standalone (GitHub Releases) '
-            'com hot-swap e rollback automatico em caso de falha.'
-        ),
+        'url': get_doc_url('auto-update.md'),
+        'title': __('GitPR Auto-Update'),
+        'description': __('Checks and automatically installs the latest version of GitPR. Supports update via pip (PyPI) and standalone binary (GitHub Releases) with hot-swap and automatic rollback in case of failure.'),
     },
     'installhooks': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/git-hooks-locais.md',
-        'title': 'Instalacao de Git Hooks Locais',
-        'description': (
-            'Instala hooks de pre-commit (linter estatico automatico) e '
-            'prepare-commit-msg (geracao de mensagens com IA) no repositorio '
-            'local. Adota a pratica de Shift Left para validacao antes do push.'
-        ),
+        'url': get_doc_url('git-hooks-locais.md'),
+        'title': __('Install Local Git Hooks'),
+        'description': __('Installs pre-commit (automatic static linter) and prepare-commit-msg (AI message generation) hooks in the local repository. Adopts the Shift Left practice for pre-push validation.'),
     },
     'blame': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/blame-arqueologo.md',
-        'title': 'Arqueologo de Codigo (Git Blame com IA)',
-        'description': (
-            'Rastreia a origem e evolucao de regras de negocio no codigo usando '
-            'git blame com classificacao por IA (ORIGEM vs REFATORACAO). Suporta '
-            'modo direto (arquivo:10-20) e modo interativo. Pode alimentar o '
-            'contexto de Issues de divida tecnica com --issue.'
-        ),
+        'url': get_doc_url('blame-arqueologo.md'),
+        'title': __('Code Archeologist (AI Git Blame)'),
+        'description': __('Tracks the origin and evolution of business rules in the code using git blame with AI classification (ORIGIN vs REFACTORING). Supports direct mode (file:10-20) and interactive mode. Can feed technical debt Issues context with --issue.'),
     },
     'issue': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md',
-        'title': 'Geracao de Issues com TUI Interativa',
-        'description': (
-            'Gera issues padronizadas (O Que / Por Que / Onde / Como) usando IA '
-            'e abre uma interface interativa no terminal (Textual) para revisao. '
-            'Possui 3 motores de contexto: diff atual, historico da branch (--history) '
-            'e arqueologia de codigo (--blame). Permite salvar .md local ou publicar '
-            'diretamente no GitHub via API.'
-        ),
+        'url': get_doc_url('issue-tui-help.md'),
+        'title': __('Issue Generation with Interactive TUI'),
+        'description': __('Generates standardized issues (What / Why / Where / How) using AI and opens an interactive terminal interface (Textual) for review. Has 3 context engines: current diff, branch history (--history), and code archeology (--blame). Allows saving local .md or publishing directly to GitHub via API.'),
     },
     'history': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md',
-        'title': 'Contexto de Historico para Issues (--history)',
-        'description': (
-            'Modificador do --issue (-is): usa todo o historico da branch atual '
-            '(git log + cache de PRs anteriores) como contexto para gerar a issue. '
-            'Ideal para documentar epicos, releases e features grandes com '
-            'varios commits ao longo de dias.'
-        ),
+        'url': get_doc_url('issue-tui-help.md'),
+        'title': __('History Context for Issues (--history)'),
+        'description': __('Modifier for --issue (-is): uses the entire history of the current branch (git log + previous PRs cache) as context to generate the issue. Ideal for documenting epics, releases, and large features with multiple commits over days.'),
     },
     'provider': {
-        'url': 'https://github.com/natanfiuza/gitpr/blob/main/docs/providers-ia.md',
-        'title': 'Selecao de Provedor de IA (--provider)',
-        'description': (
-            'Forca o uso de um provedor de IA especifico para esta execucao: '
-            'gemini (Google Gemini) ou deepseek (DeepSeek). Sobrescreve '
-            'temporariamente o provider padrao definido no ficheiro .env.'
-        ),
+        'url': get_doc_url('providers-ia.md'),
+        'title': __('AI Provider Selection (--provider)'),
+        'description': __('Forces the use of a specific AI provider for this execution: gemini (Google Gemini) or deepseek (DeepSeek). Temporarily overrides the default provider defined in the .env file.'),
     },
 }
 
-# Prioridade para help contextual quando multiplas flags sao usadas com -h
-# Menor valor = maior prioridade
+# Priority for contextual help when multiple flags are used with -h
+# Lower value = higher priority
 HELP_PRIORITY: dict[str, int] = {
     'linter': 1,
     'skill': 2,
@@ -170,33 +118,33 @@ HELP_PRIORITY: dict[str, int] = {
 }
 
 
-# Configuração nativa do Click para aceitar -h além de --help
+# Native Click configuration to accept -h in addition to --help
 @click.command()
-@click.option('-c', '--commit', is_flag=True, help="Gera apenas a mensagem de commit e exibe no console.")
-@click.option('-r', '--review', is_flag=True, help="Faz um code review das alterações locais (git diff).")
-@click.option('-f', '--fullreview', is_flag=True, help="Faz um code review de todas as alterações desde a branch principal (origin/main).")
-@click.option('-l', '--linter', is_flag=True, help="Roda apenas o linter estático local (ideal para CI/CD).")
-@click.option('-s', '--skill', is_flag=True, help="Gera o arquivo de template .gitpr.md na pasta atual.")
-@click.option('-u', '--update', is_flag=True, help="Verifica e instala a versão mais recente do GitPR.")
-@click.option('-ih', '--installhooks', is_flag=True, help="Instala automaticamente os Git Hooks de validação no projeto.")
-@click.option('--hook', type=click.Path(), hidden=True, help="Caminho do arquivo de commit (uso interno dos hooks).")
-@click.option('-q', '--quiet', is_flag=True, hidden=True, help="Oculta o banner e logs não essenciais (uso interno).")
-@click.option('-i', '--input', type=click.Path(), help="Caminho de um arquivo específico para análise completa.")
-@click.option('-b', '--blame', type=str, help="Analisa a origem de uma regra de negócio (ex: arquivo.py:10-20 ou apenas arquivo.py).")
-@click.option('-ht', '--history', is_flag=True, help="Usa todo o histórico da branch (Git Log + Cache de PR) como contexto para gerar a issue.")
-@click.option('-is', '--issue', is_flag=True, help="Gera uma Issue padronizada das alterações atuais e abre a interface interativa.")
-@click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek']), help="Força a utilização de um provedor de IA específico nesta execução.")
-@click.option('-h', '--help', 'help_flag', is_flag=True, help="Mostra esta mensagem e sai. Use com outra flag para ajuda contextual (ex: -h --issue).")
+@click.option('-c', '--commit', is_flag=True, help=__("Generates only the commit message and displays it in the console."))
+@click.option('-r', '--review', is_flag=True, help=__("Performs a code review of local changes (git diff)."))
+@click.option('-f', '--fullreview', is_flag=True, help=__("Performs a code review of all changes since the remote main branch (origin/main)."))
+@click.option('-l', '--linter', is_flag=True, help=__("Runs only the local static linter (ideal for CI/CD)."))
+@click.option('-s', '--skill', is_flag=True, help=__("Generates the .gitpr.md template file in the current folder."))
+@click.option('-u', '--update', is_flag=True, help=__("Checks and installs the latest version of GitPR."))
+@click.option('-ih', '--installhooks', is_flag=True, help=__("Automatically installs validation Git Hooks in the project."))
+@click.option('--hook', type=click.Path(), hidden=True, help=__("Commit file path (internal hook use)."))
+@click.option('-q', '--quiet', is_flag=True, hidden=True, help=__("Hides banner and non-essential logs (internal use)."))
+@click.option('-i', '--input', type=click.Path(), help=__("Path to a specific file for full analysis."))
+@click.option('-b', '--blame', type=str, help=__("Analyzes the origin of a business rule (e.g., file.py:10-20 or just file.py)."))
+@click.option('-ht', '--history', is_flag=True, help=__("Uses the entire branch history (Git Log + PR Cache) as context to generate the issue."))
+@click.option('-is', '--issue', is_flag=True, help=__("Generates a standardized Issue from current changes and opens the interactive interface."))
+@click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek']), help=__("Forces the use of a specific AI provider for this execution."))
+@click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
 def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, history, issue, help_flag):
     """
-    GitPR CLI - Automação de PRs e Code Review com IA.
+    GitPR CLI - Intelligent PR Automation and AI Code Review.
 
-    COMPORTAMENTO PADRÃO (Sem opções):
-    Faz o fetch, compara com a branch principal remota e gera um arquivo Markdown (.md) com a descrição completa para o Pull Request.
+    DEFAULT BEHAVIOR (No options):
+    Fetches, compares with the remote main branch, and generates a Markdown (.md) file with the full description for the Pull Request.
     """
 
     # ============================================================
-    # MANIPULADOR DE AJUDA CONTEXTUAL
+    # CONTEXTUAL HELP HANDLER
     # ============================================================
     if help_flag:
         # Identifica quais outras flags estao ativas (excluindo hidden: hook, quiet)
@@ -224,20 +172,19 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             click.secho(f"{'=' * 60}\n", bold=True)
             click.echo(help_info['description'])
             click.echo("")
-            click.secho(">> Documentacao completa:", fg="green")
+            click.secho(__(">> Full documentation:"), fg="green")
             click.secho(f"  {help_info['url']}", fg="blue", underline=True)
             click.echo("")
 
             if len(active_flags) > 1:
                 click.secho(
-                    ">> Dica: Para ajuda sobre uma unica opcao, "
-                    "use -h apenas com ela.",
+                    __(">> Tip: For help on a single option, use -h with it only."),
                     fg="yellow", dim=True,
                 )
 
             # Exibe a URL da documentacao principal do GitPR como rodape
             click.secho(
-                ">> Repositorio: https://github.com/natanfiuza/gitpr",
+                __(">> Repository: https://github.com/natanfiuza/gitpr"),
                 fg="bright_black",
             )
             click.echo("")
@@ -254,10 +201,10 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
     if not quiet and not hook:
         print_banner()
 
-    # Identifica se a ferramenta está rodando como binário (PyInstaller) ou via PIP
+    # Detects if the tool is running as a binary (PyInstaller) or via PIP
     is_compiled = getattr(sys, 'frozen', False)
 
-    # Limpeza do Hot-Swap (Apenas no modo Binário)
+    # Hot-Swap cleanup (Binary mode only)
     if is_compiled:
         old_exe = sys.executable + ".old"
         if os.path.exists(old_exe):
@@ -270,7 +217,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         diff_text = get_git_diff()
         
         if not diff_text or not diff_text.strip():
-            if not quiet: click.secho("✅ Nada para validar (diff vazio).", fg="green")
+            if not quiet: click.secho(__("✅ Nothing to validate (empty diff)."), fg="green")
             return
 
         linter_results = parse_diff_and_lint(diff_text)
@@ -281,64 +228,64 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         # Processamento de Warnings (Apenas Avisos)
         if has_warnings:
             # Os avisos DEVEM aparecer sempre, mesmo no modo quiet
-            click.secho(f"\n⚠️ O Linter gerou {len(linter_results['warnings'])} aviso(s) de boas práticas:", fg="yellow", bold=True)
+            click.secho(__("\n⚠️ The Linter generated {count} best practice warning(s):", count=len(linter_results['warnings'])), fg="yellow", bold=True)
             for alert in linter_results["warnings"]:
                 click.echo(f"  - {alert}")
 
-        # Processamento de Erros (Críticos, Bloqueiam o Commit)
+        # Error Processing (Critical, Block the Commit)
         if has_errors:
-            # Os erros DEVEM aparecer sempre, mesmo no modo quiet
-            click.secho(f"\n🚨 Falha na validação! Encontrados {len(linter_results['errors'])} erro(s) críticos:", fg="red", bold=True)
+            # Errors MUST always appear, even in quiet mode
+            click.secho(__("\n🚨 Validation failed! Found {count} critical error(s):", count=len(linter_results['errors'])), fg="red", bold=True)
             for alert in linter_results["errors"]:
                 click.echo(f"  - {alert}")
-            # Trava o Git apenas se houver erros críticos
+            # Locks Git only if there are critical errors
             sys.exit(1)
-        
-        # Sucesso silencioso (Nenhum erro crítico encontrado)
+
+        # Silent success (No critical errors found)
         if not quiet: 
             if has_warnings:
-                click.secho("\n✅ Código aprovado com avisos. O commit prosseguirá.", fg="green")
+                click.secho(__("\n✅ Code approved with warnings. The commit will proceed."), fg="green")
             else:
-                click.secho("\n✅ Código limpo! Nenhuma violação encontrada pelo Linter local.", fg="green", bold=True)
+                click.secho(__("\n✅ Clean code! No violations found by the local Linter."), fg="green", bold=True)
         return
 
-    # Guardião de Conexão (Failing Fast)
+    # Connection Guardian (Failing Fast)
     check_internet_connection()
 
-    # Módulo de Atualização (Pip-Aware)
-    if update:    
-        click.secho("🔍 Verificando atualizações...", fg="cyan")
+    # Update Module (Pip-Aware)
+    if update:
+        click.secho(__("🔍 Checking for updates..."), fg="cyan")
         check_and_update()
         return
 
-    # Opção --skill: Gera o template e encerra
+    # --skill option: Generate template and exit
     if skill:
         generate_skill_template()
         return
     
     if installhooks:
         if install_git_hooks():
-            click.secho("\n✅ Git Hooks instalados com sucesso!", fg="green", bold=True)
-            click.echo("O Linter será agora executado automaticamente antes de cada commit.")
-            
+            click.secho("\n" + __("✅ Git Hooks successfully installed!"), fg="green", bold=True)
+            click.echo(__("The Linter will now run automatically before each commit."))
+
             click.echo("\n---")
-            click.echo(">> Guias de Utilização:")
-            
-            # Link da documentação geral de Hooks
-            click.echo("• Como utilizar Git Hooks:")
-            click.secho("  https://github.com/natanfiuza/gitpr/blob/main/docs/git-hooks-locais.md", fg="blue")
-            
-            # Novo link: Documentação de Regras Customizadas
-            click.echo("• Como criar novas regras de Linter (.gitpr.linter.yml):")
-            click.secho("  https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md", fg="blue")
+            click.echo(__(">> Usage Guides:"))
+
+            # General Hooks documentation link
+            click.echo(__("• How to use Git Hooks:"))
+            click.secho(f"  {get_doc_url("git-hooks-locais.md")}", fg="blue")
+
+            # New link: Custom Rules Documentation
+            click.echo(__("• How to create new Linter rules (.gitpr.linter.yml):"))
+            click.secho(f"  {get_doc_url("linter-regras-customizadas.md")}", fg="blue")
             click.echo("---\n")
         return
-    
-    # Módulo Arqueólogo (--blame)
+
+    # Archaeologist Module (--blame)
     if blame and not issue:
-        # Parser para separar o arquivo das linhas
+        # Parser to separate file from lines
         if ":" in blame:
-            # Modo Direto: gitpr --blame arquivo:10-20
+            # Direct Mode: gitpr --blame file:10-20
             file_path, lines = blame.split(":", 1)
             try:
                 if "-" in lines:
@@ -346,91 +293,106 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
                 else:
                     start_line = end_line = lines
             except ValueError:
-                click.secho("❌ Formato de linhas inválido. Use inicio-fim (ex: 10-20).", fg="red")
+                click.secho(__("❌ Invalid line format. Use start-end (e.g., 10-20)."), fg="red")
                 return
         else:
-            # Modo Interativo: gitpr --blame arquivo
+            # Interactive Mode: gitpr --blame file
             file_path = blame
             if not os.path.exists(file_path):
-                click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+                click.secho(__("❌ The file '{file_path}' was not found.", file_path=file_path), fg="red")
                 return
-            
-            click.secho(f">> Arquivo selecionado: {file_path}", fg="cyan", bold=True)
-            lines_input = click.prompt("Quais linhas você deseja investigar? (Ex: 10-20 ou apenas 45)")
-            
+
+            click.secho(__(">> Selected file: {file_path}", file_path=file_path), fg="cyan", bold=True)
+            lines_input = click.prompt(__("Which lines do you want to investigate? (E.g., 10-20 or just 45)"))
+
             if "-" in lines_input:
                 start_line, end_line = lines_input.split("-")
             else:
                 start_line = end_line = lines_input
-        
-        # Validação final do arquivo
+
+        # Final file validation
         if not os.path.exists(file_path):
-            click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+            click.secho(__("❌ The file '{file_path}' was not found.", file_path=file_path), fg="red")
             return
-            
-        # Aciona o motor
+
+        # Trigger the engine
         from src.blame_engine import run_blame_analysis
         run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip())
-        return 
+        return
 
-# Módulo Issue (Híbrido)
+    # Issue Module (Hybrid)
     if issue:
         from src.issue_engine import generate_issue_content, get_github_repo_info
         from src.tui_issue import validate_or_request_github_token, IssueApp
-        
+
         setup_environment()
-        
+
         context_text = ""
         context_type = "diff"
-        
-        # Roteador de Contexto Inteligente
+
+        # Intelligent Context Router
         if history:
             context_type = "history"
             context_text = get_branch_history_text()
-            if not context_text or ("Nenhum commit exclusivo" in context_text and "Nenhum PR anterior" in context_text):
-                click.secho("\n⚠️ Nenhum histórico encontrado para esta branch.\n", fg="yellow")
-                return
+            # Check if history is empty by comparing against possible EN variations
+            _no_commits = [
+                __("No exclusive commits"), 
+                __("No exclusive commits found"),
+                __("No unique commits found."),                
+            ]
+            _no_prs = [
+                __("No previous PR"), 
+                __("No previous Pull Request"),
+                __("No previous AI-generated PR"),
+                __("No AI-generated PR found in cache"),
                 
+            ]
+            _no_commits_found = any(phrase in context_text for phrase in _no_commits)
+            _no_prs_found = any(phrase in context_text for phrase in _no_prs)
+            if not context_text or (_no_commits_found and _no_prs_found):
+                click.secho(__("\n⚠️ No history found for this branch.\n"), fg="yellow")
+                return
+
         elif blame:
             context_type = "blame"
-            # Reaproveita o parser de arquivo/linhas da opção blame
+            # Reuse the file/line parser from the blame option
             if ":" in blame:
                 file_path, lines = blame.split(":", 1)
                 try:
                     start_line, end_line = lines.split("-") if "-" in lines else (lines, lines)
                 except ValueError:
-                    click.secho("❌ Formato de linhas inválido. Use inicio-fim (ex: 10-20).", fg="red")
+                    click.secho(__("❌ Invalid line format. Use start-end (e.g., 10-20)."), fg="red")
                     return
             else:
                 file_path = blame
                 if not os.path.exists(file_path):
-                    click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+                    click.secho(__("❌ The file '{file_path}' was not found.", file_path=file_path), fg="red")
                     return
-                click.secho(f">> Arquivo selecionado: {file_path}", fg="cyan", bold=True)
-                lines_input = click.prompt("Quais linhas você deseja investigar? (Ex: 10-20)")
+                click.secho(__(">> Selected file: {file_path}", file_path=file_path), fg="cyan", bold=True)
+                lines_input = click.prompt(__("Which lines do you want to investigate? (E.g.: 10-20)"))
                 start_line, end_line = lines_input.split("-") if "-" in lines_input else (lines_input, lines_input)
-                    
+
             if not os.path.exists(file_path.strip()):
-                click.secho(f"❌ O arquivo '{file_path}' não foi encontrado.", fg="red")
+                click.secho(__("❌ The file '{file_path}' was not found.", file_path=file_path), fg="red")
                 return
-                
+
             from src.blame_engine import run_blame_analysis
-            click.secho("🔍 Extraindo linha do tempo arqueológica em background...", fg="cyan")
-            
-            # Aciona o arqueólogo no modo silencioso
+            click.secho(__("🔍 Extracting archaeological timeline in background..."), fg="cyan")
+
+            # Trigger the archaeologist in silent mode
             timeline = run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip(), return_data=True)
-            
+
             if not timeline:
-                click.secho("\n⚠️ Nenhum histórico rastreável para alimentar a issue.\n", fg="yellow")
+                click.secho(__("\n⚠️ No traceable history to feed the issue.\n"), fg="yellow")
                 return
-            
-            # Traduz a lista de dicionários para um texto legível para a IA
+
+            # Translate the dictionary list into AI-readable text
             formatted_timeline = []
             for item in timeline:
                 formatted_timeline.append(
-                    f"[{item['raw_date']}] Commit {item['hash']} por {item['info']['author']}:\n"
-                    f"Ação: {item['status']}\n"
-                    f"Motivo IA: {item['motivo']}\n"
+                    f"{__('[{date}] Commit {hash} by {author}:', date=item['raw_date'], hash=item['hash'], author=item['info']['author'])}\n"
+                    f"{__('Action: {status}', status=item['status'])}\n"
+                    f"{__('AI Reason: {reason}', reason=item['motivo'])}\n"
                 )
             context_text = "\n".join(formatted_timeline)
 
@@ -438,67 +400,67 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             context_type = "diff"
             context_text = get_git_diff()
             if not context_text or not context_text.strip():
-                click.secho("\n⚠️ Nenhum código novo encontrado. Faça alguma alteração antes de gerar a issue.\n", fg="yellow")
+                click.secho(__("\n⚠️ No new code found. Make some changes before generating the issue.\n"), fg="yellow")
                 return
 
-        # Gera o conteúdo com a IA enviando o idioma correto
+        # Generate content with AI using the correct language
         issue_data = generate_issue_content(context_text, context_type=context_type)
         if not issue_data:
             return
-            
-        # Pega informações do repositório
+
+        # Get repository information
         repo_info = get_github_repo_info()
-        
-        # Valida ou solicita o Token PAT
+
+        # Validate or request PAT Token
         github_token = validate_or_request_github_token(repo_info)
         
         if not github_token:
-            click.secho("❌ Acesso cancelado. O Token do GitHub é obrigatório para esta ação.", fg="red")
+            click.secho(__("❌ Access canceled. GitHub Token is mandatory for this action."), fg="red")
             return
             
-        # Roda a Interface Gráfica do Terminal
+        # Run the Terminal Graphical Interface
         app = IssueApp(issue_data=issue_data, repo_info=repo_info, github_token=github_token)
         app.run()
-        
-        # Exibe a mensagem de retorno após fechar a TUI
+
+        # Display return message after closing the TUI
         if app.final_message:
             cor = "green" if app.final_action in ["saved", "created"] else "red"
             click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
-            
-        return 
 
-    # Validação do Modo Input (com guard para nao atrapalhar o -h contextual)
+        return
+
+    # Input Mode validation (with guard to not interfere with contextual -h)
     if input and not help_flag:
         if not os.path.exists(input):
             click.secho(
-                f"\n❌ Erro: O arquivo '{input}' nao foi encontrado.",
+                __("\n❌ Error: The file '{input}' was not found.", input=input),
                 fg="red", bold=True,
             )
             return
 
         if not (review or fullreview):
-            click.secho("\n❌ Erro: A opção --input (-i) só pode ser utilizada em conjunto com --review (-r) ou --fullreview (-f).", fg="red", bold=True)
+            click.secho(__("\n❌ Error: The --input (-i) option can only be used with --review (-r) or --fullreview (-f)."), fg="red", bold=True)
             return
-    
-    # Garante que o ambiente e as chaves estão configurados
+
+    # Ensure environment and keys are configured
     setup_environment()
 
-    # Determina o provedor de IA a ser usado (opção de linha de comando tem prioridade)
+    # Determine the AI provider to use (command line option takes priority)
     active_provider = provider if provider else get_ai_provider()
-    
-    # Determina o tipo de ação e qual diff capturar
+
+    # Determine the action type and which diff to capture
     action_type = "pr"
     diff_text = ""
-    
+
     if input:
-        # MODO FILE REVIEW: Lê o arquivo físico em vez do git diff
+        # FILE REVIEW MODE: Read the physical file instead of git diff
         action_type = "filereview"
         try:
             with open(input, "r", encoding="utf-8") as f:
                 diff_text = f.read()
-            click.secho(f"📄 Modo Arquivo: Analisando conteúdo integral de '{input}'...", fg="blue")
+            click.secho(__("📄 File Mode: Analyzing full content of '{input}'...", input=input), fg="blue")
         except Exception as e:
-            click.secho(f"❌ Erro ao ler o arquivo: {e}", fg="red")
+            click.secho(__("❌ Error reading file: {error}", error=str(e)), fg="red")
             return
     elif commit:
         action_type = "commit"
@@ -507,56 +469,54 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         action_type = "review"
         diff_text = get_git_diff()
     elif fullreview:
-        action_type = "fullreview" 
+        action_type = "fullreview"
         diff_text = get_git_full_diff()
     else:
-        # Padrão: Descrição de PR usando o Full Diff contra a main remota
+        # Default: PR Description using Full Diff against the remote main
         action_type = "pr"
         diff_text = get_git_full_diff()
-   
-    # CRÍTICO: Avisa o usuário antes de sair se não houver alterações
+
+    # CRITICAL: Warn the user before exiting if there are no changes
     if not diff_text or not diff_text.strip():
-        click.secho("\n⚠️ Nenhum código novo encontrado. Faça alguma alteração ou verifique sua branch antes de rodar o comando.\n", fg="yellow")
+        click.secho(__("\n⚠️ No new code found. Make some changes or check your branch before running the command.\n"), fg="yellow")
         return
 
-    # Chama a IA de acordo com active_provider utilizando a nova assinatura da função
-    # A assinatura requer: action_folder, action_type, diff_text, provider
-    # Usamos o próprio action_type como action_folder, pois a função lida com isso internamente.
+    # Call AI according to active_provider using the new function signature
     data = generate_pr_content(action_type, action_type, diff_text, active_provider)
     if not data:
         return
 
-    # Processamento da Saída
+    # Output Processing
     branch_name = get_current_branch()
     safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
     current_time = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    # Apenas Commit no console
+    # Commit only in console
     if action_type == "commit":
-        msg = data.get('commit_message', 'Atualização de código')
+        msg = data.get('commit_message', __('Code update'))
 
         if hook:
-            # MODO HOOK: Injeta a mensagem direto no arquivo do Git
+            # HOOK MODE: Inject message directly into Git file
             try:
                 with open(hook, "r", encoding="utf-8") as f:
                     original_content = f.read()
-                
-                # Coloca a sugestão no topo, mantendo os comentários originais do Git abaixo
+
+                # Place suggestion at the top, keeping original Git comments below
                 with open(hook, "w", encoding="utf-8") as f:
                     f.write(f"{msg}\n\n{original_content}")
-                
-                click.secho(f"✅ Mensagem injetada com sucesso no editor!", fg="green")
+
+                click.secho(__("✅ Message successfully injected into the editor!"), fg="green")
             except Exception as e:
-                click.secho(f"❌ Erro ao injetar no hook: {e}", fg="red")
+                click.secho(__("❌ Error injecting into hook: {error}", error=str(e)), fg="red")
         else:
-            # MODO CONSOLE: O comportamento original que já existia
-            click.secho("\n>> Dica: Use sem --commit para gerar o PR completo.\n", fg="yellow")
-            click.secho("\n📝 Sugestão de Commit:\n", fg="green", bold=True)
+            # CONSOLE MODE: The original existing behavior
+            click.secho(__("\n>> Tip: Use without --commit to generate the full PR.\n"), fg="yellow")
+            click.secho(__("\n📝 Commit Suggestion:\n"), fg="green", bold=True)
             click.echo(msg)
             click.echo("\n")
         return
 
-    # Code Review e File Review (Arquivo)  
+    # Code Review and File Review  
     if action_type in ["review", "fullreview", "filereview"]:
         
         if fullreview:
@@ -570,7 +530,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             branch=safe_branch_name,
             datetime=current_time
         )
-        content = data.get('review', 'Nenhuma análise gerada.')
+        content = data.get('review', __('No analysis generated.'))
         
         # Chama o Linter. Se for "filereview", ativa o modo de arquivo completo.
         if action_type == "filereview":
@@ -582,49 +542,45 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         
         if all_alerts:
             
-            click.secho(f"⚠️ Atenção! Encontrados {len(all_alerts)} alertas nas regras do Linter.", fg="yellow")
+            click.secho(__("⚠️ Attention! Found {count} alerts in the Linter rules.", count=len(all_alerts)), fg="yellow")
             
-            # Monta o cabeçalho com os erros do linter
-            linter_header = "## 🚨 Alertas de Análise Estática Local (Regras YAML)\n\n"
+            # Build header with linter errors
+            linter_header = __("## 🚨 Local Static Analysis Alerts (YAML Rules)\n\n")
             for alert in all_alerts:
                 linter_header += f"- {alert}\n"
-            linter_header += "\n---\n\n## 🤖 Code Review da IA\n\n"
-            
-            # Injeta o cabeçalho no topo do conteúdo gerado pela IA
+            linter_header += __("\n---\n\n## 🤖 AI Code Review\n\n")
+
+            # Inject header at the top of AI-generated content
             content = linter_header + content
         else:
-            click.secho("✅ Linter Local passou sem violações de regras!", fg="green")
+            click.secho(__("✅ Local Linter passed with no rule violations!"), fg="green")
 
         try:
             with open(output_filename, "w", encoding="utf-8") as f:
                 f.write(content)
-            click.secho(f"\n✅ Code Review gerado com sucesso: '{output_filename}'", fg="green", bold=True)
+            click.secho(__("\n✅ Code Review successfully generated: '{output_filename}'", output_filename=output_filename), fg="green", bold=True)
         except Exception as e:
-            click.secho(f"\n❌ Erro ao salvar o review: {e}", fg="red")
+            click.secho(__("\n❌ Error saving review: {error}", error=str(e)), fg="red")
         return
 
-    # Pull Request Padrão (Arquivo .md)
+    # Default Pull Request (.md file)
     filename_pattern = os.getenv("OUTPUT_FILE_NAME", "{branch}_{datetime}_PR_DESC.md")
     output_filename = filename_pattern.format(branch=safe_branch_name, datetime=current_time)
 
-    markdown_content = f"""# 🚀 Sugestão de Pull Request
-
-**Commit Message Recomendada:**
-```text
-{data.get('commit_message', 'Atualização de código')}
-```
-
----
-
-{data.get('pr_description', 'Sem descrição detalhada.')}
-"""
+    markdown_content = (
+        __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
+        + "```text\n"
+        + f"{data.get('commit_message', __('Code update'))}\n"
+        + "```\n\n---\n\n"
+        + data.get('pr_description', __('No detailed description.'))
+    )
 
     try:
         with open(output_filename, "w", encoding="utf-8") as f:
             f.write(markdown_content)
-        click.secho(f"\n✅ Sucesso! O arquivo '{output_filename}' foi gerado na pasta atual.", fg="green", bold=True)
+        click.secho(__("\n✅ Success! The file '{output_filename}' was generated in the current folder.", output_filename=output_filename), fg="green", bold=True)
     except Exception as e:
-        click.secho(f"\n❌ Erro ao guardar o arquivo: {e}", fg="red")
+        click.secho("\n" + __("❌ Error saving file: {error}", error=str(e)), fg="red")
     
     if not quiet:
         print_update_notice()    

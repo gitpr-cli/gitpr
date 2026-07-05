@@ -1,22 +1,22 @@
 import re
 import fnmatch
 from src.config import load_linter_rules
-
+from src.i18n import __
 
 def _is_rule_applicable(rule, current_file, file_extension):
-    """Verifica se a regra se aplica ao arquivo atual baseado na extensão e caminhos."""
-    # Verifica extensão
+    """Checks whether the rule applies to the current file based on extension and paths."""
+    # Check extension
     if file_extension not in rule.get('extensions', []):
         return False
 
-    # Verifica require_paths (se existir, o arquivo TEM que dar match em algum)
+    # Check require_paths (if present, the file MUST match at least one)
     require_paths = rule.get('require_paths', [])
     if require_paths:
         match_required = any(re.search(p.replace('*', '.*'), current_file) for p in require_paths)
         if not match_required:
             return False
 
-    # Verifica ignore_paths (se der match em algum, a regra não se aplica)
+    # Check ignore_paths (if it matches any, the rule does not apply)
     ignore_paths = rule.get('ignore_paths', [])
     if ignore_paths:
         should_ignore = any(re.search(p.replace('*', '.*'), current_file) for p in ignore_paths)
@@ -26,32 +26,32 @@ def _is_rule_applicable(rule, current_file, file_extension):
     return True
 
 def _apply_rule(rule, code_line, line_number, current_file, alerts):
-    """Aplica a regex da regra na linha de código e registra o alerta se necessário."""
-    # Lógica de ignorar comentários no código
+    """Applies the rule's regex on the code line and records the alert if needed."""
+    # Logic to ignore comments in code
     if rule.get('ignore_comments', False):
         comment_patterns = [r'^//', r'^#', r'^/\*', r'^\*']
         if any(re.match(cp, code_line.strip()) for cp in comment_patterns):
             return
 
-    # Validação da Regex da regra
+    # Validate rule regex
     try:
         if re.search(rule['regex'], code_line):
             message = rule['message'].replace('{file_name}', current_file).replace('{line_number}', str(line_number))
-            
-            # Extrai a severidade (padrão é error)
+
+            # Extract severity (default is error)
             level = rule.get('level', 'error').lower()
-            
+
             if level == 'warning':
                 alerts["warnings"].append(message)
             else:
                 alerts["errors"].append(message)
     except re.error as e:
-        alerts["errors"].append(f"Regra '{rule.get('name')}' contém Regex inválida: {e}")
+        alerts["errors"].append(__("Rule '{rule_name}' contains invalid Regex: {error}", rule_name=rule.get('name'), error=str(e)))
 
 def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
     """
-    Analisa o git diff OU um arquivo completo e aplica as regras definidas no .gitpr.linter.yml.
-    Retorna um dicionário com duas listas: 'errors' (críticos) e 'warnings' (alertas).
+    Analyzes the git diff OR a full file and applies the rules defined in .gitpr.linter.yml.
+    Returns a dictionary with two lists: 'errors' (critical) and 'warnings' (alerts).
     """
     rules = load_linter_rules()
     if not rules:
@@ -65,30 +65,30 @@ def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
     lines = diff_text.split('\n')
     
     # ==========================================
-    # MODO ARQUIVO COMPLETO (--input)
+    # FULL FILE MODE (--input)
     # ==========================================
     if is_full_file:
         if not file_path:
             return alerts
-            
-        # Normaliza o caminho para garantir compatibilidade entre Windows e Linux nas Regex
+
+        # Normalize path to ensure Windows and Linux compatibility in Regex
         current_file = file_path.replace('\\', '/')
         file_extension = current_file.split('.')[-1] if '.' in current_file else ''
-        
+
         for i, line in enumerate(lines, start=1):
             code_line = line.strip()
             if not code_line:
                 continue
-            
+
             for rule in rules:
                 if not _is_rule_applicable(rule, current_file, file_extension):
                     continue
                 _apply_rule(rule, code_line, i, current_file, alerts)
-                
+
         return alerts
 
     # ==========================================
-    # MODO GIT DIFF PADRÃO
+    # STANDARD GIT DIFF MODE
     # ==========================================
     current_file = None
     file_extension = None

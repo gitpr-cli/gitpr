@@ -1,31 +1,29 @@
-# ⚠️ Por que o GitPR ignorou meus arquivos novos?
+# ⚠️ Why did GitPR ignore my new files?
 
-Se você rodou o GitPR e recebeu um aviso de que **arquivos não monitorados (untracked)** foram detectados, não se preocupe! Este é um comportamento de segurança e otimização nativo do sistema.
+If you ran GitPR and received a warning that **untracked files** were detected, don't worry! This is a safety and optimization behavior native to the system.
 
-## 🔍 O que significa "Não Monitorado"?
+## 🔍 What does "Untracked" mean?
 
-Quando você cria um arquivo novo no seu projeto, o Git não o rastreia automaticamente. Ele fica no estado *Untracked*. O comando que o GitPR usa para ler o seu código (`git diff HEAD`) analisa apenas os arquivos que o Git já conhece ou que foram preparados para commit (*Staged*).
+When you create a new file in your project, Git does not automatically track it. It remains in the *Untracked* state. The command GitPR uses to read your code (`git diff HEAD`) analyzes only files that Git already knows about or that have been prepared for commit (*Staged*).
 
-## 🛡️ Por que o GitPR não lê esses arquivos automaticamente?
+## 🛡️ Why doesn't GitPR read these files automatically?
 
-Nós desenhamos o GitPR com três pilares em mente:
-1. **Segurança (Prevenção de Vazamentos):** Imagine que você crie um arquivo `.env.local` com senhas do banco de dados de produção e esqueça de colocá-lo no `.gitignore`. Se o GitPR lesse tudo automaticamente, ele enviaria suas senhas para a API da IA.
-2. **Economia de Tokens (Dinheiro):** Alguns frameworks geram pastas gigantes de cache ou arquivos compilados. Enviar lixo para a IA consumiria seus tokens atoa e deixaria a resposta extremamente lenta.
-3. **Padrão Git:** O GitPR respeita o ciclo de vida oficial do Git. A IA só analisa o que você, como desenvolvedor, decide que tem valor.
+We designed GitPR with three pillars in mind:
+1. **Security (Leak Prevention):** Imagine you create a `.env.local` file with production database passwords and forget to add it to `.gitignore`. If GitPR read everything automatically, it would send your passwords to the AI API.
+2. **Token Economy (Cost):** Some frameworks generate giant cache folders or compiled files. Sending garbage to the AI would consume your tokens unnecessarily and make the response extremely slow.
+3. **Git Standard:** GitPR respects the official Git lifecycle. The AI only analyzes what you, as a developer, decide has value.
 
-## ✅ Como resolver?
+## ✅ How to fix it?
 
-A solução é muito simples. Você só precisa dizer ao Git quais arquivos novos fazem parte do seu próximo commit usando o comando `add`:
+The solution is very simple. You just need to tell Git which new files are part of your next commit using the `add` command:
 
 ```bash
-# Para adicionar um arquivo específico:
-git add src/meu_novo_arquivo.py
+# To add a specific file:
+git add src/my_new_file.py
 
-# OU para adicionar todos os arquivos novos de uma vez:
+# OR to add all new files at once:
 git add .
 
 ```
 
-Após rodar o `git add`, basta rodar o comando do **GitPR** novamente. A IA agora enxergará as suas novidades e gerará a análise perfeitamente! 🚀
-
-
+After running `git add`, simply run the **GitPR** command again. The AI will now see your new additions and generate the analysis perfectly! 🚀

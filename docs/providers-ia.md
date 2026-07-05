@@ -1,80 +1,80 @@
-# Documentação Técnica: Provedores de IA (--provider)
+# Technical Documentation: AI Providers (--provider)
 
-O GitPR é **agnóstico de IA** e suporta atualmente dois provedores: **Google Gemini** e **DeepSeek**. Pode alternar entre eles dinamicamente via linha de comando ou configuração persistente.
+GitPR is **AI-agnostic** and currently supports two providers: **Google Gemini** and **DeepSeek**. You can switch between them dynamically via command line or persistent configuration.
 
 ---
 
-## 1. Seleção via Linha de Comando
+## 1. Command Line Selection
 
 ```bash
-gitpr -p gemini         # Força Google Gemini nesta execução
-gitpr -p deepseek       # Força DeepSeek nesta execução
-gitpr -c -p gemini      # Commit message com Gemini
-gitpr -r -p deepseek    # Code review com DeepSeek
+gitpr -p gemini         # Force Google Gemini for this execution
+gitpr -p deepseek       # Force DeepSeek for this execution
+gitpr -c -p gemini      # Commit message with Gemini
+gitpr -r -p deepseek    # Code review with DeepSeek
 ```
 
-A flag `--provider` (`-p`) sobrescreve temporariamente o provider padrão configurado.
+The `--provider` (`-p`) flag temporarily overrides the configured default provider.
 
 ---
 
-## 2. Configuração Persistente
+## 2. Persistent Configuration
 
-Defina o provider padrão no ficheiro `~/.gitpr/.env`:
+Set the default provider in the `~/.gitpr/.env` file:
 
 ```ini
 DEFAULT_AI_PROVIDER=gemini
-# ou
+# or
 DEFAULT_AI_PROVIDER=deepseek
 ```
 
 ---
 
-## 3. Modelos Disponíveis
+## 3. Available Models
 
 ### 3.1 Google Gemini
 
-| Modelo | Uso | Variável de Ambiente |
+| Model | Usage | Environment Variable |
 | --- | --- | --- |
-| `gemini-2.5-flash` | Primário (avançado) — PRs, reviews, issues | `GEMINI_API_MODEL` |
-| `gemini-2.5-flash-lite` | Secundário (simples) — classificação no blame | `SECONDARY_GEMINI_API_MODEL` |
+| `gemini-2.5-flash` | Primary (advanced) — PRs, reviews, issues | `GEMINI_API_MODEL` |
+| `gemini-2.5-flash-lite` | Secondary (simple) — blame classification | `SECONDARY_GEMINI_API_MODEL` |
 
 ### 3.2 DeepSeek
 
-| Modelo | Uso | Variável de Ambiente |
+| Model | Usage | Environment Variable |
 | --- | --- | --- |
-| `deepseek-chat` | Primário e Secundário | `DEEPSEEK_API_MODEL` / `SECONDARY_DEEPSEEK_API_MODEL` |
+| `deepseek-chat` | Primary and Secondary | `DEEPSEEK_API_MODEL` / `SECONDARY_DEEPSEEK_API_MODEL` |
 
 ---
 
-## 4. Configuração de Chaves de API
+## 4. API Key Configuration
 
-As chaves são armazenadas de forma **criptografada** (Fernet) no ficheiro `~/.gitpr/.env`:
+Keys are stored in **encrypted** form (Fernet) in the `~/.gitpr/.env` file:
 
 ```ini
-GEMINI_API_KEY_ENCRYPTED=<hash_criptografado>
-DEEPSEEK_API_KEY_ENCRYPTED=<hash_criptografado>
+GEMINI_API_KEY_ENCRYPTED=<encrypted_hash>
+DEEPSEEK_API_KEY_ENCRYPTED=<encrypted_hash>
 ```
 
-A chave mestra de desencriptação é gerada automaticamente em `~/.gitpr/secret.key`.
+The master decryption key is automatically generated at `~/.gitpr/secret.key`.
 
 ---
 
-## 5. Fallback Automático
+## 5. Automatic Fallback
 
-Se o provider configurado falhar (erro de rede, quota excedida, etc.), o GitPR tenta automaticamente o **outro provider** disponível. Este comportamento garante que o fluxo de trabalho não seja interrompido por indisponibilidade temporária de um serviço.
+If the configured provider fails (network error, quota exceeded, etc.), GitPR automatically tries the **other available provider**. This behavior ensures that the workflow is not interrupted by temporary service unavailability.
 
 ---
 
-## 6. Parâmetros de Geração
+## 6. Generation Parameters
 
-Ambos os provedores são configurados para output determinístico:
+Both providers are configured for deterministic output:
 
-| Parâmetro | Valor |
+| Parameter | Value |
 | --- | --- |
-| **Temperatura** | 0.0 |
+| **Temperature** | 0.0 |
 | **Top P** | 0.1 |
-| **Formato de saída** | JSON estruturado |
-| **Retry** | 3 tentativas, intervalo de 2s |
-| **Cache** | MD5 (respostas idênticas não consomem quota) |
+| **Output format** | Structured JSON |
+| **Retry** | 3 attempts, 2s interval |
+| **Cache** | MD5 (identical responses do not consume quota) |
 
-> **Nota:** Consulte também a [documentação principal (README.md)](../README.md) para instruções de configuração inicial das chaves de API.
+> **Note:** See also the [main documentation (README.md)](../README.md) for initial API key setup instructions.

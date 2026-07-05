@@ -21,3 +21,11 @@ Aglomerado
 Sofisticando
 Populando
 Sincronizando
+Reticulação
+Percolação
+Determinação
+Vibração
+Vagabundagem
+Ruminação
+Decifração
+Ação

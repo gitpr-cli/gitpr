@@ -6,9 +6,10 @@ from src.ai_providers import call_ai_model
 from src.cache import get_cached_response, save_cached_response
 from src.config import get_api_key, get_api_model, get_ai_provider
 from src.ai_providers import call_ai_model
+from src.i18n import __
 
 def get_github_repo_info():
-    """Extrai o formato owner/repo do comando git remote -v."""
+    """Extracts the owner/repo format from git remote -v."""
     try:
         result = subprocess.run(
             ["git", "remote", "-v"],
@@ -16,8 +17,8 @@ def get_github_repo_info():
             text=True,
             check=True
         )
-        
-        # Busca padrões como git@github.com:owner/repo.git ou https://github.com/owner/repo.git
+
+        # Search for patterns like git@github.com:owner/repo.git or https://github.com/owner/repo.git
         match = re.search(r'github\.com[:/](.+?)/(.+?)(\.git)?\s+\(push\)', result.stdout)
         
         if match:
@@ -30,58 +31,58 @@ def get_github_repo_info():
         return None
 
 def generate_issue_content(context_text, context_type="diff"):
-    """Envia o contexto (diff, blame ou history) para a IA e retorna um dicionário da issue."""
+    """Sends the context (diff, blame, or history) to the AI and returns an issue dictionary."""
     if not context_text or not str(context_text).strip():
         return None
 
     provider = get_ai_provider()
     api_key = get_api_key(provider)
-    
+
     if not api_key:
-        click.secho("❌ Erro: Chave de API não encontrada.", fg="red")
+        click.secho(__("❌ Error: API Key not found."), fg="red")
         return None
 
-    # Utilizamos o modelo avançado para garantir a qualidade da estrutura da Issue
+    # Use the advanced model to ensure Issue structure quality
     api_model = get_api_model(provider, task_complexity="advanced")
 
     skill_path = os.path.join(os.getcwd(), ".gitpr.issue.md")
     sys_inst = ""
-    
+
     if os.path.exists(skill_path):
         with open(skill_path, "r", encoding="utf-8") as f:
             sys_inst = f.read()
     else:
-        sys_inst = "Você é um Arquiteto de Software. Siga o formato O Que / Por Que / Onde / Como para documentar a Issue."
+        sys_inst = __("You are a Software Architect. Follow the What / Why / Where / How format to document the Issue.")
 
-    # Cérebro Adaptativo (Prompt Dinâmico)
+    # Adaptive Brain (Dynamic Prompt)
     if context_type == "blame":
-        target_action = "documentar a evolução arquitetural, refatorações e a dívida técnica desta regra de negócio baseando-se no histórico de commits."
-        data_label = "LINHA DO TEMPO DA REGRA (DO MAIS ANTIGO PARA O MAIS NOVO):"
+        target_action = __("document the architectural evolution, refactoring, and technical debt of this business rule based on the commit history.")
+        data_label = __("RULE TIMELINE (FROM OLDEST TO NEWEST):")
     elif context_type == "history":
-        target_action = "documentar o Épico/Release detalhando todas as funcionalidades implementadas baseando-se no histórico integral da branch."
-        data_label = "HISTÓRICO CONSOLIDADO DA BRANCH (COMMITS + PRS ANTIGOS):"
+        target_action = __("document the Epic/Release detailing all implemented features based on the full branch history.")
+        data_label = __("CONSOLIDATED BRANCH HISTORY (COMMITS + OLD PRS):")
     else:
-        target_action = "documentar a seguinte alteração de código recém introduzida."
-        data_label = "DIFF PARA ANÁLISE:"
+        target_action = __("document the following recently introduced code change.")
+        data_label = __("DIFF FOR ANALYSIS:")
 
     prompt = (
-        f"Gere o objeto JSON solicitado seguindo as instruções de sistema para {target_action}\n\n"
+        __("Generate the requested JSON object following the system instructions to {target_action}\n\n", target_action=target_action) +
         f"{data_label}\n{context_text}"
     )
     
-    # Tenta recuperar do Cache
+    # Try to retrieve from Cache
     cached_data = get_cached_response("issue", prompt)
     if cached_data:
-        click.secho("⚡ Resposta da Issue recuperada do cache local.", fg="green", dim=True)
+        click.secho(__("⚡ Issue response retrieved from local cache."), fg="green", dim=True)
         return cached_data
 
-    click.secho(f"🤖 Estruturando a Issue usando {provider.capitalize()} ({api_model})...", fg="cyan", dim=True)
-    
+    click.secho(__("🤖 Structuring Issue using {provider} ({api_model})...", provider=provider.capitalize(), api_model=api_model), fg="cyan", dim=True)
+
     result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst)
-    
+
     if result_json and "titulo" in result_json and "corpo" in result_json:
-        # Salva no Cache 
+        # Save to Cache
         save_cached_response("issue", "issue", prompt, result_json)
         return result_json
         
-    return {"titulo": "Erro ao gerar título", "corpo": "Não foi possível gerar o corpo da issue pela IA."}
+    return {"titulo": __("Error generating title"), "corpo": __("Could not generate issue body by AI.")}

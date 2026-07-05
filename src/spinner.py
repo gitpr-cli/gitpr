@@ -1,7 +1,7 @@
 """
-Spinner animado com caracteres braille e palavras de pensamento.
-Efeito visual: caracter braille girando (magenta) + palavra sendo "descoberta"
-letra a letra com cores aleatorias.
+Animated spinner with braille characters and thinking words.
+Visual effect: rotating braille character (magenta) + word being "discovered"
+letter by letter with random colors.
 """
 import os
 import sys
@@ -12,6 +12,7 @@ import threading
 import urllib.request
 from pathlib import Path
 from dotenv import load_dotenv, set_key
+from src.i18n import __
 
 # ANSI color codes
 MAGENTA = '\033[35m'
@@ -42,58 +43,58 @@ THINKING_WORDS_URL = (
 
 # Fallback interno caso o download falhe
 _FALLBACK_WORDS = [
-    "Fabuloso", "Pensando", "Analisando", "Raciocinando",
-    "Elaborando", "Processando", "Decifrando", "Calculando",
-    "Refletindo", "Maquinando",
+    __("Fabulous"), __("Thinking"), __("Analyzing"), __("Reasoning"),
+    __("Elaborating"), __("Processing"), __("Deciphering"), 
+    __("Calculating"),__("Reflecting"), __("Computing"),    
 ]
 
 def _load_thinking_words():
-    """Carrega a lista de palavras do .env ou faz download do template remoto."""
+    """Loads the word list from .env or downloads from the remote template."""
     env_file = str(Path.home() / ".gitpr" / ".env")
 
-    # Garante que o .env foi carregado
+    # Ensure .env has been loaded
     load_dotenv(env_file)
 
     raw = os.getenv("SPINNER_THINKING_WORDS", "").strip()
 
     if raw:
-        # .env ja tem palavras: suporta separador | ou ,
+        # .env already has words: supports | or , separator
         sep = "|" if "|" in raw else ","
         return [w.strip() for w in raw.split(sep) if w.strip()]
 
-    # .env nao tem palavras: baixa do GitHub
+    # .env has no words: download from GitHub
     try:
         with urllib.request.urlopen(THINKING_WORDS_URL, timeout=10) as resp:
             content = resp.read().decode("utf-8")
 
-        # Parse: suporta palavras separadas por virgula OU uma por linha
+        # Parse: supports comma-separated OR one-per-line words
         words = []
         for line in content.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            # Cada linha pode ter varias palavras separadas por virgula
+            # Each line can have multiple words separated by commas
             for word in line.split(","):
                 word = word.strip()
                 if word:
                     words.append(word)
 
         if words:
-            # Salva no .env como pipe-separated
+            # Save to .env as pipe-separated
             set_key(env_file, "SPINNER_THINKING_WORDS", "|".join(words))
             return words
     except Exception:
         pass
 
-    # Fallback: usa lista interna
+    # Fallback: use internal list
     return list(_FALLBACK_WORDS)
 
 
-# Palavras que representam "pensamento" da IA (carregadas do .env ou template remoto)
+# Words representing AI "thinking" (loaded from .env or remote template)
 THINKING_WORDS = _load_thinking_words()
 
 class Spinner:
-    """Spinner animado que roda em background enquanto a IA processa."""
+    """Animated spinner that runs in the background while the AI processes."""
 
     def __init__(self, quiet=False):
         self._thread = None
@@ -101,35 +102,35 @@ class Spinner:
         self._quiet = quiet
 
     def _spin(self):
-        """Loop principal da animacao, executado em thread separada."""
+        """Main animation loop, runs in a separate thread."""
         braille_idx = 0
         word_idx = random.randrange(len(THINKING_WORDS))
         word = THINKING_WORDS[word_idx]
         word_color = random.choice(WORD_COLORS)
-        discovered = ""          # Letras ja "descobertas" da palavra
+        discovered = ""          # Letters already "discovered" of the word
         dots_cycle = 0           # 0 = ".", 1 = "..", 2 = "..."
-        char_step = 0            # Contador de frames para revelar letras
-        chars_per_letter = 4     # Frames com caracteres aleatorios antes de revelar uma letra
+        char_step = 0            # Frame counter for revealing letters
+        chars_per_letter = 4     # Frames with random chars before revealing a letter
 
         while self._running:
             braille_char = BRAILLE_FRAMES[braille_idx]
             braille_idx = (braille_idx + 1) % len(BRAILLE_FRAMES)
 
-            # Animacao da palavra sendo "descoberta"
+            # Word "discovery" animation
             if len(discovered) < len(word):
                 char_step += 1
                 if char_step >= chars_per_letter:
-                    # Revela mais uma letra da palavra
+                    # Reveal one more letter of the word
                     discovered = word[:len(discovered) + 1]
                     char_step = 0
                 else:
-                    # Mostra um caractere aleatorio no lugar da proxima letra
+                    # Show a random character in place of the next letter
                     fake_char = random.choice(string.ascii_uppercase + "0123456789!@#$")
                     discovered = word[:len(discovered)] + fake_char
 
                 display_word = discovered
             else:
-                # Palavra completa: ciclo dos pontinhos
+                # Complete word: dot cycle
                 dots_cycle = (dots_cycle + 1) % 12
                 if dots_cycle < 4:
                     dots = "."
@@ -140,7 +141,7 @@ class Spinner:
 
                 display_word = word + dots
 
-                # Troca de palavra e cor apos alguns ciclos de pontinhos
+                # Change word and color after a few dot cycles
                 if dots_cycle == 0 and braille_idx == 0:
                     word_idx = (word_idx + 1) % len(THINKING_WORDS)
                     word = THINKING_WORDS[word_idx]
@@ -148,9 +149,9 @@ class Spinner:
                     discovered = ""
                     char_step = 0
 
-            # Monta e exibe a linha: braille magenta + palavra colorida
+            # Build and display the line: magenta braille + colored word
             line = f"\r  {MAGENTA}{braille_char}{RESET} {word_color}{display_word}{RESET}"
-            # Limpa o resto da linha com espacos
+            # Pad the rest of the line with spaces
             line = line.ljust(70 + len(MAGENTA) + len(RESET) * 2 + len(word_color))
 
             if not self._quiet:
@@ -160,7 +161,7 @@ class Spinner:
             time.sleep(0.08)  # ~12 fps, suave
 
     def start(self):
-        """Inicia a animacao em background."""
+        """Starts the animation in the background."""
         if self._quiet:
             return
         self._running = True
@@ -168,7 +169,7 @@ class Spinner:
         self._thread.start()
 
     def stop(self):
-        """Para a animacao e limpa a linha."""
+        """Stops the animation and clears the line."""
         self._running = False
         if self._thread:
             self._thread.join(timeout=0.5)

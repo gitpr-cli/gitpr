@@ -4,11 +4,12 @@ import click
 from google import genai
 from openai import OpenAI
 from src.spinner import Spinner
+from src.i18n import __
 
 def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quiet=False):
     """
-    Motor unificado para chamadas de IA.
-    Suporta 'gemini' e 'deepseek'.
+    Unified engine for AI calls.
+    Supports 'gemini' and 'deepseek'.
     """
     max_retries = 3
     retry_delay = 2
@@ -34,10 +35,10 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
                     result_text = response.text
 
                 elif provider == "deepseek":
-                    # O DeepSeek e 100% compativel com a biblioteca da OpenAI
+                    # DeepSeek is 100% compatible with the OpenAI library
                     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
                     response = client.chat.completions.create(
-                        model=api_model, # Ex: "deepseek-chat"
+                        model=api_model,  # e.g.: "deepseek-chat"
                         messages=[
                             {"role": "system", "content": system_instruction},
                             {"role": "user", "content": prompt}
@@ -49,13 +50,13 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
 
                 else:
                     spinner.stop()
-                    click.secho(f"❌ Provedor de IA desconhecido: {provider}", fg="red")
+                    click.secho(__("❌ Unknown AI provider: {provider}", provider=provider), fg="red")
                     return None
 
-                # Tenta converter a resposta de texto para um dicionario JSON do Python
+                # Try to convert the text response into a Python JSON dictionary
                 result_json = json.loads(result_text)
 
-                # 🛡️ ESCUDO: Se a IA retornar uma lista [ { ... } ] por engano
+                # 🛡️ SHIELD: If the AI returns a list [ { ... } ] by mistake
                 if isinstance(result_json, list):
                     result_json = result_json[0] if result_json else {}
 
@@ -65,13 +66,13 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
             except Exception as e:
                 if attempt < max_retries:
                     spinner.stop()
-                    click.secho(f"\r⚠️ Instabilidade na API ({provider.capitalize()}). A tentar novamente ({attempt}/{max_retries})...", fg="yellow", dim=True)
+                    click.secho(__("\r⚠️ API instability ({provider}). Retrying ({attempt}/{max_retries})...", provider=provider.capitalize(), attempt=attempt, max_retries=max_retries), fg="yellow", dim=True)
                     time.sleep(retry_delay)
                     spinner = Spinner(quiet=quiet)
                     spinner.start()
                 else:
                     spinner.stop()
-                    click.secho(f"\r❌ Erro critico ao contactar a API do {provider.capitalize()} apos {max_retries} tentativas: {str(e)}", fg="red", bold=True)
+                    click.secho(__("\r❌ Critical error contacting {provider} API after {max_retries} attempts: {error}", provider=provider.capitalize(), max_retries=max_retries, error=str(e)), fg="red", bold=True)
                     return None
     finally:
         spinner.stop()

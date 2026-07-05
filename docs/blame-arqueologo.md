@@ -1,63 +1,63 @@
-# Documentação Técnica: Arqueólogo de Código com Git Blame (--blame)
+# Technical Documentation: Code Archaeologist with Git Blame (--blame)
 
-O **Arqueólogo de Código** do GitPR usa `git blame` combinado com inteligência artificial para rastrear a origem e evolução de regras de negócio no seu código. Ele classifica cada commit como **ORIGEM** (criação da regra) ou **REFATORACAO** (alteração posterior) e gera uma linha do tempo detalhada.
+GitPR's **Code Archaeologist** uses `git blame` combined with artificial intelligence to trace the origin and evolution of business rules in your code. It classifies each commit as **ORIGIN** (rule creation) or **REFACTORING** (later modification) and generates a detailed timeline.
 
 ---
 
-## 1. Sintaxe e Formatos
+## 1. Syntax and Formats
 
-### 1.1 Modo Direto (linhas específicas)
+### 1.1 Direct Mode (specific lines)
 
 ```bash
-gitpr -b src/core.py:140-195    # Range de linhas
-gitpr -b src/main.py:42          # Linha única
+gitpr -b src/core.py:140-195    # Line range
+gitpr -b src/main.py:42          # Single line
 ```
 
-### 1.2 Modo Interativo
+### 1.2 Interactive Mode
 
 ```bash
-gitpr -b src/core.py             # O GitPR perguntará quais linhas
+gitpr -b src/core.py             # GitPR will ask which lines
 ```
 
-O terminal exibirá:
+The terminal will display:
 ```
-📂 Arquivo selecionado: src/core.py
-Quais linhas você deseja investigar? (Ex: 10-20 ou apenas 45)
+📂 Selected file: src/core.py
+Which lines do you want to investigate? (E.g.: 10-20 or just 45)
 ```
 
 ---
 
-## 2. Como Funciona
+## 2. How It Works
 
-1. **`git blame`** captura o autor, data e hash de cada linha no range especificado
-2. A IA **classifica** cada commit como `ORIGEM` (criou a regra de negócio) ou `REFATORACAO` (alterou código existente)
-3. O motor rastreia até **4 níveis de commits pai** para entender a evolução completa
-4. O resultado é exibido no terminal (colorido) e salvo como relatório Markdown
+1. **`git blame`** captures the author, date, and hash of each line in the specified range
+2. AI **classifies** each commit as `ORIGIN` (created the business rule) or `REFACTORING` (modified existing code)
+3. The engine traces up to **4 levels of parent commits** to understand the complete evolution
+4. The result is displayed in the terminal (color-coded) and saved as a Markdown report
 
-### Output no Terminal
+### Terminal Output
 
-- 🟢 **Verde** = Commit de ORIGEM
-- 🟡 **Amarelo** = Commit de REFATORACAO
+- 🟢 **Green** = ORIGIN commit
+- 🟡 **Yellow** = REFACTORING commit
 
 ---
 
-## 3. Integração com Issues
+## 3. Integration with Issues
 
-O Arqueólogo pode alimentar a geração de **Issues de Dívida Técnica**:
+The Archaeologist can feed the generation of **Technical Debt Issues**:
 
 ```bash
 gitpr -is -b src/legacy/parser.py:200-350
 ```
 
-Neste modo, a IA gera uma issue explicando **como o bloco evoluiu** e **por que precisa ser refatorado**, usando a cronologia do blame como contexto.
+In this mode, the AI generates an issue explaining **how the block evolved** and **why it needs to be refactored**, using the blame chronology as context.
 
 ---
 
-## 4. Seleção de Provedor de IA
+## 4. AI Provider Selection
 
 ```bash
-gitpr -b arquivo.py:10-50 -p gemini
-gitpr -b arquivo.py:10-50 -p deepseek
+gitpr -b file.py:10-50 -p gemini
+gitpr -b file.py:10-50 -p deepseek
 ```
 
-> **Nota:** O Arqueólogo usa o modelo **secundário** (mais barato) para classificação de commits e o modelo **primário** (avançado) para o sumário executivo final, otimizando o consumo de cotas.
+> **Note:** The Archaeologist uses the **secondary** model (cheaper) for commit classification and the **primary** model (advanced) for the final executive summary, optimizing quota consumption.

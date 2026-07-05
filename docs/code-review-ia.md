@@ -1,105 +1,105 @@
-# Documentação Técnica: Code Review com IA (--review / --fullreview / --input)
+# Technical Documentation: AI Code Review (--review / --fullreview / --input)
 
-O GitPR CLI oferece três modos de code review usando inteligência artificial, cada um adequado a um momento diferente do ciclo de desenvolvimento. Todos os modos integram-se automaticamente com o **Linter Estático** (`.gitpr.linter.yml`), que adiciona alertas de regex ao topo do relatório.
+GitPR CLI offers three code review modes using artificial intelligence, each suited to a different moment in the development cycle. All modes automatically integrate with the **Static Linter** (`.gitpr.linter.yml`), which adds regex alerts to the top of the report.
 
 ---
 
-## 1. Modos de Review
+## 1. Review Modes
 
-### 1.1 Review Local — `gitpr -r` (ou `--review`)
+### 1.1 Local Review — `gitpr -r` (or `--review`)
 
-Analisa apenas as alterações **não commitadas** no working tree (`git diff HEAD`).
+Analyzes only **uncommitted** changes in the working tree (`git diff HEAD`).
 
 ```bash
 gitpr -r
 ```
 
-| Característica | Descrição |
+| Characteristic | Description |
 | --- | --- |
-| **Fonte de dados** | `git diff HEAD` (alterações locais) |
-| **Quando usar** | Antes de commitar, para validar a qualidade do código |
+| **Data source** | `git diff HEAD` (local changes) |
+| **When to use** | Before committing, to validate code quality |
 | **Output** | `{branch}_{datetime}_PR_REVIEW.txt` |
-| **Ideal para** | Revisão rápida, validação pré-commit |
+| **Ideal for** | Quick review, pre-commit validation |
 
-### 1.2 Full Review — `gitpr -f` (ou `--fullreview`)
+### 1.2 Full Review — `gitpr -f` (or `--fullreview`)
 
-Compara **todas** as alterações da branch atual contra a branch principal remota (`origin/main`).
+Compares **all** changes in the current branch against the remote main branch (`origin/main`).
 
 ```bash
 gitpr -f
 ```
 
-| Característica | Descrição |
+| Characteristic | Description |
 | --- | --- |
-| **Fonte de dados** | Diff completo contra `origin/main` (faz `git fetch` antes) |
-| **Quando usar** | Antes de abrir um Pull Request |
+| **Data source** | Full diff against `origin/main` (runs `git fetch` first) |
+| **When to use** | Before opening a Pull Request |
 | **Output** | `{branch}_{datetime}_PR_FULLREVIEW.txt` |
-| **Ideal para** | Revisão profunda de toda a feature branch |
+| **Ideal for** | Deep review of the entire feature branch |
 
-### 1.3 Auditoria de Arquivo — `gitpr -r -i <arquivo>` (ou `--review --input`)
+### 1.3 File Audit — `gitpr -r -i <file>` (or `--review --input`)
 
-Analisa um **arquivo inteiro**, ignorando o git diff. Útil para código legado ou refatorações.
+Analyzes an **entire file**, ignoring the git diff. Useful for legacy code or refactoring.
 
 ```bash
 gitpr -r -i src/legacy/parser.py
 gitpr -f -i src/core.py
 ```
 
-| Característica | Descrição |
+| Characteristic | Description |
 | --- | --- |
-| **Fonte de dados** | Conteúdo integral do arquivo no disco |
-| **Quando usar** | Refatoração de código legado, auditoria de arquivos críticos |
+| **Data source** | Full file content on disk |
+| **When to use** | Legacy code refactoring, critical file auditing |
 | **Output** | `{branch}_{datetime}_FILE_REVIEW.txt` |
-| **Requer** | `--review` (`-r`) ou `--fullreview` (`-f`) |
+| **Requires** | `--review` (`-r`) or `--fullreview` (`-f`) |
 
 ---
 
-## 2. Integração com o Linter Estático
+## 2. Static Linter Integration
 
-Em todos os modos de review, o **Linter Estático** é executado automaticamente. Se houver violações das regras definidas no `.gitpr.linter.yml`, os alertas aparecem no topo do relatório, antes da análise da IA:
+In all review modes, the **Static Linter** runs automatically. If there are violations of the rules defined in `.gitpr.linter.yml`, the alerts appear at the top of the report, before the AI analysis:
 
 ```
-## 🚨 Alertas de Análise Estática Local (Regras YAML)
-- 🚨 Uso de console.log detectado em app.js (Linha 42)
-- ⚠️ Uso de localhost detectado em config.php (Linha 15)
+## 🚨 Local Static Analysis Alerts (YAML Rules)
+- 🚨 console.log usage detected in app.js (Line 42)
+- ⚠️ localhost usage detected in config.php (Line 15)
 
 ---
 
-## 🤖 Code Review da IA
+## 🤖 AI Code Review
 ...
 ```
 
 ---
 
-## 3. Customização via Skills
+## 3. Customization via Skills
 
-O comportamento da IA durante o review pode ser customizado através dos arquivos de template:
+The AI behavior during review can be customized through template files:
 
-| Arquivo | Modo | Função |
+| File | Mode | Function |
 | --- | --- | --- |
-| `.gitpr.review.md` | `--review` / `--fullreview` | Define o foco da análise (ex: SOLID, Clean Code, segurança) |
-| `.gitpr.filereview.md` | `--input` (+ review) | Define regras de coesão e acoplamento para arquivo completo |
+| `.gitpr.review.md` | `--review` / `--fullreview` | Defines the analysis focus (e.g.: SOLID, Clean Code, security) |
+| `.gitpr.filereview.md` | `--input` (+ review) | Defines cohesion and coupling rules for full file auditing |
 
-Baixe os templates com `gitpr -s` e edite conforme as regras de negócio da sua equipa.
+Download the templates with `gitpr -s` and edit them according to your team's business rules.
 
 ---
 
-## 4. Seleção de Provedor de IA
+## 4. AI Provider Selection
 
 ```bash
-gitpr -r -p deepseek        # Review local com DeepSeek
-gitpr -f -p gemini          # Full review com Gemini
-gitpr -r -i arquivo.py -p deepseek  # Auditoria com DeepSeek
+gitpr -r -p deepseek        # Local review with DeepSeek
+gitpr -f -p gemini          # Full review with Gemini
+gitpr -r -i file.py -p deepseek  # Audit with DeepSeek
 ```
 
 ---
 
-## 5. Variáveis de Ambiente
+## 5. Environment Variables
 
-| Variável | Modo | Valor padrão |
+| Variable | Mode | Default value |
 | --- | --- | --- |
 | `OUTPUT_FILE_NAME_REVIEW` | `-r` | `{branch}_{datetime}_PR_REVIEW.txt` |
 | `OUTPUT_FILE_NAME_FULLREVIEW` | `-f` | `{branch}_{datetime}_PR_FULLREVIEW.txt` |
 | `OUTPUT_FILE_NAME_FILEREVIEW` | `-i` | `{branch}_{datetime}_FILE_REVIEW.txt` |
 
-> **Nota:** Consulte também a [documentação do Linter](linter-regras-customizadas.md) para criar regras de validação estática.
+> **Note:** See also the [Linter documentation](linter-regras-customizadas.md) for creating static validation rules.

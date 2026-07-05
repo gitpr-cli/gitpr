@@ -6,21 +6,22 @@ import shutil
 import click
 from datetime import datetime
 
-# Versão atual do seu executável local (Atualize isso a cada novo build!)
-__version__ = "0.0.20"
+# Current version of your local executable (Update this on every new build!)
+__version__ = "0.0.21"  # GitPR current version
+__lang_version__ = "v0.0.1"  # Language dictionary version control
 GITHUB_API_URL = "https://api.github.com/repos/natanfiuza/gitpr/releases/latest"
 PYPI_API_URL = "https://pypi.org/pypi/gitpr-cli/json"
 
 def get_gitpr_dir():
-    """Retorna o diretório ~/.gitpr/"""
+    """Returns the ~/.gitpr/ directory path."""
     return os.path.join(os.path.expanduser("~"), ".gitpr")
 
 def get_update_cache_file():
-    """Retorna o caminho do arquivo de cache de atualizações."""
+    """Returns the path to the update cache file."""
     return os.path.join(get_gitpr_dir(), "update_cache.json")
 
 def parse_version(version_str):
-    """Converte 'v0.1.0' ou '0.1.0' em uma tupla (0, 1, 0) para matemática de versões."""
+    """Converts 'v0.1.0' or '0.1.0' into a tuple (0, 1, 0) for version math."""
     clean_version = version_str.lower().replace("v", "")
     try:
         return tuple(map(int, clean_version.split(".")))
@@ -28,11 +29,11 @@ def parse_version(version_str):
         return (0, 0, 0)
 
 def get_latest_remote_version(is_compiled):
-    """Busca a última versão na API correta (PyPI ou GitHub) com cache diário."""
+    """Fetches the latest version from the correct API (PyPI or GitHub) with daily cache."""
     cache_file = get_update_cache_file()
     today = datetime.now().strftime("%Y-%m-%d")
 
-    # 1. Tenta ler do cache para não atrasar o terminal do usuário
+    # Try to read from cache to avoid slowing down the user's terminal
     if os.path.exists(cache_file):
         try:
             with open(cache_file, "r") as f:
@@ -42,13 +43,13 @@ def get_latest_remote_version(is_compiled):
         except Exception:
             pass
 
-    # 2. Busca na Web se o cache expirou
+    # Fetch from Web if cache expired
     latest_version = ""
     download_url = ""
 
     try:
         if is_compiled:
-            # Busca no GitHub (Para executável)
+            # Fetch from GitHub (For standalone executable)
             req = urllib.request.Request(GITHUB_API_URL, headers={'User-Agent': 'GitPR-Updater'})
             with urllib.request.urlopen(req, timeout=3) as response:
                 data = json.loads(response.read().decode())
@@ -59,25 +60,25 @@ def get_latest_remote_version(is_compiled):
             if exe_asset:
                 download_url = exe_asset.get("browser_download_url")
         else:
-            # Busca no PyPI (Para instalação via PIP)
+            # Fetch from PyPI (For PIP installation)
             req = urllib.request.Request(PYPI_API_URL, headers={'User-Agent': 'GitPR-Updater'})
             with urllib.request.urlopen(req, timeout=3) as response:
                 data = json.loads(response.read().decode())
             latest_version = data.get("info", {}).get("version", "")
             
-        # 3. Salva no cache
+        # 3. Save to cache
         if latest_version:
             os.makedirs(get_gitpr_dir(), exist_ok=True)
             with open(cache_file, "w") as f:
                 json.dump({"date": today, "version": latest_version, "download_url": download_url}, f)
                 
     except Exception:
-        pass # Falha silenciosa em caso de falta de internet
+        pass  # Silent failure in case of no internet
         
     return latest_version, download_url
 
 def print_update_notice():
-    """Imprime o bloco de aviso estilo PIP no fim da execução."""
+    """Prints the PIP-style update notice block at the end of execution."""
     is_compiled = getattr(sys, 'frozen', False)
     latest_version, _ = get_latest_remote_version(is_compiled)
 
@@ -88,40 +89,43 @@ def print_update_notice():
     latest_v = parse_version(latest_version)
 
     if latest_v > current_v:
-        click.echo("")
-        click.secho(f"[notice] A new release of gitpr is available: {__version__} -> {latest_version}", fg="yellow", dim=True)
+        click.echo("")        
+        click.secho(__("[notice] A new release of gitpr is available: {current_version} -> {latest_version}", current_version=__version__, latest_version=latest_version), fg="yellow", dim=True)
         if is_compiled:
-            click.secho(f"[notice] To update, run: gitpr --update", fg="yellow", dim=True)
+            click.secho(__("[notice] To update, run: gitpr --update"), fg="yellow", dim=True)
         else:
-            click.secho(f"[notice] To update, run: pip install --upgrade gitpr-cli", fg="yellow", dim=True)
+            click.secho(__("[notice] To update, run: pip install --upgrade gitpr-cli"), fg="yellow", dim=True)
         click.echo("")
 
 def check_and_update():
-    """Função disparada apenas quando o usuário força a flag --update."""
+    """Function triggered only when the user forces the --update flag."""
     is_compiled = getattr(sys, 'frozen', False)
     
     if not is_compiled:
-        click.secho("💡 Como você instalou via PIP, atualize rodando: pip install --upgrade gitpr-cli", fg="cyan", bold=True)
+        
+        click.secho(__("💡 Since you installed via PIP, update by running: pip install --upgrade gitpr-cli"), fg="cyan", bold=True)
         return
 
     latest_version, download_url = get_latest_remote_version(is_compiled=True)
     
     if not latest_version or not download_url:
-        click.secho("❌ Não foi possível verificar atualizações no momento.", fg="red")
+        
+        click.secho(__("❌ Could not check for updates at this moment."), fg="red")
         return
 
     current_v = parse_version(__version__)
     latest_v = parse_version(latest_version)
 
     if latest_v > current_v:
-        click.secho(f"\n🚀 Nova versão do GitPR encontrada (v{latest_version})!", fg="green", bold=True)
-        click.secho("Baixando atualização em segundo plano...", fg="cyan")
+        
+        click.secho(__("\n🚀 New GitPR version found (v{latest_version})!", latest_version=latest_version), fg="green", bold=True)
+        click.secho(__("Downloading update in background..."), fg="cyan")
         _perform_hot_swap(download_url)
     else:
-        click.secho("✅ Você já está usando a versão mais recente do GitPR.", fg="green")
+        click.secho(__("✅ You are already using the latest version of GitPR."), fg="green")
 
 def _perform_hot_swap(download_url):
-    """Faz o download e substitui o executável atual."""
+    """Downloads and replaces the current executable (Hot-Swap)."""
     current_exe = sys.executable
     old_exe = current_exe + ".old"
     
@@ -130,38 +134,9 @@ def _perform_hot_swap(download_url):
             os.remove(old_exe)
         os.rename(current_exe, old_exe)
         urllib.request.urlretrieve(download_url, current_exe)
-        click.secho(f"✅ Atualização concluída com sucesso! Na próxima execução você já usará a nova versão.\n", fg="green", bold=True)
+        
+        click.secho(__("✅ Update successfully completed! You will use the new version on the next run.\n"), fg="green", bold=True)
     except Exception as e:
-        click.secho(f"❌ Falha ao aplicar atualização: {e}", fg="red")
-        if os.path.exists(old_exe) and not os.path.exists(current_exe):
-            os.rename(old_exe, current_exe)
-    """Faz o download e substitui o executável atual (Hot-Swap)."""
-    current_exe = sys.executable
-    
-    # Se não estiver rodando como executável compilado (PyInstaller), aborta o update
-    if not getattr(sys, 'frozen', False):
-        click.secho("⚠️ Aviso: Rodando via script Python. O Auto-Update funciona apenas no executável compilado.", fg="yellow")
-        return
-
-    old_exe = current_exe + ".old"
-    
-    try:
-        # 1. Renomeia o executável atual que está em uso
-        if os.path.exists(old_exe):
-            os.remove(old_exe) # Remove restos antigos se existirem
-        os.rename(current_exe, old_exe)
-        
-        # 2. Faz o download direto para o caminho original
-        urllib.request.urlretrieve(download_url, current_exe)
-        
-        # 3. Salva o novo hash
-        with open(sha_file, "w") as f:
-            f.write(new_digest)
-            
-        click.secho(f"✅ Atualização concluída com sucesso! Na próxima execução você já usará a nova versão.\n", fg="green", bold=True)
-        
-    except Exception as e:
-        # Se algo falhar na renomeação/download, tenta desfazer a bagunça
-        click.secho(f"❌ Falha ao aplicar atualização: {e}", fg="red")
+        click.secho(__("❌ Failed to apply update: {error}", error=str(e)), fg="red")
         if os.path.exists(old_exe) and not os.path.exists(current_exe):
             os.rename(old_exe, current_exe)

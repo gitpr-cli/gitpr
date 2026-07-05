@@ -6,11 +6,12 @@ import yaml
 from pathlib import Path
 from dotenv import load_dotenv, set_key
 from src.security import encrypt_data, decrypt_data, get_or_create_key
+from src.i18n import __
 
-# Caminho para o arquivo .env global na pasta do utilizador (ex: ~/.gitpr/.env)
+# Path to the global .env file in the user's home folder (e.g.: ~/.gitpr/.env)
 ENV_FILE = os.path.join(os.path.expanduser("~"), ".gitpr", ".env")
 
-# Dicionário de configurações padrão para garantir que o .env esteja sempre completo
+# Default configuration dictionary to ensure .env is always complete
 DEFAULT_CONFIG = {
     "DEFAULT_AI_PROVIDER": "gemini",
     "GEMINI_API_MODEL_PRIMARY": "gemini-pro-latest",
@@ -26,14 +27,14 @@ DEFAULT_CONFIG = {
 }
 
 def get_ai_provider():
-    """Retorna o provedor de IA padrão configurado, ou 'gemini' como fallback."""
+    """Returns the configured default AI provider, or 'gemini' as fallback."""
     load_dotenv(ENV_FILE)
     return os.getenv("DEFAULT_AI_PROVIDER", "gemini").lower()
 
 def get_api_key(provider):
-    """Lê e desencripta a chave de API correspondente ao provedor escolhido."""
+    """Reads and decrypts the API key corresponding to the chosen provider."""
     load_dotenv(ENV_FILE)
-    
+
     if provider == "gemini":
         encrypted_key = os.getenv("GEMINI_API_KEY_ENCRYPTED")
     elif provider == "deepseek":
@@ -47,93 +48,93 @@ def get_api_key(provider):
 
 def get_api_model(provider, task_complexity="advanced"):
     """
-    Retorna o modelo de IA baseado no provedor e na complexidade da tarefa.
-    'simple' usa modelos secundários (Flash/Lite) - mais barato.
-    'advanced' usa modelos primários (Pro) - mais robusto.
+    Returns the AI model based on the provider and task complexity.
+    'simple' uses secondary models (Flash/Lite) - cheaper.
+    'advanced' uses primary models (Pro) - more robust.
     """
     load_dotenv(ENV_FILE)
-    
+
     suffix = "PRIMARY" if task_complexity == "advanced" else "SECONDARY"
     env_var = f"{provider.upper()}_API_MODEL_{suffix}"
-    
-    # Busca do .env, caso contrário usa o valor padrão do dicionário
+
+    # Fetch from .env, otherwise use the default dictionary value
     return os.getenv(env_var, DEFAULT_CONFIG.get(env_var))
 
 def setup_environment():
-    """Garante que as chaves de encriptação, o provedor padrão e a chave da API estão configurados."""
-    # Garante que a pasta global existe
+    """Ensures that encryption keys, the default provider, and the API key are configured."""
+    # Ensure the global folder exists
     os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
-    
-    # Chama a função existente em security.py para garantir que a chave mestra existe
+
+    # Call the existing function in security.py to ensure the master key exists
     get_or_create_key()
 
     load_dotenv(ENV_FILE)
-    
-    # Auto-preenchimento de variáveis faltantes com valores padrão
+
+    # Auto-fill missing variables with default values
     changes_made = False
     for key, value in DEFAULT_CONFIG.items():
         if os.getenv(key) is None:
             set_key(ENV_FILE, key, value)
             changes_made = True
-            
+
     if changes_made:
-        load_dotenv(ENV_FILE) # Recarrega para garantir que os novos padrões estejam no ar
-    
-    # Pergunta o provedor padrão se não existir
+        load_dotenv(ENV_FILE)  # Reload to ensure the new defaults are live
+
+    # Ask for the default provider if none exists
     provider = os.getenv("DEFAULT_AI_PROVIDER")
     if not provider:
-        click.secho("🤖 Bem-vindo ao GitPR! Vamos configurar o seu motor de IA.", fg="cyan", bold=True)
+        click.secho(__("🤖 Welcome to GitPR! Let's configure your AI engine."), fg="cyan", bold=True)
         provider = click.prompt(
-            "Qual inteligência artificial deseja utilizar como padrão?", 
+            __("Which artificial intelligence do you want to use as default?"),
             type=click.Choice(['gemini', 'deepseek'], case_sensitive=False),
             default='gemini'
         ).lower()
         set_key(ENV_FILE, "DEFAULT_AI_PROVIDER", provider)
         click.echo("")
 
-    # Verifica se a chave do provedor escolhido existe
+    # Check if the chosen provider's key exists
     api_key = get_api_key(provider)
     if not api_key:
-        click.secho(f"🔑 Chave de API do {provider.capitalize()} não encontrada.", fg="yellow")
-        raw_key = click.prompt(f"Cole aqui a sua chave de API do {provider.capitalize()}", hide_input=True)
-        
-        # Encripta e guarda com o prefixo correto
+        click.secho(__("🔑 API Key for {provider} not found.", provider=provider.capitalize()), fg="yellow")
+        raw_key = click.prompt(__("Paste your {provider} API key here", provider=provider.capitalize()), hide_input=True)
+
+        # Encrypt and save with the correct prefix
         encrypted_key = encrypt_data(raw_key.strip())
         env_var_name = f"{provider.upper()}_API_KEY_ENCRYPTED"
-        
+
         set_key(ENV_FILE, env_var_name, encrypted_key)
-        click.secho("✅ Chave guardada com segurança em disco (Encriptada)!", fg="green")
+        click.secho(__("✅ Key safely stored on disk (Encrypted)!"), fg="green")
         click.echo("")
 
 def check_internet_connection(timeout=2):
-    """Verifica se há conexão com a internet tentando conectar a um DNS global."""
+    """Checks for internet connection by attempting to connect to a global DNS."""
     try:
-        # Salva o timeout padrão do sistema
+        # Save the system's default timeout
         original_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(timeout)
-        
-        # Conecta e fecha o socket automaticamente usando 'with'
+
+        # Connect and close the socket automatically using 'with'
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.connect(("8.8.8.8", 53))
-            
-        # CRÍTICO: Restaura o timeout para não quebrar a API do Gemini!
+
+        # CRITICAL: Restore the timeout to avoid breaking the Gemini API!
         socket.setdefaulttimeout(original_timeout)
         return True
     except socket.error:
-        click.secho("\n❌ Erro: Sem conexão com a internet.", fg="red", bold=True)
-        click.secho("O GitPR precisa de acesso à rede para consultar a IA e verificar atualizações.", fg="yellow")
-        click.secho("Verifique sua conexão e tente novamente.\n", fg="white")
+        click.secho(__("\n❌ Error: No internet connection."), fg="red", bold=True)
+        click.secho(__("GitPR needs network access to query the AI and check for updates."), fg="yellow")
+        click.secho(__("Check your connection and try again.\n"), fg="white")
         sys.exit(1)
         
 
 def load_linter_rules():
     """
-    Carrega as regras do linter estático a partir do arquivo .gitpr.linter.yml.
-    Retorna uma lista de regras ou uma lista vazia se o arquivo não existir.
+    Loads the static linter rules from the .gitpr.linter.yml file.
+    Returns a list of rules or an empty list if the file does not exist.
     """
     file_path = os.path.join(os.getcwd(), ".gitpr.linter.yml")
 
-    # Se o arquivo não existir no projeto, não é um erro. Apenas não há regras a aplicar.
+    # If the file does not exist in the project, it's not an error. There are simply no rules to apply.
     if not os.path.exists(file_path):
         return []
 
@@ -141,22 +142,22 @@ def load_linter_rules():
         with open(file_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
 
-        # Retorna a lista de regras ou vazio se o arquivo estiver em branco
+        # Return the list of rules or empty if the file is blank
         if not config or "rules" not in config:
             return []
 
         return config.get("rules", [])
 
     except yaml.YAMLError as e:
-        # Se o usuário errar a indentação ou aspas, avisamos sem estourar o terminal
-        click.secho(f"\n❌ Erro de sintaxe no arquivo .gitpr.linter.yml:\n{e}", fg="red")
+        # If the user makes an indentation or quote error, warn without crashing the terminal
+        click.secho(__("\n❌ Syntax error in .gitpr.linter.yml file:\n{error}", error=str(e)), fg="red")
         return []
     except Exception as e:
-        click.secho(f"\n❌ Erro inesperado ao ler as regras do linter: {e}", fg="red")
-        return []        
-    
+        click.secho(__("\n❌ Unexpected error reading linter rules: {error}", error=str(e)), fg="red")
+        return []
+
 def get_github_token():
-    """Lê e desencripta o token de acesso pessoal (PAT) do GitHub."""
+    """Reads and decrypts the GitHub Personal Access Token (PAT)."""
     load_dotenv(ENV_FILE)
     encrypted_token = os.getenv("GITHUB_TOKEN_ENCRYPTED")
     
