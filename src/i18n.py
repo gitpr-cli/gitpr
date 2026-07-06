@@ -13,19 +13,29 @@ env_path = Path.home() / ".gitpr" / ".env"
 load_dotenv(env_path)
 
 def get_system_language():
-    """Detects the system language or forces the language configured in .env"""
+    """Detects the system language or forces the language configured in .env.
+    On first run, saves the detected language to .env for persistence."""
     lang_env = os.getenv("GITPR_LANG")
     if lang_env:
         return lang_env.lower()
 
+    # No GITPR_LANG set yet — detect from OS and save to .env
     try:
         loc, _ = locale.getdefaultlocale()
         if loc:
-            return loc.lower()  # e.g.: pt_br, es_es, en_us
+            lang = loc.lower()  # e.g.: pt_br, es_es, en_us
+        else:
+            lang = "en_us"
     except Exception:
-        pass
+        lang = "en_us"
 
-    return "en_us"  # Global fallback
+    # Persist the detected language so it survives restarts
+    set_key(env_path, "GITPR_LANG", lang)
+
+    # Reload .env so the new variable is available immediately
+    load_dotenv(env_path, override=True)
+
+    return lang
 
 def get_translations(lang_code):
     """Loads the translation JSON. If outdated or missing, downloads remotely (OTA)."""

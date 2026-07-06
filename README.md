@@ -161,6 +161,20 @@ Instead of hiding AI instructions in the source code, GitPR uses local Markdown 
 * `.gitpr.issue.md`: Defines the structure and level of detail required for generating standardized Issues (used with `--issue`).
 * `.gitpr.blame.md`: Defines the focus of archaeological analysis for legacy code tracing (used with `--blame`).
 
+## 🌐 Internationalization (i18n)
+
+GitPR automatically detects your system language and displays messages in your native language. The i18n system is inspired by **Laravel's `__()` helper**:
+
+* **Auto-detection:** On first run, GitPR detects your OS language and saves it to `~/.gitpr/.env` (`GITPR_LANG`).
+* **Translation files:** Language packs are downloaded automatically from the official repository to `~/.gitpr/langs/`.
+* **English fallback:** If a translation is missing, the English text is displayed directly.
+* **Developer API:** Use `from src.i18n import __` and wrap all user-facing strings with `__("Your text here")`.
+* **Placeholders:** Supports named parameters — `__("Downloading {file}...", file="template.md")`.
+
+To force a specific language, set `GITPR_LANG=pt_br` or `GITPR_LANG=en` in `~/.gitpr/.env`.
+
+> 📖 **Full developer guide:** [docs/i18n_explanation.md](docs/i18n_explanation.md) — architecture, usage patterns, circular import precautions, and how to add new languages.
+
 ## 📚 Technical Documentation and Advanced Guides
 
 To keep this README concise, we detail the most advanced **DevOps** and **Continuous Integration** focused implementations in separate documents.

@@ -1,303 +1,354 @@
 # CLAUDE.md - GitPR CLI
 
-## Sobre o projeto
+## About the project
 
-**GitPR** é uma CLI em Python para automação de Pull Requests, commits, code review e criação de issues usando IA (Google Gemini e DeepSeek). Distribuído via PyPI (`pip install gitpr-cli`) e como executável standalone (PyInstaller).
+**GitPR** is a Python CLI for automating Pull Requests, commits, code review, and issue creation using AI (Google Gemini and DeepSeek). Distributed via PyPI (`pip install gitpr-cli`) and as a standalone executable (PyInstaller).
 
-- **Autor:** Natan Fiuza (contato@natanfiuza.dev.br)
-- **Versão atual:** 0.0.21
+- **Author:** Natan Fiuza (contato@natanfiuza.dev.br)
+- **Current version:** 0.0.22
 - **Python:** >= 3.10
-- **Branch principal:** `main`
-- **Branch de desenvolvimento:** `develop_natan`
-- **Licença:** LGPL-2.1
+- **Main branch:** `main`
+- **Development branch:** `develop_natan`
+- **License:** LGPL-2.1
 
-## Arquitetura
+## Architecture
 
 ```
 src/
-├── main.py           # CLI (Click) — roteamento de comandos e flags
-├── core.py           # Orquestração — git ops, prompts IA, cache, skills
-├── config.py         # Configuração, .env, chaves de API, modelos
-├── security.py       # Criptografia Fernet (chaves de API em repouso)
-├── cache.py          # Cache local de respostas da IA (MD5)
-├── ai_providers.py   # Camada unificada de chamada IA (Gemini + DeepSeek)
-├── linter_engine.py  # Análise estática com regex (regras YAML)
-├── blame_engine.py   # Arqueologia de código com git blame + IA
-├── issue_engine.py   # Criação de rascunho de issues via IA
-├── tui_issue.py      # Validação de token GitHub e entrada da TUI
-├── ui/               # Sub-package: componentes da TUI (Textual)
-│   ├── help_screen.py    # Modal de ajuda (F4) — atalhos e instruções
-│   └── issue_app.py      # App principal da TUI — edição e envio de issues
-└── updater.py        # Verificação de versão (PyPI + GitHub) e hot-swap
+├── main.py           # CLI (Click) — command and flag routing
+├── core.py           # Orchestration — git ops, AI prompts, cache, skills
+├── config.py         # Configuration, .env, API keys, models
+├── security.py       # Fernet encryption (API keys at rest)
+├── cache.py          # Local AI response cache (MD5)
+├── ai_providers.py   # Unified AI call layer (Gemini + DeepSeek)
+├── spinner.py        # Animated braille spinner with thinking words
+├── i18n.py           # Internationalization engine (Laravel-inspired __() function)
+├── linter_engine.py  # Static analysis with regex (YAML rules)
+├── blame_engine.py   # Code archaeology with git blame + AI
+├── issue_engine.py   # AI-powered issue draft creation
+├── tui_issue.py      # GitHub token validation and TUI entry point
+├── ui/               # Sub-package: TUI components (Textual)
+│   ├── __init__.py       # Package marker (required for setuptools discovery)
+│   ├── help_screen.py    # Help modal (F1) — shortcuts and instructions
+│   └── issue_app.py      # Main TUI app — issue editing and submission
+└── updater.py        # Version check (PyPI + GitHub) and hot-swap
 
 scripts/
-├── pre-commit-template.sh          # Hook pre-commit para lint local
-└── prepare-commit-msg-template.sh  # Hook prepare-commit-msg para gerar mensagens
+├── pre-commit-template.sh          # Pre-commit hook for local linting
+└── prepare-commit-msg-template.sh  # Prepare-commit-msg hook for AI message generation
 
-templates/            # Templates remotos servidos do GitHub (--skill)
-├── gitpr.blame.md
-├── gitpr.commit.md
-├── gitpr.filereview.md
-├── gitpr.issue.md
-├── gitpr.linter.yml
-├── gitpr.pr.md
-└── gitpr.review.md
+templates/            # Remote templates served from GitHub (--skill)
+├── gitpr.blame.md              # EN: blame analysis rules
+├── gitpr.blame.pt_br.md        # PT-BR: blame analysis rules
+├── gitpr.commit.md             # EN: commit message rules
+├── gitpr.commit.pt_br.md       # PT-BR: commit message rules
+├── gitpr.filereview.md         # EN: full file review rules
+├── gitpr.filereview.pt_br.md   # PT-BR: full file review rules
+├── gitpr.issue.md              # EN: issue generation rules
+├── gitpr.issue.pt_br.md        # PT-BR: issue generation rules
+├── gitpr.linter.yml            # EN: linter rules
+├── gitpr.linter.pt_br.yml      # PT-BR: linter rules
+├── gitpr.pr.md                 # EN: PR description rules
+├── gitpr.pr.pt_br.md           # PT-BR: PR description rules
+├── gitpr.review.md             # EN: code review rules
+├── gitpr.review.pt_br.md       # PT-BR: code review rules
+└── gitpr.thinking-words.md     # Spinner thinking words list
+
+langs/                # Language translation files
+└── pt_br.json        # Portuguese (Brazil) translations
 
 tests/
-└── test_core.py      # Testes unitários (unittest + mock)
+└── test_core.py      # Unit tests (unittest + mock)
 
 docs/
 ├── ARCHITECTURE.md
-├── caveman-commit.md
-├── git-hooks-locais.md
-├── github-ci-linter.md
-├── github-issue-prompt.md
-├── github-pat-integration.md       # Segurança do token GitHub (PAT + Fernet)
-├── issue-tui-help.md               # Guia da interface TUI de issues
-├── guia-regex-gitpr.md
-├── linter-regras-customizadas.md
-├── otimizacao-de-tokens.md
-├── testar_sem_usar_pypi.md
-├── untracked-files.md
-├── claude-code/reports/            # Relatórios de tarefas do Claude Code
-├── plans/                          # Planos de desenvolvimento
-└── assets/                         # logo.png, logo.psd, progit.pdf
+├── auto-update.md              # Auto-Updater documentation
+├── blame-arqueologo.md         # Code Archaeologist documentation
+├── code-review-ia.md           # AI Code Review documentation
+├── commit-message-ia.md        # AI Commit Message documentation
+├── git-hooks-locais.md         # Local Git Hooks documentation
+├── github-pat-integration.md   # GitHub Token (PAT + Fernet) security
+├── issue-tui-help.md           # TUI Issue interface guide
+├── linter-regras-customizadas.md  # Custom Linter rules documentation
+├── pr-descricao-padrao.md      # Default PR description mode
+├── providers-ia.md             # AI Providers documentation
+├── skill-template.md           # Skills and Templates system
+├── untracked-files.md          # Untracked files explanation
+├── claude-code/reports/        # Claude Code task reports
+├── plans/                      # Development plans
+└── assets/                     # logo.png, logo.psd, progit.pdf
 ```
 
-**Padrões de projeto:** Facade/Mediator (`core.py`), Strategy (`ai_providers.py`), separação modular por responsabilidade. O sub-package `src/ui/` isola os componentes visuais (Textual) da lógica de negócio.
+**Design patterns:** Facade/Mediator (`core.py`), Strategy (`ai_providers.py`), modular separation by responsibility. The `src/ui/` sub-package isolates visual components (Textual) from business logic.
 
-### Fluxo de comandos principais
+### Main command flow
 
-| Flag                     | Ação                  | Pipeline                                                                |
-|--------------------------|-----------------------|-------------------------------------------------------------------------|
-| *(padrão)*               | PR description        | `git fetch` → diff contra `origin/main` → IA → `.md`                   |
-| `-c` / `--commit`        | Commit message        | `git diff HEAD` → IA → console (Conventional Commits)                   |
-| `-r` / `--review`        | Code review local     | `git diff HEAD` → IA + Linter → `.txt`                                  |
-| `-f` / `--fullreview`    | Code review completo  | `git fetch` → diff contra base remota → IA + Linter → `.txt`            |
-| `-i` / `--input`         | Auditoria de arquivo  | Arquivo inteiro → IA (usa `.gitpr.filereview.md`)                       |
-| `-l` / `--linter`        | Linter estático       | `git diff` → regex YAML → console (sem IA)                              |
-| `-is` / `--issue`        | Issue via TUI         | `git diff` → IA (rascunho) → TUI Textual → salvar .md ou POST GitHub   |
-| `-b` / `--blame`         | Arqueologia           | `git blame` → IA classifica commits → timeline + sumário                |
-| `-s` / `--skill`         | Baixar templates      | Download dos `.gitpr.*.md` do GitHub (não sobrescreve)                  |
-| `-ih` / `--installhooks` | Instalar hooks        | Download + instala hooks no `.git/hooks/`                               |
-| `-u` / `--update`        | Atualizar             | Verifica PyPI/GitHub Releases → hot-swap do binário                     |
-| `--provider`             | Forçar IA             | `gemini` ou `deepseek` (ignora config padrão)                           |
+| Flag                     | Action                  | Pipeline                                                                 |
+|--------------------------|------------------------|---------------------------------------------------------------------------|
+| *(default)*              | PR description         | `git fetch` → diff against `origin/main` → AI → `.md`                    |
+| `-c` / `--commit`        | Commit message         | `git diff HEAD` → AI → console (Conventional Commits)                     |
+| `-r` / `--review`        | Local code review      | `git diff HEAD` → AI + Linter → `.txt`                                    |
+| `-f` / `--fullreview`    | Full code review       | `git fetch` → diff against remote base → AI + Linter → `.txt`             |
+| `-i` / `--input`         | File audit             | Entire file → AI (uses `.gitpr.filereview.md`)                            |
+| `-l` / `--linter`        | Static linter          | `git diff` → YAML regex → console (no AI)                                 |
+| `-is` / `--issue`        | Issue via TUI          | `git diff` → AI (draft) → Textual TUI → save .md or POST to GitHub       |
+| `-is -ht` / `--history`  | Epic/Release issue     | `git log` + PR cache → AI → TUI                                           |
+| `-is -b <file:lines>`    | Technical debt issue   | `git blame` timeline → AI → TUI                                           |
+| `-b` / `--blame`         | Code archaeology       | `git blame` → AI classifies commits → timeline + summary                  |
+| `-s` / `--skill`         | Download templates      | Download `.gitpr.*.md` from GitHub (never overwrites)                     |
+| `-ih` / `--installhooks` | Install hooks           | Download + install hooks in `.git/hooks/`                                  |
+| `-u` / `--update`        | Update                  | Check PyPI/GitHub Releases → hot-swap binary                              |
+| `-h` / `--help`          | Contextual help         | Alone: all options. With flag: feature-specific help + docs link          |
+| `--provider`             | Force AI provider       | `gemini` or `deepseek` (overrides default config)                          |
 
 ## Stack
 
-| Componente       | Tecnologia                            |
-|------------------|---------------------------------------|
-| CLI framework    | Click >= 8.0.0                        |
-| TUI (issues)     | Textual (ModalScreen, App, bindings)  |
-| IA (Gemini)      | `google-genai` SDK                    |
-| IA (DeepSeek)    | `openai` SDK (API compatível)         |
-| GitHub API       | `requests` (REST, PAT via header)     |
-| Config/Build     | `pyproject.toml` + setuptools >= 61   |
-| Criptografia     | `cryptography.fernet` (simétrica)     |
-| Linter           | `pyyaml` (regras) + regex             |
-| Testes           | `pytest` + `unittest.mock`            |
-| Empacotamento    | PyInstaller (`run.py` como entry)     |
-| Ambiente virtual | Pipenv (Pipfile)                      |
+| Component        | Technology                             |
+|------------------|----------------------------------------|
+| CLI framework    | Click >= 8.0.0                         |
+| TUI (issues)     | Textual (ModalScreen, App, bindings)   |
+| AI (Gemini)      | `google-genai` SDK                     |
+| AI (DeepSeek)    | `openai` SDK (API compatible)          |
+| GitHub API       | `requests` (REST, PAT via header)      |
+| i18n             | Custom `__()` engine (Laravel-inspired) |
+| Config/Build     | `pyproject.toml` + setuptools >= 61    |
+| Encryption       | `cryptography.fernet` (symmetric)      |
+| Linter           | `pyyaml` (rules) + regex               |
+| Testing          | `pytest` + `unittest.mock`             |
+| Packaging        | PyInstaller (`run.py` as entry point)  |
+| Virtual env      | Pipenv (Pipfile)                       |
 
-## Comandos
+## Commands
 
 ```bash
-# Instalar dependências (pipenv)
+# Install dependencies (pipenv)
 pipenv install --dev
 
-# Instalar dependências (pip)
+# Install dependencies (pip)
 pip install -e .
 
-# Executar (modo dev)
+# Run (dev mode)
 pipenv run python run.py
 
-
-# Rodar testes
+# Run tests
 pipenv run pytest -v
-# ou
+# or
 python -m pytest tests/ -v
 python -m unittest discover tests -v
 
-# Build com PyInstaller
+# Build with PyInstaller
 pipenv run pyinstaller --noconfirm --onefile --icon=icon.ico --name gitpr run.py
 
-# Publicar no PyPI
+# Publish to PyPI
 pipenv run python -m build
 pipenv run twine upload dist/*
 ```
 
-## Preferências de código
+## Code preferences
 
-### Estilo Python
-- **Encoding:** UTF-8 com `errors='replace'` em toda leitura de arquivo — NUNCA usar `errors='strict'` ou `errors='ignore'` puro
-- **Docstrings:** Comentários em português, formato livre (não Google/NumPy estrito)
-- **Tipagem:** Type hints são bem-vindos mas não obrigatórios — usar onde melhora a clareza
-- **Organização:** Cada módulo tem uma responsabilidade única e clara. Componentes TUI isolados em `src/ui/`
-- **Naming:** snake_case para funções/variáveis, UPPER_CASE para constantes, PascalCase para classes Textual
-- **CLI:** Usar Click com decorators; flags curtas (`-c`, `-r`, `-f`, `-is`) com equivalentes longos
-- **Imports:** stdlib primeiro, depois dependências externas, depois módulos internos (`from src.*`)
-- **Sub-packages:** Criar `__init__.py` apenas se necessário; `src/ui/` atualmente não possui (importação direta)
+### Python style
+- **Language:** All variable names, function names, comments, and docstrings MUST be written in **English**
+- **Encoding:** UTF-8 with `errors='replace'` for all file reads — NEVER use `errors='strict'` or bare `errors='ignore'`
+- **Docstrings:** Free format (not strict Google/NumPy), in English
+- **Typing:** Type hints are welcome but not mandatory — use where it improves clarity
+- **Organization:** Each module has a single, clear responsibility. TUI components isolated in `src/ui/`
+- **Naming:** snake_case for functions/variables, UPPER_CASE for constants, PascalCase for Textual classes
+- **CLI:** Use Click with decorators; short flags (`-c`, `-r`, `-f`, `-is`) with long equivalents
+- **Imports:** stdlib first, then external dependencies, then internal modules (`from src.*`)
+- **Sub-packages:** Create `__init__.py` only when needed for setuptools discovery
 
-### Respostas de IA
-- Todas as chamadas de IA devem retornar JSON estruturado
-- Temperatura 0.0 para output determinístico
-- Retry automático (3 tentativas, 2s de intervalo)
-- Cache MD5 obrigatório para evitar chamadas redundantes
+### AI responses
+- All AI calls must return structured JSON
+- Temperature 0.0 for deterministic output
+- Automatic retry (3 attempts, 2s interval)
+- Mandatory MD5 cache to avoid redundant calls
 
-### Mensagens e UI
-- Todo texto exibido ao usuário em **português (Brasil)**
-- Banner ASCII no início (suprimido em modo `--quiet` ou `--hook`)
-- Usar `click.style()` ou `click.secho()` para cores no terminal
-- Cores padronizadas: verde/cyan = sucesso/info, amarelo = warning, vermelho = erro
-- TUI (Textual): usar `$surface`, `$accent`, `$background` do tema; footer com bindings visíveis
+### Messages and UI
+- All user-facing text uses the `__()` i18n function (English keys, translations in `langs/`)
+- ASCII banner at startup (suppressed in `--quiet` or `--hook` mode)
+- Use `click.style()` or `click.secho()` for terminal colors
+- Standard colors: green/cyan = success/info, yellow = warning, red = error
+- TUI (Textual): use `$surface`, `$accent`, `$background` from theme; footer with visible bindings
+- Animated braille spinner (`src/spinner.py`) during AI calls with thinking words and random colors
 
 ## Commits
 
-### Estilo de mensagem
-- **Idioma:** Português (Brasil)
-- **Formato:** Conventional Commits — `tipo: descricao curta`
-- **Tipos usados:** `feat`, `fix`, `refactor`, `test`, `chore`, `docs`
-- **Descrições:** curtas, imperativas, sem ponto final
-- **Exemplos:**
-  - `feat: adiciona modulo de arqueologia de codigo com git blame`
-  - `refactor: extrai componentes da TUI para sub-package src/ui/`
-  - `fix: corrige encoding em ambientes com caracteres nao-UTF8`
+### Message style
+- **Language:** English
+- **Format:** Conventional Commits — `type: short description`
+- **Types used:** `feat`, `fix`, `refactor`, `test`, `chore`, `docs`
+- **Descriptions:** short, imperative, no period at the end
+- **Examples:**
+  - `feat: add code archaeology module with git blame`
+  - `refactor: extract TUI components to src/ui/ sub-package`
+  - `fix: handle encoding in non-UTF8 environments`
 
-### Regras de commit
-- NÃO fazer amend em commits já pushados
-- NÃO pular hooks (`--no-verify`, `--no-gpg-sign`)
-- Commits devem ser atômicos — uma mudança lógica por commit
-- Mensagens em português, sem acentos especiais (ASCII-only quando prático)
-- Co-autoria em projetos colaborativos: `Co-Authored-By: Claude <noreply@anthropic.com>`
+### Commit rules
+- NEVER amend already-pushed commits
+- NEVER skip hooks (`--no-verify`, `--no-gpg-sign`)
+- Commits must be atomic — one logical change per commit
+- Messages in English
+- Co-authorship in collaborative projects: `Co-Authored-By: Claude <noreply@anthropic.com>`
 
-## Regras de tarefa (Task Workflow)
+## Task rules (Task Workflow)
 
-### Ao iniciar uma tarefa
-1. **Ler o contexto:** Verificar `CLAUDE.md`, arquivos relevantes, diff atual
-2. **Planejar antes de codar:** Para features não-triviais, usar plan mode ou apresentar abordagem antes de implementar
-3. **Verificar o estado do git:** Branch correta, nada staged acidentalmente
-4. **Verificar dependências:** `pipenv install --dev` se novos pacotes forem adicionados ao Pipfile
+### When starting a task
+1. **Read the context:** Check `CLAUDE.md`, relevant files, current diff
+2. **Plan before coding:** For non-trivial features, use plan mode or present approach before implementing
+3. **Check git state:** Correct branch, nothing accidentally staged
+4. **Check dependencies:** `pipenv install --dev` if new packages are added to Pipfile
 
-### Durante a tarefa
-5. **Seguir o estilo existente:** Código novo deve parecer que sempre esteve lá
-6. **Não quebrar a CLI:** Testar fluxos principais após alterações (`gitpr`, `gitpr -c`, `gitpr -r`)
-7. **Manter cache em mente:** Mudanças em prompts devem considerar impacto no cache MD5
-8. **Encoding sempre com `errors='replace'`:** Regra absoluta para qualquer `open()` ou `subprocess`
-9. **Novas dependências:** Adicionar ao `pyproject.toml` (dependencies) e ao `Pipfile`
+### During the task
+5. **Follow existing style:** New code should look like it was always there
+6. **Don't break the CLI:** Test main flows after changes (`gitpr`, `gitpr -c`, `gitpr -r`)
+7. **Keep cache in mind:** Prompt changes must consider MD5 cache impact
+8. **Encoding always with `errors='replace'`:** Absolute rule for any `open()` or `subprocess`
+9. **New dependencies:** Add to `pyproject.toml` (dependencies) and `Pipfile`
 
-### Ao finalizar uma tarefa — RELATÓRIO OBRIGATÓRIO
-10. **Gerar relatório de conclusão** com o seguinte formato:
+### When finishing a task — MANDATORY REPORT
+10. **Generate completion report** with the following format:
 
 ```markdown
-## Relatório de Conclusão — [Título da Tarefa]
+## Completion Report — [Task Title]
 
-### O que foi feito
-- [Lista objetiva das alterações realizadas]
-- [Arquivos modificados com paths relativos]
+### What was done
+- [Objective list of changes made]
+- [Modified files with relative paths]
 
-### Arquivos alterados
-| Arquivo | Tipo de mudança | Descrição |
-|---------|----------------|-----------|
-| src/... | feat/fix/refactor | O que mudou |
+### Changed files
+| File | Change type | Description |
+|------|-------------|-------------|
+| src/... | feat/fix/refactor | What changed |
 
-### Impacto
-- **Funcionalidade:** [O que mudou no comportamento]
-- **Performance:** [Impacto se relevante]
-- **Compatibilidade:** [Quebras de API, migrações necessárias]
+### Impact
+- **Functionality:** [What changed in behavior]
+- **Performance:** [Relevant impact]
+- **Compatibility:** [API breaks, necessary migrations]
 
-### Próximos passos (se aplicável)
-- [Tarefas pendentes ou sugestões de melhoria]
+### Next steps (if applicable)
+- [Pending tasks or improvement suggestions]
 ```
 
-Este relatório é **obrigatório** ao final de toda tarefa de implementação — não apenas para o usuário, mas como documentação histórica do desenvolvimento.
-Ele deve ficar em `docs/claude-code/reports/{branch}/{dataatual}_{taskname}.md`, onde `{dataatual}` é a data atual (formato `YYYY-MM-DD`), `{branch}` é a branch atual, e `{taskname}` é uma descrição curta da tarefa (apenas letras minúsculas, números e underscores, sem espaços ou caracteres especiais). Criar as pastas `docs/claude-code/reports/` caso não existam.
+This report is **mandatory** at the end of every implementation task — not just for the user, but as historical development documentation.
+It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname}.md`, where `{current_date}` is today's date (`YYYY-MM-DD` format), `{branch}` is the current branch, and `{taskname}` is a short task description (only lowercase letters, numbers, and underscores, no spaces or special characters). Create the `docs/claude-code/reports/` folder if it doesn't exist.
 
-## Notas específicas do projeto
+## Project-specific notes
 
 ### Encoding
-- Todo `subprocess.run()` que captura saída do git deve usar `encoding='utf-8'` com `errors='replace'`
-- Arquivos de saída (PR, review, blame, issue) devem ser escritos com `encoding='utf-8'`
-- O projeto lida com repositórios que podem conter caracteres não-UTF8 (legado)
+- All `subprocess.run()` capturing git output must use `encoding='utf-8'` with `errors='replace'`
+- Output files (PR, review, blame, issue) must be written with `encoding='utf-8'`
+- The project handles repositories that may contain non-UTF8 characters (legacy)
 
-### Sistema de "Skills" (Prompt Engineering)
-- Arquivos locais `.gitpr.<tipo>.md` na raiz do projeto do usuário atuam como *System Instructions* da IA
-- Tipos: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `linter.yml`
-- Templates remotos em `https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/`
-- Comando `--skill` baixa os templates, mas **nunca sobrescreve** arquivos locais existentes
-- `get_skill_context()` em `core.py` gerencia fallbacks (tenta `.gitpr.<tipo>.md`, depois legado `.gitpr.md`)
+### Internationalization (i18n)
+- `src/i18n.py` provides a `__()` function inspired by Laravel's translation engine
+- `CURRENT_LANG` is auto-detected from the OS locale or forced via `GITPR_LANG` in `.env`
+- English is the default/fallback language (no translation file needed)
+- Other languages load JSON from `~/.gitpr/langs/{lang_code}.json` or download from GitHub
+- Translation files are version-controlled via `__lang_version__` in `updater.py`
+- The `get_doc_url()` function in `core.py` builds language-aware documentation URLs
 
-### Configuração do usuário
-- Diretório global: `~/.gitpr/`
-- Arquivo de config: `~/.gitpr/.env` (formato dotenv)
-- Chave Fernet: `~/.gitpr/secret.key` (gerada automaticamente na primeira execução)
-- Cache de respostas: `~/.gitpr/cache/prompts/<action_folder>/<md5>.json`
-- Cache de update: `~/.gitpr/update_cache.json` (diário)
-- Variáveis de ambiente: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL`, `DEEPSEEK_API_MODEL`, `SECONDARY_GEMINI_API_MODEL`, `SECONDARY_DEEPSEEK_API_MODEL`, `OUTPUT_FILE_NAME_PR`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`
+### Skills System (Prompt Engineering)
+- Local `.gitpr.<type>.md` files at the user's project root act as AI *System Instructions*
+- Types: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `linter.yml`
+- Remote templates at `https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/`
+- `--skill` downloads templates, but **never overwrites** existing local files
+- Language-aware: EN downloads `gitpr.issue.md`, PT-BR downloads `gitpr.issue.pt_br.md`
+- `get_skill_context()` in `core.py` manages fallbacks (tries `.gitpr.<type>.md`, then legacy `.gitpr.md`)
 
-### AI Providers (Arquitetura Multi-Model)
-- **Gemini:** `gemini-2.5-flash` (primário/avançado) / `gemini-2.5-flash-lite` (secundário/simples)
-- **DeepSeek:** `deepseek-chat` (primário e secundário — mesmo modelo)
-- Ambos configurados para output JSON (`response_mime_type` no Gemini, `response_format` no DeepSeek)
-- Temperatura 0.0 e top_p 0.1 para output determinístico
-- Fallback: se provider configurado falhar, tentar o outro automaticamente
-- Flag `--provider` força um motor específico na execução
+### User configuration
+- Global directory: `~/.gitpr/`
+- Config file: `~/.gitpr/.env` (dotenv format)
+- Fernet key: `~/.gitpr/secret.key` (auto-generated on first run)
+- Response cache: `~/.gitpr/cache/prompts/<action_folder>/<md5>.json`
+- Update cache: `~/.gitpr/update_cache.json` (daily)
+- Language files: `~/.gitpr/langs/{lang_code}.json`
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL`, `DEEPSEEK_API_MODEL`, `SECONDARY_GEMINI_API_MODEL`, `SECONDARY_DEEPSEEK_API_MODEL`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`
 
-### Linter estático local
-- Regras definidas em `.gitpr.linter.yml` (YAML)
-- Suporta `error` (bloqueante) e `warning` (informativo)
-- Filtros: extensão de arquivo (`extensions`), `require_paths`, `ignore_paths`
-- `ignore_comments: true` ignora linhas de comentário (regex de comentário por linguagem)
-- No modo diff, só verifica linhas adicionadas (`+`) — focado e rápido
+### AI Providers (Multi-Model Architecture)
+- **Gemini:** `gemini-2.5-flash` (primary/advanced) / `gemini-2.5-flash-lite` (secondary/simple)
+- **DeepSeek:** `deepseek-chat` (primary and secondary — same model)
+- Both configured for JSON output (`response_mime_type` in Gemini, `response_format` in DeepSeek)
+- Temperature 0.0 and top_p 0.1 for deterministic output
+- Fallback: if configured provider fails, automatically try the other one
+- `--provider` flag forces a specific engine for the execution
 
-### Blame engine (Arqueologia de código)
-- Profundidade máxima de rastreamento: 4 commits pai
-- Modelo barato (secundário) para classificação de commits (`ORIGEM` vs `REFATORACAO`)
-- Modelo avançado (primário) para sumário executivo final
-- Output: terminal colorido (verde=origem, amarelo=refatoração) + relatório Markdown
+### Spinner (Animated loading indicator)
+- `src/spinner.py` — runs in a background thread during AI calls
+- Braille characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) in magenta
+- Thinking words loaded from `.env` (`SPINNER_THINKING_WORDS`) or downloaded from GitHub template
+- Words "discovered" letter by letter with random characters, then dot cycle (`. .. ...`)
+- Random word colors from a 10-color palette
+- Retrocompatible cache: commit data JSON now includes `repo` field for multi-project filtering
 
-### TUI de Issues (Textual)
-- App principal: `src/ui/issue_app.py` → classe `IssueApp(App)`
-- Modal de ajuda: `src/ui/help_screen.py` → classe `HelpScreen(ModalScreen)`
-- Bindings: F2 (Salvar .md local), F3 (Criar issue via GitHub API), F4 (Ajuda), Esc (Sair)
-- Token GitHub (PAT) validado em `src/tui_issue.py` → `validate_or_request_github_token()`
-- Escopo do PAT: `repo` (gerado via URL dinâmica com parâmetros pré-preenchidos)
-- Rascunho da issue gerado pela IA segue o padrão: O Que / Por Que / Onde / Como
+### Static local linter
+- Rules defined in `.gitpr.linter.yml` (YAML)
+- Supports `error` (blocking) and `warning` (informational)
+- Filters: file extension (`extensions`), `require_paths`, `ignore_paths`
+- `ignore_comments: true` ignores comment lines (language-specific comment regex)
+- In diff mode, only checks added lines (`+`) — focused and fast
+
+### Blame engine (Code Archaeology)
+- Maximum tracing depth: 4 parent commits
+- Cheap model (secondary) for commit classification (`ORIGIN` vs `REFACTORING`)
+- Advanced model (primary) for final executive summary
+- Output: color-coded terminal (green=origin, yellow=refactoring) + Markdown report
+- Can feed issue context via `--issue -b file:lines`
+
+### Issues TUI (Textual)
+- Main app: `src/ui/issue_app.py` → class `IssueApp(App)`
+- Help modal: `src/ui/help_screen.py` → class `HelpScreen(ModalScreen)`
+- Bindings: F1 (Help), F2 (Save local .md), F3 (Create via GitHub API), Esc (Exit)
+- GitHub token (PAT) validated in `src/tui_issue.py` → `validate_or_request_github_token()`
+- PAT scope: `repo` (generated via dynamic URL with pre-filled parameters)
+- Issue draft follows the pattern: What / Why / Where / How
+- 3 context engines: diff (default), history (`-ht`), blame (`-b`)
 
 ### Auto-Updater (Hot-Swap)
-- Verificação diária cacheada contra GitHub Releases (binário) ou PyPI (pip)
-- `--update` força verificação e instalação imediata
-- Hot-swap: renomeia `.exe` atual para `.old`, baixa novo, rollback em caso de falha
-- Conexão verificada via socket `8.8.8.8:53` antes de qualquer operação de rede
+- Daily cached check against GitHub Releases (binary) or PyPI (pip)
+- `--update` forces immediate check and installation
+- Hot-swap: renames current `.exe` to `.old`, downloads new one, rollback on failure
+- Connection verified via socket `8.8.8.8:53` before any network operation
 
-## Diretrizes de Comportamento
+### Contextual help (`-h --flag`)
+- `gitpr -h` alone: standard Click help with all options
+- `gitpr -h --issue`: feature-specific help + link to GitHub documentation
+- `get_doc_url()` builds language-aware URLs: `.../docs/file.md` (EN) or `.../docs/file.pt_br.md` (PT-BR)
+- All documentation files have EN originals and `.pt_br.md` copies
 
-**Tradeoff:** Estas diretrizes favorecem cautela sobre velocidade. Para tarefas triviais, use julgamento.
+### Cache with repository name
+- All cache JSON files include `"repo": "owner/repo"` field
+- `get_cached_pr_descriptions()` filters by both `repo_name` AND `branch_name`
+- Prevents mixing caches from different projects with same branch names
 
-### 1. Pense Antes de Codar
-- Declare suas suposições explicitamente. Se estiver incerto, pergunte.
-- Se houver múltiplas interpretações, apresente-as — não escolha silenciosamente.
-- Se algo não estiver claro, pare. Nomeie o que está confuso. Pergunte.
+## Behavior Guidelines
 
-### 2. Simplicidade Primeiro
-- Mínimo de código que resolve o problema. Nada especulativo.
-- Sem features além do que foi solicitado.
-- Sem abstrações para código de uso único.
-- Sem "flexibilidade" ou "configurabilidade" não solicitada.
-- Se você escrever 200 linhas e puder ser 50, reescreva.
+**Tradeoff:** These guidelines favor caution over speed. Use judgment for trivial tasks.
 
-### 3. Mudanças Cirúrgicas
-- Toque apenas no que precisa. Limpe apenas sua própria bagunça.
-- Não "melhore" código adjacente, comentários ou formatação.
-- Não refatore coisas que não estão quebradas.
-- Combine o estilo existente, mesmo que você faria diferente.
-- Remova imports/variáveis/funções que SUAS mudanças tornaram não utilizadas.
+### 1. Think Before Coding
+- State your assumptions explicitly. If uncertain, ask.
+- If there are multiple interpretations, present them — don't silently pick one.
+- If something is unclear, stop. Name what is confusing. Ask.
 
-### 4. Execução Orientada a Objetivos
-- Defina critérios de sucesso. Execute em loop até verificar.
-- Transforme tarefas em objetivos verificáveis:
-  - "Adicionar validação" → "Escreva testes para inputs inválidos, então faça-os passar"
-  - "Corrigir o bug" → "Escreva um teste que reproduz, então corrija"
-- Para tarefas multi-etapa, declare um plano breve com verificações por etapa.
+### 2. Simplicity First
+- Minimum code that solves the problem. Nothing speculative.
+- No features beyond what was requested.
+- No abstractions for single-use code.
+- No unsolicited "flexibility" or "configurability".
+- If you write 200 lines and it can be 50, rewrite.
+
+### 3. Surgical Changes
+- Touch only what is needed. Clean up only your own mess.
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match the existing style, even if you would do it differently.
+- Remove imports/variables/functions that YOUR changes made unused.
+
+### 4. Goal-Oriented Execution
+- Define success criteria. Execute in a loop until verified.
+- Turn tasks into verifiable goals:
+  - "Add validation" → "Write tests for invalid inputs, then make them pass"
+  - "Fix the bug" → "Write a test that reproduces it, then fix"
+- For multi-step tasks, state a brief plan with per-step verifications.
 
 ---
-**Estas diretrizes estão funcionando se:** houver menos mudanças desnecessárias em diffs, menos reescritas por excesso de complexidade, e perguntas de esclarecimento vierem antes da implementação, não depois dos erros.
+**These guidelines are working if:** there are fewer unnecessary changes in diffs, fewer rewrites due to overcomplexity, and clarifying questions come before implementation, not after errors.
