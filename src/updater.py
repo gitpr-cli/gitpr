@@ -7,7 +7,7 @@ import click
 from datetime import datetime
 
 # Current version of your local executable (Update this on every new build!)
-__version__ = "0.0.22"  # GitPR current version
+__version__ = "0.0.23"  # GitPR current version
 __lang_version__ = "v0.0.1"  # Language dictionary version control
 GITHUB_API_URL = "https://api.github.com/repos/natanfiuza/gitpr/releases/latest"
 PYPI_API_URL = "https://pypi.org/pypi/gitpr-cli/json"

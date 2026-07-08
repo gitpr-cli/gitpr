@@ -5,7 +5,7 @@
 **GitPR** is a Python CLI for automating Pull Requests, commits, code review, and issue creation using AI (Google Gemini and DeepSeek). Distributed via PyPI (`pip install gitpr-cli`) and as a standalone executable (PyInstaller).
 
 - **Author:** Natan Fiuza (contato@natanfiuza.dev.br)
-- **Current version:** 0.0.22
+- **Current version:** 0.0.23
 - **Python:** >= 3.10
 - **Main branch:** `main`
 - **Development branch:** `develop_natan`
