@@ -13,6 +13,22 @@ from src.config import get_api_key, get_api_model
 from src.ai_providers import call_ai_model
 from src.i18n import __, CURRENT_LANG
 
+# Filtro Smart Diff: ficheiros que gastam tokens da IA sem acrescentar valor semântico
+SMART_EXCLUDES = [
+    ":(exclude)*.lock",
+    ":(exclude)package-lock.json",
+    ":(exclude)yarn.lock",
+    ":(exclude)pnpm-lock.yaml",
+    ":(exclude)composer.lock",
+    ":(exclude)poetry.lock",
+    ":(exclude)Pipfile.lock",
+    ":(exclude)Gemfile.lock",
+    ":(exclude)go.sum",
+    ":(exclude)*.min.js",
+    ":(exclude)*.min.css",
+    ":(exclude)*.svg"
+]
+
 
 def get_doc_url(filename):
     """Returns the complete URL for a docs/ file, with language suffix if needed."""
@@ -46,12 +62,13 @@ def get_git_diff():
             click.secho(f"📚 {__('Understand why:')} {get_doc_url('untracked-files.md')}\n", fg="blue", underline=True)
 
         # Run the normal diff that captures tracked and staged files
+        cmd = ["git", "diff", "HEAD", "--"] + SMART_EXCLUDES
         result = subprocess.run(
-            ["git", "diff", "HEAD"], 
+            cmd, 
             capture_output=True, 
             text=True, 
             encoding="utf-8",
-            errors="replace",  # <--- CORREÇÃO AQUI (Evita crash com acentos)
+            errors="replace",  
             check=True
         )
         return result.stdout
@@ -301,8 +318,9 @@ def get_git_full_diff():
 
         # Diff between that HASH and your CURRENT WORKSPACE (without using HEAD)
         # By passing only the hash, Git compares that commit with the files on your disk.
+        cmd = ["git", "diff", ancestor_hash, "--"] + SMART_EXCLUDES
         result = subprocess.run(
-            ["git", "diff", ancestor_hash], 
+            cmd, 
             capture_output=True, 
             text=True, 
             encoding="utf-8",
