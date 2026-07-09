@@ -96,7 +96,7 @@ HELP_MAP: dict[str, dict[str, str]] = {
     'provider': {
         'url': get_doc_url('providers-ia.md'),
         'title': __('AI Provider Selection (--provider)'),
-        'description': __('Forces the use of a specific AI provider for this execution: gemini (Google Gemini) or deepseek (DeepSeek). Temporarily overrides the default provider defined in the .env file.'),
+        'description': __('Forces the use of a specific AI provider for this execution: gemini (Google Gemini), deepseek (DeepSeek) or ollama (Local). Temporarily overrides the default provider defined in the .env file.'),
     },
 }
 
@@ -133,7 +133,7 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-b', '--blame', type=str, help=__("Analyzes the origin of a business rule (e.g., file.py:10-20 or just file.py)."))
 @click.option('-ht', '--history', is_flag=True, help=__("Uses the entire branch history (Git Log + PR Cache) as context to generate the issue."))
 @click.option('-is', '--issue', is_flag=True, help=__("Generates a standardized Issue from current changes and opens the interactive interface."))
-@click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek']), help=__("Forces the use of a specific AI provider for this execution."))
+@click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek', 'ollama']), help=__("Forces the use of a specific AI provider for this execution."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
 def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, history, issue, help_flag):
     """
