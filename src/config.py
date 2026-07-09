@@ -18,6 +18,8 @@ DEFAULT_CONFIG = {
     "GEMINI_API_MODEL_SECONDARY": "gemini-flash-lite-latest",
     "DEEPSEEK_API_MODEL_PRIMARY": "deepseek-v4-pro",
     "DEEPSEEK_API_MODEL_SECONDARY": "deepseek-v4-flash",
+    "OLLAMA_API_MODEL_PRIMARY": "llama3",
+    "OLLAMA_API_MODEL_SECONDARY": "llama3",
     "OUTPUT_FILE_NAME": "{branch}_{datetime}_PR_DESC.md",
     "OUTPUT_FILE_NAME_REVIEW": "{branch}_{datetime}_PR_REVIEW.txt",
     "OUTPUT_FILE_NAME_FULLREVIEW": "{branch}_{datetime}_PR_FULLREVIEW.txt",
@@ -39,6 +41,8 @@ def get_api_key(provider):
         encrypted_key = os.getenv("GEMINI_API_KEY_ENCRYPTED")
     elif provider == "deepseek":
         encrypted_key = os.getenv("DEEPSEEK_API_KEY_ENCRYPTED")
+    elif provider == "ollama":
+        return "ollama-local" # Olama does not require authentication!
     else:
         return None
 
@@ -86,7 +90,7 @@ def setup_environment():
         click.secho(__("🤖 Welcome to GitPR! Let's configure your AI engine."), fg="cyan", bold=True)
         provider = click.prompt(
             __("Which artificial intelligence do you want to use as default?"),
-            type=click.Choice(['gemini', 'deepseek'], case_sensitive=False),
+            type=click.Choice(['gemini', 'deepseek', 'ollama'], case_sensitive=False),
             default='gemini'
         ).lower()
         set_key(ENV_FILE, "DEFAULT_AI_PROVIDER", provider)

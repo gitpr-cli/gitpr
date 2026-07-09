@@ -34,11 +34,13 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
                     )
                     result_text = response.text
 
-                elif provider == "deepseek":
-                    # DeepSeek is 100% compatible with the OpenAI library
-                    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+                elif provider in ["deepseek", "ollama"]:
+                    # DeepSeek and Ollama are 100% compatible with the OpenAI library.
+                    base_url = "https://api.deepseek.com" if provider == "deepseek" else "http://localhost:11434/v1"
+                    client = OpenAI(api_key=api_key, base_url=base_url)
+                    
                     response = client.chat.completions.create(
-                        model=api_model,  # e.g.: "deepseek-chat"
+                        model=api_model, 
                         messages=[
                             {"role": "system", "content": system_instruction},
                             {"role": "user", "content": prompt}
