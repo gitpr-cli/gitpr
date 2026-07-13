@@ -9,7 +9,7 @@ import urllib.error
 from google import genai
 from src.security import decrypt_data
 from src.cache import get_cached_response, save_cached_response, get_cached_pr_descriptions
-from src.config import get_api_key, get_api_model
+from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __, CURRENT_LANG
 
@@ -130,10 +130,10 @@ def get_skill_context(action_type="pr"):
     else:  # review or fullreview
         target_file = ".gitpr.review.md"
 
-    skill_file = os.path.join(os.getcwd(), target_file)
+    skill_file = resolve_skill_path(target_file)
 
     # Fallback to the old file (for backward compatibility with previous version users)
-    legacy_file = os.path.join(os.getcwd(), ".gitpr.md")
+    legacy_file = resolve_skill_path(".gitpr.md")
 
     # Check the new one first; if not found, try the old one
     file_to_load = skill_file if os.path.exists(skill_file) else (legacy_file if os.path.exists(legacy_file) else None)
@@ -252,11 +252,16 @@ def generate_skill_template():
     }
     
     success_count = 0
-    
+
+    # Templates now live inside the project's .gitpr/skill/ folder
+    skill_dir = get_skill_dir()
+    os.makedirs(skill_dir, exist_ok=True)
+
     for local_name, remote_name in files_to_download.items():
-        file_path = os.path.join(os.getcwd(), local_name)
+        # Migrate any legacy root file into .gitpr/skill/ and resolve final path
+        file_path = resolve_skill_path(local_name)
         url = base_url + remote_name
-        
+
         if os.path.exists(file_path):
             click.secho(__("⚠️ File {local_name} already exists in this directory. It will not be overwritten.", local_name=local_name), fg="yellow")
             continue
@@ -278,9 +283,9 @@ def generate_skill_template():
 
     if success_count > 0:
         click.secho(__("\n✅ Base templates successfully configured!"), fg="green", bold=True)
-        click.echo(__("You can now open the generated files and customize the tool's behavior for your project:\n"))       
-        click.echo(__("  1. Architecture rules for AI in '.gitpr.pr.md' and '.gitpr.review.md'\n"))
-        click.echo(__("  2. Local regex rules in '.gitpr.linter.yml'\n"))
+        click.echo(__("You can now open the generated files in '.gitpr/skill/' and customize the tool's behavior for your project:\n"))
+        click.echo(__("  1. Architecture rules for AI in '.gitpr/skill/.gitpr.pr.md' and '.gitpr/skill/.gitpr.review.md'\n"))
+        click.echo(__("  2. Local regex rules in '.gitpr/skill/.gitpr.linter.yml'\n"))
     else:
         click.echo(__("\nNo new files were downloaded."))
 

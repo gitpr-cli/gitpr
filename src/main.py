@@ -66,7 +66,7 @@ HELP_MAP: dict[str, dict[str, str]] = {
     'skill': {
         'url': get_doc_url('skill-template.md'),
         'title': __('Skills and Templates System (--skill)'),
-        'description': __('Downloads template files (.gitpr.*.md and .gitpr.linter.yml) from the official repository to the project root. These files allow customizing the AI behavior according to your team\'s rules. NEVER overwrites existing local files.'),
+        'description': __('Downloads template files (.gitpr.*.md and .gitpr.linter.yml) from the official repository into the project\'s .gitpr/skill/ folder. These files allow customizing the AI behavior according to your team\'s rules. NEVER overwrites existing local files.'),
     },
     'update': {
         'url': get_doc_url('auto-update.md'),
@@ -124,7 +124,7 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-r', '--review', is_flag=True, help=__("Performs a code review of local changes (git diff)."))
 @click.option('-f', '--fullreview', is_flag=True, help=__("Performs a code review of all changes since the remote main branch (origin/main)."))
 @click.option('-l', '--linter', is_flag=True, help=__("Runs only the local static linter (ideal for CI/CD)."))
-@click.option('-s', '--skill', is_flag=True, help=__("Generates the .gitpr.md template file in the current folder."))
+@click.option('-s', '--skill', is_flag=True, help=__("Downloads the skill template files into the .gitpr/skill/ folder."))
 @click.option('-u', '--update', is_flag=True, help=__("Checks and installs the latest version of GitPR."))
 @click.option('-ih', '--installhooks', is_flag=True, help=__("Automatically installs validation Git Hooks in the project."))
 @click.option('--hook', type=click.Path(), hidden=True, help=__("Commit file path (internal hook use)."))

@@ -1,0 +1,69 @@
+# ==============================================================================
+# 🛡️ GitPR - Configuration du Linter Statique Local
+# ==============================================================================
+# Ce fichier définit les règles de qualité qui s'exécutent sur la machine du développeur.
+# GitPR analyse uniquement les LIGNES MODIFIÉES dans le 'git diff'.
+#
+# Propriétés de la Règle :
+# - name : Identifiant unique de la règle (sans espaces).
+# - level : 'error' (bloque le commit) ou 'warning' (affiche seulement une alerte jaune).
+# - extensions : Liste des extensions de fichier où la règle s'applique (ex : ["php", "js"]).
+# - require_paths : (Optionnel) Limite l'exécution à des dossiers spécifiques (ex : ["routes/*"]).
+# - ignore_paths : (Optionnel) Ignore des dossiers spécifiques (ex : ["vendor/*", "tests/*"]).
+# - regex : L'expression régulière de recherche (UTILISEZ TOUJOURS des guillemets simples '').
+# - message : Le texte de l'alerte. Accepte les variables {file_name} et {line_number}.
+# - ignore_comments : true (ignore le code commenté) / false (lit les commentaires).
+# ==============================================================================
+
+rules:
+  # ---------------------------------------------------------
+  # 🚨 ERREURS CRITIQUES (Bloquent le Commit)
+  # ---------------------------------------------------------
+
+  - name: "check-php-debug"
+    level: "error"
+    extensions: ["php"]
+    regex: '\b(dd|dump|var_dump|print_r|die|exit)\s*\('
+    message: "🚨 Code de débogage oublié dans le fichier {file_name} (Ligne {line_number}). Retirez-le avant d'envoyer."
+    ignore_comments: true
+
+  - name: "check-js-console"
+    level: "error"
+    extensions: ["js", "ts", "vue", "jsx", "tsx"]
+    regex: 'console\.(log|debug|info)\s*\('
+    message: "🚨 Utilisation de console.log non autorisée en production. Trouvé dans {file_name} (Ligne {line_number})."
+    ignore_comments: true
+
+  - name: "check-localhost"
+    level: "error"
+    extensions: ["php", "js", "ts", "vue", "env", "yaml", "yml"]
+    regex: '(localhost|127\.0\.0\.1)'
+    message: "🚨 URL ou IP locale (localhost/127.0.0.1) codée en dur dans {file_name} (Ligne {line_number}). Utilisez des variables d'environnement."
+    ignore_comments: true
+
+  - name: "check-route-verbs"
+    level: "error"
+    extensions: ["php"]
+    require_paths:
+      - "routes/*"
+    regex: 'Route::[a-zA-Z]+\s*\(\s*[''"](get|get-|busca|buscar|procura|procurar|pesquisa|pesquisar|lista|listar|cria|criar|atualiza|atualizar|deleta|deletar)'
+    message: "🚨 URI inadéquate dans {file_name} (Ligne {line_number}). Évitez d'utiliser des verbes dans l'URL de la route. Suivez le standard RESTful (ex : GET /utilisateurs)."
+    ignore_comments: true
+
+  # ---------------------------------------------------------
+  # ⚠️ AVERTISSEMENTS DE BONNES PRATIQUES (Ne bloquent pas le Commit)
+  # ---------------------------------------------------------
+
+  - name: "warning-docblock-php"
+    level: "warning"
+    extensions: ["php"]
+    regex: '\b(public|protected|private)?\s*function\s+\w+\s*\('
+    message: "👀 Rappel : Vous avez créé/modifié la fonction à la ligne {line_number} de {file_name}. Avez-vous vérifié que le DocBlock est à jour ?"
+    ignore_comments: true
+
+  - name: "warning-todo-fixme"
+    level: "warning"
+    extensions: ["php", "js", "ts", "vue", "py"]
+    regex: '(?i)(TODO|FIXME):'
+    message: "⚠️ Attention : Il existe une annotation TODO ou FIXME en attente dans {file_name} (Ligne {line_number})."
+    ignore_comments: false # Ici, nous devons lire les commentaires intentionnellement !

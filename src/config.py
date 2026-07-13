@@ -1,6 +1,7 @@
 import os
 import sys
 import socket
+import shutil
 import click
 import yaml
 from pathlib import Path
@@ -28,6 +29,41 @@ DEFAULT_CONFIG = {
     "OUTPUT_FILE_NAME_ISSUE": "{branch}_{datetime}_ISSUE.md"
 }
 
+def get_skill_dir():
+    """Returns the absolute path to the project's skill folder (.gitpr/skill)."""
+    return os.path.join(os.getcwd(), ".gitpr", "skill")
+
+
+def resolve_skill_path(filename):
+    """
+    Resolves the path of a skill/config file (e.g.: .gitpr.commit.md).
+
+    The canonical location is the '.gitpr/skill/' folder inside the project.
+    For backward compatibility, if the file still lives in the project root,
+    it is transparently migrated (moved) into '.gitpr/skill/'.
+
+    Always returns the path inside '.gitpr/skill/' (whether the file exists or
+    not), unless a migration failed — in that case it falls back to the legacy
+    root path so the tool keeps working.
+    """
+    skill_dir = get_skill_dir()
+    target_path = os.path.join(skill_dir, filename)
+    legacy_path = os.path.join(os.getcwd(), filename)
+
+    # Migrate a legacy root file into the skill folder (only if not already there)
+    if os.path.exists(legacy_path) and not os.path.exists(target_path):
+        try:
+            os.makedirs(skill_dir, exist_ok=True)
+            shutil.move(legacy_path, target_path)
+            click.secho(__("📦 Skill file {filename} moved to .gitpr/skill/", filename=filename), fg="cyan", dim=True)
+        except Exception as e:
+            # If moving fails, fall back to the legacy location so the tool keeps working
+            click.secho(__("⚠️ Warning: Could not move {filename} to .gitpr/skill/ ({error})", filename=filename, error=str(e)), fg="yellow")
+            return legacy_path
+
+    return target_path
+
+
 def get_ai_provider():
     """Returns the configured default AI provider, or 'gemini' as fallback."""
     load_dotenv(ENV_FILE)
@@ -36,6 +72,11 @@ def get_ai_provider():
 def get_api_key(provider):
     """Reads and decrypts the API key corresponding to the chosen provider."""
     load_dotenv(ENV_FILE)
+
+    # Suporte a CI/CD: Tenta ler a chave raw primeiro (ex: injetada via GitHub Secrets)
+    raw_key = os.getenv(f"{provider.upper()}_API_KEY")
+    if raw_key:
+        return raw_key
 
     if provider == "gemini":
         encrypted_key = os.getenv("GEMINI_API_KEY_ENCRYPTED")
@@ -99,6 +140,12 @@ def setup_environment():
     # Check if the chosen provider's key exists
     api_key = get_api_key(provider)
     if not api_key:
+        # 🛡️ Escudo de CI/CD: Impede que o prompt trave a pipeline do GitHub Actions
+        if os.getenv("CI") or os.getenv("GITHUB_ACTIONS"):
+            click.secho(__("❌ Error: API Key not configured for provider '{provider}' in the CI/CD environment.", provider=provider), fg="red")
+            click.secho(__("💡 Tip: Pass the key as an environment variable (e.g., GEMINI_API_KEY)."), fg="yellow")
+            sys.exit(1)
+            
         click.secho(__("🔑 API Key for {provider} not found.", provider=provider.capitalize()), fg="yellow")
         raw_key = click.prompt(__("Paste your {provider} API key here", provider=provider.capitalize()), hide_input=True)
 
@@ -136,7 +183,7 @@ def load_linter_rules():
     Loads the static linter rules from the .gitpr.linter.yml file.
     Returns a list of rules or an empty list if the file does not exist.
     """
-    file_path = os.path.join(os.getcwd(), ".gitpr.linter.yml")
+    file_path = resolve_skill_path(".gitpr.linter.yml")
 
     # If the file does not exist in the project, it's not an error. There are simply no rules to apply.
     if not os.path.exists(file_path):
