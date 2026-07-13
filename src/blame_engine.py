@@ -4,7 +4,7 @@ import re
 import os
 from datetime import datetime
 from src.core import get_current_branch
-from src.config import get_api_key, get_api_model, get_ai_provider
+from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __
 
@@ -69,7 +69,7 @@ def analyze_commit_with_ai(commit_hash, file_path):
     # Use the 'simple' model (Flash/Lite) to save money in the loop
     api_model = get_api_model(provider, task_complexity="simple")
 
-    skill_path = os.path.join(os.getcwd(), ".gitpr.blame.md")
+    skill_path = resolve_skill_path(".gitpr.blame.md")
     if os.path.exists(skill_path):
         with open(skill_path, "r", encoding="utf-8") as f:
             sys_inst = f.read()

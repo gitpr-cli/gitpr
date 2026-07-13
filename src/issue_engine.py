@@ -4,7 +4,7 @@ import os
 import click
 from src.ai_providers import call_ai_model
 from src.cache import get_cached_response, save_cached_response
-from src.config import get_api_key, get_api_model, get_ai_provider
+from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __
 
@@ -45,7 +45,7 @@ def generate_issue_content(context_text, context_type="diff"):
     # Use the advanced model to ensure Issue structure quality
     api_model = get_api_model(provider, task_complexity="advanced")
 
-    skill_path = os.path.join(os.getcwd(), ".gitpr.issue.md")
+    skill_path = resolve_skill_path(".gitpr.issue.md")
     sys_inst = ""
 
     if os.path.exists(skill_path):

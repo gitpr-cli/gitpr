@@ -202,6 +202,8 @@
     "🤖 Structuring Issue using {provider} ({api_model})...": "🤖 Estruturando a Issue usando {provider} ({api_model})...",
     "Error generating title": "Erro ao gerar título",
     "Could not generate issue body by AI.": "Não foi possível gerar o corpo da issue pela IA.",
+    "❌ Error: API Key not configured for provider '{provider}' in the CI/CD environment.": "❌ Erro: Chave de API não configurada para o fornecedor '{provider}' no ambiente CI/CD.",
+    "💡 Tip: Pass the key as an environment variable (e.g., GEMINI_API_KEY).": "💡 Dica: Passe a chave como variável de ambiente (ex: GEMINI_API_KEY).",
     "linter_engine.py": "linter_engine.py",
     "Rule '{rule_name}' contains invalid Regex: {error}": "Regra '{rule_name}' contém Regex inválida: {error}",
     "spinner.py": "spinner.py",

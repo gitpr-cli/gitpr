@@ -1,0 +1,47 @@
+name: 'GitPR AI Code Review'
+description: 'Automates Code Review and Linter on Pull Requests using Artificial Intelligence (Gemini/DeepSeek).'
+author: 'Natan Fiuza'
+branding:
+  icon: 'git-pull-request'
+  color: 'blue'
+
+inputs:
+  provider:
+    description: 'AI provider (gemini or deepseek)'
+    required: false
+    default: 'gemini'
+  api-key:
+    description: 'API key for the chosen AI'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install GitPR
+      shell: bash
+      run: pip install gitpr-cli
+
+    - name: Run Static Linter (Fails Fast)
+      shell: bash
+      run: gitpr --linter
+
+    - name: Run AI Code Review
+      shell: bash
+      env:
+        DEFAULT_AI_PROVIDER: ${{ inputs.provider }}
+        GEMINI_API_KEY: ${{ inputs.provider == 'gemini' && inputs.api-key || '' }}
+        DEEPSEEK_API_KEY: ${{ inputs.provider == 'deepseek' && inputs.api-key || '' }}
+      run: |
+        gitpr --fullreview
+
+        # Optional: Print the review result directly into the GitHub Action summary
+        REVIEW_FILE=$(ls *_PR_FULLREVIEW.txt 2>/dev/null | head -n 1)
+        if [ -f "$REVIEW_FILE" ]; then
+          echo "## 🤖 GitPR Code Review" >> $GITHUB_STEP_SUMMARY
+          cat "$REVIEW_FILE" >> $GITHUB_STEP_SUMMARY
+        fi

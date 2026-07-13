@@ -12,7 +12,7 @@ import threading
 import urllib.request
 from pathlib import Path
 from dotenv import load_dotenv, set_key
-from src.i18n import __
+from src.i18n import __, CURRENT_LANG
 
 # ANSI color codes
 MAGENTA = '\033[35m'
@@ -35,10 +35,13 @@ WORD_COLORS = [
 # Caracteres braille unicode que simulam um giro
 BRAILLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
-# URL do template remoto com a lista de palavras
+# URL do template remoto com a lista de palavras (language-aware).
+# English (en) = original file without suffix; other languages get a suffix
+# (e.g.: gitpr.thinking-words.pt_br.md), mirroring generate_skill_template().
+_LANG_SUFFIX = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
 THINKING_WORDS_URL = (
     "https://raw.githubusercontent.com/natanfiuza/gitpr/"
-    "refs/heads/main/templates/gitpr.thinking-words.md"
+    f"refs/heads/main/templates/gitpr.thinking-words{_LANG_SUFFIX}.md"
 )
 
 # Fallback interno caso o download falhe
