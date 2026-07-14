@@ -66,7 +66,7 @@ O script é suficientemente inteligente para não sobrescrever a sua intenção.
 
 ```bash
 
-# A IA NÃO será acionada neste caso, respeitando a sua mensagem.  
+# A IA NÃO será acionada neste caso, a respeitar a sua mensagem.  
 git commit -m "fix: corrige problema de concorrência na API"
 ```
 

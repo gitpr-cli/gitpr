@@ -51,8 +51,8 @@ DEFAULT_AI_PROVIDER=deepseek
 As chaves são armazenadas de forma **encriptada** (Fernet) no ficheiro `~/.gitpr/.env`:
 
 ```ini
-GEMINI_API_KEY_ENCRYPTED=<hash_criptografado>
-DEEPSEEK_API_KEY_ENCRYPTED=<hash_criptografado>
+GEMINI_API_KEY_ENCRYPTED=<hash_encriptado>
+DEEPSEEK_API_KEY_ENCRYPTED=<hash_encriptado>
 ```
 
 A chave mestra de desencriptação é gerada automaticamente em `~/.gitpr/secret.key`.

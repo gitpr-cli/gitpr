@@ -21,14 +21,14 @@ GitPR utilise un moteur d'internationalisation (i18n) personnalisé inspiré du 
 ### Comment ça fonctionne
 
 ```
-1. i18n.py carrega no momento da importação do módulo
-2. get_system_language() detecta o locale do SO (ex: pt_BR, es_ES) ou lê GITPR_LANG do .env
-3. get_translations() carrega o arquivo JSON de ~/.gitpr/langs/{lang}.json
-   - Se o arquivo não existe ou está desatualizado (LANG_VERSION != __lang_version__) → baixa do GitHub
-   - Se o idioma for inglês → retorna dicionário vazio (não precisa de tradução)
-   - Se o download falhar e existir arquivo local → usa a versão em cache
-4. O dicionário TRANSLATIONS é mantido em memória durante a sessão
-5. Função __(): procura a chave → retorna a tradução (ou a própria chave como fallback)
+1. i18n.py se charge au moment de l'importation du module
+2. get_system_language() détecte le locale du SE (ex : pt_BR, es_ES) ou lit GITPR_LANG depuis .env
+3. get_translations() charge le fichier JSON depuis ~/.gitpr/langs/{lang}.json
+   - Si le fichier n'existe pas ou est obsolète (LANG_VERSION != __lang_version__) → télécharge depuis GitHub
+   - Si la langue est l'anglais → retourne un dictionnaire vide (pas besoin de traduction)
+   - Si le téléchargement échoue et qu'un fichier local existe → utilise la version en cache
+4. Le dictionnaire TRANSLATIONS est conservé en mémoire pendant la session
+5. Fonction __() : cherche la clé → retourne la traduction (ou la clé elle-même comme fallback)
 ```
 
 ### La fonction `__()`
@@ -36,8 +36,8 @@ GitPR utilise un moteur d'internationalisation (i18n) personnalisé inspiré du 
 ```python
 def __(key, **kwargs):
     """
-    Motor de Tradução inspirado no Laravel.
-    Tenta encontrar a chave no dicionário. Se não achar, retorna a própria chave (inglês).
+    Moteur de traduction inspiré de Laravel.
+    Tente de trouver la clé dans le dictionnaire. Si elle est introuvable, retourne la clé elle-même (anglais).
     """
     text = TRANSLATIONS.get(key, key)
     if kwargs:
@@ -62,20 +62,20 @@ def __(key, **kwargs):
 ```python
 from src.i18n import __
 
-# Antes (inglês hardcoded):
+# Avant (anglais en dur) :
 click.secho("✅ File saved successfully!", fg="green")
 
-# Depois (i18n-ready):
+# Après (prêt pour i18n) :
 click.secho(__("✅ File saved successfully!"), fg="green")
 ```
 
 ### Avec placeholders (valeurs dynamiques)
 
 ```python
-# Placeholder único
+# Placeholder unique
 click.echo(__("Downloading {file_name}...", file_name="template.md"))
 
-# Múltiplos placeholders
+# Plusieurs placeholders
 click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...",
                provider="Gemini", model="gemini-2.5-flash"), fg="cyan")
 ```
@@ -91,7 +91,7 @@ click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})..."
 
 ```python
 class IssueApp(App):
-    TITLE = __("GitPR - Issue Generator")  # Funciona! __() executa no momento da definição da classe
+    TITLE = __("GitPR - Issue Generator")  # Fonctionne ! __() s'exécute au moment de la définition de la classe
 ```
 
 ### Dans les composants Textual TUI
@@ -108,7 +108,7 @@ BINDINGS = [
 **⚠️ Important :** N'utilisez jamais `__()` pour les comparaisons de chaînes ! La fonction renvoie la valeur traduite (ex : portugais), ce qui casserait les comparaisons. Utilisez plutôt une liste de variations possibles dans les deux langues :
 
 ```python
-# CORRETO — verifica múltiplas variações de idioma
+# CORRECT — vérifie plusieurs variations de langue
 _no_commits = [
     "No exclusive commits",
     "No exclusive commits found",
@@ -199,10 +199,10 @@ Le module i18n importe `__lang_version__` depuis `updater.py`. Par conséquent :
 - Les autres modules peuvent importer `__` en haut en toute sécurité
 
 ```python
-# NÃO faça isto no updater.py ou cache.py:
+# NE faites PAS ceci dans updater.py ou cache.py :
 from src.i18n import __
 
-# FAZ isto em vez disso (dentro da função que precisa):
+# FAITES plutôt ceci (à l'intérieur de la fonction qui en a besoin) :
 def some_function():
     from src.i18n import __  # lazy import
     click.secho(__("message"))
@@ -224,7 +224,7 @@ def get_doc_url(filename):
         base, ext = filename.rsplit(".", 1)
         return f"https://github.com/.../docs/{base}.{CURRENT_LANG}.{ext}"
 
-# Uso:
+# Utilisation :
 get_doc_url("issue-tui-help.md")
 # EN → "https://github.com/.../docs/issue-tui-help.md"
 # PT → "https://github.com/.../docs/issue-tui-help.pt_br.md"

@@ -21,8 +21,8 @@ gitpr -b src/core.py             # O GitPR perguntará quais as linhas
 
 O terminal apresentará:
 ```
-📂 Arquivo selecionado: src/core.py
-Quais linhas você deseja investigar? (Ex: 10-20 ou apenas 45)
+📂 Ficheiro selecionado: src/core.py
+Quais as linhas que pretende investigar? (Ex: 10-20 ou apenas 45)
 ```
 
 ---

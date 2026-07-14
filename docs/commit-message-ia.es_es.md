@@ -13,13 +13,13 @@ gitpr -c
 La herramienta analiza el `git diff HEAD` y muestra el mensaje sugerido directamente en la consola:
 
 ```
-📝 Sugestão de Commit:
+📝 Sugerencia de Commit:
 
-feat: adiciona validacao de email no formulario de cadastro
+feat: añade validación de email en el formulario de registro
 
-- Implementa regex de validacao RFC 5322
-- Adiciona mensagens de erro localizadas (pt-BR)
-- Corrige edge case de emails com dominios internacionais
+- Implementa regex de validación RFC 5322
+- Añade mensajes de error localizados (pt-BR)
+- Corrige edge case de emails con dominios internacionales
 ```
 
 ---
@@ -29,9 +29,9 @@ feat: adiciona validacao de email no formulario de cadastro
 La IA está instruida para generar mensajes con el estándar:
 
 ```
-tipo: descricao curta
+tipo: descripción corta
 
-Corpo opcional com detalhes adicionais
+Cuerpo opcional con detalles adicionales
 ```
 
 **Tipos utilizados:** `feat`, `fix`, `refactor`, `test`, `chore`, `docs`
@@ -55,9 +55,9 @@ La flag `--hook` (interna/oculta) hace que el mensaje sugerido se inyecte direct
 El comportamiento de la IA puede personalizarse a través del archivo `.gitpr.commit.md` en la raíz del proyecto:
 
 ```bash
-gitpr -s          # Baixa o template .gitpr.commit.md
-# Edite o arquivo conforme as convenções da sua equipa
-gitpr -c          # A IA usará as suas regras customizadas
+gitpr -s          # Descarga la plantilla .gitpr.commit.md
+# Edita el archivo según las convenciones de tu equipo
+gitpr -c          # La IA usará tus reglas personalizadas
 ```
 
 ---
@@ -65,8 +65,8 @@ gitpr -c          # A IA usará as suas regras customizadas
 ## 5. Selección de Proveedor de IA
 
 ```bash
-gitpr -c -p gemini       # Força Google Gemini
-gitpr -c -p deepseek     # Força DeepSeek
+gitpr -c -p gemini       # Fuerza Google Gemini
+gitpr -c -p deepseek     # Fuerza DeepSeek
 ```
 
 ---

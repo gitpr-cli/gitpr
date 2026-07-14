@@ -20,14 +20,14 @@ Les règles du Linter résident dans le fichier .gitpr.linter.yml à la racine d
 ```YAML
 
 rules:  
-  - name: "identificador-da-regra"  
-    extensions: ["js", "php", "py"] \# Extensões onde a regra se aplica  
-    regex: 'sua-expressao-regular-aqui'  
-    message: "🚨 Mensagem de erro que aparecerá no terminal ({file\_name}, Linha {line\_number})"  
-    ignore\_comments: true \# Ignora se a regex der match dentro de um comentário (//, \#, /\*)  
-    ignore\_paths: \# Opcional: Pastas onde esta regra NÃO deve rodar  
+  - name: "identifiant-de-la-regle"  
+    extensions: ["js", "php", "py"] \# Extensions où la règle s'applique  
+    regex: 'votre-expression-reguliere-ici'  
+    message: "🚨 Message d'erreur qui apparaîtra dans le terminal ({file\_name}, Ligne {line\_number})"  
+    ignore\_comments: true \# Ignore si la regex correspond à l'intérieur d'un commentaire (//, \#, /\*)  
+    ignore\_paths: \# Optionnel : Dossiers où cette règle NE doit PAS s'exécuter  
       \- "vendor/\*"  
-    require\_paths: \# Opcional: Pastas exclusivas onde esta regra DEVE rodar  
+    require\_paths: \# Optionnel : Dossiers exclusifs où cette règle DOIT s'exécuter  
       \- "routes/\*"
 
 ## ---
@@ -49,7 +49,7 @@ Voici comment configurer une règle dans Laravel (PHP) pour empêcher cela :
     require\_paths:  
       \- "routes/\*"  
     regex: 'Route::\[a-zA-Z\]+\\s\*\\(\\s\*\[''"\](get|get-|busca|buscar|procura|procurar|pesquisa|pesquisar|lista|listar)'  
-    message: "🚨 URI inadequada em {file\_name} (Linha {line\_number}). Evite verbos como 'buscar' ou 'listar' na URL. Use o padrão RESTful."  
+    message: "🚨 URI inappropriée dans {file\_name} (Ligne {line\_number}). Évitez les verbes comme 'buscar' ou 'listar' dans l'URL. Utilisez le standard RESTful."  
     ignore\_comments: true
 
 #### **Décortiquer la Regex ci-dessus :**
@@ -73,7 +73,7 @@ Pour comprendre comment créer les vôtres, voyez comment celle-ci a été const
   \- name: "check-php-debug"  
     extensions: \["php"\]  
     regex: '\\b(dd|dump|var\_dump|print\_r)\\s\*\\('  
-    message: "🚨 Código de debug esquecido ({file\_name}, Linha {line\_number})."  
+    message: "🚨 Code de débogage oublié ({file\_name}, Ligne {line\_number})."  
     ignore\_comments: true
 
 *Astuce Regex :* Le \b (Word Boundary) garantit que le mot est exact. Il attrape la commande dd(), mais ignore le mot add(), évitant les faux positifs.
@@ -85,7 +85,7 @@ Pour comprendre comment créer les vôtres, voyez comment celle-ci a été const
   - name: "check-js-console"  
     extensions: \["js", "ts", "vue"\]  
     regex: 'console\\.(log|debug|info)\\s\*\\('  
-    message: "🚨 Uso de console.log não permitido em produção ({file\_name}, Linha {line\_number})."  
+    message: "🚨 Utilisation de console.log non autorisée en production ({file\_name}, Ligne {line\_number})."  
     ignore\_comments: true
 
 *Astuce Regex :* Le point \. a besoin d'une barre oblique inversée (échappement), car dans le langage Regex, un point seul signifie « n'importe quel caractère ».

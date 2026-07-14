@@ -7,10 +7,10 @@ GitPR es **agnóstico de IA** y actualmente soporta dos proveedores: **Google Ge
 ## 1. Selección mediante Línea de Comandos
 
 ```bash
-gitpr -p gemini         # Força Google Gemini nesta execução
-gitpr -p deepseek       # Força DeepSeek nesta execução
-gitpr -c -p gemini      # Commit message com Gemini
-gitpr -r -p deepseek    # Code review com DeepSeek
+gitpr -p gemini         # Fuerza Google Gemini en esta ejecución
+gitpr -p deepseek       # Fuerza DeepSeek en esta ejecución
+gitpr -c -p gemini      # Commit message con Gemini
+gitpr -r -p deepseek    # Code review con DeepSeek
 ```
 
 La flag `--provider` (`-p`) sobrescribe temporalmente el provider predeterminado configurado.
@@ -23,7 +23,7 @@ Define el provider predeterminado en el archivo `~/.gitpr/.env`:
 
 ```ini
 DEFAULT_AI_PROVIDER=gemini
-# ou
+# o
 DEFAULT_AI_PROVIDER=deepseek
 ```
 
