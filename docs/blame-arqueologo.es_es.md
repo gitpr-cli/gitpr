@@ -9,20 +9,20 @@ El **Arqueólogo de Código** de GitPR usa `git blame` combinado con inteligenci
 ### 1.1 Modo Directo (líneas específicas)
 
 ```bash
-gitpr -b src/core.py:140-195    # Range de linhas
-gitpr -b src/main.py:42          # Linha única
+gitpr -b src/core.py:140-195    # Rango de líneas
+gitpr -b src/main.py:42          # Línea única
 ```
 
 ### 1.2 Modo Interactivo
 
 ```bash
-gitpr -b src/core.py             # O GitPR perguntará quais linhas
+gitpr -b src/core.py             # GitPR preguntará qué líneas
 ```
 
 El terminal mostrará:
 ```
-📂 Arquivo selecionado: src/core.py
-Quais linhas você deseja investigar? (Ex: 10-20 ou apenas 45)
+📂 Archivo seleccionado: src/core.py
+¿Qué líneas deseas investigar? (Ej.: 10-20 o solo 45)
 ```
 
 ---

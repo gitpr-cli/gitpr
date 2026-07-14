@@ -67,7 +67,7 @@ Le script est suffisamment intelligent pour ne pas écraser votre intention. Si 
 ```bash
 
 # L'IA NE sera PAS déclenchée dans ce cas, respectant votre message.  
-git commit -m "fix: corrige problème de concorrência na API"
+git commit -m "fix: corrige un problème de concurrence dans l'API"
 ```
 
 ---

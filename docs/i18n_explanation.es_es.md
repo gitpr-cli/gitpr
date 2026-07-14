@@ -21,14 +21,14 @@ GitPR utiliza un motor de internacionalización (i18n) personalizado inspirado e
 ### Cómo funciona
 
 ```
-1. i18n.py carrega no momento da importação do módulo
-2. get_system_language() detecta o locale do SO (ex: pt_BR, es_ES) ou lê GITPR_LANG do .env
-3. get_translations() carrega o arquivo JSON de ~/.gitpr/langs/{lang}.json
-   - Se o arquivo não existe ou está desatualizado (LANG_VERSION != __lang_version__) → baixa do GitHub
-   - Se o idioma for inglês → retorna dicionário vazio (não precisa de tradução)
-   - Se o download falhar e existir arquivo local → usa a versão em cache
-4. O dicionário TRANSLATIONS é mantido em memória durante a sessão
-5. Função __(): procura a chave → retorna a tradução (ou a própria chave como fallback)
+1. i18n.py se carga en el momento de la importación del módulo
+2. get_system_language() detecta el locale del SO (ej: pt_BR, es_ES) o lee GITPR_LANG del .env
+3. get_translations() carga el archivo JSON de ~/.gitpr/langs/{lang}.json
+   - Si el archivo no existe o está desactualizado (LANG_VERSION != __lang_version__) → descarga de GitHub
+   - Si el idioma es inglés → devuelve un diccionario vacío (no necesita traducción)
+   - Si la descarga falla y existe un archivo local → usa la versión en caché
+4. El diccionario TRANSLATIONS se mantiene en memoria durante la sesión
+5. Función __(): busca la clave → devuelve la traducción (o la propia clave como fallback)
 ```
 
 ### La función `__()`
@@ -36,8 +36,8 @@ GitPR utiliza un motor de internacionalización (i18n) personalizado inspirado e
 ```python
 def __(key, **kwargs):
     """
-    Motor de Tradução inspirado no Laravel.
-    Tenta encontrar a chave no dicionário. Se não achar, retorna a própria chave (inglês).
+    Motor de Traducción inspirado en Laravel.
+    Intenta encontrar la clave en el diccionario. Si no la encuentra, devuelve la propia clave (inglés).
     """
     text = TRANSLATIONS.get(key, key)
     if kwargs:
@@ -62,10 +62,10 @@ def __(key, **kwargs):
 ```python
 from src.i18n import __
 
-# Antes (inglês hardcoded):
+# Antes (inglés hardcodeado):
 click.secho("✅ File saved successfully!", fg="green")
 
-# Depois (i18n-ready):
+# Después (i18n-ready):
 click.secho(__("✅ File saved successfully!"), fg="green")
 ```
 
@@ -75,7 +75,7 @@ click.secho(__("✅ File saved successfully!"), fg="green")
 # Placeholder único
 click.echo(__("Downloading {file_name}...", file_name="template.md"))
 
-# Múltiplos placeholders
+# Múltiples placeholders
 click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...",
                provider="Gemini", model="gemini-2.5-flash"), fg="cyan")
 ```
@@ -91,7 +91,7 @@ click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})..."
 
 ```python
 class IssueApp(App):
-    TITLE = __("GitPR - Issue Generator")  # Funciona! __() executa no momento da definição da classe
+    TITLE = __("GitPR - Issue Generator")  # ¡Funciona! __() se ejecuta en el momento de la definición de la clase
 ```
 
 ### En componentes Textual TUI
@@ -108,7 +108,7 @@ BINDINGS = [
 **⚠️ Importante:** ¡Nunca uses `__()` para comparaciones de cadenas! La función devuelve el valor traducido (ej.: portugués), lo que rompería las comparaciones. En su lugar, usa una lista de variaciones posibles en ambos idiomas:
 
 ```python
-# CORRETO — verifica múltiplas variações de idioma
+# CORRECTO — verifica múltiples variaciones de idioma
 _no_commits = [
     "No exclusive commits",
     "No exclusive commits found",
@@ -199,10 +199,10 @@ El módulo i18n importa `__lang_version__` de `updater.py`. Por lo tanto:
 - Otros módulos pueden importar `__` en la parte superior con seguridad
 
 ```python
-# NÃO faça isto no updater.py ou cache.py:
+# NO hagas esto en updater.py o cache.py:
 from src.i18n import __
 
-# FAZ isto em vez disso (dentro da função que precisa):
+# HAZ esto en su lugar (dentro de la función que lo necesita):
 def some_function():
     from src.i18n import __  # lazy import
     click.secho(__("message"))

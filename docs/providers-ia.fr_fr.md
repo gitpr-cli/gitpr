@@ -7,10 +7,10 @@ GitPR est **agnostique en matière d'IA** et prend actuellement en charge deux f
 ## 1. Sélection via la ligne de commande
 
 ```bash
-gitpr -p gemini         # Força Google Gemini nesta execução
-gitpr -p deepseek       # Força DeepSeek nesta execução
-gitpr -c -p gemini      # Commit message com Gemini
-gitpr -r -p deepseek    # Code review com DeepSeek
+gitpr -p gemini         # Force Google Gemini pour cette exécution
+gitpr -p deepseek       # Force DeepSeek pour cette exécution
+gitpr -c -p gemini      # Message de commit avec Gemini
+gitpr -r -p deepseek    # Code review avec DeepSeek
 ```
 
 Le flag `--provider` (`-p`) écrase temporairement le provider par défaut configuré.

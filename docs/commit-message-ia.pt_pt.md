@@ -15,7 +15,7 @@ A ferramenta analisa o `git diff HEAD` e apresenta a mensagem sugerida diretamen
 ```
 📝 Sugestão de Commit:
 
-feat: adiciona validacao de email no formulario de cadastro
+feat: adiciona validacao de email no formulario de registo
 
 - Implementa regex de validacao RFC 5322
 - Adiciona mensagens de erro localizadas (pt-BR)

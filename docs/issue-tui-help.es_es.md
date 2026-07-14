@@ -127,29 +127,29 @@ La primera vez que uses `F3`, GitPR hará lo siguiente:
 ### Ejemplo 1: Documentar una feature antes de commitear
 
 ```bash
-# Você acabou de implementar um sistema de login
+# Acabas de implementar un sistema de login
 gitpr -is
-# → A IA lê o diff, gera o rascunho e abre a TUI
-# → Revise, ajuste o texto se necessário
-# → Pressione F3 para criar a issue no GitHub
+# → La IA lee el diff, genera el borrador y abre la TUI
+# → Revisa, ajusta el texto si es necesario
+# → Pulsa F3 para crear la issue en GitHub
 ```
 
 ### Ejemplo 2: Generar una issue de release
 
 ```bash
-# Sua branch feature/payment tem 15 commits ao longo de 3 dias
+# Tu branch feature/payment tiene 15 commits a lo largo de 3 días
 git checkout feature/payment
 gitpr -is -ht
-# → A IA consolida todo o histórico em uma issue de épico
+# → La IA consolida todo el historial en una issue de épica
 ```
 
 ### Ejemplo 3: Documentar deuda técnica
 
 ```bash
-# Você encontrou um bloco de código confuso no arquivo legado
+# Encontraste un bloque de código confuso en el archivo heredado
 gitpr -is -b src/legacy/parser.py:200-350
-# → A IA rastreia a evolução do bloco desde o commit original
-# → Gera uma issue explicando a dívida técnica e sugerindo refatoração
+# → La IA rastrea la evolución del bloque desde el commit original
+# → Genera una issue explicando la deuda técnica y sugiriendo refactorización
 ```
 
 ---

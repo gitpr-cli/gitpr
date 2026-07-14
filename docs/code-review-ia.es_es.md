@@ -59,13 +59,13 @@ gitpr -f -i src/core.py
 En todos los modos de review, el **Linter Estático** se ejecuta automáticamente. Si hay violaciones de las reglas definidas en el `.gitpr.linter.yml`, las alertas aparecen en la parte superior del informe, antes del análisis de la IA:
 
 ```
-## 🚨 Alertas de Análise Estática Local (Regras YAML)
-- 🚨 Uso de console.log detectado em app.js (Linha 42)
-- ⚠️ Uso de localhost detectado em config.php (Linha 15)
+## 🚨 Alertas de Análisis Estático Local (Reglas YAML)
+- 🚨 Uso de console.log detectado en app.js (Línea 42)
+- ⚠️ Uso de localhost detectado en config.php (Línea 15)
 
 ---
 
-## 🤖 Code Review da IA
+## 🤖 Code Review de la IA
 ...
 ```
 
@@ -87,9 +87,9 @@ Descarga las plantillas con `gitpr -s` y edítalas según las reglas de negocio 
 ## 4. Selección de Proveedor de IA
 
 ```bash
-gitpr -r -p deepseek        # Review local com DeepSeek
-gitpr -f -p gemini          # Full review com Gemini
-gitpr -r -i arquivo.py -p deepseek  # Auditoria com DeepSeek
+gitpr -r -p deepseek        # Review local con DeepSeek
+gitpr -f -p gemini          # Full review con Gemini
+gitpr -r -i arquivo.py -p deepseek  # Auditoría con DeepSeek
 ```
 
 ---

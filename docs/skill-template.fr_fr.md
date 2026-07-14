@@ -51,11 +51,11 @@ Si le fichier de skill n'existe pas, GitPR utilise un template interne par défa
 **Fichier `.gitpr.commit.md` :**
 
 ```markdown
-Todas as mensagens de commit DEVEM:
-- Usar prefixo JIRA obrigatório: [PROJ-1234]
-- Seguir Conventional Commits (feat, fix, refactor...)
-- Ser escritas em português (Brasil)
-- Não exceder 72 caracteres na linha de assunto
+Tous les messages de commit DOIVENT :
+- Utiliser un préfixe JIRA obligatoire : [PROJ-1234]
+- Suivre Conventional Commits (feat, fix, refactor...)
+- Être écrits en portugais (Brésil)
+- Ne pas dépasser 72 caractères sur la ligne de sujet
 ```
 
 Après avoir créé ce fichier, toutes les exécutions de `gitpr -c` suivront ces règles.
