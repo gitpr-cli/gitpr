@@ -40,21 +40,21 @@ def get_doc_url(filename):
         return f"https://github.com/natanfiuza/gitpr/blob/main/docs/{base}.{CURRENT_LANG}.{ext}"
 
 
-def get_git_diff():
+def get_git_diff(quiet=False):
     """Runs 'git diff HEAD' and returns the output, warning about untracked files."""
     try:
         # Check if there are new untracked files
         untracked_process = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"], 
-            capture_output=True, 
-            text=True, 
+            ["git", "ls-files", "--others", "--exclude-standard"],
+            capture_output=True,
+            text=True,
             encoding="utf-8",
-            errors="replace"  # <--- CORREÇÃO AQUI (Evita crash com acentos)
+            errors="replace"
         )
         untracked_files = untracked_process.stdout.strip()
-        
+
         # If there are new files, display an educational warning in the console
-        if untracked_files:
+        if untracked_files and not quiet:
             click.secho(__("⚠️ Warning: Git detected new untracked files:"), fg="yellow")
             for file in untracked_files.split('\n'):
                 click.secho(f"  - {file}", fg="yellow", dim=True)
@@ -64,19 +64,21 @@ def get_git_diff():
         # Run the normal diff that captures tracked and staged files
         cmd = ["git", "diff", "HEAD", "--"] + SMART_EXCLUDES
         result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
+            cmd,
+            capture_output=True,
+            text=True,
             encoding="utf-8",
-            errors="replace",  
+            errors="replace",
             check=True
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
-        click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
+        if not quiet:
+            click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
         return None
     except FileNotFoundError:
-        click.secho(__("❌ Git not found. Make sure it is installed and in the PATH."), fg="red")
+        if not quiet:
+            click.secho(__("❌ Git not found. Make sure it is installed and in the PATH."), fg="red")
         return None
 
 

@@ -1,0 +1,6 @@
+{
+    "/explicar": "Explica el diff línea por línea.",
+    "/pruebas": "Genera pruebas unitarias para las funciones modificadas.",
+    "/optimizar": "Analiza la complejidad ciclomática y el rendimiento.",
+    "/limpiar": "Limpia la conversación y crea una nueva sesión de chat para el diff actual."
+}

@@ -1,23 +1,23 @@
 # ==============================================================================
-# 🛡️ GitPR - Configuração do Linter Estático Local
+# 🛡️ GitPR - Local Static Linter Configuration
 # ==============================================================================
-# Este arquivo define as regras de qualidade que rodam na máquina do desenvolvedor.
-# O GitPR analisa apenas as LINHAS MODIFICADAS no 'git diff'.
-# 
-# Propriedades da Regra:
-# - name: Identificador único da regra (sem espaços).
-# - level: 'error' (trava o commit) ou 'warning' (apenas exibe alerta amarelo).
-# - extensions: Lista de extensões de arquivo onde a regra atua (ex: ["php", "js"]).
-# - require_paths: (Opcional) Limita a execução a pastas específicas (ex: ["routes/*"]).
-# - ignore_paths: (Opcional) Ignora pastas específicas (ex: ["vendor/*", "tests/*"]).
-# - regex: A expressão regular de busca (USE SEMPRE aspas simples '').
-# - message: O texto do alerta. Aceita as variáveis {file_name} e {line_number}.
-# - ignore_comments: true (ignora código comentado) / false (lê os comentários).
+# This file defines the quality rules that run on the developer's machine.
+# GitPR analyzes only the MODIFIED LINES in the 'git diff'.
+#
+# Rule Properties:
+# - name: Unique rule identifier (no spaces).
+# - level: 'error' (blocks the commit) or 'warning' (displays a yellow alert only).
+# - extensions: List of file extensions where the rule applies (e.g.: ["php", "js"]).
+# - require_paths: (Optional) Limits execution to specific folders (e.g.: ["routes/*"]).
+# - ignore_paths: (Optional) Ignores specific folders (e.g.: ["vendor/*", "tests/*"]).
+# - regex: The search regular expression (ALWAYS use single quotes '').
+# - message: The alert text. Accepts the variables {file_name} and {line_number}.
+# - ignore_comments: true (ignores commented code) / false (reads comments).
 # ==============================================================================
 
 rules:
   # ---------------------------------------------------------
-  # 🚨 ERROS CRÍTICOS (Bloqueiam o Commit)
+  # 🚨 CRITICAL ERRORS (Block the Commit)
   # ---------------------------------------------------------
 
   #- name: ""
@@ -28,7 +28,7 @@ rules:
   #  ignore_comments: true
 
   # ---------------------------------------------------------
-  # ⚠️ AVISOS DE BOAS PRÁTICAS (Não bloqueiam o Commit)
+  # ⚠️ BEST PRACTICE WARNINGS (Do not block the Commit)
   # ---------------------------------------------------------
 
 
@@ -37,12 +37,12 @@ rules:
     level: "warning"
     extensions: ["php", "js", "ts", "vue", "py"]
     regex: '(?i)(TODO|FIXME):'
-    message: "⚠️ Atenção: Existe uma anotação TODO ou FIXME pendente em {file_name} (Linha {line_number})."
-    ignore_comments: false # Aqui precisamos de ler os comentários propositadamente!
+    message: "⚠️ Warning: There is a pending TODO or FIXME annotation in {file_name} (Line {line_number})."
+    ignore_comments: false # Here we intentionally need to read the comments!
 
   - name: "check-ia-indice"
     extensions: ["py"]
     level: "warning"
     regex: '^\s*#\s*\d+\.'
-    message: "🚨 Comentário de índice encontrado no arquivo {file_name} (Linha {line_number}) - Verifique se é intencional ou foi IA"  
+    message: "🚨 Index comment found in file {file_name} (Line {line_number}) - Check if intentional or AI-generated"
     ignore_comments: false

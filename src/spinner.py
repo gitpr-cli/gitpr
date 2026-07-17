@@ -93,6 +93,21 @@ def _load_thinking_words():
     return list(_FALLBACK_WORDS)
 
 
+def reload_thinking_words(lang: str) -> None:
+    """
+    Recompute module-level spinner constants for the given language.
+    Called by cli() after set_lang() when --lang is provided.
+    Must be called before any Spinner instance is created.
+    """
+    global _LANG_SUFFIX, THINKING_WORDS_URL, THINKING_WORDS
+    _LANG_SUFFIX = "" if lang.startswith("en") else f".{lang}"
+    THINKING_WORDS_URL = (
+        "https://raw.githubusercontent.com/natanfiuza/gitpr/"
+        f"refs/heads/main/templates/gitpr.thinking-words{_LANG_SUFFIX}.md"
+    )
+    THINKING_WORDS = _load_thinking_words()
+
+
 # Words representing AI "thinking" (loaded from .env or remote template)
 THINKING_WORDS = _load_thinking_words()
 
