@@ -18,6 +18,9 @@ from src.core import (
 )
 from src.linter_engine import parse_diff_and_lint
 from src.i18n import __
+import subprocess
+from src.chat_memory import ChatMemoryManager
+from src.ui.chat_app import ChatApp
 
 def print_banner():
     """Displays the project ASCII Art signature"""
@@ -98,6 +101,16 @@ HELP_MAP: dict[str, dict[str, str]] = {
         'title': __('AI Provider Selection (--provider)'),
         'description': __('Forces the use of a specific AI provider for this execution: gemini (Google Gemini), deepseek (DeepSeek) or ollama (Local). Temporarily overrides the default provider defined in the .env file.'),
     },
+    'chat': {
+        'url': get_doc_url('chat-interativo.md'),
+        'title': __('Interactive Pair Programming Chat (--chat)'),
+        'description': __('Opens an interactive terminal (TUI) to chat with the AI about the current uncommitted changes. Features memory, auto-patching (F5), and live diff refresh (F2).'),
+    },
+    'lang': {
+        'url': get_doc_url('providers-ia.md'),
+        'title': __('Language Override (--lang)'),
+        'description': __('Forces the interface language for this execution (e.g.: en_us, pt_br). Overrides the GITPR_LANG environment variable and OS locale detection.'),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -115,6 +128,7 @@ HELP_PRIORITY: dict[str, int] = {
     'input': 10,
     'history': 11,
     'provider': 12,
+    'lang': 13,
 }
 
 
@@ -133,9 +147,11 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-b', '--blame', type=str, help=__("Analyzes the origin of a business rule (e.g., file.py:10-20 or just file.py)."))
 @click.option('-ht', '--history', is_flag=True, help=__("Uses the entire branch history (Git Log + PR Cache) as context to generate the issue."))
 @click.option('-is', '--issue', is_flag=True, help=__("Generates a standardized Issue from current changes and opens the interactive interface."))
+@click.option('-ch', '--chat', is_flag=True, help=__("Opens the interactive Pair Programming chat with AI."))
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek', 'ollama']), help=__("Forces the use of a specific AI provider for this execution."))
+@click.option('--lang', type=str, help=__("Forces the interface language for this execution (e.g.: en_us, pt_br)."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, history, issue, help_flag):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, history, issue, chat, help_flag, lang):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -196,6 +212,13 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         # Garante saida limpa apos exibir ajuda contextual
         ctx = click.get_current_context()
         ctx.exit()
+
+    # Language override via --lang flag (one-shot, does not persist to .env)
+    if lang:
+        from src.i18n import set_lang
+        from src.spinner import reload_thinking_words
+        set_lang(lang)
+        reload_thinking_words(lang)
 
     # Silencia o banner se estiver no modo quiet ou via hook
     if not quiet and not hook:
@@ -427,6 +450,57 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
             cor = "green" if app.final_action in ["saved", "created"] else "red"
             click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
 
+        return
+
+# Chat Module (Pair Programming TUI)
+    if chat:
+        from src.issue_engine import get_github_repo_info
+        from src.config import get_api_key
+        
+        setup_environment()
+        
+        diff_text = get_git_diff()
+        if not diff_text or not diff_text.strip():
+            click.secho(__("\n⚠️ No new code found. Make some changes before starting the chat.\n"), fg="yellow")
+            click.secho(f"📚 {__('Chat documentation:')} {get_doc_url('understanding_chat_functionality.md')}", fg="cyan")
+            return
+            
+        active_provider = provider if provider else get_ai_provider()
+        api_key = get_api_key(active_provider)
+        
+        if not api_key:
+            click.secho(__("❌ AI Provider API Key missing or invalid."), fg="red")
+            return
+        
+        repo_info = get_github_repo_info() or "local-repo"
+        branch_name = get_current_branch()
+        
+        try:
+            git_user = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True).stdout.strip()
+            git_email = subprocess.run(["git", "config", "user.email"], capture_output=True, text=True).stdout.strip()
+        except Exception:
+            git_user, git_email = "Dev", "dev@local"
+            
+        memory = ChatMemoryManager(repo_info, branch_name, diff_text, git_user, git_email)
+        
+        system_instruction = __("You are a Senior Software Engineer acting as a Pair Programmer. Analyze the code provided and answer the user's questions clearly, objectively, and technically. Use Markdown to format code blocks. The current git diff is:\n\n{diff}", diff=diff_text)
+        
+        # Pega o modelo primário configurado no .env
+        env_model_key = f"{active_provider.upper()}_API_MODEL_PRIMARY"
+        api_model = os.getenv(env_model_key)
+        if not api_model:
+            click.secho(__("❌ Model configuration not found for provider {provider}.", provider=active_provider), fg="red")
+            return
+        
+        app = ChatApp(
+            memory_manager=memory,
+            provider=active_provider,
+            api_key=api_key,
+            api_model=api_model,
+            system_instruction=system_instruction
+        )
+        app.run()
+        click.secho(f"📚 {__('Chat documentation:')} {get_doc_url('understanding_chat_functionality.md')}", fg="cyan")
         return
 
     # Input Mode validation (with guard to not interfere with contextual -h)

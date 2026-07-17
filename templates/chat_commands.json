@@ -1,0 +1,6 @@
+{
+  "/explain": "Explains the diff line by line.",
+  "/tests": "Generates unit tests for the changed functions.",
+  "/optimize": "Analyzes cyclomatic complexity and performance.",
+  "/clear": "Clears conversation and creates a new chat session for the current diff."
+}

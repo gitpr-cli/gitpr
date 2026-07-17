@@ -1,0 +1,6 @@
+{
+    "/expliquer": "Explique le diff ligne par ligne.",
+    "/tests": "Génère des tests unitaires pour les fonctions modifiées.",
+    "/optimiser": "Analyse la complexité cyclomatique et les performances.",
+    "/effacer": "Efface la conversation et crée une nouvelle session de chat pour le diff actuel."
+}

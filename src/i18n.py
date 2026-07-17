@@ -82,6 +82,19 @@ def get_translations(lang_code):
 CURRENT_LANG = get_system_language()
 TRANSLATIONS = get_translations(CURRENT_LANG)
 
+
+def set_lang(lang: str) -> None:
+    """
+    Override the session language at runtime.
+    Updates CURRENT_LANG and TRANSLATIONS. Does NOT persist to .env.
+    Called by the --lang CLI flag before any command logic.
+    """
+    global CURRENT_LANG, TRANSLATIONS
+    lang = lang.lower().replace("-", "_")  # normalize pt-BR -> pt_br
+    CURRENT_LANG = lang
+    TRANSLATIONS = get_translations(lang)
+
+
 def __(key, **kwargs):
     """
     Translation Engine inspired by Laravel.

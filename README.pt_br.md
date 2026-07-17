@@ -108,7 +108,9 @@ You can pass the following *flags* for specific actions:
 * `-r` or `--review`: Performs a detailed **Code Review** of local changes.
 * `-f` or `--fullreview`: Performs a **Full Code Review** analyzing all changes since the remote branch.
 * `-i <file>` or `--input <file>`: **Full File Audit.** Must be used together with `-r` or `-f`; it ignores git history and does a Code Review of the entire file. Excellent for acting as a consultant on legacy code refactoring.
-* `--provider <gemini|deepseek>`: Forces the use of a specific AI only for this execution, ignoring your default saved in `.env`.
+* `--provider <gemini|deepseek|ollama>`: Força o uso de uma IA específica apenas para esta execução, ignorando o padrão salvo no `.env`.
+* `--lang <codigo>`: Força o idioma da interface para esta execução (ex.: `en_us`, `pt_br`). Sobrescreve o `GITPR_LANG` do `.env` sem persistir a alteração.
+* `-ch` ou `--chat`: Abre o **Chat Interativo de Pair Programming** — um terminal TUI onde a IA enxerga seu diff atual e mantém uma conversa contextual. Possui memória por branch, comandos slash (`/explain`, `/tests`, `/optimize`, `/clear`), auto-patching (F5), atualização de diff (F2) e exportação de sessão (F6).
 * `-l` or `--linter`: Runs **only the local static linter** (no AI calls). Ideal for use in CI/CD pipelines to block non-compliant code.
 * `-ih` or `--installhooks`: Automatically installs **local Git Hooks** (`pre-commit` and `prepare-commit-msg`) in your repository.
 * `-s` or `--skill`: Creates the AI context template files (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) and the Linter (`.gitpr.linter.yml`) at the project root.
@@ -147,6 +149,7 @@ The Linter analyzes only the **added lines** in your `git diff`, ensuring a focu
 GitPR is not tied to a single Artificial Intelligence. During initial setup, the user can choose their default engine. We currently support:
 * **Google Gemini** (Default: `gemini-2.5-flash`)
 * **DeepSeek** (Default: `deepseek-chat`)
+* **Ollama** (Local) — execute modelos localmente sem internet, totalmente compatível com o formato da API OpenAI
 
 You can dynamically switch models by configuring the `GEMINI_API_MODEL` or `DEEPSEEK_API_MODEL` variables in your `~/.gitpr/.env` file, or switch in real-time using the `--provider` flag.
 
@@ -175,24 +178,39 @@ Para forçar um idioma específico, defina `GITPR_LANG=pt_br` ou `GITPR_LANG=en`
 
 > 📖 **Guia completo do desenvolvedor:** [docs/i18n_explanation.pt_br.md](docs/i18n_explanation.pt_br.md) — arquitetura, padrões de uso, precauções com import circular e como adicionar novos idiomas.
 
-## 📚 Technical Documentation and Advanced Guides
+## 📚 Documentação Técnica e Guias Avançados
 
-To keep this README concise, we detail the most advanced **DevOps** and **Continuous Integration** focused implementations in separate documents.
+Para manter este README conciso, detalhamos as implementações mais avançadas focadas em **DevOps** e **Integração Contínua** em documentos separados.
 
-If you want to implement GitPR as an automated quality barrier in your team, check out the guides below:
+Se você deseja implementar o GitPR como uma barreira de qualidade automatizada em sua equipe, confira os guias abaixo.
 
-* [**Local Git Hooks (Shift-Left)**](docs/git-hooks-locais.md): How to use `gitpr --installhooks` to create guardrails on the developer's machine and use AI to automatically write commit messages.
-* [**Customizable Static Linter**](docs/linter-regras-customizadas.md): How to create validation rules in `.gitpr.linter.yml` for CI/CD and pre-commit hooks.
-* [**Issue Generation and TUI Interface**](docs/issue-tui-help.md): How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
-* [**AI Code Review**](docs/code-review-ia.md): Guide to review modes (`--review`, `--fullreview`) and file auditing (`--input`).
-* [**AI Commit Messages**](docs/commit-message-ia.md): How to generate messages in the Conventional Commits standard and integrate with Git Hooks.
-* [**Code Archaeologist (Git Blame)**](docs/blame-arqueologo.md): How to trace the origin of business rules with `git blame` and AI.
-* [**Skills and Templates System**](docs/skill-template.md): How to customize AI behavior with `.gitpr.*.md` files.
-* [**Auto-Updater**](docs/auto-update.md): How GitPR's automatic update (hot-swap) works.
-* [**AI Providers**](docs/providers-ia.md): Configuration and selection between Google Gemini and DeepSeek.
-* [**Pull Request (Default Mode)**](docs/pr-descricao-padrao.md): Complete flow for generating PR descriptions without flags.
-* [**CI/CD Integration (GitHub Actions)**](docs/github-ci-linter.md): How to run GitPR in the pipeline to block "Merge" of PRs with violations.
-* [**GitHub Token (PAT) Integration and Security**](docs/github-pat-integration.md): Understand how GitPR creates issues directly in the repository with authentication.
+> 🌐 Cada guia está disponível em **5 idiomas** — adicione `.pt_br`, `.pt_pt`, `.fr_fr` ou `.es_es` antes da extensão `.md` para versões traduzidas (ex.: `docs/understanding_chat_functionality.pt_br.md`). Inglês é o padrão sem sufixo.
+
+### Chat e Recursos Interativos
+
+* [**🧠 Chat Interativo (Pair Programming)**](https://github.com/natanfiuza/gitpr/blob/main/docs/understanding_chat_functionality.md) — Como usar o chat com IA com memória, comandos slash, auto-patch e exportação de sessão.
+
+### DevOps & CI/CD
+
+* [**Git Hooks Locais (Shift-Left)**](https://github.com/natanfiuza/gitpr/blob/main/docs/git-hooks-locais.md) — Como usar `gitpr --installhooks` para criar barreiras de qualidade na máquina do desenvolvedor e usar IA para gerar mensagens de commit automaticamente.
+* [**Linter Estático Customizável**](https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md) — Como criar regras de validação no `.gitpr.linter.yml` para CI/CD e hooks de pre-commit.
+* [**Integração CI/CD (GitHub Actions)**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-ci-linter.md) — Como executar o GitPR no pipeline para bloquear "Merge" de PRs com violações.
+
+### Funcionalidades Principais
+
+* [**Pull Request (Modo Padrão)**](https://github.com/natanfiuza/gitpr/blob/main/docs/pr-descricao-padrao.md) — Fluxo completo para gerar descrições de PR sem flags.
+* [**Code Review com IA**](https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md) — Guia dos modos de review (`--review`, `--fullreview`) e auditoria de arquivos (`--input`).
+* [**Mensagens de Commit com IA**](https://github.com/natanfiuza/gitpr/blob/main/docs/commit-message-ia.md) — Como gerar mensagens no padrão Conventional Commits e integrar com Git Hooks.
+* [**Geração de Issues e Interface TUI**](https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md) — Como usar a interface gráfica de terminal (TUI) e os 3 motores de contexto para gerenciar Issues estruturadas.
+* [**Arqueólogo de Código (Git Blame)**](https://github.com/natanfiuza/gitpr/blob/main/docs/blame-arqueologo.md) — Como rastrear a origem de regras de negócio com `git blame` e IA.
+* [**Sistema de Skills e Templates**](https://github.com/natanfiuza/gitpr/blob/main/docs/skill-template.md) — Como personalizar o comportamento da IA com arquivos `.gitpr.*.md`.
+
+### Configuração e Infraestrutura
+
+* [**Provedores de IA**](https://github.com/natanfiuza/gitpr/blob/main/docs/providers-ia.md) — Configuração e seleção entre Google Gemini, DeepSeek e Ollama.
+* [**Auto-Updater**](https://github.com/natanfiuza/gitpr/blob/main/docs/auto-update.md) — Como funciona a atualização automática (hot-swap) do GitPR.
+* [**Token GitHub (PAT) — Integração e Segurança**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Entenda como o GitPR cria issues diretamente no repositório com autenticação.
+* [**Internacionalização (i18n)**](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — Arquitetura, padrões de uso e como adicionar novos idiomas.
 
 ## ⚡ Local Cache System (Quota Savings)
 
