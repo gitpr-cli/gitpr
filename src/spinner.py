@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 from dotenv import load_dotenv, set_key
 from src.i18n import __, CURRENT_LANG
+from src.updater import __lang_version__
 
 # ANSI color codes
 MAGENTA = '\033[35m'
@@ -51,6 +52,12 @@ _FALLBACK_WORDS = [
     __("Calculating"),__("Reflecting"), __("Computing"),    
 ]
 
+def _parse_env_words(raw):
+    """Parses the .env word list (supports | or , separator)."""
+    sep = "|" if "|" in raw else ","
+    return [w.strip() for w in raw.split(sep) if w.strip()]
+
+
 def _load_thinking_words():
     """Loads the word list from .env or downloads from the remote template."""
     env_file = str(Path.home() / ".gitpr" / ".env")
@@ -60,12 +67,16 @@ def _load_thinking_words():
 
     raw = os.getenv("SPINNER_THINKING_WORDS", "").strip()
 
-    if raw:
-        # .env already has words: supports | or , separator
-        sep = "|" if "|" in raw else ","
-        return [w.strip() for w in raw.split(sep) if w.strip()]
+    # Version gate: when __lang_version__ changes, force a re-download so the
+    # words stay in sync with the published template (same pattern as
+    # LANG_VERSION in i18n.py and SMART_EXCLUDES_VERSION in core.py).
+    needs_update = os.getenv("THINKING_WORDS_VERSION") != __lang_version__
 
-    # .env has no words: download from GitHub
+    if raw and not needs_update:
+        # .env already has up-to-date words: supports | or , separator
+        return _parse_env_words(raw)
+
+    # .env has no words (or they are outdated): download from GitHub
     try:
         with urllib.request.urlopen(THINKING_WORDS_URL, timeout=10) as resp:
             content = resp.read().decode("utf-8")
@@ -83,11 +94,16 @@ def _load_thinking_words():
                     words.append(word)
 
         if words:
-            # Save to .env as pipe-separated
+            # Save to .env as pipe-separated and stamp the version marker
             set_key(env_file, "SPINNER_THINKING_WORDS", "|".join(words))
+            set_key(env_file, "THINKING_WORDS_VERSION", __lang_version__)
             return words
     except Exception:
         pass
+
+    # Download failed: reuse the stale .env words if available
+    if raw:
+        return _parse_env_words(raw)
 
     # Fallback: use internal list
     return list(_FALLBACK_WORDS)

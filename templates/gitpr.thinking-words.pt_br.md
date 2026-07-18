@@ -29,3 +29,21 @@ Vagabundagem
 Ruminação
 Decifração
 Ação
+Coalescendo
+Imaginando
+Vislumbrando
+Encantando
+Ideando
+Combobulando
+Tagarelando
+Contemplando
+Incubando
+Reunindo
+Saltitando
+Desfraldando
+Matutando
+Quebrando a cabeça
+Realizando
+Engenhocando
+Fervendo
+Passeando
