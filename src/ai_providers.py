@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import datetime
 import click
 from google import genai
 from openai import OpenAI
@@ -10,13 +11,65 @@ from src.spinner import Spinner
 from src.i18n import __,CURRENT_LANG
 
 
-def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quiet=False):
+# Hidden --pre-save debug flag: when enabled, every AI payload is dumped
+# to a JSON file in the current directory before being sent to the model.
+PRE_SAVE_ENABLED = False
+
+
+def set_pre_save(enabled):
+    """Enable/disable the pre-save payload dump (set once from the CLI)."""
+    global PRE_SAVE_ENABLED
+    PRE_SAVE_ENABLED = enabled
+
+
+def _save_pre_save_payload(action, provider, api_model, system_instruction, prompt=None, chat_history=None, new_message=None):
+    """
+    Dump the full AI payload to a _{action}-{datetime}.json file in the current directory.
+    Returns the filename on success or None on failure (a debug dump must never break the flow).
+    """
+    filename = f"_{action}-{datetime.now().strftime('%Y%m%d%H%M%S%f')}.json"
+
+    payload = {
+        "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "action": action,
+        "provider": provider,
+        "model": api_model,
+        "system_instruction": system_instruction,
+        "system_instruction_chars": len(system_instruction) if system_instruction else 0,
+    }
+
+    if chat_history is not None:
+        payload["chat_history"] = chat_history
+        payload["new_message"] = new_message
+        payload["chat_history_chars"] = len(json.dumps(chat_history, ensure_ascii=False)) if chat_history else 0
+        payload["new_message_chars"] = len(new_message) if new_message else 0
+        payload["total_chars"] = payload["system_instruction_chars"] + payload["chat_history_chars"] + payload["new_message_chars"]
+    else:
+        payload["prompt"] = prompt
+        payload["prompt_chars"] = len(prompt) if prompt else 0
+        payload["total_chars"] = payload["system_instruction_chars"] + payload["prompt_chars"]
+
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return filename
+    except Exception:
+        return None
+
+
+def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quiet=False, action="ai_call"):
     """
     Unified engine for AI calls.
     Supports 'gemini' and 'deepseek'.
     """
     max_retries = 3
     retry_delay = 2
+
+    if PRE_SAVE_ENABLED:
+        saved_file = _save_pre_save_payload(action, provider, api_model, system_instruction, prompt=prompt)
+        if saved_file and not quiet:
+            click.secho(__("📝 Pre-save: AI payload saved to {filename}", filename=saved_file), fg="yellow", dim=True)
+
     spinner = Spinner(quiet=quiet)
     spinner.start()
 
@@ -141,6 +194,11 @@ def call_ai_chat(provider, api_key, api_model, system_instruction, chat_history,
     Dedicated engine for the Interactive Chat.
     Keeps the historical context and returns free Markdown (does not force JSON).
     """
+    if PRE_SAVE_ENABLED:
+        saved_file = _save_pre_save_payload("chat", provider, api_model, system_instruction, chat_history=chat_history, new_message=new_message)
+        if saved_file and not quiet:
+            click.secho(__("📝 Pre-save: AI payload saved to {filename}", filename=saved_file), fg="yellow", dim=True)
+
     spinner = Spinner(quiet=quiet)
     spinner.start()
 

@@ -308,5 +308,13 @@
   "Msg #{n} focused | Ctrl+S: Auto-Patch | Ctrl+E: Export": "Msg #{n} enfocado | Ctrl+S: Auto-Patch | Ctrl+E: Exportar",
   "❌ No AI message focused. Use F7/F8 to select one.": "❌ Ningún mensaje de IA enfocado. Use F7/F8 para seleccionar uno.",
   "🧪 Auto-Patch: Code extracted from message #{n} and saved to {file}!": "🧪 Auto-Patch: ¡Código extraído del mensaje #{n} y guardado en {file}!",
-  "⚡ Auto-Patch: Code extracted and saved to {file}!": "⚡ Auto-Patch: ¡Código extraído y guardado en {file}!"
+  "⚡ Auto-Patch: Code extracted and saved to {file}!": "⚡ Auto-Patch: ¡Código extraído y guardado en {file}!",
+  "📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...": "📦 ¡Diff gigante detectado! Procesando en {count} lotes (Map-Reduce)...",
+  "⏳ Analyzing batch {current}/{total}...": "⏳ Analizando lote {current}/{total}...",
+  "Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n": "Genera SOLO un objeto JSON en el formato {json_format} que contenga un resumen técnico de lo que se modificó en esta parte ({idx}) del diff:\n",
+  "❌ Failed to extract context from the partial batches.": "❌ Fallo al extraer el contexto de los lotes parciales.",
+  "🔄 Unifying intelligence and generating the final analysis...": "🔄 Unificando inteligencia y generando el análisis final...",
+  "Generate ONLY a JSON object in the format {json_format} for the commit message, unifying these technical summaries:\n": "Genera SOLO un objeto JSON en el formato {json_format} para el mensaje de commit, unificando estos resúmenes técnicos:\n",
+  "Generate ONLY a JSON object in the format {json_format} with a code review focused on improvements, using these summaries:\n": "Genera SOLO un objeto JSON en el formato {json_format} con una revisión de código centrada en mejoras, usando estos resúmenes:\n",
+  "Unify these technical summaries and generate ONLY a JSON object in the format {json_format} describing the Pull Request:\n": "Unifica estos resúmenes técnicos y genera SOLO un objeto JSON en el formato {json_format} describiendo el Pull Request:\n"
 }

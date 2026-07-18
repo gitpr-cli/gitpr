@@ -143,6 +143,7 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-ih', '--installhooks', is_flag=True, help=__("Automatically installs validation Git Hooks in the project."))
 @click.option('--hook', type=click.Path(), hidden=True, help=__("Commit file path (internal hook use)."))
 @click.option('-q', '--quiet', is_flag=True, hidden=True, help=__("Hides banner and non-essential logs (internal use)."))
+@click.option('--pre-save', is_flag=True, hidden=True, help=__("Saves the full AI payload (system + prompt) to a JSON file before each AI call (debug)."))
 @click.option('-i', '--input', type=click.Path(), help=__("Path to a specific file for full analysis."))
 @click.option('-b', '--blame', type=str, help=__("Analyzes the origin of a business rule (e.g., file.py:10-20 or just file.py)."))
 @click.option('-ht', '--history', is_flag=True, help=__("Uses the entire branch history (Git Log + PR Cache) as context to generate the issue."))
@@ -151,7 +152,7 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek', 'ollama']), help=__("Forces the use of a specific AI provider for this execution."))
 @click.option('--lang', type=str, help=__("Forces the interface language for this execution (e.g.: en_us, pt_br)."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, provider, input, blame, history, issue, chat, help_flag, lang):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -235,6 +236,11 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
                 os.remove(old_exe)
             except OSError:
                 pass
+
+    # Enable AI payload dump for inspection (hidden debug flag)
+    if pre_save:
+        from src.ai_providers import set_pre_save
+        set_pre_save(True)
 
     if linter:
         diff_text = get_git_diff()

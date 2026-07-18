@@ -1,4 +1,9 @@
+
 # **GitPR CLI 🚀**
+
+<p align="center">
+  <img src="docs/logo.png" alt="GitPR Logo" width="200">
+</p>
 
 GitPR CLI is a command-line automation tool that uses **Google Gemini** and **DeepSeek** artificial intelligence to analyze your code changes (git diff) or entire files. The tool automatically generates commit messages in the *Conventional Commits* standard, detailed Pull Request descriptions, and deep Code Reviews aimed at reducing technical debt.
 
@@ -122,6 +127,14 @@ You can pass the following *flags* for specific actions:
 * `-u` or `--update`: Checks and installs the latest version of GitPR (Auto-Updater).
 
 > **⚙️ Technical Note (--hook):** GitPR has a hidden flag `--hook <file>` that is triggered exclusively by the Git Hooks system in the background. It allows the AI to inject the suggested message directly into Git's temporary file, without cluttering your terminal.
+>
+> **⚙️ Technical Note (--pre-save):** GitPR has a hidden debug flag `--pre-save` that can be combined with any AI command (e.g.: `gitpr -c --pre-save`). Before each AI call, it saves the full payload that will be sent to the model (system instruction + prompt + character counters) to a `_{action}-{datetime}.json` file in the current folder, and then proceeds normally. Useful for inspecting very large prompts. Note: when the response comes from the local cache, no call is made and no file is generated.
+
+### 📦 Huge Diffs (Map-Reduce)
+
+When your diff is too large for a single AI call (over ~90k estimated tokens), GitPR automatically splits it into batches by file, asks the AI for a technical summary of each part (Map), and unifies everything into the final commit message, review, or PR description (Reduce). No flags needed — it activates on demand and shows the progress in the console.
+
+📚 Full documentation: [docs/map-reduce-diff.md](docs/map-reduce-diff.md)
 
 ## 🛡️ Local Linter (Static Analysis)
 

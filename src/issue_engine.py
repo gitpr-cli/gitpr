@@ -78,7 +78,7 @@ def generate_issue_content(context_text, context_type="diff"):
 
     click.secho(__("🤖 Structuring Issue using {provider} ({api_model})...", provider=provider.capitalize(), api_model=api_model), fg="cyan", dim=True)
 
-    result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst)
+    result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst, action="issue")
 
     if result_json and "titulo" in result_json and "corpo" in result_json:
         # Save to Cache

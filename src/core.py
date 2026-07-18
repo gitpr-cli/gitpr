@@ -2,32 +2,97 @@ import os
 import re
 import json
 import stat
+import time
 import click
 import subprocess
 import urllib.request
 import urllib.error
+from pathlib import Path
 from google import genai
+from dotenv import load_dotenv, set_key
 from src.security import decrypt_data
 from src.cache import get_cached_response, save_cached_response, get_cached_pr_descriptions
 from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __, CURRENT_LANG
+from src.updater import __lang_version__
 
-# Filtro Smart Diff: ficheiros que gastam tokens da IA sem acrescentar valor semântico
-SMART_EXCLUDES = [
-    ":(exclude)*.lock",
-    ":(exclude)package-lock.json",
-    ":(exclude)yarn.lock",
-    ":(exclude)pnpm-lock.yaml",
-    ":(exclude)composer.lock",
-    ":(exclude)poetry.lock",
-    ":(exclude)Pipfile.lock",
-    ":(exclude)Gemfile.lock",
-    ":(exclude)go.sum",
-    ":(exclude)*.min.js",
-    ":(exclude)*.min.css",
-    ":(exclude)*.svg"
+# Smart Diff filter: files that consume AI tokens without adding semantic value.
+# The pattern list is managed remotely (templates/gitpr.smart-excludes.json) and
+# cached at ~/.gitpr/conf/ — see _load_smart_excludes() for the update logic.
+_FALLBACK_SMART_EXCLUDES = [
+    "*.lock",
+    "package-lock.json",
+    "yarn.lock",
+    "pnpm-lock.yaml",
+    "composer.lock",
+    "poetry.lock",
+    "Pipfile.lock",
+    "Gemfile.lock",
+    "go.sum",
+    "*.min.js",
+    "*.min.css",
+    "*.svg"
 ]
+
+SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.smart-excludes.json"
+
+
+def _load_smart_excludes():
+    """
+    Load the smart-exclude patterns and return them as git pathspec exclusions.
+
+    Resolution order:
+    1. Local copy at ~/.gitpr/conf/gitpr.smart-excludes.json when its version
+       marker (SMART_EXCLUDES_VERSION in ~/.gitpr/.env) matches __lang_version__.
+    2. Fresh download from the remote template (saved locally + marker updated).
+    3. Stale local copy when the download fails.
+    4. _FALLBACK_SMART_EXCLUDES as last resort.
+    Silent on failure — diff generation must never break because of this list.
+    """
+    env_file = Path.home() / ".gitpr" / ".env"
+    load_dotenv(env_file)
+
+    conf_dir = Path.home() / ".gitpr" / "conf"
+    local_file = conf_dir / "gitpr.smart-excludes.json"
+    needs_update = os.getenv("SMART_EXCLUDES_VERSION") != __lang_version__
+
+    def _to_pathspecs(data):
+        return [f":(exclude){pattern}" for pattern in data.get("excludes", [])]
+
+    # 1. Local copy is present and up to date
+    if local_file.exists() and not needs_update:
+        try:
+            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                return _to_pathspecs(json.load(f))
+        except Exception:
+            pass
+
+    # 2. Download the updated list from the remote template
+    try:
+        with urllib.request.urlopen(SMART_EXCLUDES_URL, timeout=3) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        conf_dir.mkdir(parents=True, exist_ok=True)
+        with open(local_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
+        return _to_pathspecs(data)
+    except Exception:
+        pass
+
+    # 3. Offline fallback: reuse the local copy even if outdated
+    if local_file.exists():
+        try:
+            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                return _to_pathspecs(json.load(f))
+        except Exception:
+            pass
+
+    # 4. Last resort: built-in defaults
+    return [f":(exclude){pattern}" for pattern in _FALLBACK_SMART_EXCLUDES]
+
+
+SMART_EXCLUDES = _load_smart_excludes()
 
 
 def get_doc_url(filename):
@@ -62,7 +127,7 @@ def get_git_diff(quiet=False):
             click.secho(f"📚 {__('Understand why:')} {get_doc_url('untracked-files.md')}\n", fg="blue", underline=True)
 
         # Run the normal diff that captures tracked and staged files
-        cmd = ["git", "diff", "HEAD", "--"] + SMART_EXCLUDES
+        cmd = ["git", "diff", "-U1", "-w", "-M", "-B", "HEAD", "--"] + SMART_EXCLUDES
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -153,6 +218,35 @@ def get_skill_context(action_type="pr"):
     # Return empty if it does not exist
     return ""
 
+def estimate_token_count(text):
+    """Estimates the token count using the safe rule of 4 characters per token."""
+    return len(text) // 4
+
+def split_diff_into_chunks(diff_text, max_tokens=90000):
+    """Splits the diff based on the token limit while preserving file header integrity."""
+    if estimate_token_count(diff_text) <= max_tokens:
+        return [diff_text]
+    
+    parts = re.split(r'(^diff --git a/)', diff_text, flags=re.MULTILINE)
+    chunks = []
+    current_chunk = ""
+    
+    for i in range(1, len(parts), 2):
+        file_diff = parts[i] + parts[i+1] if i + 1 < len(parts) else parts[i]
+        
+        if estimate_token_count(current_chunk + file_diff) > max_tokens and current_chunk:
+            chunks.append(current_chunk)
+            current_chunk = file_diff
+        else:
+            current_chunk += file_diff
+            
+    if current_chunk:
+        chunks.append(current_chunk)
+        
+    if not chunks:
+        chunks = [diff_text]
+        
+    return chunks
 
 def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"):
     """Sends the diff to the AI using System Instruction and returns a parsed JSON."""
@@ -213,9 +307,45 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
         return None
 
     # API CALL
+    # API CALL
     click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...\n", provider=provider.capitalize(), model=api_model), fg="cyan")
     
-    result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema)
+    chunks = split_diff_into_chunks(diff_text, max_tokens=90000)
+    
+    if len(chunks) == 1:
+        result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema, action=action_folder)
+    else:
+        click.secho(__("📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...", count=len(chunks)), fg="yellow", bold=True)
+        click.secho(f"📚 {__('Understand why:')} {get_doc_url('map-reduce-diff.md')}\n", fg="blue", underline=True)
+        resumos_parciais = []
+
+        for i, chunk in enumerate(chunks, 1):
+            click.secho(__("⏳ Analyzing batch {current}/{total}...", current=i, total=len(chunks)), fg="cyan", dim=True)
+
+            prompt_parcial = __("Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n", json_format='{"resumo": "..."}', idx=i) + chunk
+
+            resposta_parcial = call_ai_model(provider, api_key, api_model, prompt_parcial, instrucao_sistema, quiet=True, action=f"{action_folder}_chunk_{i}")
+
+            if resposta_parcial and "resumo" in resposta_parcial:
+                resumos_parciais.append(f"### Batch {i}\n{resposta_parcial['resumo']}")
+            
+            time.sleep(1)
+            
+        if not resumos_parciais:
+            click.secho(__("❌ Failed to extract context from the partial batches."), fg="red")
+            return None
+
+        click.secho(__("🔄 Unifying intelligence and generating the final analysis..."), fg="yellow")
+        diff_unificado = "\n\n".join(resumos_parciais)
+
+        if action_type == "commit":
+            prompt = __("Generate ONLY a JSON object in the format {json_format} for the commit message, unifying these technical summaries:\n", json_format='{"commit_message": "..."}') + diff_unificado
+        elif action_type in ["review", "fullreview", "filereview"]:
+            prompt = __("Generate ONLY a JSON object in the format {json_format} with a code review focused on improvements, using these summaries:\n", json_format='{"review": "..."}') + diff_unificado
+        else:
+            prompt = __("Unify these technical summaries and generate ONLY a JSON object in the format {json_format} describing the Pull Request:\n", json_format='{"commit_message": "...", "pr_description": "..."}') + diff_unificado
+            
+        result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema, action=action_folder)
 
     # SAVE TO CACHE AND RETURN
     if result_json:
@@ -325,7 +455,7 @@ def get_git_full_diff():
 
         # Diff between that HASH and your CURRENT WORKSPACE (without using HEAD)
         # By passing only the hash, Git compares that commit with the files on your disk.
-        cmd = ["git", "diff", ancestor_hash, "--"] + SMART_EXCLUDES
+        cmd = ["git", "diff", "-U1", "-w", "-M", "-B", ancestor_hash, "--"] + SMART_EXCLUDES
         result = subprocess.run(
             cmd, 
             capture_output=True, 

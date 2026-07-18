@@ -5,7 +5,7 @@
 **GitPR** is a Python CLI for automating Pull Requests, commits, code review, and issue creation using AI (Google Gemini and DeepSeek). Distributed via PyPI (`pip install gitpr-cli`) and as a standalone executable (PyInstaller).
 
 - **Author:** Natan Fiuza (contato@natanfiuza.dev.br)
-- **Current version:** 0.0.26
+- **Current version:** 0.0.27
 - **Python:** >= 3.10
 - **Main branch:** `main`
 - **Development branch:** `develop_natan`
@@ -52,6 +52,7 @@ templates/            # Remote templates served from GitHub (--skill)
 ├── gitpr.pr.pt_br.md           # PT-BR: PR description rules
 ├── gitpr.review.md             # EN: code review rules
 ├── gitpr.review.pt_br.md       # PT-BR: code review rules
+├── gitpr.smart-excludes.json   # Smart diff pathspec exclusions (language-independent)
 └── gitpr.thinking-words.md     # Spinner thinking words list
 
 langs/                # Language translation files
@@ -70,6 +71,7 @@ docs/
 ├── github-pat-integration.md   # GitHub Token (PAT + Fernet) security
 ├── issue-tui-help.md           # TUI Issue interface guide
 ├── linter-regras-customizadas.md  # Custom Linter rules documentation
+├── map-reduce-diff.md          # Map-Reduce chunking for huge diffs
 ├── pr-descricao-padrao.md      # Default PR description mode
 ├── providers-ia.md             # AI Providers documentation
 ├── skill-template.md           # Skills and Templates system
@@ -262,7 +264,8 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Response cache: `~/.gitpr/cache/prompts/<action_folder>/<md5>.json`
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
-- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL`, `DEEPSEEK_API_MODEL`, `SECONDARY_GEMINI_API_MODEL`, `SECONDARY_DEEPSEEK_API_MODEL`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`
+- Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json` (auto-downloaded, re-fetched when `__lang_version__` changes)
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL`, `DEEPSEEK_API_MODEL`, `SECONDARY_GEMINI_API_MODEL`, `SECONDARY_DEEPSEEK_API_MODEL`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
 
 ### AI Providers (Multi-Model Architecture)
 - **Gemini:** `gemini-2.5-flash` (primary/advanced) / `gemini-2.5-flash-lite` (secondary/simple)
@@ -275,7 +278,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 ### Spinner (Animated loading indicator)
 - `src/spinner.py` — runs in a background thread during AI calls
 - Braille characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) in magenta
-- Thinking words loaded from `.env` (`SPINNER_THINKING_WORDS`) or downloaded from GitHub template
+- Thinking words loaded from `.env` (`SPINNER_THINKING_WORDS`) or downloaded from GitHub template — re-downloaded when `__lang_version__` changes (`THINKING_WORDS_VERSION` marker)
 - Words "discovered" letter by letter with random characters, then dot cycle (`. .. ...`)
 - Random word colors from a 10-color palette
 - Retrocompatible cache: commit data JSON now includes `repo` field for multi-project filtering

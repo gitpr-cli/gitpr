@@ -308,5 +308,13 @@
   "Msg #{n} focused | Ctrl+S: Auto-Patch | Ctrl+E: Export": "Msg #{n} em foco | Ctrl+S: Auto-Patch | Ctrl+E: Exportar",
   "❌ No AI message focused. Use F7/F8 to select one.": "❌ Nenhuma mensagem da IA em foco. Usa F7/F8 para selecionar uma.",
   "🧪 Auto-Patch: Code extracted from message #{n} and saved to {file}!": "🧪 Auto-Patch: Código extraído da mensagem #{n} e guardado em {file}!",
-  "⚡ Auto-Patch: Code extracted and saved to {file}!": "⚡ Auto-Patch: Código extraído e guardado em {file}!"
+  "⚡ Auto-Patch: Code extracted and saved to {file}!": "⚡ Auto-Patch: Código extraído e guardado em {file}!",
+  "📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...": "📦 Diff gigante detetado! A processar em {count} lotes (Map-Reduce)...",
+  "⏳ Analyzing batch {current}/{total}...": "⏳ A analisar o lote {current}/{total}...",
+  "Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n": "Gere APENAS um objeto JSON no formato {json_format} contendo um resumo técnico do que foi alterado nesta parte ({idx}) do diff:\n",
+  "❌ Failed to extract context from the partial batches.": "❌ Falha na extração de contexto dos lotes parciais.",
+  "🔄 Unifying intelligence and generating the final analysis...": "🔄 A unificar inteligência e a gerar a análise final...",
+  "Generate ONLY a JSON object in the format {json_format} for the commit message, unifying these technical summaries:\n": "Gere APENAS um objeto JSON no formato {json_format} para a mensagem de commit, unificando estes resumos técnicos:\n",
+  "Generate ONLY a JSON object in the format {json_format} with a code review focused on improvements, using these summaries:\n": "Gere APENAS um objeto JSON no formato {json_format} com code review focado em melhorias, usando estes resumos:\n",
+  "Unify these technical summaries and generate ONLY a JSON object in the format {json_format} describing the Pull Request:\n": "Unifique estes resumos técnicos e gere APENAS um objeto JSON no formato {json_format} descrevendo o Pull Request:\n"
 }

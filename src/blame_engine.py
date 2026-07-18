@@ -83,7 +83,7 @@ def analyze_commit_with_ai(commit_hash, file_path):
 
     click.secho(__("  🤖 Consulting AI ({api_model}) about commit {commit_hash}...", api_model=api_model, commit_hash=commit_hash[:8]), fg="cyan", dim=True)
 
-    result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst)
+    result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst, action="blame")
 
     if result_json and "status" in result_json:
         return result_json
@@ -210,7 +210,7 @@ def run_blame_analysis(file_path, start_line, end_line, return_data=False):
     sys_inst = __('You are a Software Architect. Generate ONLY a JSON object in the format {"resumo": "summary text"}.')
 
     click.secho(__("  🤖 Consulting AI ({api_model}) for the Executive Summary...", api_model=api_model), fg="cyan", dim=True)
-    summary_json = call_ai_model(provider, api_key, api_model, summary_prompt, sys_inst)
+    summary_json = call_ai_model(provider, api_key, api_model, summary_prompt, sys_inst, action="blame_summary")
 
     resumo_texto = summary_json.get("resumo", __("Summary not available.")) if summary_json else __("Summary not available.")
 
