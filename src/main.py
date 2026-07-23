@@ -151,8 +151,9 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-ch', '--chat', is_flag=True, help=__("Opens the interactive Pair Programming chat with AI."))
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek', 'ollama']), help=__("Forces the use of a specific AI provider for this execution."))
 @click.option('--lang', type=str, help=__("Forces the interface language for this execution (e.g.: en_us, pt_br)."))
+@click.option('--mcp', is_flag=True, hidden=True, help=__("Start the MCP server for integration with VS Code, Cursor, Claude Desktop, etc."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -220,6 +221,12 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
         from src.spinner import reload_thinking_words
         set_lang(lang)
         reload_thinking_words(lang)
+
+    # MCP Server Mode — start stdio MCP server (handled before any interactive setup)
+    if mcp:
+        from src.mcp_server import main as mcp_main
+        mcp_main()
+        return
 
     # Silencia o banner se estiver no modo quiet ou via hook
     if not quiet and not hook:

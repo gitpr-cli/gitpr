@@ -1,10 +1,12 @@
 # **GitPR CLI 🚀** — Português (Brasil)
 
 <p align="center">
-  <img src="docs/logo.png" alt="GitPR Logo" width="200">
+  <img src="https://raw.githubusercontent.com/natanfiuza/gitpr/main/docs/logo.png" alt="GitPR Logo" width="150">
 </p>
 
 O GitPR CLI é uma ferramenta de automação via linha de comando que usa inteligência artificial do **Google Gemini** e **DeepSeek** para analisar suas alterações de código (git diff) ou arquivos inteiros. A ferramenta gera automaticamente mensagens de commit no padrão *Conventional Commits*, descrições detalhadas de Pull Request e revisões profundas de código com foco em reduzir dívida técnica.
+
+🌐 **Site:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/) · 📂 **Repositório:** [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
 
 ## **🛠️ Tecnologias e Bibliotecas Utilizadas**
 
@@ -19,6 +21,7 @@ Este projeto foi desenvolvido em Python e utiliza as seguintes bibliotecas princ
 * [**PyYAML**](https://pyyaml.org/): Usado para ler e processar as regras personalizadas de análise estática do arquivo `.gitpr.linter.yml`.
 * [**Textual**](https://textual.textualize.io/): Biblioteca poderosa para criação de Interfaces Gráficas de Terminal (TUI), usada no painel interativo de geração e edição de issues.
 * [**Requests**](https://pypi.org/project/requests/): Biblioteca elegante e robusta para requisições HTTP, usada para comunicação com a API REST do GitHub.
+* [**MCP**](https://pypi.org/project/mcp/): SDK oficial Python para o Model Context Protocol, permitindo que o GitPR se integre diretamente com editores e IDEs com tecnologia de IA.
 
 ----
 
@@ -116,6 +119,7 @@ Você pode passar as seguintes *flags* para ações específicas:
 * `--lang <codigo>`: Força o idioma da interface para esta execução (ex.: `en_us`, `pt_br`). Sobrescreve o `GITPR_LANG` do `.env` sem persistir a alteração.
 * `-ch` ou `--chat`: Abre o **Chat Interativo de Pair Programming** — um terminal TUI onde a IA enxerga seu diff atual e mantém uma conversa contextual. Possui memória por branch, comandos slash (`/explain`, `/tests`, `/optimize`, `/clear`), auto-patching (F5), atualização de diff (F2) e exportação de sessão (F6).
 * `-l` ou `--linter`: Executa **apenas o linter estático local** (sem chamadas de IA). Ideal para uso em pipelines de CI/CD para bloquear código fora de conformidade.
+* `--mcp`: Inicia o GitPR como um **servidor MCP** (Model Context Protocol) no transporte stdio. Permite integração com VS Code, Cursor, Claude Desktop e outros editores compatíveis com MCP — expondo todas as capacidades de IA do GitPR como ferramentas diretamente dentro do seu IDE. Também disponível como comando standalone `gitpr-mcp`.
 * `-ih` ou `--installhooks`: Instala automaticamente **Git Hooks locais** (`pre-commit` e `prepare-commit-msg`) no seu repositório.
 * `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) e o Linter (`.gitpr.linter.yml`) na raiz do projeto.
 * `-is` ou `--issue`: Gera automaticamente um rascunho de uma **Issue padronizada** e abre uma interface interativa (TUI) para edição ou envio direto via API REST. Esta funcionalidade possui **3 motores de contexto** dependendo da combinação de comandos:
@@ -125,7 +129,7 @@ Você pode passar as seguintes *flags* para ações específicas:
 * `-h` ou `--help`: Mostra a ajuda geral com todas as opções. Use junto com outra flag para **ajuda contextual** (ex.: `gitpr -h --issue`, `gitpr -h --linter`) com um link direto para a documentação detalhada de cada funcionalidade.
 * `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
 
-> **⚙️ Technical Note (--hook):** GitPR has a hidden flag `--hook <file>` that is triggered exclusively by the Git Hooks system in the background. It allows the AI to inject the suggested message directly into Git's temporary file, without cluttering your terminal.
+> **⚙️ Nota Técnica (--hook):** O GitPR possui uma flag oculta `--hook <arquivo>` que é acionada exclusivamente pelo sistema de Git Hooks em segundo plano. Ela permite que a IA injete a mensagem sugerida diretamente no arquivo temporário do Git, sem poluir seu terminal.
 >
 > **⚙️ Nota Técnica (--pre-save):** O GitPR possui uma flag oculta de debug `--pre-save` que pode ser combinada com qualquer comando de IA (ex.: `gitpr -c --pre-save`). Antes de cada chamada à IA, ela salva o payload completo que será enviado ao modelo (system instruction + prompt + contadores de caracteres) em um arquivo `_{acao}-{datahora}.json` na pasta atual, e depois prossegue normalmente. Útil para inspecionar prompts muito grandes. Obs.: quando a resposta vem do cache local, nenhuma chamada é feita e nenhum arquivo é gerado.
 
@@ -190,6 +194,59 @@ Para forçar um idioma específico, defina `GITPR_LANG=pt_br` ou `GITPR_LANG=en`
 
 > 📖 **Guia completo do desenvolvedor:** [docs/i18n_explanation.pt_br.md](docs/i18n_explanation.pt_br.md) — arquitetura, padrões de uso, precauções com import circular e como adicionar novos idiomas.
 
+## 🔌 Integração MCP (Model Context Protocol)
+
+O GitPR pode ser executado como um **servidor MCP**, expondo suas capacidades com IA como ferramentas que o assistente de IA do seu editor pode invocar diretamente — sem precisar de terminal. Isso permite um fluxo de trabalho totalmente integrado onde você pode gerar mensagens de commit, revisar código, executar linters, rastrear origens de código e criar issues sem sair do seu IDE.
+
+### Editores Compatíveis
+
+| Editor | Arquivo de Configuração |
+| ------ | ----------------------- |
+| **VS Code** | `.vscode/mcp.json` |
+| **Cursor** | `.cursor/mcp.json` |
+| **Claude Desktop** | `claude_desktop_config.json` |
+| **Zed** | `settings.json` |
+
+### Configuração Rápida
+
+1. Crie o arquivo de configuração MCP na raiz do seu projeto (exemplo para VS Code `.vscode/mcp.json`):
+
+   ```json
+   {
+     "servers": {
+       "gitpr": {
+         "type": "stdio",
+         "command": "gitpr-mcp",
+         "args": []
+       }
+     }
+   }
+   ```
+
+2. Use linguagem natural no chat de IA do seu editor:
+
+   * *"Revise minhas alterações atuais"* → chama `review_code`
+   * *"Gere uma mensagem de commit"* → chama `generate_commit_message`
+   * *"Crie uma descrição de PR"* → chama `generate_pr_description`
+   * *"Execute o linter no meu diff"* → chama `run_linter`
+
+### Ferramentas MCP Disponíveis
+
+| Ferramenta | Descrição |
+| ---------- | --------- |
+| `get_git_context` | Branch atual, nome do repositório e URL do remote |
+| `analyze_diff` | Diff git das alterações não commitadas |
+| `get_full_diff` | Diff completo contra origin/main |
+| `generate_commit_message` | Mensagem Conventional Commits gerada por IA |
+| `review_code` | Code review com IA das alterações locais |
+| `full_review` | Code review com IA de todas as alterações desde origin/main |
+| `generate_pr_description` | Descrição completa de PR (título + corpo) |
+| `run_linter` | Linter estático baseado no `.gitpr.linter.yml` |
+| `analyze_blame` | Git blame + classificação por IA |
+| `generate_issue` | Issue estruturada a partir de diff, histórico ou blame |
+
+📖 **Documentação completa:** [docs/mcp-integration.pt_br.md](docs/mcp-integration.pt_br.md) — disponível em 5 idiomas (EN, PT-BR, PT-PT, ES, FR).
+
 ## 📚 Documentação Técnica e Guias Avançados
 
 Para manter este README conciso, detalhamos as implementações mais avançadas focadas em **DevOps** e **Integração Contínua** em documentos separados.
@@ -223,6 +280,7 @@ Se você deseja implementar o GitPR como uma barreira de qualidade automatizada 
 * [**Auto-Updater**](https://github.com/natanfiuza/gitpr/blob/main/docs/auto-update.md) — Como funciona a atualização automática (hot-swap) do GitPR.
 * [**Token GitHub (PAT) — Integração e Segurança**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Entenda como o GitPR cria issues diretamente no repositório com autenticação.
 * [**Internacionalização (i18n)**](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — Arquitetura, padrões de uso e como adicionar novos idiomas.
+* [**Integração MCP**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — Conecte o GitPR ao VS Code, Cursor e Claude Desktop via Model Context Protocol.
 
 ## ⚡ Sistema de Cache Local (Economia de Cota)
 
