@@ -12,6 +12,7 @@ pyyaml = "*"
 openai = "*"
 textual = "*"
 requests = "*"
+mcp = "*"
 
 [dev-packages]
 pyinstaller = "*"

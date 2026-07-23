@@ -47,3 +47,7 @@ Accomplishing
 Tinkering
 Simmering
 Moseying
+Puttering
+Musing
+Marinating
+Spelunking
