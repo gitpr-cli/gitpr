@@ -6,8 +6,14 @@ enabling integration with VS Code, Cursor, Claude Desktop, and other
 MCP-compatible editors and AI agents.
 
 Usage:
-    gitpr-mcp                  # Start the MCP server (stdio transport)
-    gitpr --mcp                # Alias via the main CLI
+    gitpr-mcp                        # Start the MCP server (stdio transport)
+    gitpr-mcp --install vscode       # Install MCP config for VS Code
+    gitpr-mcp --install cursor       # Install MCP config for Cursor
+    gitpr-mcp --install claude-code  # Install MCP config for Claude Code
+    gitpr-mcp --install claude       # Install MCP config for Claude Desktop
+    gitpr-mcp --install zed          # Install MCP config for Zed
+    gitpr-mcp --install auto         # Auto-detect and install for all found
+    gitpr --mcp                      # Alias via the main CLI (always starts server)
 
 Transport: stdio (standard for local CLI-tool MCP servers).
 
@@ -21,6 +27,7 @@ Architecture:
     for the MCP transport layer. This touches ZERO existing modules.
 """
 
+import argparse
 import json
 import os
 import sys
@@ -691,20 +698,260 @@ def get_linter_config() -> str:
 
 
 # =============================================================================
+# MCP Config Installer (gitpr-mcp --install <editor>)
+# =============================================================================
+
+# Config templates for each supported editor
+_CONFIG_TEMPLATES = {
+    "vscode": {
+        "dir": ".vscode",
+        "file": "mcp.json",
+        "key": "servers",
+        "entry": {
+            "gitpr": {
+                "type": "stdio",
+                "command": "gitpr-mcp",
+                "args": [],
+            }
+        },
+    },
+    "cursor": {
+        "dir": ".cursor",
+        "file": "mcp.json",
+        "key": "mcpServers",
+        "entry": {
+            "gitpr": {
+                "type": "stdio",
+                "command": "gitpr-mcp",
+                "args": [],
+            }
+        },
+    },
+    "claude-code": {
+        "dir": ".claude",
+        "file": "mcp.json",
+        "key": "mcpServers",
+        "entry": {
+            "gitpr": {
+                "command": "gitpr-mcp",
+                "args": [],
+            }
+        },
+    },
+    "claude": {
+        # OS-specific path resolved at runtime
+        "dir": None,
+        "file": "claude_desktop_config.json",
+        "key": "mcpServers",
+        "entry": {
+            "gitpr": {
+                "command": "gitpr-mcp",
+                "args": [],
+            }
+        },
+    },
+    "zed": {
+        # OS-specific path resolved at runtime
+        "dir": None,
+        "file": "settings.json",
+        "key": "context_servers",
+        "entry": {
+            "gitpr": {
+                "command": {
+                    "path": "gitpr-mcp",
+                    "args": [],
+                }
+            }
+        },
+    },
+}
+
+
+def _get_claude_config_dir():
+    """Return the Claude Desktop config directory for the current OS."""
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", "")) / "Claude"
+    elif sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Claude"
+    else:
+        return Path.home() / ".config" / "Claude"
+
+
+def _get_zed_config_dir():
+    """Return the Zed config directory for the current OS."""
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", "")) / "Zed"
+    elif sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Zed"
+    else:
+        return Path.home() / ".config" / "zed"
+
+
+def _resolve_editor_config(editor: str) -> dict:
+    """Resolve the config template for an editor, filling OS-specific paths."""
+    template = _CONFIG_TEMPLATES.get(editor)
+    if template is None:
+        return None
+
+    result = dict(template)  # shallow copy
+    if editor == "claude":
+        result["dir"] = str(_get_claude_config_dir())
+    elif editor == "zed":
+        result["dir"] = str(_get_zed_config_dir())
+    return result
+
+
+def _merge_json_file(filepath: Path, key: str, entry: dict) -> dict:
+    """Read existing JSON, merge the entry under key, return the merged object."""
+    if filepath.exists():
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            existing = {}
+    else:
+        existing = {}
+
+    if not isinstance(existing, dict):
+        existing = {}
+
+    # Merge: preserve existing entries, add/update gitpr
+    section = existing.get(key, {})
+    if not isinstance(section, dict):
+        section = {}
+    section.update(entry)
+    existing[key] = section
+    return existing
+
+
+def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
+    """Install MCP config for a single editor.
+
+    Args:
+        editor: One of vscode, cursor, claude, zed.
+        project_root: Project root directory (used for vscode/cursor;
+                      ignored for claude/zed which use global paths).
+
+    Returns:
+        (success: bool, message: str)
+    """
+    config = _resolve_editor_config(editor)
+    if config is None:
+        return False, f"Unknown editor: '{editor}'. Valid options: vscode, cursor, claude, zed, auto"
+
+    config_dir = Path(config["dir"])
+    if not config_dir.is_absolute():
+        # Project-local editor (vscode, cursor): resolve relative to project root
+        config_dir = project_root / config_dir
+    config_file = config_dir / config["file"]
+
+    # Ensure directory exists
+    try:
+        config_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return False, f"Failed to create directory '{config_dir}': {e}"
+
+    # Merge with existing config
+    merged = _merge_json_file(config_file, config["key"], config["entry"])
+
+    # Write
+    try:
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(merged, f, indent=2)
+        return True, str(config_file)
+    except OSError as e:
+        return False, f"Failed to write '{config_file}': {e}"
+
+
+def _detect_editors(project_root: Path) -> list[str]:
+    """Auto-detect which editors have existing config directories.
+
+    Checks for project-local (.vscode, .cursor) and global (Claude, Zed).
+    """
+    found = []
+
+    # Project-local editors
+    if (project_root / ".vscode").exists():
+        found.append("vscode")
+    if (project_root / ".cursor").exists():
+        found.append("cursor")
+    if (project_root / ".claude").exists():
+        found.append("claude-code")
+
+    # Global editors
+    if _get_claude_config_dir().exists():
+        found.append("claude")
+    if _get_zed_config_dir().exists():
+        found.append("zed")
+
+    return found
+
+
+def _run_install(editor: str) -> None:
+    """Handle the --install command: install MCP config for the given editor.
+
+    Prints results to stdout (no patching — this runs before the server starts).
+    """
+    project_root = Path.cwd()
+
+    if editor == "auto":
+        editors = _detect_editors(project_root)
+        if not editors:
+            # No editors detected — install for vscode and cursor by default
+            # (they are project-local and most commonly used)
+            editors = ["vscode", "cursor"]
+            print(f"No editor config directories detected.")
+            print(f"Installing for: {', '.join(editors)}")
+        else:
+            print(f"Detected editors: {', '.join(editors)}")
+    else:
+        editors = [editor]
+
+    success_count = 0
+    for ed in editors:
+        ok, msg = _install_for_editor(ed, project_root)
+        if ok:
+            print(f"  [OK] {ed}: {msg}")
+            success_count += 1
+        else:
+            print(f"  [FAIL] {ed}: {msg}")
+
+    print(f"\nInstalled for {success_count}/{len(editors)} editor(s).")
+
+    if success_count > 0:
+        print("Restart your editor for the changes to take effect.")
+
+
+# =============================================================================
 # Entry Point
 # =============================================================================
 
 def main():
-    """Start the GitPR MCP server on stdio transport.
+    """Entry point for gitpr-mcp and gitpr --mcp.
 
-    This function:
-    1. Patches stdout/click to avoid corrupting the MCP JSON-RPC channel.
-    2. Loads configuration silently (no interactive prompts).
-    3. Runs the FastMCP server on stdio.
-
-    Intended as the entry point for the 'gitpr-mcp' console script and the
-    'gitpr --mcp' flag.
+    When called with --install, sets up MCP config files for the chosen editor.
+    Otherwise, starts the MCP server on stdio transport.
     """
+    # --- Parse CLI args before starting the server ---
+    parser = argparse.ArgumentParser(
+        prog="gitpr-mcp",
+        description="GitPR MCP Server — integrate GitPR with AI-powered editors.",
+    )
+    parser.add_argument(
+        "--install",
+        nargs="?",
+        const="auto",
+        choices=["vscode", "cursor", "claude-code", "claude", "zed", "auto"],
+        help="Install MCP configuration for an editor (vscode, cursor, claude, zed, or auto-detect).",
+    )
+    args, _ = parser.parse_known_args()
+
+    # --- Install mode: set up config and exit ---
+    if args.install:
+        _run_install(args.install)
+        return
+
+    # --- Server mode: patch output and start MCP transport ---
     try:
         _patch_output()
         _init_config()

@@ -204,26 +204,31 @@ O GitPR pode ser executado como um **servidor MCP**, expondo suas capacidades co
 | ------ | ----------------------- |
 | **VS Code** | `.vscode/mcp.json` |
 | **Cursor** | `.cursor/mcp.json` |
+| **Claude Code** | `.claude/mcp.json` |
 | **Claude Desktop** | `claude_desktop_config.json` |
 | **Zed** | `settings.json` |
 
 ### Configuração Rápida
 
-1. Crie o arquivo de configuração MCP na raiz do seu projeto (exemplo para VS Code `.vscode/mcp.json`):
+Use o instalador integrado para configurar seu editor automaticamente:
 
-   ```json
-   {
-     "servers": {
-       "gitpr": {
-         "type": "stdio",
-         "command": "gitpr-mcp",
-         "args": []
-       }
-     }
-   }
-   ```
+```bash
+gitpr-mcp --install vscode    # Cria .vscode/mcp.json
+gitpr-mcp --install cursor      # Cria .cursor/mcp.json
+gitpr-mcp --install claude-code # Cria .claude/mcp.json
+gitpr-mcp --install claude      # Atualiza config do Claude Desktop
+gitpr-mcp --install zed         # Atualiza config do Zed
+gitpr-mcp --install auto      # Auto-detectar e instalar para todos
+```
 
-2. Use linguagem natural no chat de IA do seu editor:
+O instalador cria o diretório de config se necessário, mescla com qualquer
+config existente (nunca sobrescreve outros servidores) e é seguro executar
+múltiplas vezes.
+
+> Configuração manual também é suportada — veja [docs/mcp-integration.pt_br.md](docs/mcp-integration.pt_br.md)
+> para o formato JSON de cada editor.
+
+Uma vez configurado, use linguagem natural no chat de IA do seu editor:
 
    * *"Revise minhas alterações atuais"* → chama `review_code`
    * *"Gere uma mensagem de commit"* → chama `generate_commit_message`
