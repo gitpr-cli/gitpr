@@ -253,6 +253,8 @@ Une fois configuré, utilisez le langage naturel dans le chat IA de votre édite
 
 📖 **Documentation complète :** [docs/mcp-integration.md](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — disponible en 5 langues (EN, PT-BR, PT-PT, ES, FR).
 
+> 💬 **MCP Prompts** — GitPR expose également 7 modèles de message prédéfinis (prompts) pour les flux courants comme « Réviser la PR », « Générer un Message de Commit » et « Créer une Issue depuis le Diff ». Consultez le [guide MCP Prompts](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) pour la liste complète.
+
 ## 📚 Documentation Technique et Guides Avancés
 
 Pour garder ce README concis, nous détaillons les implémentations les plus avancées axées sur le **DevOps** et l'**Intégration Continue** dans des documents séparés.
@@ -288,6 +290,7 @@ Si vous souhaitez implémenter GitPR comme une barrière de qualité automatisé
 * [**Token GitHub (PAT) — Intégration et Sécurité**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Comprenez comment GitPR crée des issues directement dans le dépôt avec authentification.
 * [**Internationalisation (i18n)**](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — Architecture, modèles d'utilisation et comment ajouter de nouvelles langues.
 * [**Intégration MCP**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — Connectez GitPR à VS Code, Cursor et Claude Desktop via le Model Context Protocol.
+* [**MCP Prompts**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) — Modèles de message prédéfinis pour les flux courants comme la révision, le commit et la création d'issues.
 
 ## ⚡ Système de Cache Local (Économie de Quota)
 

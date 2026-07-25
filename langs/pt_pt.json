@@ -394,5 +394,27 @@
   "You can configure it later by running 'gitpr' or editing ~/.gitpr/.env manually.": "Podes configurá-la depois executando 'gitpr' ou editando ~/.gitpr/.env manualmente.",
   "\n✅ Setup wizard complete!": "\n✅ Assistente de configuração concluído!",
   "For more details, see the full documentation:": "Para mais detalhes, vê a documentação completa:",
-  "Skipped.\n": "Saltado.\n"
+  "Skipped.\n": "Saltado.\n",
+
+  "Review PR": "Rever PR",
+  "Full code review of all changes in the current branch against origin/main. Runs the full review tool and linter, then composes a comprehensive report.": "Revisão completa de código de todas as alterações no ramo atual contra origin/main. Executa a ferramenta de full review e o linter, compondo um relatório abrangente.",
+  "Please review all changes in my current branch by running a full code review against origin/main. Also run the static linter to check for code quality issues. Combine the results into a single comprehensive review report with: 1) summary of changes, 2) critical issues found, 3) linter violations, and 4) suggested improvements.": "Reveja todas as alterações no meu ramo atual executando uma revisão completa contra origin/main. Execute também o linter estático para verificar problemas de qualidade. Combine os resultados num relatório abrangente com: 1) resumo das alterações, 2) problemas críticos encontrados, 3) violações do linter e 4) melhorias sugeridas.",
+  "Generate Commit Message": "Gerar Mensagem de Commit",
+  "Generate a Conventional Commits message (e.g., 'feat: add user auth') from the current uncommitted changes.": "Gera uma mensagem no padrão Conventional Commits (ex.: 'feat: adiciona autenticação') a partir das alterações não commitadas.",
+  "Please generate a commit message for my current uncommitted changes. Use the Conventional Commits format (e.g., 'feat:', 'fix:', 'refactor:'). The message should be short, imperative, and describe what the change does.": "Gere uma mensagem de commit para as minhas alterações atuais. Use o formato Conventional Commits (ex.: 'feat:', 'fix:', 'refactor:'). A mensagem deve ser curta, imperativa e descrever o que a alteração faz.",
+  "Create PR Description": "Criar Descrição de PR",
+  "Generate a complete Pull Request description (title + body) from all changes in the current branch.": "Gera uma descrição completa de Pull Request (título + corpo) a partir de todas as alterações no ramo atual.",
+  "Please create a complete Pull Request description for my current branch. Generate a clear title and a structured body that includes: 1) what was changed, 2) why the change was made, 3) any important implementation details, and 4) testing instructions.": "Crie uma descrição completa de Pull Request para o meu ramo atual. Gere um título claro e um corpo estruturado que inclua: 1) o que foi alterado, 2) porque a alteração foi feita, 3) detalhes importantes de implementação e 4) instruções de teste.",
+  "Run Code Linter": "Executar Linter de Código",
+  "Run the static linter (.gitpr.linter.yml rules) on current uncommitted changes and report violations.": "Executa o linter estático (regras .gitpr.linter.yml) nas alterações atuais e reporta violações.",
+  "Please run the static linter on my current uncommitted changes to check for code quality violations. Report any errors or warnings found, and suggest how to fix them.": "Execute o linter estático nas minhas alterações atuais para verificar violações de qualidade. Reporte quaisquer erros ou avisos encontrados e sugira como corrigi-los.",
+  "Create Issue from Diff": "Criar Issue a partir do Diff",
+  "Generate a structured issue (What / Why / Where / How) from the current uncommitted changes.": "Gera uma issue estruturada (O Quê / Porquê / Onde / Como) a partir das alterações atuais.",
+  "Please create a structured issue from my current uncommitted changes. Use the What / Why / Where / How format to document the task clearly.": "Crie uma issue estruturada a partir das minhas alterações atuais. Use o formato O Quê / Porquê / Onde / Como para documentar a tarefa claramente.",
+  "Trace Code Origin": "Rastrear Origem de Código",
+  "Investigate the history of a specific file region using git blame + AI to trace where business rules came from.": "Investiga o histórico de uma região específica usando git blame + IA para rastrear a origem de regras de negócio.",
+  "Please help me trace the origin of a specific code region. First, check the current git context to understand the project structure. Then I'll provide the file path and line range I want to investigate.": "Ajude-me a rastrear a origem de uma região específica. Primeiro, verifique o contexto git atual para entender a estrutura do projeto. Depois fornecerei o caminho do ficheiro e o intervalo de linhas que quero investigar.",
+  "Explore Project Context": "Explorar Contexto do Projeto",
+  "Get current branch info, repository name, and list available skill templates for the project.": "Obtém informações do ramo atual, nome do repositório e lista os skill templates disponíveis.",
+  "Please explore my current project context. Tell me what branch I'm on, what repository I'm working in, and what skill templates and linter configurations are available.": "Explore o contexto do meu projeto atual. Informe em que ramo estou, em que repositório estou a trabalhar e quais os skill templates e configurações de linter disponíveis."
 }

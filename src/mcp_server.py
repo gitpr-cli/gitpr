@@ -698,6 +698,114 @@ def get_linter_config() -> str:
 
 
 # =============================================================================
+# Prompts — Message Templates for Common Flows
+# =============================================================================
+# Prompts are pre-defined message templates that users can select in their
+# editor's AI chat. Unlike tools (which execute automatically), prompts are
+# starter messages that guide the AI to invoke the right GitPR tools.
+# =============================================================================
+
+@mcp.prompt(
+    name=__("Review PR"),
+    description=__("Full code review of all changes in the current branch against origin/main. "
+                    "Runs the full review tool and linter, then composes a comprehensive report."),
+)
+def review_pr_prompt() -> str:
+    """Prompt: full code review of the current branch."""
+    return __(
+        "Please review all changes in my current branch by running a full code "
+        "review against origin/main. Also run the static linter to check for "
+        "code quality issues. Combine the results into a single comprehensive "
+        "review report with: 1) summary of changes, 2) critical issues found, "
+        "3) linter violations, and 4) suggested improvements."
+    )
+
+
+@mcp.prompt(
+    name=__("Generate Commit Message"),
+    description=__("Generate a Conventional Commits message (e.g., 'feat: add user auth') "
+                    "from the current uncommitted changes."),
+)
+def generate_commit_message_prompt() -> str:
+    """Prompt: generate a commit message from uncommitted changes."""
+    return __(
+        "Please generate a commit message for my current uncommitted changes. "
+        "Use the Conventional Commits format (e.g., 'feat:', 'fix:', 'refactor:'). "
+        "The message should be short, imperative, and describe what the change does."
+    )
+
+
+@mcp.prompt(
+    name=__("Create PR Description"),
+    description=__("Generate a complete Pull Request description (title + body) "
+                    "from all changes in the current branch."),
+)
+def create_pr_description_prompt() -> str:
+    """Prompt: generate a full PR description."""
+    return __(
+        "Please create a complete Pull Request description for my current branch. "
+        "Generate a clear title and a structured body that includes: 1) what was "
+        "changed, 2) why the change was made, 3) any important implementation "
+        "details, and 4) testing instructions."
+    )
+
+
+@mcp.prompt(
+    name=__("Run Code Linter"),
+    description=__("Run the static linter (.gitpr.linter.yml rules) on current "
+                    "uncommitted changes and report violations."),
+)
+def run_linter_prompt() -> str:
+    """Prompt: run the static linter on current changes."""
+    return __(
+        "Please run the static linter on my current uncommitted changes to check "
+        "for code quality violations. Report any errors or warnings found, and "
+        "suggest how to fix them."
+    )
+
+
+@mcp.prompt(
+    name=__("Create Issue from Diff"),
+    description=__("Generate a structured issue (What / Why / Where / How) from "
+                    "the current uncommitted changes."),
+)
+def create_issue_prompt() -> str:
+    """Prompt: generate an issue from the current diff."""
+    return __(
+        "Please create a structured issue from my current uncommitted changes. "
+        "Use the What / Why / Where / How format to document the task clearly."
+    )
+
+
+@mcp.prompt(
+    name=__("Trace Code Origin"),
+    description=__("Investigate the history of a specific file region using git "
+                    "blame + AI to trace where business rules came from."),
+)
+def trace_code_origin_prompt() -> str:
+    """Prompt: trace the origin of code in a file region."""
+    return __(
+        "Please help me trace the origin of a specific code region. First, check "
+        "the current git context to understand the project structure. Then I'll "
+        "provide the file path and line range I want to investigate."
+    )
+
+
+@mcp.prompt(
+    name=__("Explore Project Context"),
+    description=__("Get current branch info, repository name, and list available "
+                    "skill templates for the project."),
+)
+def explore_project_prompt() -> str:
+    """Prompt: explore the current git context and available skills."""
+    return __(
+        "Please explore my current project context. Tell me what branch I'm on, "
+        "what repository I'm working in, and what skill templates and linter "
+        "configurations are available."
+    )
+
+
+# =============================================================================
 # MCP Config Installer (gitpr-mcp --install <editor>)
 # =============================================================================
 
