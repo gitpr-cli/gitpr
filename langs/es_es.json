@@ -367,5 +367,32 @@
   "File not found: {file_path}": "Archivo no encontrado: {file_path}",
 
   "Resource '{filename}' not found. Run 'gitpr --skill' to download templates.": "Recurso '{filename}' no encontrado. Ejecuta 'gitpr --skill' para descargar las plantillas.",
-  "Interactive prompt is unavailable in MCP mode. Configure your API keys in ~/.gitpr/.env before using MCP tools.": "El prompt interactivo no está disponible en modo MCP. Configura tus claves de API en ~/.gitpr/.env antes de usar las herramientas MCP."
+  "Interactive prompt is unavailable in MCP mode. Configure your API keys in ~/.gitpr/.env before using MCP tools.": "El prompt interactivo no está disponible en modo MCP. Configura tus claves de API en ~/.gitpr/.env antes de usar las herramientas MCP.",
+
+  "Interactive setup wizard: downloads templates, installs hooks, configures MCP, and checks API key.": "Asistente de configuración interactivo: descarga plantillas, instala hooks, configura MCP y verifica la clave de API.",
+  "Interactive Setup Wizard (--install)": "Asistente de Configuración Interactivo (--install)",
+  "Guided setup that downloads skill templates, installs Git hooks, configures MCP for your editors, and verifies your AI provider API key.": "Configuración guiada que descarga plantillas de skill, instala Git Hooks, configura MCP para tus editores y verifica la clave de API de tu proveedor de IA.",
+  "\n🔧 Starting GitPR Interactive Setup Wizard...": "\n🔧 Iniciando el Asistente de Configuración Interactivo de GitPR...",
+  "This wizard will guide you through the essential GitPR setup steps.\n": "Este asistente te guiará por los pasos esenciales de configuración de GitPR.\n",
+  "Step 1 of 4: Skill Templates": "Paso 1 de 4: Skill Templates",
+  "Downloads template files (.gitpr.*.md, .gitpr.linter.yml) into the .gitpr/skill/ folder.": "Descarga los archivos de plantilla (.gitpr.*.md, .gitpr.linter.yml) en la carpeta .gitpr/skill/.",
+  "These files allow customizing AI behavior for your team's conventions.": "Estos archivos permiten personalizar el comportamiento de la IA según las convenciones de tu equipo.",
+  "Proceed with downloading skill templates?": "¿Proceder con la descarga de los skill templates?",
+  "\nStep 2 of 4: Git Hooks": "\nPaso 2 de 4: Git Hooks",
+  "Installs pre-commit (static linter) and prepare-commit-msg (AI commit messages) hooks.": "Instala los hooks pre-commit (linter estático) y prepare-commit-msg (mensajes de commit con IA).",
+  "This enables automatic validation and AI assistance before every commit.": "Esto habilita la validación automática y la asistencia de IA antes de cada commit.",
+  "Proceed with installing Git hooks?": "¿Proceder con la instalación de Git Hooks?",
+  "⚠️ Some hooks could not be installed.": "⚠️ Algunos hooks no se pudieron instalar.",
+  "\nStep 3 of 4: MCP Configuration": "\nPaso 3 de 4: Configuración MCP",
+  "Auto-detects and configures GitPR for VS Code, Cursor, Claude Desktop, and Zed.": "Auto-deteta y configura GitPR para VS Code, Cursor, Claude Desktop y Zed.",
+  "This lets AI-powered editors use GitPR tools directly without the terminal.": "Esto permite que los editores con IA usen las herramientas de GitPR directamente sin el terminal.",
+  "Proceed with MCP configuration?": "¿Proceder con la configuración MCP?",
+  "\nStep 4 of 4: API Key Configuration": "\nPaso 4 de 4: Configuración de la Clave de API",
+  "✅ API key for {provider} is already configured.": "✅ La clave de API para {provider} ya está configurada.",
+  "No API key found for {provider}.": "No se encontró clave de API para {provider}.",
+  "Would you like to configure it now?": "¿Te gustaría configurarla ahora?",
+  "You can configure it later by running 'gitpr' or editing ~/.gitpr/.env manually.": "Puedes configurarla después ejecutando 'gitpr' o editando ~/.gitpr/.env manualmente.",
+  "\n✅ Setup wizard complete!": "\n✅ ¡Asistente de configuración completado!",
+  "For more details, see the full documentation:": "Para más detalles, consulta la documentación completa:",
+  "Skipped.\n": "Omitido.\n"
 }

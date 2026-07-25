@@ -12,7 +12,7 @@ from google import genai
 from dotenv import load_dotenv, set_key
 from src.security import decrypt_data
 from src.cache import get_cached_response, save_cached_response, get_cached_pr_descriptions
-from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_path
+from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_path, get_ai_provider, setup_environment
 from src.ai_providers import call_ai_model
 from src.i18n import __, CURRENT_LANG
 from src.updater import __lang_version__
@@ -96,13 +96,20 @@ SMART_EXCLUDES = _load_smart_excludes()
 
 
 def get_doc_url(filename):
-    """Returns the complete URL for a docs/ file, with language suffix if needed."""
-    # e.g.: get_doc_url("untracked-files.md") -> ".../docs/untracked-files.md" (EN) or ".../docs/untracked-files.pt_br.md" (PT)
-    if CURRENT_LANG.startswith("en"):
-        return f"https://github.com/natanfiuza/gitpr/blob/main/docs/{filename}"
-    else:
-        base, ext = filename.rsplit(".", 1)
-        return f"https://github.com/natanfiuza/gitpr/blob/main/docs/{base}.{CURRENT_LANG}.{ext}"
+    """Returns the complete URL for the official GitPR documentation website.
+
+    Transforms a docs/ filename like 'commit-message-ia.md' into a clean website
+    URL with language query parameter. English is the site default (no ?lang=).
+
+    Examples:
+        get_doc_url("untracked-files.md")  -> "https://gitpr.natanfiuza.dev.br/docs/untracked-files"
+        get_doc_url("untracked-files.md")  -> "https://gitpr.natanfiuza.dev.br/docs/untracked-files?lang=pt_br"  (when CURRENT_LANG is pt_br)
+    """
+    base, _ = filename.rsplit(".", 1)
+    url = f"https://gitpr.natanfiuza.dev.br/docs/{base}"
+    if not CURRENT_LANG.startswith("en"):
+        url += f"?lang={CURRENT_LANG}"
+    return url
 
 
 def get_git_diff(quiet=False):
@@ -508,6 +515,82 @@ def install_git_hooks():
             click.secho(__("⚠️ Failed to install {hook_name}: {error}", hook_name=hook_name, error=str(e)), fg="yellow")
 
     return success_count == len(hooks_to_install)
+
+
+def run_install_wizard():
+    """
+    Interactive setup wizard combining --skill, --installhooks, MCP install, and API key check.
+
+    Asks for confirmation before each step and prints a documentation URL at the end.
+    """
+    click.secho(__("\n🔧 Starting GitPR Interactive Setup Wizard..."), fg="cyan", bold=True)
+    click.echo(__("This wizard will guide you through the essential GitPR setup steps.\n"))
+
+    # ------------------------------------------------------------------
+    # Step 1: Skill Templates (equivalent to --skill)
+    # ------------------------------------------------------------------
+    click.secho(__("Step 1 of 4: Skill Templates"), fg="yellow", bold=True)
+    click.echo(__("Downloads template files (.gitpr.*.md, .gitpr.linter.yml) into the .gitpr/skill/ folder."))
+    click.echo(__("These files allow customizing AI behavior for your team's conventions."))
+    if click.confirm(__("Proceed with downloading skill templates?"), default=True):
+        generate_skill_template()
+    else:
+        click.echo(__("Skipped.\n"))
+
+    # ------------------------------------------------------------------
+    # Step 2: Git Hooks (equivalent to --installhooks)
+    # ------------------------------------------------------------------
+    click.secho(__("\nStep 2 of 4: Git Hooks"), fg="yellow", bold=True)
+    click.echo(__("Installs pre-commit (static linter) and prepare-commit-msg (AI commit messages) hooks."))
+    click.echo(__("This enables automatic validation and AI assistance before every commit."))
+    if click.confirm(__("Proceed with installing Git hooks?"), default=True):
+        if install_git_hooks():
+            click.secho(__("✅ Git Hooks successfully installed!"), fg="green", bold=True)
+        else:
+            click.secho(__("⚠️ Some hooks could not be installed."), fg="yellow")
+    else:
+        click.echo(__("Skipped.\n"))
+
+    # ------------------------------------------------------------------
+    # Step 3: MCP Configuration (equivalent to gitpr-mcp --install auto)
+    # ------------------------------------------------------------------
+    click.secho(__("\nStep 3 of 4: MCP Configuration"), fg="yellow", bold=True)
+    click.echo(__("Auto-detects and configures GitPR for VS Code, Cursor, Claude Desktop, and Zed."))
+    click.echo(__("This lets AI-powered editors use GitPR tools directly without the terminal."))
+    if click.confirm(__("Proceed with MCP configuration?"), default=True):
+        # Lazy import to avoid circular dependency at module level
+        from src.mcp_server import _run_install
+        _run_install("auto")
+    else:
+        click.echo(__("Skipped.\n"))
+
+    # ------------------------------------------------------------------
+    # Step 4: API Key Check
+    # ------------------------------------------------------------------
+    click.secho(__("\nStep 4 of 4: API Key Configuration"), fg="yellow", bold=True)
+    provider = get_ai_provider()
+    existing_key = get_api_key(provider)
+    if existing_key:
+        click.secho(
+            __("✅ API key for {provider} is already configured.", provider=provider.capitalize()),
+            fg="green",
+        )
+    else:
+        click.echo(__("No API key found for {provider}.", provider=provider.capitalize()))
+        if click.confirm(__("Would you like to configure it now?"), default=True):
+            setup_environment()
+        else:
+            click.echo(__("You can configure it later by running 'gitpr' or editing ~/.gitpr/.env manually."))
+
+    # ------------------------------------------------------------------
+    # Final: documentation URL
+    # ------------------------------------------------------------------
+    click.echo("")
+    click.secho(__("\n✅ Setup wizard complete!"), fg="green", bold=True)
+    click.echo(__("For more details, see the full documentation:"))
+    click.secho(f"  {get_doc_url('install-wizard.md')}", fg="blue", underline=True)
+    click.echo("")
+
 
 def get_branch_history_text():
     """Compiles the Git Log and PR Cache of the current branch to generate the epic context."""

@@ -14,7 +14,8 @@ from src.core import (
     generate_skill_template,
     install_git_hooks,
     get_branch_history_text,
-    get_doc_url
+    get_doc_url,
+    run_install_wizard,
 )
 from src.linter_engine import parse_diff_and_lint
 from src.i18n import __
@@ -34,7 +35,7 @@ def print_banner():
 """
     click.secho(banner, fg="cyan", bold=True)
     click.secho(__("  🚀 Intelligent PR Automation with AI (v{version})", version=__version__), fg="yellow", bold=True)
-    click.secho(__("  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | -is,--issue | -h,--help (use -h --flag for contextual help)\n"), fg="white", dim=True)
+    click.secho(__("  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | -h,--help (use -h --flag for contextual help)\n"), fg="white", dim=True)
 
 
 # ============================================================
@@ -81,6 +82,11 @@ HELP_MAP: dict[str, dict[str, str]] = {
         'title': __('Install Local Git Hooks'),
         'description': __('Installs pre-commit (automatic static linter) and prepare-commit-msg (AI message generation) hooks in the local repository. Adopts the Shift Left practice for pre-push validation.'),
     },
+    'install': {
+        'url': get_doc_url('install-wizard.md'),
+        'title': __('Interactive Setup Wizard (--install)'),
+        'description': __('Guided setup that downloads skill templates, installs Git hooks, configures MCP for your editors, and verifies your AI provider API key.'),
+    },
     'blame': {
         'url': get_doc_url('blame-arqueologo.md'),
         'title': __('Code Archeologist (AI Git Blame)'),
@@ -120,6 +126,7 @@ HELP_PRIORITY: dict[str, int] = {
     'skill': 2,
     'update': 3,
     'installhooks': 4,
+    'install': 14,
     'issue': 5,
     'blame': 6,
     'commit': 7,
@@ -141,6 +148,7 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-s', '--skill', is_flag=True, help=__("Downloads the skill template files into the .gitpr/skill/ folder."))
 @click.option('-u', '--update', is_flag=True, help=__("Checks and installs the latest version of GitPR."))
 @click.option('-ih', '--installhooks', is_flag=True, help=__("Automatically installs validation Git Hooks in the project."))
+@click.option('--install', is_flag=True, help=__("Interactive setup wizard: downloads templates, installs hooks, configures MCP, and checks API key."))
 @click.option('--hook', type=click.Path(), hidden=True, help=__("Commit file path (internal hook use)."))
 @click.option('-q', '--quiet', is_flag=True, hidden=True, help=__("Hides banner and non-essential logs (internal use)."))
 @click.option('--pre-save', is_flag=True, hidden=True, help=__("Saves the full AI payload (system + prompt) to a JSON file before each AI call (debug)."))
@@ -153,7 +161,7 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('--lang', type=str, help=__("Forces the interface language for this execution (e.g.: en_us, pt_br)."))
 @click.option('--mcp', is_flag=True, hidden=True, help=__("Start the MCP server for integration with VS Code, Cursor, Claude Desktop, etc."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -292,6 +300,11 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, hook, q
     if update:
         click.secho(__("🔍 Checking for updates..."), fg="cyan")
         check_and_update()
+        return
+
+    # --install option: Interactive setup wizard
+    if install:
+        run_install_wizard()
         return
 
     # --skill option: Generate template and exit

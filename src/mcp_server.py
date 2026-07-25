@@ -728,8 +728,8 @@ _CONFIG_TEMPLATES = {
         },
     },
     "claude-code": {
-        "dir": ".claude",
-        "file": "mcp.json",
+        "dir": ".",
+        "file": ".mcp.json",
         "key": "mcpServers",
         "entry": {
             "gitpr": {
@@ -875,7 +875,7 @@ def _detect_editors(project_root: Path) -> list[str]:
         found.append("vscode")
     if (project_root / ".cursor").exists():
         found.append("cursor")
-    if (project_root / ".claude").exists():
+    if (project_root / ".mcp.json").exists():
         found.append("claude-code")
 
     # Global editors

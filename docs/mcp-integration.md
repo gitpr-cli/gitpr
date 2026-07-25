@@ -15,7 +15,7 @@ The easiest way to configure MCP is with the built-in installer:
 # Install for a specific editor
 gitpr-mcp --install vscode      # Creates .vscode/mcp.json
 gitpr-mcp --install cursor      # Creates .cursor/mcp.json
-gitpr-mcp --install claude-code # Creates .claude/mcp.json
+gitpr-mcp --install claude-code # Creates .mcp.json
 gitpr-mcp --install claude      # Updates Claude Desktop config
 gitpr-mcp --install zed         # Updates Zed settings
 
@@ -97,7 +97,7 @@ Create `.cursor/mcp.json` in your project root:
 
 ### Claude Code
 
-Create `.claude/mcp.json` in your project root:
+Create `.mcp.json` in your project root:
 
 ```json
 {
