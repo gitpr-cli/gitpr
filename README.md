@@ -121,6 +121,7 @@ You can pass the following *flags* for specific actions:
 * `-ch` or `--chat`: Opens the **Interactive Pair Programming Chat** — a TUI terminal where the AI sees your current diff and maintains a contextual conversation. Features memory per branch, slash commands (`/explain`, `/tests`, `/optimize`, `/clear`), auto-patching (F5), diff refresh (F2), and session export (F6).
 * `-l` or `--linter`: Runs **only the local static linter** (no AI calls). Ideal for use in CI/CD pipelines to block non-compliant code.
 * `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as tools directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
+* `--install`: **Interactive Setup Wizard.** Runs a guided 4-step setup: downloads skill templates, installs Git hooks, configures MCP for detected editors, and checks/requests your AI provider API key. Each step asks for confirmation before proceeding.
 * `-ih` or `--installhooks`: Automatically installs **local Git Hooks** (`pre-commit` and `prepare-commit-msg`) in your repository.
 * `-s` or `--skill`: Creates the AI context template files (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) and the Linter (`.gitpr.linter.yml`) at the project root.
 * `-is` or `--issue`: Automatically generates a draft of a **standardized Issue** and opens an interactive interface (TUI) for editing or direct submission via REST API. This feature has **3 context engines** depending on the command combination:
@@ -138,7 +139,7 @@ You can pass the following *flags* for specific actions:
 
 When your diff is too large for a single AI call (over ~90k estimated tokens), GitPR automatically splits it into batches by file, asks the AI for a technical summary of each part (Map), and unifies everything into the final commit message, review, or PR description (Reduce). No flags needed — it activates on demand and shows the progress in the console.
 
-📚 Full documentation: [docs/map-reduce-diff.md](docs/map-reduce-diff.md)
+📚 Full documentation: [docs/map-reduce-diff.md](https://github.com/natanfiuza/gitpr/blob/main/docs/map-reduce-diff.md)
 
 ## 🛡️ Local Linter (Static Analysis)
 
@@ -193,7 +194,7 @@ GitPR automatically detects your system language and displays messages in your n
 
 To force a specific language, set `GITPR_LANG=pt_br` or `GITPR_LANG=en` in `~/.gitpr/.env`.
 
-> 📖 **Full developer guide:** [docs/i18n_explanation.md](docs/i18n_explanation.md) — architecture, usage patterns, circular import precautions, and how to add new languages.
+> 📖 **Full developer guide:** [docs/i18n_explanation.md](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — architecture, usage patterns, circular import precautions, and how to add new languages.
 
 ## 🔌 MCP Integration (Model Context Protocol)
 
@@ -205,26 +206,30 @@ GitPR can run as an **MCP server**, exposing its AI-powered capabilities as tool
 | ------ | ----------- |
 | **VS Code** | `.vscode/mcp.json` |
 | **Cursor** | `.cursor/mcp.json` |
+| **Claude Code** | `.mcp.json` |
 | **Claude Desktop** | `claude_desktop_config.json` |
 | **Zed** | `settings.json` |
 
 ### Quick Setup
 
-1. Create the MCP config file in your project root (example for VS Code `.vscode/mcp.json`):
+Use the built-in installer to configure your editor automatically:
 
-   ```json
-   {
-     "servers": {
-       "gitpr": {
-         "type": "stdio",
-         "command": "gitpr-mcp",
-         "args": []
-       }
-     }
-   }
-   ```
+```bash
+gitpr-mcp --install vscode    # Creates .vscode/mcp.json
+gitpr-mcp --install cursor      # Creates .cursor/mcp.json
+gitpr-mcp --install claude-code # Creates .mcp.json
+gitpr-mcp --install claude      # Updates Claude Desktop config
+gitpr-mcp --install zed         # Updates Zed settings
+gitpr-mcp --install auto      # Auto-detect and install for all found
+```
 
-2. Use natural language in your editor's AI chat:
+The installer creates the config directory if needed, merges with any existing
+config (never overwrites other servers), and is safe to run multiple times.
+
+> Manual setup is also supported — see [docs/mcp-integration.md](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md)
+> for the JSON config format for each editor.
+
+Once configured, use natural language in your editor's AI chat:
 
    * *"Review my current changes"* → calls `review_code`
    * *"Generate a commit message"* → calls `generate_commit_message`
@@ -246,7 +251,7 @@ GitPR can run as an **MCP server**, exposing its AI-powered capabilities as tool
 | `analyze_blame` | Git blame + AI classification |
 | `generate_issue` | Structured issue from diff, history, or blame |
 
-📖 **Full documentation:** [docs/mcp-integration.md](docs/mcp-integration.md) — available in 5 languages (EN, PT-BR, PT-PT, ES, FR).
+📖 **Full documentation:** [docs/mcp-integration.md](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — available in 5 languages (EN, PT-BR, PT-PT, ES, FR).
 
 ## 📚 Technical Documentation and Advanced Guides
 
@@ -277,6 +282,7 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 
 ### Configuration & Infrastructure
 
+* [**Install Wizard**](https://github.com/natanfiuza/gitpr/blob/main/docs/install-wizard.md) — Step-by-step guided setup for configuring GitPR in a new project.
 * [**AI Providers**](https://github.com/natanfiuza/gitpr/blob/main/docs/providers-ia.md) — Configuration and selection between Google Gemini, DeepSeek, and Ollama.
 * [**Auto-Updater**](https://github.com/natanfiuza/gitpr/blob/main/docs/auto-update.md) — How GitPR's automatic update (hot-swap) works.
 * [**GitHub Token (PAT) Integration and Security**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Understand how GitPR creates issues directly in the repository with authentication.

@@ -286,7 +286,8 @@ class TestBlameTool(unittest.TestCase):
                 end_line="10",
             ))
         self.assertEqual(result["status"], "error")
-        self.assertIn("not found", result["message"])
+        # Message is i18n-aware; just verify it contains the file path
+        self.assertIn("nonexistent.py", result["message"])
 
     @patch("src.blame_engine.run_blame_analysis")
     def test_no_traceable_commits(self, mock_blame):

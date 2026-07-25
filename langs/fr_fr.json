@@ -367,5 +367,32 @@
   "File not found: {file_path}": "Fichier introuvable : {file_path}",
 
   "Resource '{filename}' not found. Run 'gitpr --skill' to download templates.": "Ressource '{filename}' introuvable. Exécutez 'gitpr --skill' pour télécharger les templates.",
-  "Interactive prompt is unavailable in MCP mode. Configure your API keys in ~/.gitpr/.env before using MCP tools.": "L'invite interactive n'est pas disponible en mode MCP. Configurez vos clés API dans ~/.gitpr/.env avant d'utiliser les outils MCP."
+  "Interactive prompt is unavailable in MCP mode. Configure your API keys in ~/.gitpr/.env before using MCP tools.": "L'invite interactive n'est pas disponible en mode MCP. Configurez vos clés API dans ~/.gitpr/.env avant d'utiliser les outils MCP.",
+
+  "Interactive setup wizard: downloads templates, installs hooks, configures MCP, and checks API key.": "Assistant de configuration interactif : télécharge les templates, installe les hooks, configure MCP et vérifie la clé API.",
+  "Interactive Setup Wizard (--install)": "Assistant de Configuration Interactif (--install)",
+  "Guided setup that downloads skill templates, installs Git hooks, configures MCP for your editors, and verifies your AI provider API key.": "Configuration guidée qui télécharge les templates de skill, installe les Git Hooks, configure MCP pour vos éditeurs et vérifie votre clé API du fournisseur d'IA.",
+  "\n🔧 Starting GitPR Interactive Setup Wizard...": "\n🔧 Démarrage de l'Assistant de Configuration Interactif GitPR...",
+  "This wizard will guide you through the essential GitPR setup steps.\n": "Cet assistant vous guidera à travers les étapes essentielles de configuration de GitPR.\n",
+  "Step 1 of 4: Skill Templates": "Étape 1 sur 4 : Skill Templates",
+  "Downloads template files (.gitpr.*.md, .gitpr.linter.yml) into the .gitpr/skill/ folder.": "Télécharge les fichiers de template (.gitpr.*.md, .gitpr.linter.yml) dans le dossier .gitpr/skill/.",
+  "These files allow customizing AI behavior for your team's conventions.": "Ces fichiers permettent de personnaliser le comportement de l'IA selon les conventions de votre équipe.",
+  "Proceed with downloading skill templates?": "Procéder au téléchargement des skill templates ?",
+  "\nStep 2 of 4: Git Hooks": "\nÉtape 2 sur 4 : Git Hooks",
+  "Installs pre-commit (static linter) and prepare-commit-msg (AI commit messages) hooks.": "Installe les hooks pre-commit (linter statique) et prepare-commit-msg (messages de commit IA).",
+  "This enables automatic validation and AI assistance before every commit.": "Cela permet la validation automatique et l'assistance IA avant chaque commit.",
+  "Proceed with installing Git hooks?": "Procéder à l'installation des Git Hooks ?",
+  "⚠️ Some hooks could not be installed.": "⚠️ Certains hooks n'ont pas pu être installés.",
+  "\nStep 3 of 4: MCP Configuration": "\nÉtape 3 sur 4 : Configuration MCP",
+  "Auto-detects and configures GitPR for VS Code, Cursor, Claude Desktop, and Zed.": "Détecte et configure automatiquement GitPR pour VS Code, Cursor, Claude Desktop et Zed.",
+  "This lets AI-powered editors use GitPR tools directly without the terminal.": "Cela permet aux éditeurs dotés d'IA d'utiliser les outils GitPR directement sans le terminal.",
+  "Proceed with MCP configuration?": "Procéder à la configuration MCP ?",
+  "\nStep 4 of 4: API Key Configuration": "\nÉtape 4 sur 4 : Configuration de la Clé API",
+  "✅ API key for {provider} is already configured.": "✅ La clé API pour {provider} est déjà configurée.",
+  "No API key found for {provider}.": "Aucune clé API trouvée pour {provider}.",
+  "Would you like to configure it now?": "Souhaitez-vous la configurer maintenant ?",
+  "You can configure it later by running 'gitpr' or editing ~/.gitpr/.env manually.": "Vous pouvez la configurer plus tard en exécutant 'gitpr' ou en modifiant ~/.gitpr/.env manuellement.",
+  "\n✅ Setup wizard complete!": "\n✅ Assistant de configuration terminé !",
+  "For more details, see the full documentation:": "Pour plus de détails, consultez la documentation complète :",
+  "Skipped.\n": "Ignoré.\n"
 }

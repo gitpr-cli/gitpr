@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gitpr": {
+      "command": "gitpr-mcp",
+      "args": []
+    }
+  }
+}

@@ -120,6 +120,7 @@ Você pode passar as seguintes *flags* para ações específicas:
 * `-ch` ou `--chat`: Abre o **Chat Interativo de Pair Programming** — um terminal TUI onde a IA enxerga seu diff atual e mantém uma conversa contextual. Possui memória por branch, comandos slash (`/explain`, `/tests`, `/optimize`, `/clear`), auto-patching (F5), atualização de diff (F2) e exportação de sessão (F6).
 * `-l` ou `--linter`: Executa **apenas o linter estático local** (sem chamadas de IA). Ideal para uso em pipelines de CI/CD para bloquear código fora de conformidade.
 * `--mcp`: Inicia o GitPR como um **servidor MCP** (Model Context Protocol) no transporte stdio. Permite integração com VS Code, Cursor, Claude Desktop e outros editores compatíveis com MCP — expondo todas as capacidades de IA do GitPR como ferramentas diretamente dentro do seu IDE. Também disponível como comando standalone `gitpr-mcp`.
+* `--install`: **Assistente de Configuração Interativo.** Executa uma configuração guiada em 4 etapas: baixa skill templates, instala Git Hooks, configura MCP para editores detetados e verifica/solicita sua chave de API do provedor de IA. Cada etapa pede confirmação antes de prosseguir.
 * `-ih` ou `--installhooks`: Instala automaticamente **Git Hooks locais** (`pre-commit` e `prepare-commit-msg`) no seu repositório.
 * `-s` ou `--skill`: Cria os arquivos de template de contexto da IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) e o Linter (`.gitpr.linter.yml`) na raiz do projeto.
 * `-is` ou `--issue`: Gera automaticamente um rascunho de uma **Issue padronizada** e abre uma interface interativa (TUI) para edição ou envio direto via API REST. Esta funcionalidade possui **3 motores de contexto** dependendo da combinação de comandos:
@@ -204,26 +205,31 @@ O GitPR pode ser executado como um **servidor MCP**, expondo suas capacidades co
 | ------ | ----------------------- |
 | **VS Code** | `.vscode/mcp.json` |
 | **Cursor** | `.cursor/mcp.json` |
+| **Claude Code** | `.mcp.json` |
 | **Claude Desktop** | `claude_desktop_config.json` |
 | **Zed** | `settings.json` |
 
 ### Configuração Rápida
 
-1. Crie o arquivo de configuração MCP na raiz do seu projeto (exemplo para VS Code `.vscode/mcp.json`):
+Use o instalador integrado para configurar seu editor automaticamente:
 
-   ```json
-   {
-     "servers": {
-       "gitpr": {
-         "type": "stdio",
-         "command": "gitpr-mcp",
-         "args": []
-       }
-     }
-   }
-   ```
+```bash
+gitpr-mcp --install vscode    # Cria .vscode/mcp.json
+gitpr-mcp --install cursor      # Cria .cursor/mcp.json
+gitpr-mcp --install claude-code # Cria .mcp.json
+gitpr-mcp --install claude      # Atualiza config do Claude Desktop
+gitpr-mcp --install zed         # Atualiza config do Zed
+gitpr-mcp --install auto      # Auto-detectar e instalar para todos
+```
 
-2. Use linguagem natural no chat de IA do seu editor:
+O instalador cria o diretório de config se necessário, mescla com qualquer
+config existente (nunca sobrescreve outros servidores) e é seguro executar
+múltiplas vezes.
+
+> Configuração manual também é suportada — veja [docs/mcp-integration.pt_br.md](docs/mcp-integration.pt_br.md)
+> para o formato JSON de cada editor.
+
+Uma vez configurado, use linguagem natural no chat de IA do seu editor:
 
    * *"Revise minhas alterações atuais"* → chama `review_code`
    * *"Gere uma mensagem de commit"* → chama `generate_commit_message`
@@ -276,6 +282,7 @@ Se você deseja implementar o GitPR como uma barreira de qualidade automatizada 
 
 ### Configuração e Infraestrutura
 
+* [**Assistente de Instalação**](https://github.com/natanfiuza/gitpr/blob/main/docs/install-wizard.md) — Configuração guiada passo a passo para configurar o GitPR em um novo projeto.
 * [**Provedores de IA**](https://github.com/natanfiuza/gitpr/blob/main/docs/providers-ia.md) — Configuração e seleção entre Google Gemini, DeepSeek e Ollama.
 * [**Auto-Updater**](https://github.com/natanfiuza/gitpr/blob/main/docs/auto-update.md) — Como funciona a atualização automática (hot-swap) do GitPR.
 * [**Token GitHub (PAT) — Integração e Segurança**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Entenda como o GitPR cria issues diretamente no repositório com autenticação.

@@ -7,6 +7,29 @@ com editores e ferramentas de IA compatíveis com MCP como **VS Code**, **Cursor
 Quando ligado, o GitPR expõe as suas capacidades com IA como ferramentas que o
 assistente de IA do seu editor pode invocar — sem sair do editor ou abrir um terminal.
 
+## Instalação Rápida
+
+A maneira mais fácil de configurar o MCP é com o instalador integrado:
+
+```bash
+# Instalar para um editor específico
+gitpr-mcp --install vscode      # Cria .vscode/mcp.json
+gitpr-mcp --install cursor      # Cria .cursor/mcp.json
+gitpr-mcp --install claude      # Atualiza config do Claude Desktop
+gitpr-mcp --install zed         # Atualiza config do Zed
+
+# Auto-detectar editores e instalar para todos os encontrados
+gitpr-mcp --install auto
+gitpr-mcp --install              # Igual a --install auto
+```
+
+O instalador:
+
+* Cria o diretório de config do editor se este não existir
+* Faz merge com a config existente — nunca sobrescreve outros servidores
+* Mostra quais editores foram configurados
+* É idempotente — seguro executar várias vezes
+
 ## Ferramentas Disponíveis
 
 | Ferramenta | Descrição |
