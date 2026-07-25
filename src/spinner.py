@@ -135,6 +135,29 @@ class Spinner:
         self._running = False
         self._quiet = quiet
 
+    @staticmethod
+    def _adaptive_speed(word):
+        """Calculate chars_per_letter and sleep_time based on word length.
+
+        Short words (<=15 chars) keep the original leisurely reveal.
+        Longer phrases get progressively faster so the full text is
+        displayed well before the spinner switches to the next word.
+        """
+        length = len(word)
+        if length <= 15:
+            # Single word: original speed
+            return 4, 0.08
+        elif length <= 35:
+            # Medium phrase: moderate speed
+            return 2, 0.06
+        else:
+            # Long phrase: fast reveal
+            return 1, 0.04
+
+    def _next_word(self, current_idx):
+        """Pick the next word index (sequential, wrapping around)."""
+        return (current_idx + 1) % len(THINKING_WORDS)
+
     def _spin(self):
         """Main animation loop, runs in a separate thread."""
         braille_idx = 0
@@ -144,7 +167,9 @@ class Spinner:
         discovered = ""          # Letters already "discovered" of the word
         dots_cycle = 0           # 0 = ".", 1 = "..", 2 = "..."
         char_step = 0            # Frame counter for revealing letters
-        chars_per_letter = 4     # Frames with random chars before revealing a letter
+
+        # Adaptive speed based on word length
+        chars_per_letter, sleep_time = self._adaptive_speed(word)
 
         while self._running:
             braille_char = BRAILLE_FRAMES[braille_idx]
@@ -177,11 +202,13 @@ class Spinner:
 
                 # Change word and color after a few dot cycles
                 if dots_cycle == 0 and braille_idx == 0:
-                    word_idx = (word_idx + 1) % len(THINKING_WORDS)
+                    word_idx = self._next_word(word_idx)
                     word = THINKING_WORDS[word_idx]
                     word_color = random.choice(WORD_COLORS)
                     discovered = ""
                     char_step = 0
+                    # Recalculate adaptive speed for the new word
+                    chars_per_letter, sleep_time = self._adaptive_speed(word)
 
             # Build and display the line: magenta braille + colored word
             line = f"\r  {MAGENTA}{braille_char}{RESET} {word_color}{display_word}{RESET}"
@@ -192,7 +219,7 @@ class Spinner:
                 sys.stdout.write(line)
                 sys.stdout.flush()
 
-            time.sleep(0.08)  # ~12 fps, suave
+            time.sleep(sleep_time)
 
     def start(self):
         """Starts the animation in the background."""
