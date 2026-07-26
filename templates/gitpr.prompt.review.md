@@ -1,0 +1,1 @@
+Please review all changes in my current branch by running a full code review against origin/main. Also run the static linter to check for code quality issues. Combine the results into a single comprehensive review report with: 1) summary of changes, 2) critical issues found, 3) linter violations, and 4) suggested improvements.

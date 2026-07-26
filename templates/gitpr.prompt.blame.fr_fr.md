@@ -1,0 +1,1 @@
+Veuillez maider a tracer lorigine dune region specifique du code. Dabord, verifiez le contexte git actuel pour comprendre la structure du projet. Ensuite, je fournirai le chemin du fichier et la plage de lignes que je souhaite examiner.

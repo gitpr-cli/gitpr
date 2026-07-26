@@ -1,0 +1,1 @@
+Veuillez creer une description complete de Pull Request pour ma branche actuelle. Generez un titre clair et un corps structure qui comprend : 1) ce qui a ete modifie, 2) pourquoi la modification a ete apportee, 3) les details importants de limplementation, et 4) les instructions de test.

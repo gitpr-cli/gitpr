@@ -38,7 +38,7 @@ import click
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
-from src.i18n import __
+from src.i18n import __, CURRENT_LANG
 
 # =============================================================================
 # Output Patching System
@@ -592,6 +592,19 @@ SKILL_FILES = {
     "blame": ".gitpr.blame.md",
 }
 
+# Prompt template files (message templates for common MCP flows).
+# Each prompt has a base English file and optional language variants
+# (e.g. gitpr.prompt.review.pt_br.md).
+PROMPT_FILES = {
+    "review": "gitpr.prompt.review.md",
+    "commit": "gitpr.prompt.commit.md",
+    "pr": "gitpr.prompt.pr.md",
+    "linter": "gitpr.prompt.linter.md",
+    "issue": "gitpr.prompt.issue.md",
+    "blame": "gitpr.prompt.blame.md",
+    "explore": "gitpr.prompt.explore.md",
+}
+
 
 def _read_resource_file(filename: str) -> str:
     """Read a skill or config file from the project's .gitpr/skill/ directory.
@@ -611,6 +624,62 @@ def _read_resource_file(filename: str) -> str:
         "message": __("Resource '{filename}' not found. Run 'gitpr --skill' to download templates.",
                        filename=filename),
     })
+
+
+def _read_prompt_file(prompt_name: str) -> str:
+    """Load prompt content from a template file with language fallback.
+
+    Tries the language-specific variant first (e.g.
+    gitpr.prompt.review.pt_br.md), falling back to the English base
+    file (gitpr.prompt.review.md).  Returns an empty string when
+    neither file can be found.
+
+    Search order (first match wins):
+      1. <cwd>/templates/          — development / project-local
+      2. <cwd>/.gitpr/skill/       — downloaded via --skill
+      3. <package>/templates/      — bundled with the installation
+    """
+    base_filename = PROMPT_FILES.get(prompt_name)
+    if not base_filename:
+        return ""
+
+    # Build language-specific filename
+    if not CURRENT_LANG.startswith("en"):
+        name_part, ext = base_filename.rsplit(".", 1)
+        lang_filename = f"{name_part}.{CURRENT_LANG}.{ext}"
+    else:
+        lang_filename = base_filename
+
+    # Search directories in priority order
+    search_dirs = [
+        os.path.join(os.getcwd(), "templates"),              # dev / project-local
+        os.path.join(os.getcwd(), ".gitpr", "skill"),       # downloaded
+        os.path.join(os.path.dirname(__file__), "..", "templates"),  # bundled
+    ]
+
+    def _try_read(search_dir, filename):
+        path = os.path.join(search_dir, filename)
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                    return f.read().strip()
+            except Exception:
+                pass
+        return None
+
+    for search_dir in search_dirs:
+        # Try language variant first
+        result = _try_read(search_dir, lang_filename)
+        if result:
+            return result
+
+    # Fallback to English base in all directories
+    for search_dir in search_dirs:
+        result = _try_read(search_dir, base_filename)
+        if result:
+            return result
+
+    return ""
 
 
 @mcp.resource(
@@ -698,11 +767,101 @@ def get_linter_config() -> str:
 
 
 # =============================================================================
+# Resources — Prompt Templates
+# =============================================================================
+
+@mcp.resource(
+    uri="prompt://list",
+    name=__("Available Prompt Templates"),
+    description=__("Lists all available MCP prompt template URIs."),
+    mime_type="application/json",
+)
+def list_prompts() -> str:
+    """Return a JSON list of available prompt resource URIs."""
+    return json.dumps({
+        "prompts": [f"prompt://{name}" for name in PROMPT_FILES],
+    })
+
+
+@mcp.resource(
+    uri="prompt://review",
+    name=__("Review PR Prompt"),
+    description=__("Prompt template: full code review of the current branch."),
+    mime_type="text/markdown",
+)
+def get_prompt_review() -> str:
+    return _read_prompt_file("review")
+
+
+@mcp.resource(
+    uri="prompt://commit",
+    name=__("Commit Message Prompt"),
+    description=__("Prompt template: generate a Conventional Commits message."),
+    mime_type="text/markdown",
+)
+def get_prompt_commit() -> str:
+    return _read_prompt_file("commit")
+
+
+@mcp.resource(
+    uri="prompt://pr",
+    name=__("PR Description Prompt"),
+    description=__("Prompt template: generate a Pull Request description."),
+    mime_type="text/markdown",
+)
+def get_prompt_pr() -> str:
+    return _read_prompt_file("pr")
+
+
+@mcp.resource(
+    uri="prompt://linter",
+    name=__("Linter Prompt"),
+    description=__("Prompt template: run the static linter on changes."),
+    mime_type="text/markdown",
+)
+def get_prompt_linter() -> str:
+    return _read_prompt_file("linter")
+
+
+@mcp.resource(
+    uri="prompt://issue",
+    name=__("Issue Prompt"),
+    description=__("Prompt template: generate a structured issue from changes."),
+    mime_type="text/markdown",
+)
+def get_prompt_issue() -> str:
+    return _read_prompt_file("issue")
+
+
+@mcp.resource(
+    uri="prompt://blame",
+    name=__("Blame Prompt"),
+    description=__("Prompt template: trace code origin with git blame + AI."),
+    mime_type="text/markdown",
+)
+def get_prompt_blame() -> str:
+    return _read_prompt_file("blame")
+
+
+@mcp.resource(
+    uri="prompt://explore",
+    name=__("Explore Prompt"),
+    description=__("Prompt template: explore project context and available skills."),
+    mime_type="text/markdown",
+)
+def get_prompt_explore() -> str:
+    return _read_prompt_file("explore")
+
+
+# =============================================================================
 # Prompts — Message Templates for Common Flows
 # =============================================================================
 # Prompts are pre-defined message templates that users can select in their
 # editor's AI chat. Unlike tools (which execute automatically), prompts are
 # starter messages that guide the AI to invoke the right GitPR tools.
+#
+# Prompt content is loaded from template files in templates/ (with language
+# variants), so translations can be updated independently of the Python code.
 # =============================================================================
 
 @mcp.prompt(
@@ -712,13 +871,7 @@ def get_linter_config() -> str:
 )
 def review_pr_prompt() -> str:
     """Prompt: full code review of the current branch."""
-    return __(
-        "Please review all changes in my current branch by running a full code "
-        "review against origin/main. Also run the static linter to check for "
-        "code quality issues. Combine the results into a single comprehensive "
-        "review report with: 1) summary of changes, 2) critical issues found, "
-        "3) linter violations, and 4) suggested improvements."
-    )
+    return _read_prompt_file("review")
 
 
 @mcp.prompt(
@@ -728,11 +881,7 @@ def review_pr_prompt() -> str:
 )
 def generate_commit_message_prompt() -> str:
     """Prompt: generate a commit message from uncommitted changes."""
-    return __(
-        "Please generate a commit message for my current uncommitted changes. "
-        "Use the Conventional Commits format (e.g., 'feat:', 'fix:', 'refactor:'). "
-        "The message should be short, imperative, and describe what the change does."
-    )
+    return _read_prompt_file("commit")
 
 
 @mcp.prompt(
@@ -742,12 +891,7 @@ def generate_commit_message_prompt() -> str:
 )
 def create_pr_description_prompt() -> str:
     """Prompt: generate a full PR description."""
-    return __(
-        "Please create a complete Pull Request description for my current branch. "
-        "Generate a clear title and a structured body that includes: 1) what was "
-        "changed, 2) why the change was made, 3) any important implementation "
-        "details, and 4) testing instructions."
-    )
+    return _read_prompt_file("pr")
 
 
 @mcp.prompt(
@@ -757,11 +901,7 @@ def create_pr_description_prompt() -> str:
 )
 def run_linter_prompt() -> str:
     """Prompt: run the static linter on current changes."""
-    return __(
-        "Please run the static linter on my current uncommitted changes to check "
-        "for code quality violations. Report any errors or warnings found, and "
-        "suggest how to fix them."
-    )
+    return _read_prompt_file("linter")
 
 
 @mcp.prompt(
@@ -771,10 +911,7 @@ def run_linter_prompt() -> str:
 )
 def create_issue_prompt() -> str:
     """Prompt: generate an issue from the current diff."""
-    return __(
-        "Please create a structured issue from my current uncommitted changes. "
-        "Use the What / Why / Where / How format to document the task clearly."
-    )
+    return _read_prompt_file("issue")
 
 
 @mcp.prompt(
@@ -784,11 +921,7 @@ def create_issue_prompt() -> str:
 )
 def trace_code_origin_prompt() -> str:
     """Prompt: trace the origin of code in a file region."""
-    return __(
-        "Please help me trace the origin of a specific code region. First, check "
-        "the current git context to understand the project structure. Then I'll "
-        "provide the file path and line range I want to investigate."
-    )
+    return _read_prompt_file("blame")
 
 
 @mcp.prompt(
@@ -798,11 +931,7 @@ def trace_code_origin_prompt() -> str:
 )
 def explore_project_prompt() -> str:
     """Prompt: explore the current git context and available skills."""
-    return __(
-        "Please explore my current project context. Tell me what branch I'm on, "
-        "what repository I'm working in, and what skill templates and linter "
-        "configurations are available."
-    )
+    return _read_prompt_file("explore")
 
 
 # =============================================================================

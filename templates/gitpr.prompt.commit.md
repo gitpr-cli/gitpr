@@ -1,0 +1,1 @@
+Please generate a commit message for my current uncommitted changes. Use the Conventional Commits format (e.g., feat:, fix:, refactor:). The message should be short, imperative, and describe what the change does.

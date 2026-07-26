@@ -1,0 +1,1 @@
+Veuillez executer le linter statique sur mes modifications non validees pour verifier les violations de qualite du code. Signalez les erreurs ou avertissements trouves et suggerez comment les corriger.

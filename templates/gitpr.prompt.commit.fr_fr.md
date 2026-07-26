@@ -1,0 +1,1 @@
+Veuillez generer un message de commit pour mes modifications non validees. Utilisez le format Conventional Commits (ex : feat:, fix:, refactor:). Le message doit etre court, imperatif et decrire ce que fait la modification.

@@ -1,0 +1,1 @@
+Por favor, genera un mensaje de commit para mis cambios no confirmados. Usa el formato Conventional Commits (ej: feat:, fix:, refactor:). El mensaje debe ser corto, imperativo y describir lo que hace el cambio.
