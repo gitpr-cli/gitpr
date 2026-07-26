@@ -290,7 +290,8 @@ Si deseas implementar GitPR como una barrera de calidad automatizada en tu equip
 * [**Token GitHub (PAT) — Integración y Seguridad**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Entiende cómo GitPR crea issues directamente en el repositorio con autenticación.
 * [**Internacionalización (i18n)**](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — Arquitectura, patrones de uso y cómo añadir nuevos idiomas.
 * [**Integración MCP**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — Conecta GitPR a VS Code, Cursor y Claude Desktop vía Model Context Protocol.
-* [**MCP Prompts**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) — Plantillas de mensaje predefinidas para flujos comunes como revisión, commit y creación de issues.
+* [**MCP Prompts**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) — Plantillas de mensaje predefinidas (7 prompts, 35 variantes de idioma) para flujos comunes en el chat de IA de tu editor.
+* [**MCP Tool Annotations**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-annotations.md) — Sugerencias de integración con IDEs (`readOnlyHint`, `destructiveHint`) para un comportamiento de UI más inteligente y ejecución segura de herramientas.
 
 ## ⚡ Sistema de Caché Local (Ahorro de Cuota)
 

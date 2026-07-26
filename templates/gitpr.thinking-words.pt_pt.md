@@ -1,87 +1,87 @@
-1	Fabuloso
-2	A pensar
-3	A analisar
-4	A raciocinar
-5	A elaborar
-6	A processar
-7	A decifrar
-8	A calcular
-9	A refletir
-10	A maquinar
-11	A engenhar
-12	A arquitetar
-13	A destilar
-14	A codificar
-15	A iterar
-16	A purificar
-17	A contextualizar
-18	A apreciar
-19	A desmistificar
-20	Aglomerado
-21	A sofisticar
-22	A popular
-23	A sincronizar
-24	Reticulação
-25	Percolação
-26	Determinação
-27	Vibração
-28	Vagabundagem
-29	Ruminação
-30	Decifração
-31	Ação
-32	A coalescer
-33	A imaginar
-34	A vislumbrar
-35	A encantar
-36	A idear
-37	A combobular
-38	A tagarelar
-39	A contemplar
-40	A incubar
-41	A reunir
-42	A saltitar
-43	A desfraldar
-44	A matutar
-45	A quebrar a cabeça
-46	A realizar
-47	A engenhocar
-48	Fervendo
-49	Passeando
-50	Remexendo
-51	Meditando
-52	Marinando
-53	Espeleologando
-54	A rascunhar
-55	A consultar o Sensei
-56	A consultar o Senpai
-57	A espreguiçar
-58	A papear
-59	A suspirar
-60	A interpretar
-61	A blefar
-62	A sonhar
-63	A divagar
-64	A mastigar
-65	A compilar
-66	A alucinar
-67	A ziguezaguear
-68	A improvisar
-69	A fragmentar
-70	A depurar
-71	A tamborilar
-72	A enrolar
-73	A simular
-74	A indexar
-75	A serializar
-76	A empacotar
-77	A parsear
-78	A cafeinar
-79	A fingir
-80	A recursar
-81	A mascarar
-82	A representar
-83	A disfarçar
-84	A procrastinar
+Fabuloso
+A pensar
+A analisar
+A raciocinar
+A elaborar
+A processar
+A decifrar
+A calcular
+A refletir
+A maquinar
+A engenhar
+A arquitetar
+A destilar
+A codificar
+A iterar
+A purificar
+A contextualizar
+A apreciar
+A desmistificar
+Aglomerado
+A sofisticar
+A popular
+A sincronizar
+Reticulação
+Percolação
+Determinação
+Vibração
+Vagabundagem
+Ruminação
+Decifração
+Ação
+A coalescer
+A imaginar
+A vislumbrar
+A encantar
+A idear
+A combobular
+A tagarelar
+A contemplar
+A incubar
+A reunir
+A saltitar
+A desfraldar
+A matutar
+A quebrar a cabeça
+A realizar
+A engenhocar
+Fervendo
+Passeando
+Remexendo
+Meditando
+Marinando
+Espeleologando
+A rascunhar
+A consultar o Sensei
+A consultar o Senpai
+A espreguiçar
+A papear
+A suspirar
+A interpretar
+A blefar
+A sonhar
+A divagar
+A mastigar
+A compilar
+A alucinar
+A ziguezaguear
+A improvisar
+A fragmentar
+A depurar
+A tamborilar
+A enrolar
+A simular
+A indexar
+A serializar
+A empacotar
+A parsear
+A cafeinar
+A fingir
+A recursar
+A mascarar
+A representar
+A disfarçar
+A procrastinar
 A otimizar loops de consciência
 A ziguezaguear pela lógica como se estivesse bêbado de café
 Estado: a sonhar com códigos perfeitos

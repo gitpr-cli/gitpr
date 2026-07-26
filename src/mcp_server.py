@@ -37,6 +37,7 @@ from pathlib import Path
 import click
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from src.i18n import __, CURRENT_LANG
 
@@ -243,7 +244,8 @@ mcp = FastMCP(
 # =============================================================================
 
 @mcp.tool(
-    description=__("Get the current git branch, repository name, and remote origin URL.")
+    description=__("Get the current git branch, repository name, and remote origin URL."),
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def get_git_context() -> str:
     """Return JSON with branch name and repository info."""
@@ -264,7 +266,8 @@ def get_git_context() -> str:
 
 @mcp.tool(
     description=__("Get the current unstaged git diff (git diff HEAD). ")
-                + __("Lists all changed files and their line-level modifications.")
+                + __("Lists all changed files and their line-level modifications."),
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def analyze_diff() -> str:
     """Return the raw git diff for uncommitted local changes."""
@@ -284,7 +287,8 @@ def analyze_diff() -> str:
 
 @mcp.tool(
     description=__("Get the full diff of the current branch against the remote "
-                    "base branch (origin/main or origin/master). Runs git fetch first.")
+                    "base branch (origin/main or origin/master). Runs git fetch first."),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
 )
 def get_full_diff() -> str:
     """Return the full diff between the current branch and origin/main."""
@@ -309,7 +313,8 @@ def get_full_diff() -> str:
 @mcp.tool(
     description=__("Generate a Conventional Commits commit message from the "
                     "current git diff using AI. "
-                    "Returns a message like 'feat: add user authentication'.")
+                    "Returns a message like 'feat: add user authentication'."),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
 )
 def generate_commit_message(
     provider: str = "",
@@ -351,7 +356,8 @@ def generate_commit_message(
 @mcp.tool(
     description=__("Perform an AI code review on uncommitted local changes "
                     "(git diff HEAD). Returns structured feedback with issues "
-                    "and improvement suggestions.")
+                    "and improvement suggestions."),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
 )
 def review_code(
     provider: str = "",
@@ -391,7 +397,8 @@ def review_code(
 
 @mcp.tool(
     description=__("Perform a full AI code review comparing the entire current "
-                    "branch against origin/main. Runs git fetch automatically.")
+                    "branch against origin/main. Runs git fetch automatically."),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
 )
 def full_review(provider: str = "") -> str:
     """AI code review of all changes since origin/main.
@@ -426,7 +433,8 @@ def full_review(provider: str = "") -> str:
 @mcp.tool(
     description=__("Generate a complete Pull Request description (title + body) "
                     "from the full diff against origin/main. Uses AI to create a "
-                    "structured, professional PR document.")
+                    "structured, professional PR document."),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
 )
 def generate_pr_description(provider: str = "") -> str:
     """Generate a full PR description from the branch diff.
@@ -466,7 +474,8 @@ def generate_pr_description(provider: str = "") -> str:
 @mcp.tool(
     description=__("Run the static local linter (regex-based rules from "
                     ".gitpr.linter.yml) on the current git diff. "
-                    "Returns error and warning counts with detailed messages.")
+                    "Returns error and warning counts with detailed messages."),
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def run_linter() -> str:
     """Analyze the current diff against .gitpr.linter.yml rules."""
@@ -499,7 +508,8 @@ def run_linter() -> str:
 @mcp.tool(
     description=__("Run AI-powered git blame analysis on a file region to trace "
                     "the origin of business rules. Classifies each commit as "
-                    "ORIGIN (first introduction) or REFACTORING (later change).")
+                    "ORIGIN (first introduction) or REFACTORING (later change)."),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
 )
 def analyze_blame(
     file_path: str,
@@ -542,7 +552,8 @@ def analyze_blame(
 @mcp.tool(
     description=__("Generate a structured Issue (What / Why / Where / How) from "
                     "code context using AI. Supports three modes: diff (current "
-                    "changes), history (branch history), or blame (file region).")
+                    "changes), history (branch history), or blame (file region)."),
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
 )
 def generate_issue(context_type: str = "diff") -> str:
     """Generate an issue from code context.
