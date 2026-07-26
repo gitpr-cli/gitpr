@@ -211,9 +211,7 @@ class Spinner:
                     chars_per_letter, sleep_time = self._adaptive_speed(word)
 
             # Build and display the line: magenta braille + colored word
-            line = f"\r  {MAGENTA}{braille_char}{RESET} {word_color}{display_word}{RESET}"
-            # Pad the rest of the line with spaces
-            line = line.ljust(70 + len(MAGENTA) + len(RESET) * 2 + len(word_color))
+            line = f"\r  {MAGENTA}{braille_char}{RESET} {word_color}{display_word}{RESET}\033[K"
 
             if not self._quiet:
                 sys.stdout.write(line)
@@ -235,5 +233,5 @@ class Spinner:
         if self._thread:
             self._thread.join(timeout=0.5)
         if not self._quiet:
-            sys.stdout.write("\r" + " " * 70 + "\r")
+            sys.stdout.write("\r\033[K")
             sys.stdout.flush()
