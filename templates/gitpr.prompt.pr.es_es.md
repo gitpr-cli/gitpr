@@ -1,0 +1,1 @@
+Por favor, crea una descripcion completa de Pull Request para mi rama actual. Genera un titulo claro y un cuerpo estructurado que incluya: 1) que se cambio, 2) por que se hizo el cambio, 3) detalles importantes de implementacion, y 4) instrucciones de prueba.

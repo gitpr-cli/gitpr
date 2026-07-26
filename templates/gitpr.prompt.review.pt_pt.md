@@ -1,0 +1,1 @@
+Por favor, reveja todas as alteracoes na minha branch atual executando uma revisao completa de codigo contra origin/main. Execute tambem o linter estatico para verificar problemas de qualidade de codigo. Combine os resultados num unico relatorio abrangente com: 1) resumo das alteracoes, 2) problemas criticos encontrados, 3) violacoes do linter, e 4) melhorias sugeridas.

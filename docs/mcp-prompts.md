@@ -39,24 +39,49 @@ to fulfill the request.
 ## 🔧 How It Works
 
 Each prompt is defined as a function decorated with `@mcp.prompt()` in
-`src/mcp_server.py`. The function returns a message string that the editor's AI
-agent sends to the model, instructing it to call specific GitPR tools with the
-appropriate parameters.
+`src/mcp_server.py`. The prompt content is loaded from **template files** stored
+in the `templates/` directory:
 
-Example — the "Review PR" prompt:
-
-```python
-@mcp.prompt()
-def review_pr_prompt() -> str:
-    return (
-        "Review all changes in my current branch. "
-        "Run a full review against origin/main, "
-        "check the linter, and suggest improvements."
-    )
+```
+templates/gitpr.prompt.review.md       (English)
+templates/gitpr.prompt.review.pt_br.md  (Brazilian Portuguese)
+templates/gitpr.prompt.review.pt_pt.md  (European Portuguese)
+templates/gitpr.prompt.review.es_es.md  (Spanish)
+templates/gitpr.prompt.review.fr_fr.md  (French)
 ```
 
-The AI agent receiving this message will then call `full_review`, `run_linter`,
+This template-based design means prompt messages can be updated and translated
+independently of the Python code. The MCP server loads the appropriate language
+variant based on the user's `GITPR_LANG` setting, falling back to English.
+
+Example — the "Review PR" prompt template (`gitpr.prompt.review.md`):
+
+```
+Please review all changes in my current branch by running a full code
+review against origin/main. Also run the static linter to check for
+code quality issues. Combine the results into a single comprehensive
+review report with: 1) summary of changes, 2) critical issues found,
+3) linter violations, and 4) suggested improvements.
+```
+
+The AI agent receiving this message will call `full_review`, `run_linter`,
 and compose a comprehensive review response based on the results.
+
+### Prompt Resources
+
+Prompt templates are also exposed as MCP **resources** under the `prompt://`
+URI scheme, so AI agents can read the raw template content:
+
+| URI | Content |
+|-----|---------|
+| `prompt://list` | JSON list of all available prompt URIs |
+| `prompt://review` | Review PR prompt template |
+| `prompt://commit` | Commit message prompt template |
+| `prompt://pr` | PR description prompt template |
+| `prompt://linter` | Linter prompt template |
+| `prompt://issue` | Issue prompt template |
+| `prompt://blame` | Code origin prompt template |
+| `prompt://explore` | Project context prompt template |
 
 ## 📚 Related Documentation
 

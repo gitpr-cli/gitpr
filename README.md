@@ -120,7 +120,7 @@ You can pass the following *flags* for specific actions:
 * `--lang <code>`: Forces the interface language for this execution (e.g.: `en_us`, `pt_br`). Overrides `GITPR_LANG` in `.env` without persisting the change.
 * `-ch` or `--chat`: Opens the **Interactive Pair Programming Chat** — a TUI terminal where the AI sees your current diff and maintains a contextual conversation. Features memory per branch, slash commands (`/explain`, `/tests`, `/optimize`, `/clear`), auto-patching (F5), diff refresh (F2), and session export (F6).
 * `-l` or `--linter`: Runs **only the local static linter** (no AI calls). Ideal for use in CI/CD pipelines to block non-compliant code.
-* `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as tools directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
+* `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as 10 annotated tools, 15 resources, and 7 pre-built prompts directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
 * `--install`: **Interactive Setup Wizard.** Runs a guided 4-step setup: downloads skill templates, installs Git hooks, configures MCP for detected editors, and checks/requests your AI provider API key. Each step asks for confirmation before proceeding.
 * `-ih` or `--installhooks`: Automatically installs **local Git Hooks** (`pre-commit` and `prepare-commit-msg`) in your repository.
 * `-s` or `--skill`: Creates the AI context template files (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) and the Linter (`.gitpr.linter.yml`) at the project root.
@@ -290,7 +290,8 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 * [**GitHub Token (PAT) Integration and Security**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Understand how GitPR creates issues directly in the repository with authentication.
 * [**Internationalization (i18n)**](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — Architecture, usage patterns, and how to add new languages.
 * [**MCP Integration**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — Connect GitPR to VS Code, Cursor, and Claude Desktop via Model Context Protocol.
-* [**MCP Prompts**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) — Pre-defined message templates for common flows like review, commit, and issue creation.
+* [**MCP Prompts**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) — Pre-built message templates (7 prompts, 35 language variants) for common GitPR workflows in your editor's AI chat.
+* [**MCP Tool Annotations**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-annotations.md) — IDE integration hints (`readOnlyHint`, `destructiveHint`) for smarter UI behavior and safer tool execution.
 
 ## ⚡ Local Cache System (Quota Savings)
 

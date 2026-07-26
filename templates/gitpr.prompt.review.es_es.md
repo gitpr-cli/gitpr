@@ -1,0 +1,1 @@
+Por favor, revisa todos los cambios en mi rama actual ejecutando una revision completa de codigo contra origin/main. Ejecuta tambien el linter estatico para verificar problemas de calidad de codigo. Combina los resultados en un unico informe completo con: 1) resumen de cambios, 2) problemas criticos encontrados, 3) violaciones del linter, y 4) mejoras sugeridas.

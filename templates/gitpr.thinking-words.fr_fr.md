@@ -1,87 +1,87 @@
-1	Fabuleux
-2	Réflexion
-3	Analyse
-4	Raisonnement
-5	Élaboration
-6	Traitement
-7	Déchiffrage
-8	Calcul
-9	Méditation
-10	Machination
-11	Ingénierie
-12	Architecture
-13	Distillation
-14	Encodage
-15	Itération
-16	Purification
-17	Contextualisation
-18	Appréciation
-19	Démystification
-20	Agglomération
-21	Sophistication
-22	Peuplement
-23	Synchronisation
-24	Réticulation
-25	Percolation
-26	Détermination
-27	Vibration
-28	Vagabondage
-29	Rumination
-30	Décryptage
-31	Action
-32	Coalescence
-33	Imagination
-34	Projection
-35	Enchantement
-36	Idéation
-37	Combobulation
-38	Papotage
-39	Contemplation
-40	Éclosion
-41	Rassemblement
-42	Gambade
-43	Déploiement
-44	Divagation
-45	Casse-tête
-46	Accomplissement
-47	Bricolage
-48	Mijoter
-49	Flâner
-50	Vadrouille
-51	Songerie
-52	Marinade
-53	Spéléologie
-54	Rédaction
-55	Consultation du Sensei
-56	Consultation du Senpai
-57	Étirement
-58	Bavardage
-59	Soupir
-60	Interprétation
-61	Bluff
-62	Rêve
-63	Digression
-64	Mastication
-65	Compilation
-66	Hallucination
-67	Zigzag
-68	Improvisation
-69	Fragmentation
-70	Débogage
-71	Tambourinage
-72	Temporisation
-73	Simulation
-74	Indexation
-75	Sérialisation
-76	Emballage
-77	Parsage
-78	Caféination
-79	Feinte
-80	Récursion
-81	Masquage
-82	Représentation
-83	Déguisement
-84	Procrastination
+Fabuleux
+Réflexion
+Analyse
+Raisonnement
+Élaboration
+Traitement
+Déchiffrage
+Calcul
+Méditation
+Machination
+Ingénierie
+Architecture
+Distillation
+Encodage
+Itération
+Purification
+Contextualisation
+Appréciation
+Démystification
+Agglomération
+Sophistication
+Peuplement
+Synchronisation
+Réticulation
+Percolation
+Détermination
+Vibration
+Vagabondage
+Rumination
+Décryptage
+Action
+Coalescence
+Imagination
+Projection
+Enchantement
+Idéation
+Combobulation
+Papotage
+Contemplation
+Éclosion
+Rassemblement
+Gambade
+Déploiement
+Divagation
+Casse-tête
+Accomplissement
+Bricolage
+Mijoter
+Flâner
+Vadrouille
+Songerie
+Marinade
+Spéléologie
+Rédaction
+Consultation du Sensei
+Consultation du Senpai
+Étirement
+Bavardage
+Soupir
+Interprétation
+Bluff
+Rêve
+Digression
+Mastication
+Compilation
+Hallucination
+Zigzag
+Improvisation
+Fragmentation
+Débogage
+Tambourinage
+Temporisation
+Simulation
+Indexation
+Sérialisation
+Emballage
+Parsage
+Caféination
+Feinte
+Récursion
+Masquage
+Représentation
+Déguisement
+Procrastination
 Optimisation des boucles de conscience
 Zigzaguant dans la logique comme si javais trop bu de café
 Statut : rêve de codes parfaits

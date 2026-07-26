@@ -1,0 +1,1 @@
+Por favor, gere uma mensagem de commit para minhas alteracoes nao commitadas. Use o formato Conventional Commits (ex: feat:, fix:, refactor:). A mensagem deve ser curta, imperativa e descrever o que a alteração faz.

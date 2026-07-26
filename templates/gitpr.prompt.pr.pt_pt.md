@@ -1,0 +1,1 @@
+Por favor, crie uma descricao completa de Pull Request para a minha branch atual. Gere um titulo claro e um corpo estruturado que inclua: 1) o que foi alterado, 2) porque a alteracao foi feita, 3) detalhes importantes de implementacao, e 4) instrucoes de teste.

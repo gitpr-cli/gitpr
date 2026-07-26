@@ -1,87 +1,87 @@
-1	Fabuloso
-2	Pensando
-3	Analizando
-4	Razonando
-5	Elaborando
-6	Procesando
-7	Descifrando
-8	Calculando
-9	Reflexionando
-10	Maquinando
-11	Ingeniando
-12	Arquitectando
-13	Destilando
-14	Codificando
-15	Iterando
-16	Purificando
-17	Contextualizando
-18	Apreciando
-19	Desmitificando
-20	Aglomerando
-21	Sofisticando
-22	Poblando
-23	Sincronizando
-24	Reticulación
-25	Percolación
-26	Determinación
-27	Vibración
-28	Vagabundeo
-29	Rumiación
-30	Descifrado
-31	Acción
-32	Fusionando
-33	Imaginando
-34	Visualizando
-35	Encantando
-36	Ideando
-37	Combobulando
-38	Parloteando
-39	Contemplando
-40	Incubando
-41	Reuniendo
-42	Retozando
-43	Desplegando
-44	Divagando
-45	Cavilando
-46	Logrando
-47	Trasteando
-48	Hirviendo
-49	Paseando
-50	Holgazaneando
-51	Meditando
-52	Marinando
-53	Espeleologando
-54	Redactando
-55	Consultando al Sensei
-56	Consultando al Senpai
-57	Estirando
-58	Charloteando
-59	Suspirando
-60	Interpretando
-61	Farsanteando
-62	Soñando
-63	Digresionando
-64	Masticando
-65	Compilando
-66	Alucinando
-67	Zigzagueando
-68	Improvisando
-69	Fragmentando
-70	Depurando
-71	Tamborileando
-72	Tardando
-73	Simulando
-74	Indexando
-75	Serializando
-76	Empaquetando
-77	Parseando
-78	Cafeinando
-79	Fingiendo
-80	Recursando
-81	Enmascarando
-82	Representando
-83	Disfrazando
-84	Procrastinando
+Fabuloso
+Pensando
+Analizando
+Razonando
+Elaborando
+Procesando
+Descifrando
+Calculando
+Reflexionando
+Maquinando
+Ingeniando
+Arquitectando
+Destilando
+Codificando
+Iterando
+Purificando
+Contextualizando
+Apreciando
+Desmitificando
+Aglomerando
+Sofisticando
+Poblando
+Sincronizando
+Reticulación
+Percolación
+Determinación
+Vibración
+Vagabundeo
+Rumiación
+Descifrado
+Acción
+Fusionando
+Imaginando
+Visualizando
+Encantando
+Ideando
+Combobulando
+Parloteando
+Contemplando
+Incubando
+Reuniendo
+Retozando
+Desplegando
+Divagando
+Cavilando
+Logrando
+Trasteando
+Hirviendo
+Paseando
+Holgazaneando
+Meditando
+Marinando
+Espeleologando
+Redactando
+Consultando al Sensei
+Consultando al Senpai
+Estirando
+Charloteando
+Suspirando
+Interpretando
+Farsanteando
+Soñando
+Digresionando
+Masticando
+Compilando
+Alucinando
+Zigzagueando
+Improvisando
+Fragmentando
+Depurando
+Tamborileando
+Tardando
+Simulando
+Indexando
+Serializando
+Empaquetando
+Parseando
+Cafeinando
+Fingiendo
+Recursando
+Enmascarando
+Representando
+Disfrazando
+Procrastinando
 Optimizando bucles de conciencia
 Zigzagueando por la lógica como si estuviera borracho de café
 Estado: soñando con códigos perfectos

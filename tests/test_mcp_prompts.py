@@ -1,14 +1,26 @@
 """Tests for the MCP Prompts (message templates for common flows)."""
 
 import unittest
+from unittest.mock import patch
 from src import mcp_server
 
 
 class TestMCPPrompts(unittest.TestCase):
     """Tests for the 7 MCP prompt functions."""
 
+    # All tests use English to get deterministic keyword checks
+    LANG_PATCH = patch.object(mcp_server, "CURRENT_LANG", "en_US")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.LANG_PATCH.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.LANG_PATCH.stop()
+
     def test_review_pr_prompt_returns_string(self):
-        """Review PR prompt returns a non-empty string."""
+        """Review PR prompt returns a non-empty string referencing review."""
         result = mcp_server.review_pr_prompt()
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 20)
@@ -43,7 +55,7 @@ class TestMCPPrompts(unittest.TestCase):
         self.assertIn("what", result.lower())
 
     def test_trace_code_origin_prompt_returns_string(self):
-        """Trace Code Origin prompt references git blame."""
+        """Trace Code Origin prompt references git context."""
         result = mcp_server.trace_code_origin_prompt()
         self.assertIsInstance(result, str)
         self.assertGreater(len(result), 20)
@@ -68,6 +80,23 @@ class TestMCPPrompts(unittest.TestCase):
             mcp_server.explore_project_prompt(),
         ]
         self.assertEqual(len(prompts), len(set(prompts)))
+
+    def test_prompt_files_dict_complete(self):
+        """PROMPT_FILES has all 7 expected entries."""
+        expected = {"review", "commit", "pr", "linter", "issue", "blame", "explore"}
+        self.assertEqual(set(mcp_server.PROMPT_FILES.keys()), expected)
+
+    def test_read_prompt_file_returns_content(self):
+        """_read_prompt_file returns non-empty content for a valid prompt."""
+        result = mcp_server._read_prompt_file("review")
+        self.assertIsInstance(result, str)
+        self.assertGreater(len(result), 20)
+        self.assertIn("review", result.lower())
+
+    def test_read_prompt_file_unknown_returns_empty(self):
+        """_read_prompt_file returns empty string for unknown prompt."""
+        result = mcp_server._read_prompt_file("nonexistent")
+        self.assertEqual(result, "")
 
 
 if __name__ == "__main__":

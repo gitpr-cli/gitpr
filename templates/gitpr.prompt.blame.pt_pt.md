@@ -1,0 +1,1 @@
+Por favor, ajude-me a rastrear a origem de uma regiao especifica de codigo. Primeiro, verifique o contexto git atual para entender a estrutura do projeto. Depois fornecerei o caminho do ficheiro e o intervalo de linhas que quero investigar.
