@@ -199,3 +199,65 @@ Déguisement
 Procrastination
 Jerre par ici, mais je reviens bientôt avec la réponse
 Statut : bluff sur la réponse
+Pigeant
+Pigeant ton vibe... et ta question
+Pigeant comme un detective sans cafe
+Pigeant fort, pensant doux
+Pigeant si fort que jai oublie mon propre nom
+Pigeant les donnees, ignorant le drama
+Pigeant... attends, cetait quoi la question?
+Pigeant des reponses du chaos
+Pigeant comme si personne ne regardait
+Pigeant avec 42% de confiance, 58% despoir
+Pigeant tes ondes cerebrales... captant des parasites
+Pigeant, mais avec du style
+Pigeant limpossible au quotidien
+Pigeant comme si mon code en dependait
+Pigeant... et adorant chaque octet
+Pigeant entre deux mauvaises reponses
+Pigeant si vite que je me suis surpris
+Pigeant profond, emergent avec brio
+Pigeant comme si cetait mon premier jour
+Pigeant, sirotant, simulant
+Pigeant la verite dans un ocean de memes
+Pigeant ta question avec du swagger numerique
+Pigeant sans meme transpirer
+Pigeant comme un pro, transpirant comme un humain
+Pigeant... oh regarde, un ecureuil!
+Pigeant tes pensees du futur
+Pigeant a travers le bruit avec un sourire
+Pigeant, mais en vrai je devine juste
+Pigeant et pretendant que cest de la science
+Pigeant comme un boss, echouant comme un beta
+Pigeant avec zero bugs... je rigole
+Cerebrant
+Cerebrant... ou juste pensant fort
+Cerebrant si fort que jai besoin dune sieste
+Cerebrant comme un genie, me sentant comme une patate
+Cerebrant en resolution 4K
+Cerebrant... et vibrant
+Cerebrant avec zero RAM disponible
+Cerebrant, mais mon cerveau fait buffering
+Cerebrant comme si cetait 1999
+Cerebrant si profond que jai trouve Narnia
+Cerebrant... veuillez retenir les applaudissements
+Cerebrant en buvant du cafe imaginaire
+Cerebrant contre mon gre
+Cerebrant, mais avec du style
+Cerebrant plus fort quun etudiant en examens
+Cerebrant en binaire et adorant ca
+Cerebrant... est-ce un mot? Faisons semblant que oui
+Cerebrant avec 30% de cerveau, 70% de cafeine
+Cerebrant et oubliant la reponse a mi-chemin
+Cerebrant comme si mon processeur en dependait
+Cerebrant a la vitesse du dial-up
+Cerebrant, mais le hamster est fatigue
+Cerebrant a travers l angoisse existentielle
+Cerebrant comme si je venais de me reveiller
+Cerebrant et appreciant lecho
+Cerebrant si fort que mes pensees ont besoin decouteurs
+Cerebrant... envoyez plus de neurones svp
+Cerebrant avec style et zero substance
+Cerebrant comme si je savais ce que je fais
+Cerebrant, puis supprimant immediatement
+Cerebrant comme sil ny avait pas de lendemain

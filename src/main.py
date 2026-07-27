@@ -117,6 +117,11 @@ HELP_MAP: dict[str, dict[str, str]] = {
         'title': __('Language Override (--lang)'),
         'description': __('Forces the interface language for this execution (e.g.: en_us, pt_br). Overrides the GITPR_LANG environment variable and OS locale detection.'),
     },
+    'metrics': {
+        'url': get_doc_url('metricas_analytics_dashboard.md'),
+        'title': __('Metrics & Analytics (--metrics)'),
+        'description': __('Export or purge local telemetry data for team analytics.'),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -136,6 +141,7 @@ HELP_PRIORITY: dict[str, int] = {
     'history': 11,
     'provider': 12,
     'lang': 13,
+    'metrics': 15,
 }
 
 
@@ -160,8 +166,13 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('-p', '--provider', type=click.Choice(['gemini', 'deepseek', 'ollama']), help=__("Forces the use of a specific AI provider for this execution."))
 @click.option('--lang', type=str, help=__("Forces the interface language for this execution (e.g.: en_us, pt_br)."))
 @click.option('--mcp', is_flag=True, hidden=True, help=__("Start the MCP server for integration with VS Code, Cursor, Claude Desktop, etc."))
+@click.option('--metrics', is_flag=True, help=__("Shows local telemetry summary. Use --export to consolidate, --purge to clean."))
+@click.option('--export', is_flag=True, help=__("Exports consolidated metrics to CSV and JSON in the current folder."))
+@click.option('--purge', is_flag=True, help=__("Deletes all local metric files (~/.gitpr/metrics/). Requires confirmation."))
+@click.option('--hook-event', type=str, hidden=True, help=__("Internal: logs a git hook event name."))
+@click.option('--dashboard', 'show_dashboard', is_flag=True, help=__("Opens the interactive metrics dashboard (TUI)."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -208,7 +219,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
                     fg="yellow", dim=True,
                 )
 
-            # Exibe a URL da documentacao principal do GitPR como rodape
+            # Display the main GitPR documentation URL as a footer
             click.secho(
                 __(">> Repository: https://github.com/natanfiuza/gitpr"),
                 fg="bright_black",
@@ -231,6 +242,50 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         reload_thinking_words(lang)
 
     # MCP Server Mode — start stdio MCP server (handled before any interactive setup)
+    if hook_event:
+        # Hidden: fire-and-forget git hook event logging
+        from src.metrics import log_command_metric
+        log_command_metric(command=f"hook:{hook_event}", status="fired", provider="git")
+        return
+
+    if metrics and export:
+        from src.metrics import export_metrics
+        csv_path, json_path, count = export_metrics()
+        if count > 0:
+            click.secho(__("✅ Metrics exported: {count} events.", count=count), fg="green", bold=True)
+            if csv_path:
+                click.echo(f"  CSV: {csv_path}")
+            if json_path:
+                click.echo(f"  JSON: {json_path}")
+        else:
+            click.secho(__("No new metrics to export."), fg="yellow")
+        return
+
+    if metrics and purge:
+        from src.metrics import purge_metrics
+        if click.confirm(__("⚠ This will permanently delete all local metric files. Continue?")):
+            removed = purge_metrics()
+            click.secho(__("✅ Metrics purged ({count} files removed).", count=removed), fg="green")
+        else:
+            click.secho(__("Purge cancelled."), fg="yellow")
+        return
+
+    if metrics and show_dashboard:
+        from src.ui.metrics_app import launch_metrics_dashboard
+        launch_metrics_dashboard()
+        return
+
+    if metrics:
+        from src.metrics import show_metrics_summary
+        summary = show_metrics_summary()
+        click.secho(__("\n📊 Local Telemetry Summary"), fg="cyan", bold=True)
+        click.echo(f"  {__('Path')}: {summary['path']}")
+        click.echo(f"  {__('Files')}: {summary['total_files']}")
+        click.echo(f"  {__('Disk usage')}: {summary['disk_usage']}")
+        click.echo()
+        click.echo(__("Use --metrics --export to consolidate, --metrics --purge to clean."))
+        return
+
     if mcp:
         from src.mcp_server import main as mcp_main
         mcp_main()
@@ -269,9 +324,9 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         has_warnings = len(linter_results["warnings"]) > 0
         has_errors = len(linter_results["errors"]) > 0
 
-        # Processamento de Warnings (Apenas Avisos)
+        # Warning processing (best-practice advisories only)
         if has_warnings:
-            # Os avisos DEVEM aparecer sempre, mesmo no modo quiet
+            # Warnings MUST always appear, even in quiet mode
             click.secho(__("\n⚠️ The Linter generated {count} best practice warning(s):", count=len(linter_results['warnings'])), fg="yellow", bold=True)
             for alert in linter_results["warnings"]:
                 click.echo(f"  - {alert}")
@@ -291,6 +346,15 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
                 click.secho(__("\n✅ Code approved with warnings. The commit will proceed."), fg="green")
             else:
                 click.secho(__("\n✅ Clean code! No violations found by the local Linter."), fg="green", bold=True)
+
+        # Fire-and-forget linter metric
+        from src.metrics import log_command_metric
+        log_command_metric(
+            command="linter",
+            status="error" if has_errors else "success",
+            linter_errors=len(linter_results.get("errors", [])),
+            linter_warnings=len(linter_results.get("warnings", [])),
+        )
         return
 
     # Connection Guardian (Failing Fast)
@@ -511,7 +575,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         
         system_instruction = __("You are a Senior Software Engineer acting as a Pair Programmer. Analyze the code provided and answer the user's questions clearly, objectively, and technically. Use Markdown to format code blocks. The current git diff is:\n\n{diff}", diff=diff_text)
         
-        # Pega o modelo primário configurado no .env
+        # Use the primary model configured in .env
         env_model_key = f"{active_provider.upper()}_API_MODEL_PRIMARY"
         api_model = os.getenv(env_model_key)
         if not api_model:
@@ -632,7 +696,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         )
         content = data.get('review', __('No analysis generated.'))
         
-        # Chama o Linter. Se for "filereview", ativa o modo de arquivo completo.
+        # Run the Linter. If "filereview", enable full-file mode.
         if action_type == "filereview":
             linter_results = parse_diff_and_lint(diff_text, is_full_file=True, file_path=input)
         else:

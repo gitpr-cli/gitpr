@@ -1,12 +1,12 @@
-# **🚀 Relatório de Status do Projeto: GitPR CLI — v0.0.29 (2026-07-26)**
+# **🚀 Relatório de Status do Projeto: GitPR CLI — v0.0.30 (2026-07-26)**
 
 ## **📌 Visão Geral**
 
 O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para automação de processos Git utilizando Inteligência Artificial (Google Gemini / DeepSeek / Ollama). O objetivo principal é atuar como um assistente inteligente local que faz Code Reviews, gera Pull Requests, mensagens de commit semânticas, audita dívida técnica e injeta boas práticas no fluxo de trabalho do desenvolvedor (Shift Left).
 
-**Novidades desta versão:** MCP Prompts com sistema de templates multilíngue (35 arquivos em 5 idiomas), MCP Tool Annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) para melhor integração com IDEs, Thinking Words expandidas para 201 entradas com frases completas, e Spinner com velocidade adaptativa para frases longas.
+**Novidades desta versão:** Sistema de Métricas e Telemetria local offline com exportação CSV/JSON e dashboard TUI interativo, novos Git Hooks para telemetria comportamental (post-checkout, pre-push, post-merge), Thinking Words expandidas para 263 entradas com frases "Sussing" e "Cerebrating", correção de flickering no spinner (`\033[K`), e tradução de todos os comentários/docblocks para inglês.
 
-- **Versão atual:** 0.0.29
+- **Versão atual:** 0.0.30
 - **Publicação:** PyPI (`pip install gitpr-cli`) + GitHub Releases (binário standalone)
 - **Website:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/)
 - **Repositório:** [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
@@ -17,11 +17,11 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 
 * **Linguagem:** Python >= 3.10
 * **CLI Framework:** Click (para comandos, flags e formatação de terminal).
-* **UI/Terminal:** Textual — TUI (Text User Interface) para chat interativo, edição de issues e help screen.
+* **UI/Terminal:** Textual — TUI (Text User Interface) para chat interativo, edição de issues, help screen e dashboard de métricas.
 * **Criptografia:** cryptography.fernet para proteção local de chaves de API.
 * **Configuração:** dotenv, pyyaml (para o linter estático).
 * **IA Providers:** Integração via SDK oficial do Google GenAI (gemini-2.5-flash), OpenAI SDK (DeepSeek), e OpenAI SDK (Ollama local).
-* **MCP:** [mcp](https://pypi.org/project/mcp/) >= 1.0.0 (SDK oficial Anthropic para Model Context Protocol) — **Tool Annotations e Prompts refatorados em v0.0.29**.
+* **MCP:** [mcp](https://pypi.org/project/mcp/) >= 1.0.0 (SDK oficial Anthropic para Model Context Protocol) — **Tool Annotations, Prompts com templates e prompt:// resources em v0.0.30**.
 * **Testes:** Pytest + unittest.mock (8 arquivos de teste, 165+ cenários).
 * **Empacotamento:** PyInstaller (binário standalone) + setuptools/build (PyPI).
 * **CI/CD:** GitHub Actions (`pr-review.yml`) + `action.yml` para execução em pipelines.
@@ -36,15 +36,17 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 * **Otimização Nativa do Git:** Flags `-U1`, `-w`, `-M`, `-B` nos comandos `get_git_diff` e `get_git_full_diff` para reduzir contexto inútil.
 * **Pre-Save (`--pre-save`):** Flag oculta de debug que salva o payload completo (system instruction + prompt) em JSON antes de cada chamada à IA.
 * **Smart Excludes:** Filtro de pathspec inteligente (`gitpr.smart-excludes.json`) remoto — baixado do GitHub e atualizado automaticamente com versionamento (`SMART_EXCLUDES_VERSION`), excluindo arquivos irrelevantes (lock files, build artifacts, assets binários) para reduzir tokens.
+* **Métricas fire-and-forget 🆕:** Injeção de `log_command_metric()` em todos os fluxos (single-chunk e map-reduce) com lazy imports para evitar importação circular.
 
 ### **2. Interface CLI e Setup (`src/main.py` e `src/config.py`)**
 
 * **Setup Inicial:** Detecta primeira execução, cria a pasta `~/.gitpr/`, e solicita interativamente as chaves de API, preferências e idioma, salvando num `.env`.
-* **Routing de Comandos:** Gerencia todas as flags (`--commit`, `--review`, `--fullreview`, `--linter`, `--skill`, `--issue`, `--blame`, `--chat`, `--mcp`, `--lang`, `--provider`, `--pre-save`).
+* **Routing de Comandos:** Gerencia todas as flags (`--commit`, `--review`, `--fullreview`, `--linter`, `--skill`, `--issue`, `--blame`, `--chat`, `--mcp`, `--metrics`, `--export`, `--purge`, `--dashboard`, `--lang`, `--provider`, `--pre-save`).
 * **Ajuda Contextual:** `-h --flag` exibe documentação específica da funcionalidade com link direto (language-aware) para o GitHub.
 * **--lang:** Força idioma da interface para a execução atual sem persistir a alteração.
 * **--provider:** Força provedor de IA (`gemini`, `deepseek`, `ollama`) para a execução atual.
-* **--mcp:** Inicia o servidor MCP no transporte stdio para integração com editores — **10 ferramentas anotadas + 15 recursos + 7 prompts** 🆕.
+* **--mcp:** Inicia o servidor MCP no transporte stdio para integração com editores — **10 ferramentas anotadas + 15 recursos + 7 prompts**.
+* **--metrics 🆕:** Sistema de telemetria local com sub-opções: `--export` (CSV+JSON), `--purge` (limpeza), `--dashboard` (TUI interativa), `--hook-event` (uso interno por git hooks).
 
 ### **3. Motor de Análise Estática / Linter (`src/linter_engine.py`)**
 
@@ -63,7 +65,7 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 * **Hot-Swap:** Verifica na API do GitHub Releases a versão mais recente. Se houver divergência, baixa o binário compilado, renomeia o executável atual e substitui sem quebrar a execução em andamento (com capacidade de rollback).
 * **Cache diário:** Evita verificações repetidas no mesmo dia.
 * **Verificação de conexão:** Socket `8.8.8.8:53` antes de qualquer operação de rede.
-* **Versionamento de assets:** `__lang_version__`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION` para controle de atualização de templates e traduções.
+* **Versionamento de assets:** `__lang_version__` (v0.0.8), `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION` para controle de atualização de templates e traduções.
 
 ### **6. Interface de Chat Interativo (`src/ui/chat_app.py`)**
 
@@ -81,18 +83,19 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 * **Detecção Automática:** Detecta idioma do SO na primeira execução e salva em `GITPR_LANG`.
 * **5 Idiomas:** en_us (padrão/fallback), pt_br, pt_pt, es_es, fr_fr.
 * **Fallback em Inglês:** Se uma tradução estiver faltando, exibe o texto em inglês diretamente.
-* **Arquivos Versionados:** `__lang_version__` controla atualização dos pacotes de idioma (`langs/*.json`).
-* **Cobertura:** Todas as mensagens de interface, help do Click, alertas do linter, mensagens do sistema, Git Hooks, spinner, chat, MCP tools, MCP resources, MCP prompts e MCP annotations traduzidos.
-* **364 chaves por idioma** (+42 chaves MCP na v0.0.29).
+* **Arquivos Versionados:** `__lang_version__` (v0.0.8) controla atualização dos pacotes de idioma (`langs/*.json`).
+* **Cobertura:** Todas as mensagens de interface, help do Click, alertas do linter, mensagens do sistema, Git Hooks, spinner, chat, MCP tools, MCP resources, MCP prompts, MCP annotations, métricas e dashboard TUI traduzidos.
+* **447 chaves por idioma 🆕** (+83 chaves nesta versão: 16 métricas CLI + 20 dashboard TUI + 47 incrementais).
 
 ### **8. Spinner Animado (`src/spinner.py`)**
 
 * **Braille + Thinking Words:** Thread em background durante chamadas de IA exibindo caracteres braille com palavras de "pensamento".
 * **Descoberta Progressiva:** Palavras reveladas letra por letra com caracteres aleatórios, seguidas de ciclo de pontos (`. .. ...`).
 * **Cores Aleatórias:** Paleta de 10 cores para cada palavra.
-* **Velocidade Adaptativa 🆕:** Frases longas (36+ caracteres) reveladas mais rápido (1 frame/letra, 0.04s) para exibir o texto completo antes de trocar de palavra. Palavras curtas mantêm velocidade original.
+* **Velocidade Adaptativa:** Frases longas (36+ caracteres) reveladas mais rápido (1 frame/letra, 0.04s) para exibir o texto completo antes de trocar de palavra. Palavras curtas mantêm velocidade original.
+* **Correção de Flickering 🆕:** Substituição de `ljust(70)` por ANSI `\033[K` (clear to end of line) para eliminar resíduos de frases longas ao trocar para palavras curtas.
 * **Multilíngue:** Thinking Words carregadas de templates específicos por idioma (`gitpr.thinking-words.{lang}.md`), com versionamento (`THINKING_WORDS_VERSION`).
-* **201 entradas por idioma 🆕:** Lista expandida com frases criativas mescladas de `words_happy.md` (84 palavras originais + 117 frases).
+* **263 entradas por idioma 🆕:** Expandido com frases "Sussing" (31) e "Cerebrating" (31) — total de 263 palavras/frases por idioma.
 
 ### **9. Provedores de IA (`src/ai_providers.py`)**
 
@@ -103,12 +106,14 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 * **Arquitetura Multi-Modelo:** Fallback automático entre provedores em caso de falha.
 * **Modo JSON:** Todos os provedores configurados para output estruturado (`response_mime_type` / `response_format`).
 * **Parâmetros determinísticos:** Temperature 0.0, top_p 0.1.
+* **Injeção de telemetria:** Metadados de uso (`_telemetry_meta`) injetados silenciosamente nas respostas para alimentar o sistema de métricas.
 
 ### **10. Cache Inteligente (`src/cache.py`)**
 
 * **MD5:** Hash exato do código (diff) + instruções para identificar chamadas idênticas.
 * **Cache por Repositório:** JSON inclui campo `repo` para filtro multi-projeto.
 * **Economia de Cota:** Retorna resultados em milissegundos do cache local (`~/.gitpr/cache/prompts/`).
+* **Metadados de telemetria:** Campo `meta_raw` com contagem de tokens salvo junto ao cache.
 
 ### **11. Motor de Issues e TUI (`src/issue_engine.py`, `src/tui_issue.py`, `src/ui/issue_app.py`)**
 
@@ -131,7 +136,7 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 * **Templates Locais:** `.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md` como *System Instructions* personalizáveis.
 * **Templates Remotos:** Baixados do GitHub via `--skill` (nunca sobrescreve arquivos locais existentes).
 * **Multilíngue:** Templates disponíveis em 5 idiomas com fallback inteligente (`get_skill_context()`).
-* **Pasta `.gitpr/skill/`:** Organização limpa dos arquivos de skill no projeto.
+* **Templates MCP Prompt 🆕:** 35 arquivos (`gitpr.prompt.*.md`) em 5 idiomas no diretório `templates/`.
 
 ### **14. Otimização Map-Reduce para Diffs Gigantes**
 
@@ -145,15 +150,15 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 
 * **GitHub Actions:** Workflow `pr-review.yml` para revisão automática de PRs.
 * **Action Definition:** `action.yml` para uso como GitHub Action em pipelines externos.
-* **Git Hooks Locais:** `pre-commit` (linter) e `prepare-commit-msg` (geração de mensagem por IA) instaláveis via `--installhooks`.
+* **Git Hooks Locais:** `pre-commit` (linter), `prepare-commit-msg` (geração de mensagem por IA), `post-checkout`, `pre-push`, `post-merge` (telemetria comportamental 🆕) instaláveis via `--installhooks`.
 
-### **16. Servidor MCP — Integração com Editores e IDEs (`src/mcp_server.py`)** 
+### **16. Servidor MCP — Integração com Editores e IDEs (`src/mcp_server.py`)**
 
-* **10 Ferramentas MCP com Annotations 🆕:** `get_git_context`, `analyze_diff`, `get_full_diff`, `generate_commit_message`, `review_code`, `full_review`, `generate_pr_description`, `run_linter`, `analyze_blame`, `generate_issue` — todas com `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`).
+* **10 Ferramentas MCP com Annotations:** `get_git_context`, `analyze_diff`, `get_full_diff`, `generate_commit_message`, `review_code`, `full_review`, `generate_pr_description`, `run_linter`, `analyze_blame`, `generate_issue` — todas com `ToolAnnotations` (`readOnlyHint`, `destructiveHint`, `idempotentHint`).
   * **3 ferramentas read-only** (`readOnlyHint=True`, `idempotentHint=True`): `get_git_context`, `analyze_diff`, `run_linter`.
   * **7 ferramentas com efeitos colaterais** (`readOnlyHint=False`, `destructiveHint=False`): chamadas de rede (AI APIs, git fetch).
-* **15 Recursos MCP 🆕:** 7 templates de skill (`skill://pr`, `skill://commit`, etc.) + config do linter (`linter://config`) + 7 templates de prompt (`prompt://review`, `prompt://commit`, etc.) + `prompt://list`.
-* **7 Prompts MCP com Templates 🆕:** Conteúdo externalizado em 35 arquivos de template (7 prompts × 5 idiomas) no diretório `templates/gitpr.prompt.*.md` com fallback de idioma automático.
+* **15 Recursos MCP:** 7 templates de skill (`skill://pr`, `skill://commit`, etc.) + config do linter (`linter://config`) + 7 templates de prompt (`prompt://review`, `prompt://commit`, etc.) + `prompt://list`.
+* **7 Prompts MCP com Templates:** Conteúdo externalizado em 35 arquivos de template (7 prompts × 5 idiomas) no diretório `templates/gitpr.prompt.*.md` com fallback de idioma automático.
 * **Transporte stdio:** Comunicação via JSON-RPC 2.0 — padrão para ferramentas CLI locais.
 * **Isolamento de Output:** Sistema de monkey-patching que redireciona todo o output do terminal (banners, spinners, cores) para stderr, garantindo que o canal stdout fique limpo para o protocolo MCP.
 * **Comando `gitpr-mcp`:** Entry point dedicado registrado no `pyproject.toml`.
@@ -166,6 +171,16 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 * **Merge Inteligente:** Adiciona o servidor GitPR sem remover servidores existentes — idempotente e seguro.
 * **Criação de Diretórios:** Cria automaticamente `.vscode/`, `.cursor/` ou o diretório global se não existirem.
 
+### **18. Métricas e Telemetria Local (`src/metrics.py`, `src/ui/metrics_app.py`)** 🆕
+
+* **Coleta fire-and-forget:** Cada comando CLI gera um evento JSON assíncrono em `~/.gitpr/metrics/{owner}/{branch}/` com timestamp, comando, status, provider, tokens, duração, repo e branch.
+* **Payload enriquecido:** Campos adicionais como `cache_hit`, `map_reduce_triggered`, `linter_errors`, `linter_warnings` para contexto específico do comando.
+* **Exportação CSV/JSON:** `gitpr --metrics --export` consolida todos os eventos não exportados com `click.progressbar()`, gerando `gitpr_metrics_YYYY-MM-DD.csv` e `.json`.
+* **Limpeza segura:** `gitpr --metrics --purge` remove arquivos após confirmação do usuário.
+* **Dashboard TUI:** `gitpr --metrics --dashboard` abre interface Textual interativa com DataTable (últimos 100 eventos), barra de resumo agregado (total, erros, tokens, top comandos/providers) e bindings F5 (refresh) e Esc (exit).
+* **Git Hooks de telemetria:** `post-checkout` (troca de branch), `pre-push` (entregas), `post-merge` (integração) — instalados automaticamente via `--installhooks`.
+* **100% local e anônimo:** Nenhum dado sai da máquina. Eventos contêm metadados de uso, nunca conteúdo de arquivos ou diffs.
+
 ## **📊 Testes e Qualidade**
 
 | Arquivo de Teste | Cenários | Foco |
@@ -176,20 +191,22 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 | `tests/test_pre_save.py` | 10+ | Flag --pre-save e payload JSON |
 | `tests/test_smart_excludes.py` | 14+ | Filtro pathspec inteligente |
 | `tests/test_thinking_words.py` | 10+ | Carregamento e parsing de thinking words |
-| `tests/test_mcp_prompts.py` 🆕 | 11 | Funções de prompt, PROMPT_FILES, _read_prompt_file(), language fallback |
+| `tests/test_mcp_prompts.py` | 11 | Funções de prompt, PROMPT_FILES, _read_prompt_file(), language fallback |
 | `tests/test_mcp_server.py` | 33 | Ferramentas MCP, recursos, patching de output, safe-call wrapper |
 
 ## **🌐 Internacionalização e Documentação**
 
-* **364 chaves de tradução** por idioma (5 idiomas = 1.820 traduções).
-* **Documentação completa em 5 idiomas:** 22 tópicos × 5 idiomas = 110+ páginas de documentação.
-* **Nova documentação 🆕:** `docs/mcp-prompts.md` (sistema de templates), `docs/mcp-annotations.md` (tool annotations) — cada uma com 4 traduções.
-* **Templates MCP 🆕:** 35 arquivos de prompt (`gitpr.prompt.*.md`) em 5 idiomas no diretório `templates/`.
-* **Thinking Words 🆕:** 201 entradas por idioma (84 palavras + 117 frases) em `templates/gitpr.thinking-words.{lang}.md`.
+* **447 chaves de tradução** por idioma (5 idiomas = 2.235 traduções) 🆕.
+* **Documentação completa em 5 idiomas:** 23 tópicos × 5 idiomas = 115+ páginas de documentação.
+* **Nova documentação 🆕:** `docs/metricas-telemetria.md` em 5 idiomas (EN, PT-BR, PT-PT, ES, FR).
+* **Documentação existente expandida:** `docs/mcp-prompts.md` e `docs/mcp-annotations.md` atualizadas com sistema de templates e recursos `prompt://`.
+* **Templates MCP:** 35 arquivos de prompt (`gitpr.prompt.*.md`) em 5 idiomas no diretório `templates/`.
+* **Thinking Words:** 263 entradas por idioma em `templates/gitpr.thinking-words.{lang}.md`.
+* **Código limpo 🆕:** Todos os comentários e docstrings em português traduzidos para inglês nos arquivos `src/metrics.py`, `src/main.py` e `src/ai_providers.py`.
 * **Planos de desenvolvimento:** 8 planos documentados em `docs/plans/`.
-* **Relatórios Claude Code:** 12+ reports de tarefas em `docs/claude-code/reports/develop_natan/`.
+* **Relatórios Claude Code:** 13+ reports de tarefas em `docs/claude-code/reports/develop_natan/`.
 * **Site oficial:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/)
-* **READMEs sincronizados:** Links relativos convertidos para absolutos (compatível com PyPI). Atualizados com MCP Prompts e MCP Tool Annotations em todos os 5 idiomas 🆕.
+* **READMEs sincronizados:** Atualizados com MCP Prompts, MCP Tool Annotations e Métricas & Telemetria em todos os 5 idiomas 🆕.
 
 ## **🔄 Pipeline de Distribuição**
 
@@ -198,36 +215,38 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 3. **GitHub Actions:** PR Review automatizado com `action.yml`
 4. **MCP:** `gitpr-mcp` registrado como entry point no `pyproject.toml` → instalado automaticamente com `pip install`
 
-## **📈 Evolução desde o Relatório Anterior (v0.0.3)**
+## **📈 Evolução desde o Relatório Anterior (v0.0.4)**
 
-| Área | v0.0.3 (anterior) | v0.0.4 (atual) |
+| Área | v0.0.4 (anterior) | v0.0.5 (atual) |
 |------|-------------------|-----------------|
 | **Provedores IA** | Gemini + DeepSeek + Ollama | Gemini + DeepSeek + Ollama |
 | **Idiomas** | 5 (en, pt_br, pt_pt, es_es, fr_fr) | 5 (en, pt_br, pt_pt, es_es, fr_fr) |
-| **Interface** | CLI + TUI Issues + Chat TUI + MCP Server | CLI + TUI Issues + Chat TUI + MCP Server |
-| **MCP Tools** | 10 tools (sem annotations) | **10 tools com ToolAnnotations** |
-| **MCP Resources** | 7 (skills + linter) | **15 (skills + linter + prompts)** |
-| **MCP Prompts** | 7 prompts (hardcoded) | **7 prompts com templates (35 arquivos em 5 idiomas)** |
-| **MCP Prompt Resources** | — | **8 recursos `prompt://`** |
-| **MCP Docs** | `mcp-integration.md` | **+ `mcp-prompts.md` + `mcp-annotations.md` (5 idiomas cada)** |
-| **Thinking Words** | ~15 palavras (fallback) | **201 entradas/idioma (palavras + frases)** |
-| **Spinner** | Velocidade fixa | **Velocidade adaptativa (frases longas ~2.2s)** |
-| **Testes** | 8 arquivos (160+ cenários) | **8 arquivos (165+ cenários)** |
-| **Documentação** | 100+ páginas | **110+ páginas** |
-| **READMEs** | Links MCP Integration + Prompts | **+ MCP Tool Annotations (todos 5 idiomas)** |
-| **Versão** | 0.0.28 | 0.0.29 |
+| **Interface** | CLI + TUI Issues + Chat TUI + MCP Server | CLI + TUI Issues + Chat TUI + MCP Server + **TUI Metrics Dashboard** |
+| **MCP Tools** | 10 tools com ToolAnnotations | 10 tools com ToolAnnotations |
+| **MCP Resources** | 15 (skills + linter + prompts) | 15 (skills + linter + prompts) |
+| **MCP Prompts** | 7 prompts com templates (35 arquivos) | 7 prompts com templates (35 arquivos) |
+| **Telemetria** | — (apenas map-reduce event) | **Sistema completo: coleta, export, purge, dashboard TUI** |
+| **Git Hooks** | 2 (pre-commit, prepare-commit-msg) | **5 (pre-commit, prepare-commit-msg, post-checkout, pre-push, post-merge)** |
+| **CLI Flags** | 16 flags | **21 flags (+ --metrics, --export, --purge, --dashboard, --hook-event)** |
+| **Thinking Words** | 201 entradas/idioma | **263 entradas/idioma (+62 frases Sussing + Cerebrating)** |
+| **Spinner** | Velocidade adaptativa | Velocidade adaptativa + **correção de flickering (\033[K)** |
+| **i18n Chaves** | 364 chaves/idioma | **447 chaves/idioma (+83)** |
+| **Documentação** | 110+ páginas (22 tópicos) | **115+ páginas (23 tópicos)** |
+| **Código** | Comentários mistos PT/EN | **Todos os comentários em inglês** |
+| **Versão** | 0.0.29 | **0.0.30** |
+| **Lang Version** | v0.0.7 | **v0.0.8** |
 
 ## **🚧 Próximos Passos**
 
 * **Testes de integração MCP:** Cobertura end-to-end do servidor MCP com cliente de teste.
 * **Mais provedores:** Claude API, OpenAI direto, provedores locais adicionais.
-* **Métricas e analytics:** Dashboard de uso para times.
 * **Plugin system:** Extensibilidade para regras de linter e prompts customizados.
 * **Migração MCP SDK v2:** Monitorar estabilização do SDK v2.x (modo stateless, tasks).
 * **GitHub Release automatizado:** Pipeline de CI/CD completo para build + release.
+* **Dashboard com métricas de time:** Servidor HTTP opcional para dashboards browser-based a partir dos CSVs exportados.
 
 ---
 
-**Relatório gerado em:** 2026-07-25
+**Relatório gerado em:** 2026-07-26
 **Branch:** `develop_natan`
 **Autor:** Natan Fiuza ([contato@natanfiuza.dev.br](mailto:contato@natanfiuza.dev.br))

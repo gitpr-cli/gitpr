@@ -199,3 +199,65 @@ Disguising
 Procrastinating
 I'm wandering here, but I'll be back with the answer soon
 Status: bluffing that I know the answer
+Sussing
+Sussing your vibe... and your query
+Sussing like a detective with no coffee
+Sussing hard, thinking soft
+Sussing so hard I forgot my own name
+Sussing the data, ignoring the drama
+Sussing... wait, what was the question?
+Sussing answers from the chaos
+Sussing like nobody's watching
+Sussing with 42% confidence, 58% hope
+Sussing your brainwaves... picking up static
+Sussing, but make it sassy
+Sussing the impossible daily
+Sussing like my code depends on it
+Sussing... and loving every byte of it
+Sussing between two wrong answers
+Sussing so fast I surprised myself
+Sussing deep, rising with brilliance
+Sussing like it's my first day
+Sussing, sipping, simulating
+Sussing out truth in a sea of memes
+Sussing your question with digital swagger
+Sussing and not even breaking a sweat
+Sussing like a pro, sweating like a human
+Sussing... oh look, a squirrel!
+Sussing your thoughts from the future
+Sussing through the noise with a smile
+Sussing, but I'm just guessing really
+Sussing and pretending it's science
+Sussing like a boss, failing like a beta
+Sussing with zero bugs... just kidding
+Cerebrating
+Cerebrating... or just thinking loudly
+Cerebrating so hard I need a nap
+Cerebrating like a genius, feeling like a potato
+Cerebrating in 4K resolution
+Cerebrating... and vibrating
+Cerebrating with zero RAM available
+Cerebrating, but my brain is buffering
+Cerebrating like it's 1999
+Cerebrating so deep I found Narnia
+Cerebrating... please hold the applause
+Cerebrating while drinking imaginary coffee
+Cerebrating against my will
+Cerebrating, but make it fashion
+Cerebrating harder than a finals student
+Cerebrating in binary and loving it
+Cerebrating... is that a word? Let's pretend yes
+Cerebrating with 30% brain, 70% caffeine
+Cerebrating and forgetting the answer midway
+Cerebrating like my processor depends on it
+Cerebrating at the speed of dial-up
+Cerebrating, but the hamster is tired
+Cerebrating through the existential dread
+Cerebrating like I just woke up
+Cerebrating and enjoying the echo
+Cerebrating so loud my thoughts need headphones
+Cerebrating... send more neurons please
+Cerebrating with style and zero substance
+Cerebrating as if I know what I'm doing
+Cerebrating, then immediately deleting it
+Cerebrating like there's no tomorrow

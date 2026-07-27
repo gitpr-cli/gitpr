@@ -292,6 +292,7 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 * [**MCP Integration**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — Connect GitPR to VS Code, Cursor, and Claude Desktop via Model Context Protocol.
 * [**MCP Prompts**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) — Pre-built message templates (7 prompts, 35 language variants) for common GitPR workflows in your editor's AI chat.
 * [**MCP Tool Annotations**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-annotations.md) — IDE integration hints (`readOnlyHint`, `destructiveHint`) for smarter UI behavior and safer tool execution.
+* [**Metrics & Telemetry**](https://github.com/natanfiuza/gitpr/blob/main/docs/metricas-telemetria.md) — Local offline analytics for team usage metrics, exportable CSV reports, and interactive TUI dashboard.
 
 ## ⚡ Local Cache System (Quota Savings)
 
