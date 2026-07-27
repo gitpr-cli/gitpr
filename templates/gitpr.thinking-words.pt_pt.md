@@ -199,3 +199,65 @@ A disfarçar
 A procrastinar
 Estou aqui a vaguear, mas já volto com a resposta
 Estado: a blefar que sei a resposta
+A sacar
+A sacar a tua vibe... e a tua pergunta
+A sacar como um detective sem cafe
+A sacar forte, a pensar leve
+A sacar tao forte que esqueci o meu proprio nome
+A sacar os dados, a ignorar o drama
+A sacar... espera, qual era a pergunta?
+A sacar respostas do caos
+A sacar como se ninguem estivesse a ver
+A sacar com 42% de confianca, 58% de esperanca
+A sacar as tuas ondas cerebrais... a captar estatica
+A sacar, mas com estilo
+A sacar o impossivel diariamente
+A sacar como se o meu codigo dependesse disso
+A sacar... e a adorar cada byte
+A sacar entre duas respostas erradas
+A sacar tao rapido que me surpreendi
+A sacar fundo, a emergir com brilhantismo
+A sacar como se fosse o meu primeiro dia
+A sacar, a saborear, a simular
+A sacar a verdade num mar de memes
+A sacar a tua pergunta com swagger digital
+A sacar e nem sequer a suar
+A sacar como um pro, a suar como um humano
+A sacar... oh, um esquilo!
+A sacar os teus pensamentos do futuro
+A sacar atraves do ruido com um sorriso
+A sacar, mas na verdade so estou a adivinhar
+A sacar e a fingir que e ciencia
+A sacar como um chefe, a falhar como um beta
+A sacar com zero bugs... a brincar
+A cerebrar
+A cerebrar... ou so a pensar alto
+A cerebrar tao forte que preciso de uma sesta
+A cerebrar como um genio, a sentir-me uma batata
+A cerebrar em resolucao 4K
+A cerebrar... e a vibrar
+A cerebrar com zero de RAM disponivel
+A cerebrar, mas o meu cerebro esta em buffer
+A cerebrar como se fosse 1999
+A cerebrar tao fundo que encontrei Narnia
+A cerebrar... por favor, segurem os aplausos
+A cerebrar enquanto bebo cafe imaginario
+A cerebrar contra a minha vontade
+A cerebrar, mas com estilo
+A cerebrar mais que um universitario em exames
+A cerebrar em binario e a adorar
+A cerebrar... isso e uma palavra? Vamos fingir que sim
+A cerebrar com 30% de cerebro, 70% de cafeina
+A cerebrar e a esquecer a resposta a meio do caminho
+A cerebrar como se o meu processador dependesse disso
+A cerebrar a velocidade da internet de dial-up
+A cerebrar, mas o hamster esta cansado
+A cerebrar atraves do medo existencial
+A cerebrar como se tivesse acabado de acordar
+A cerebrar e a curtir o eco
+A cerebrar tao alto que os meus pensamentos precisam de fones
+A cerebrar... enviem mais neuronios por favor
+A cerebrar com estilo e zero substancia
+A cerebrar como se soubesse o que estou a fazer
+A cerebrar, e a apagar imediatamente depois
+A cerebrar como se nao houvesse amanha

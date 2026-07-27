@@ -1,0 +1,266 @@
+import os
+import json
+import threading
+import subprocess
+from datetime import datetime
+from pathlib import Path
+from src.chat_memory import gerar_uuid_base_15
+from src.core import get_current_branch, get_repo_name
+
+def _get_owner_name():
+    """Returns the repository owner or the local username as fallback."""
+    repo = get_repo_name()
+    if repo and repo != "unknown/repo":
+        return repo.split('/')[0]
+    
+    try:
+        name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
+        return name.replace(" ", "_") if name else "local_user"
+    except Exception:
+        return "local_user"
+
+def _save_metric_async(payload):
+    """Saves the JSON payload to the correct directory silently and asynchronously."""
+    try:
+        owner = _get_owner_name()
+        branch = get_current_branch().replace("/", "-")
+        
+        metrics_dir = Path.home() / ".gitpr" / "metrics" / owner / branch
+        metrics_dir.mkdir(parents=True, exist_ok=True)
+        
+        uuid_str = gerar_uuid_base_15()
+        date_str = datetime.now().strftime("%Y%m%d")
+        file_name = f"{uuid_str}_{date_str}.json"
+        
+        file_path = metrics_dir / file_name
+        
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # Fire-and-forget: failures must never break the CLI
+
+def log_local_metric(command, status, provider="local", tokens_estimated=0, duration_ms=0, **kwargs):
+    """Fires a local metric log in a separate daemon thread."""
+    payload = {
+        "timestamp": datetime.now().isoformat(),
+        "command": command,
+        "status": status,
+        "provider": provider,
+        "tokens_estimated": tokens_estimated,
+        "duration_ms": duration_ms,
+        "repo": get_repo_name(),
+        "branch": get_current_branch(),
+        **kwargs
+    }
+
+    thread = threading.Thread(target=_save_metric_async, args=(payload,))
+    thread.daemon = True
+    thread.start()
+
+
+def log_command_metric(command, status="success", provider=None, tokens_estimated=0,
+                       duration_ms=0, cache_hit=False, map_reduce_triggered=False,
+                       **kwargs):
+    """High-level metric logger for CLI commands.
+
+    Args:
+        command: Command name ('commit', 'review', 'fullreview', 'linter', etc.)
+        status: 'success', 'error', 'triggered', 'no_changes'
+        provider: AI provider used (None = local/no AI)
+        tokens_estimated: Estimated token count from AI usage metadata
+        duration_ms: Command duration in milliseconds
+        cache_hit: True if result was served from cache
+        map_reduce_triggered: True if map-reduce chunking was activated
+        **kwargs: Extra fields (linter_errors, linter_warnings, chunks_count, etc.)
+    """
+    if provider is None:
+        # Auto-detect: try config, fallback to 'local'
+        try:
+            from src.config import get_ai_provider
+            provider = get_ai_provider()
+        except Exception:
+            provider = "local"
+
+    log_local_metric(
+        command=command,
+        status=status,
+        provider=provider,
+        tokens_estimated=tokens_estimated,
+        duration_ms=duration_ms,
+        cache_hit=cache_hit,
+        map_reduce_triggered=map_reduce_triggered,
+        **kwargs
+    )
+
+
+def get_metrics_dir():
+    """Returns the path to the local metrics directory (~/.gitpr/metrics/)."""
+    return os.path.join(Path.home(), ".gitpr", "metrics")
+
+
+def get_metrics_state_file():
+    """Returns the path to the metrics state file (~/.gitpr/metrics/config.json)."""
+    return os.path.join(get_metrics_dir(), "config.json")
+
+
+def export_metrics(output_dir=None):
+    """Scans ~/.gitpr/metrics/, consolidates all JSON files into a CSV + JSON report.
+
+    Skips files already processed (tracked via config.json UUID list).
+    Returns (csv_path, json_path, event_count).
+    """
+    import click
+    from datetime import date
+
+    metrics_dir = get_metrics_dir()
+    state_file = get_metrics_state_file()
+
+    if not os.path.isdir(metrics_dir):
+        return None, None, 0
+
+    # Load already-exported UUIDs
+    exported_uuids = set()
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                exported_uuids = set(json.load(f).get("exported", []))
+        except Exception:
+            pass
+
+    # Collect all unexported metric files
+    all_files = []
+    for root, dirs, files in os.walk(metrics_dir):
+        # Skip the export subdirectory
+        if "export" in root.replace(metrics_dir, "").split(os.sep):
+            continue
+        for fname in files:
+            if fname.endswith(".json") and not fname.startswith("config"):
+                fpath = os.path.join(root, fname)
+                # Check UUID (first part of filename before _YYYYMMDD)
+                uuid_part = fname.split("_")[0]
+                if uuid_part not in exported_uuids:
+                    all_files.append(fpath)
+
+    if not all_files:
+        return None, None, 0
+
+    # Consolidate all payloads
+    events = []
+    with click.progressbar(all_files, label="Exporting metrics") as bar:
+        for fpath in bar:
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    events.append(json.load(f))
+            except Exception:
+                pass
+
+    if not events:
+        return None, None, 0
+
+    # Determine output directory
+    if output_dir is None:
+        output_dir = os.path.join(metrics_dir, "export")
+    os.makedirs(output_dir, exist_ok=True)
+
+    today_str = date.today().strftime("%Y-%m-%d")
+    csv_path = os.path.join(output_dir, f"gitpr_metrics_{today_str}.csv")
+    json_path = os.path.join(output_dir, f"gitpr_metrics_{today_str}.json")
+
+    # Write CSV
+    csv_columns = ["timestamp", "command", "status", "provider",
+                   "tokens_estimated", "duration_ms", "repo", "branch"]
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+        f.write(",".join(csv_columns) + "\n")
+        for evt in events:
+            row = [str(evt.get(col, "")) for col in csv_columns]
+            f.write(",".join(f'"{v}"' for v in row) + "\n")
+
+    # Write JSON
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(events, f, ensure_ascii=False, indent=2)
+
+    # Update state file with newly exported UUIDs
+    new_uuids = set()
+    for fpath in all_files:
+        uuid_part = os.path.basename(fpath).split("_")[0]
+        new_uuids.add(uuid_part)
+    exported_uuids.update(new_uuids)
+
+    with open(state_file, "w", encoding="utf-8") as f:
+        json.dump({
+            "exported": sorted(exported_uuids),
+            "last_export": datetime.now().isoformat(),
+            "total_events": len(events) + len(exported_uuids)
+        }, f, ensure_ascii=False, indent=2)
+
+    return csv_path, json_path, len(events)
+
+
+def purge_metrics():
+    """Deletes all metric JSON files in ~/.gitpr/metrics/ (preserves config.json).
+
+    Returns the number of files removed.
+    """
+    import click
+
+    metrics_dir = get_metrics_dir()
+    if not os.path.isdir(metrics_dir):
+        return 0
+
+    removed = 0
+    for root, dirs, files in os.walk(metrics_dir):
+        for fname in files:
+            if fname.endswith(".json") and fname != "config.json":
+                fpath = os.path.join(root, fname)
+                try:
+                    os.remove(fpath)
+                    removed += 1
+                except Exception:
+                    pass
+
+    return removed
+
+
+def show_metrics_summary():
+    """Prints a summary of the local metrics directory."""
+    metrics_dir = get_metrics_dir()
+    state_file = get_metrics_state_file()
+
+    if not os.path.isdir(metrics_dir):
+        return {"total_files": 0, "total_events": 0, "disk_usage": "0 KB"}
+
+    total_files = 0
+    exported_count = 0
+    disk_bytes = 0
+
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                exported_count = len(state.get("exported", []))
+        except Exception:
+            pass
+
+    for root, dirs, files in os.walk(metrics_dir):
+        for fname in files:
+            if fname.endswith(".json"):
+                total_files += 1
+                fpath = os.path.join(root, fname)
+                try:
+                    disk_bytes += os.path.getsize(fpath)
+                except Exception:
+                    pass
+
+    if disk_bytes < 1024:
+        disk_usage = f"{disk_bytes} B"
+    elif disk_bytes < 1024 * 1024:
+        disk_usage = f"{disk_bytes / 1024:.1f} KB"
+    else:
+        disk_usage = f"{disk_bytes / (1024 * 1024):.1f} MB"
+
+    return {
+        "total_files": total_files,
+        "total_events": exported_count,
+        "disk_usage": disk_usage,
+        "path": metrics_dir
+    }

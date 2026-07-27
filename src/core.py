@@ -16,6 +16,7 @@ from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_
 from src.ai_providers import call_ai_model
 from src.i18n import __, CURRENT_LANG
 from src.updater import __lang_version__
+# Metrics are imported lazily inside generate_pr_content() to avoid circular imports
 
 # Smart Diff filter: files that consume AI tokens without adding semantic value.
 # The pattern list is managed remotely (templates/gitpr.smart-excludes.json) and
@@ -314,14 +315,25 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
         return None
 
     # API CALL
-    # API CALL
     click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...\n", provider=provider.capitalize(), model=api_model), fg="cyan")
     
     chunks = split_diff_into_chunks(diff_text, max_tokens=90000)
+    total_meta = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     
+    def _aggregate_meta(new_meta):
+        if new_meta:
+            total_meta["prompt_tokens"] += new_meta.get("prompt_tokens", 0)
+            total_meta["completion_tokens"] += new_meta.get("completion_tokens", 0)
+            total_meta["total_tokens"] += new_meta.get("total_tokens", 0)
+            
     if len(chunks) == 1:
         result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema, action=action_folder)
+        if result_json:
+            _aggregate_meta(result_json.pop("_telemetry_meta", None))
     else:
+        from src.metrics import log_local_metric
+        log_local_metric(command="map_reduce", status="triggered", map_reduce_triggered=True, chunks_count=len(chunks))
+        
         click.secho(__("📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...", count=len(chunks)), fg="yellow", bold=True)
         click.secho(f"📚 {__('Understand why:')} {get_doc_url('map-reduce-diff.md')}\n", fg="blue", underline=True)
         resumos_parciais = []
@@ -332,9 +344,11 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
             prompt_parcial = __("Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n", json_format='{"resumo": "..."}', idx=i) + chunk
 
             resposta_parcial = call_ai_model(provider, api_key, api_model, prompt_parcial, instrucao_sistema, quiet=True, action=f"{action_folder}_chunk_{i}")
-
-            if resposta_parcial and "resumo" in resposta_parcial:
-                resumos_parciais.append(f"### Batch {i}\n{resposta_parcial['resumo']}")
+            
+            if resposta_parcial:
+                _aggregate_meta(resposta_parcial.pop("_telemetry_meta", None))
+                if "resumo" in resposta_parcial:
+                    resumos_parciais.append(f"### Batch {i}\n{resposta_parcial['resumo']}")
             
             time.sleep(1)
             
@@ -353,12 +367,26 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
             prompt = __("Unify these technical summaries and generate ONLY a JSON object in the format {json_format} describing the Pull Request:\n", json_format='{"commit_message": "...", "pr_description": "..."}') + diff_unificado
             
         result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema, action=action_folder)
+        if result_json:
+            _aggregate_meta(result_json.pop("_telemetry_meta", None))
 
     # SAVE TO CACHE AND RETURN
     if result_json:
-        save_cached_response(action_folder, action_type, prompt, result_json)
+        save_cached_response(action_folder, action_type, prompt, result_json, meta_raw=total_meta)
+        # Fire-and-forget metric for successful AI-powered command
+        from src.metrics import log_command_metric
+        log_command_metric(
+            command=action_type,
+            status="success",
+            provider=provider,
+            tokens_estimated=total_meta.get("total_tokens", 0),
+            map_reduce_triggered=(len(chunks) > 1),
+        )
         return result_json
-    
+
+    # Command failed (AI returned None)
+    from src.metrics import log_command_metric
+    log_command_metric(command=action_type, status="error", provider=provider)
     return None
 
 
@@ -487,7 +515,10 @@ def install_git_hooks():
     # Mapping: Hook Name in Git -> Template Name on your GitHub
     hooks_to_install = {
         "pre-commit": "pre-commit-template.sh",
-        "prepare-commit-msg": "prepare-commit-msg-template.sh"
+        "prepare-commit-msg": "prepare-commit-msg-template.sh",
+        "post-checkout": "post-checkout-template.sh",
+        "pre-push": "pre-push-template.sh",
+        "post-merge": "post-merge-template.sh",
     }
 
     base_url = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/scripts/"

@@ -199,3 +199,65 @@ Disfarçando
 Procrastinando
 Estou vagando aqui, mas já volto com a resposta
 Status: blefando que sei a resposta
+Sacando
+Sacando sua vibe... e sua pergunta
+Sacando como um detetive sem cafe
+Sacando forte, pensando leve
+Sacando tao forte que esqueci meu proprio nome
+Sacando os dados, ignorando o drama
+Sacando... pera, qual era a pergunta?
+Sacando respostas do caos
+Sacando como se ninguem estivesse olhando
+Sacando com 42% de confianca, 58% de esperanca
+Sacando suas ondas cerebrais... captando estatica
+Sacando, mas com estilo
+Sacando o impossivel diariamente
+Sacando como se meu codigo dependesse disso
+Sacando... e amando cada byte
+Sacando entre duas respostas erradas
+Sacando tao rapido que me surpreendi
+Sacando fundo, emergindo com brilhantismo
+Sacando como se fosse meu primeiro dia
+Sacando, saboreando, simulando
+Sacando a verdade em um mar de memes
+Sacando sua pergunta com swagger digital
+Sacando e nem sequer suando
+Sacando como um pro, suando como um humano
+Sacando... opa, um esquilo!
+Sacando seus pensamentos do futuro
+Sacando atraves do ruido com um sorriso
+Sacando, mas na verdade so estou chutando
+Sacando e fingindo que e ciencia
+Sacando como um chefe, falhando como um beta
+Sacando com zero bugs... sacanagem
+Cerebrando
+Cerebrando... ou so pensando alto
+Cerebrando tao forte que preciso de uma soneca
+Cerebrando como um genio, me sentindo uma batata
+Cerebrando em resolucao 4K
+Cerebrando... e vibrando
+Cerebrando com zero de RAM disponivel
+Cerebrando, mas meu cerebro esta dando buffer
+Cerebrando como se fosse 1999
+Cerebrando tao fundo que encontrei Narnia
+Cerebrando... por favor, segurem os aplausos
+Cerebrando enquanto bebo cafe imaginario
+Cerebrando contra minha vontade
+Cerebrando, mas com estilo
+Cerebrando mais que universitario em final de semestre
+Cerebrando em binario e amando
+Cerebrando... isso e uma palavra? Vamos fingir que sim
+Cerebrando com 30% de cerebro, 70% de cafeina
+Cerebrando e esquecendo a resposta no meio do caminho
+Cerebrando como se meu processador dependesse disso
+Cerebrando na velocidade da internet discada
+Cerebrando, mas o hamster esta cansado
+Cerebrando atraves do medo existencial
+Cerebrando como se tivesse acabado de acordar
+Cerebrando e curtindo o eco
+Cerebrando tao alto que meus pensamentos precisam de fones
+Cerebrando... enviem mais neuronios por favor
+Cerebrando com estilo e zero substancia
+Cerebrando como se soubesse o que estou fazendo
+Cerebrando, e deletando imediatamente depois
+Cerebrando como se nao houvesse amanha

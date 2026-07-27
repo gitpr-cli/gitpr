@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import subprocess
 from datetime import datetime
 from pathlib import Path
 
@@ -13,6 +14,15 @@ def generate_md5(text):
     """Generates the MD5 hash of a string."""
     return hashlib.md5(text.encode('utf-8')).hexdigest()
 
+def get_git_user_info():
+    """Recupera o nome e email configurados no git local."""
+    try:
+        name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
+        email = subprocess.run(["git", "config", "user.email"], capture_output=True, text=True, check=True).stdout.strip()
+        return name, email
+    except subprocess.CalledProcessError:
+        return "unknown", "unknown"
+    
 def get_cached_response(action_folder, prompt_text):
     """Checks if a valid cache exists for the prompt and returns the content."""
     md5_hash = generate_md5(prompt_text)
@@ -27,7 +37,7 @@ def get_cached_response(action_folder, prompt_text):
             return None
     return None
 
-def save_cached_response(action_folder, action_type, prompt_text, response_dict):
+def save_cached_response(action_folder, action_type, prompt_text, response_dict, meta_raw=None):
     """Saves the AI response to the local cache."""
     md5_hash = generate_md5(prompt_text)
     folder_path = get_cache_base_dir() / action_folder
@@ -37,11 +47,17 @@ def save_cached_response(action_folder, action_type, prompt_text, response_dict)
     from src.core import get_current_branch, get_repo_name
     current_branch = get_current_branch()
     repo_name = get_repo_name()
+    user_name, user_email = get_git_user_info()
+
+    if meta_raw is not None:
+        response_dict["meta_raw"] = meta_raw
 
     cache_data = {
         "md5": md5_hash,
         "repo": repo_name,
         "branch": current_branch,
+        "author_name": user_name,
+        "author_email": user_email,
         "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "action_type": action_type,
         "prompt": prompt_text,

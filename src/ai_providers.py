@@ -76,6 +76,7 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
     try:
         for attempt in range(1, max_retries + 1):
             try:
+                meta_raw = {}
                 if provider == "gemini":
                     client = genai.Client(api_key=api_key)
                     response = client.models.generate_content(
@@ -90,6 +91,13 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
                         }
                     )
                     result_text = response.text
+                    
+                    if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                        meta_raw = {
+                            "prompt_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0),
+                            "completion_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0),
+                            "total_tokens": getattr(response.usage_metadata, 'total_token_count', 0)
+                        }
 
                 elif provider in ["deepseek", "ollama"]:
                     # DeepSeek and Ollama are 100% compatible with the OpenAI library.
@@ -106,6 +114,13 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
                         temperature=0.0
                     )
                     result_text = response.choices[0].message.content
+                    
+                    if hasattr(response, 'usage') and response.usage:
+                        meta_raw = {
+                            "prompt_tokens": getattr(response.usage, 'prompt_tokens', 0),
+                            "completion_tokens": getattr(response.usage, 'completion_tokens', 0),
+                            "total_tokens": getattr(response.usage, 'total_tokens', 0)
+                        }
 
                 else:
                     spinner.stop()
@@ -118,6 +133,9 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
                 # 🛡️ SHIELD: If the AI returns a list [ { ... } ] by mistake
                 if isinstance(result_json, list):
                     result_json = result_json[0] if result_json else {}
+
+                # Inject telemetry metadata silently into the response dictionary
+                result_json["_telemetry_meta"] = meta_raw
 
                 spinner.stop()
                 return result_json
