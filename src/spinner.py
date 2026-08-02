@@ -53,8 +53,8 @@ _FALLBACK_WORDS = [
 ]
 
 def _parse_env_words(raw):
-    """Parses the .env word list (supports | or , separator)."""
-    sep = "|" if "|" in raw else ","
+    """Parses the .env word list (supports | or ; separator)."""
+    sep = "|" if "|" in raw else ";"
     return [w.strip() for w in raw.split(sep) if w.strip()]
 
 
@@ -73,7 +73,7 @@ def _load_thinking_words():
     needs_update = os.getenv("THINKING_WORDS_VERSION") != __lang_version__
 
     if raw and not needs_update:
-        # .env already has up-to-date words: supports | or , separator
+        # .env already has up-to-date words: supports | or ; separator
         return _parse_env_words(raw)
 
     # .env has no words (or they are outdated): download from GitHub
@@ -81,14 +81,14 @@ def _load_thinking_words():
         with urllib.request.urlopen(THINKING_WORDS_URL, timeout=10) as resp:
             content = resp.read().decode("utf-8")
 
-        # Parse: supports comma-separated OR one-per-line words
+        # Parse: supports semicolon-separated OR one-per-line words
         words = []
         for line in content.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            # Each line can have multiple words separated by commas
-            for word in line.split(","):
+            # Each line can have multiple words separated by semicolons
+            for word in line.split(";"):
                 word = word.strip()
                 if word:
                     words.append(word)
