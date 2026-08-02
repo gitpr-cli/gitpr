@@ -36,6 +36,7 @@ class IssueApp(App):
         self.github_token = github_token
         self.final_action = None
         self.final_message = ""
+        self.needs_new_token = False
         
         branch = get_current_branch()
         repo_display = self.repo_info if self.repo_info else __("Local Repository")
@@ -82,15 +83,18 @@ class IssueApp(App):
 
     def action_create_issue(self):
         """F3 button action: Sends the issue via REST API to GitHub."""
+        from src.metrics import log_command_metric
+
         title_input = self.query_one("#issue_title", Input)
         body_input = self.query_one("#issue_body", TextArea)
-        
+
         if not self.repo_info:
             self.final_message = __("❌ Remote repository not identified to create the issue via API.")
             self.final_action = "error"
+            log_command_metric(command="issue:github_create", status="error", provider="github")
             self.exit()
             return
-        
+
         api_url = f"https://api.github.com/repos/{self.repo_info}/issues"
         headers = {
             "Authorization": f"token {self.github_token}",
@@ -100,18 +104,26 @@ class IssueApp(App):
             "title": title_input.value,
             "body": body_input.text
         }
-        
+
         try:
             response = requests.post(api_url, json=payload, headers=headers)
             if response.status_code == 201:
                 issue_url = response.json().get("html_url")
                 self.final_message = __("✅ Issue successfully created on GitHub:\n👉 {issue_url}", issue_url=issue_url)
                 self.final_action = "created"
+                log_command_metric(command="issue:github_create", status="success", provider="github")
+            elif response.status_code == 401:
+                self.final_message = __("🔐 GitHub token expired or invalid. You'll be prompted for a new one.")
+                self.final_action = "reauth"
+                self.needs_new_token = True
+                log_command_metric(command="issue:github_create", status="reauth", provider="github")
             else:
                 self.final_message = __("❌ GitHub API Error ({status_code}): {response_text}", status_code=response.status_code, response_text=response.text)
                 self.final_action = "error"
+                log_command_metric(command="issue:github_create", status="error", provider="github", http_status=response.status_code)
         except Exception as e:
             self.final_message = __("❌ Failed to connect to GitHub: {error}", error=str(e))
             self.final_action = "error"
-        
+            log_command_metric(command="issue:github_create", status="error", provider="github")
+
         self.exit()

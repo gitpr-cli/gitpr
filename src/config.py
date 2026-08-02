@@ -211,7 +211,35 @@ def get_github_token():
     """Reads and decrypts the GitHub Personal Access Token (PAT)."""
     load_dotenv(ENV_FILE)
     encrypted_token = os.getenv("GITHUB_TOKEN_ENCRYPTED")
-    
+
     if encrypted_token:
         return decrypt_data(encrypted_token)
     return None
+
+
+def validate_github_token(token):
+    """
+    Validates a GitHub PAT by making a lightweight API call to /user.
+    Returns (is_valid: bool, error_message: str).
+    """
+    import requests
+
+    try:
+        headers = {
+            "Authorization": f"token {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        response = requests.get("https://api.github.com/user", headers=headers, timeout=10)
+
+        if response.status_code == 200:
+            return True, ""
+        elif response.status_code == 401:
+            return False, __("Token expired or invalid. Please generate a new one.")
+        else:
+            return False, __("Unexpected response from GitHub (HTTP {code})", code=response.status_code)
+    except requests.exceptions.ConnectionError:
+        return False, __("No internet connection. Cannot validate GitHub token.")
+    except requests.exceptions.Timeout:
+        return False, __("GitHub API timeout. Check your connection and try again.")
+    except Exception as e:
+        return False, __("Failed to validate token: {error}", error=str(e))

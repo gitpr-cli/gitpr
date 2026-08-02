@@ -250,7 +250,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
 
     if metrics and export:
         from src.metrics import export_metrics
-        csv_path, json_path, count = export_metrics()
+        from src.core import get_repo_name
+        csv_path, json_path, count = export_metrics(repo_filter=get_repo_name())
         if count > 0:
             click.secho(__("✅ Metrics exported: {count} events.", count=count), fg="green", bold=True)
             if csv_path:
@@ -270,9 +271,10 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             click.secho(__("Purge cancelled."), fg="yellow")
         return
 
-    if metrics and show_dashboard:
+    if show_dashboard:
         from src.ui.metrics_app import launch_metrics_dashboard
-        launch_metrics_dashboard()
+        from src.core import get_repo_name
+        launch_metrics_dashboard(repo_filter=get_repo_name())
         return
 
     if metrics:
@@ -364,20 +366,27 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
     if update:
         click.secho(__("🔍 Checking for updates..."), fg="cyan")
         check_and_update()
+        from src.metrics import log_command_metric
+        log_command_metric(command="update", status="success", provider="git")
         return
 
     # --install option: Interactive setup wizard
     if install:
         run_install_wizard()
+        from src.metrics import log_command_metric
+        log_command_metric(command="install", status="success", provider="git")
         return
 
     # --skill option: Generate template and exit
     if skill:
         generate_skill_template()
+        from src.metrics import log_command_metric
+        log_command_metric(command="skill", status="success", provider="git")
         return
     
     if installhooks:
-        if install_git_hooks():
+        hooks_ok = install_git_hooks()
+        if hooks_ok:
             click.secho("\n" + __("✅ Git Hooks successfully installed!"), fg="green", bold=True)
             click.echo(__("The Linter will now run automatically before each commit."))
 
@@ -392,6 +401,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             click.echo(__("• How to create new Linter rules (.gitpr.linter.yml):"))
             click.secho(f"  {get_doc_url("linter-regras-customizadas.md")}", fg="blue")
             click.echo("---\n")
+        from src.metrics import log_command_metric
+        log_command_metric(command="installhooks", status="success" if hooks_ok else "error", provider="git")
         return
 
     # Archaeologist Module (--blame)
@@ -431,6 +442,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         # Trigger the engine
         from src.blame_engine import run_blame_analysis
         run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip())
+        from src.metrics import log_command_metric
+        log_command_metric(command="blame", status="success", provider="git")
         return
 
     # Issue Module (Hybrid)
@@ -526,19 +539,32 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
 
         # Validate or request PAT Token
         github_token = validate_or_request_github_token(repo_info)
-        
+
         if not github_token:
             click.secho(__("❌ Access canceled. GitHub Token is mandatory for this action."), fg="red")
             return
-            
-        # Run the Terminal Graphical Interface
-        app = IssueApp(issue_data=issue_data, repo_info=repo_info, github_token=github_token)
-        app.run()
 
-        # Display return message after closing the TUI
-        if app.final_message:
-            cor = "green" if app.final_action in ["saved", "created"] else "red"
-            click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
+        # Run the Terminal Graphical Interface (with reauth loop for expired tokens)
+        while True:
+            app = IssueApp(issue_data=issue_data, repo_info=repo_info, github_token=github_token)
+            app.run()
+
+            # If token expired during the TUI session, re-prompt and relaunch
+            if app.final_action == "reauth":
+                click.secho(f"\n{app.final_message}\n", fg="yellow")
+                github_token = validate_or_request_github_token(repo_info)
+                if not github_token:
+                    click.secho(__("❌ Access canceled. GitHub Token is mandatory for this action."), fg="red")
+                    return
+                # Restart TUI with the same issue data and new token
+                continue
+
+            # Display return message after closing the TUI
+            if app.final_message:
+                cor = "green" if app.final_action in ["saved", "created"] else "red"
+                click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
+
+            break
 
         return
 
@@ -590,6 +616,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             system_instruction=system_instruction
         )
         app.run()
+        from src.metrics import log_command_metric
+        log_command_metric(command="chat", status="success", provider=active_provider)
         click.secho(f"📚 {__('Chat documentation:')} {get_doc_url('understanding_chat_functionality.md')}", fg="cyan")
         return
 
