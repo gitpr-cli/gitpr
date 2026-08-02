@@ -445,5 +445,15 @@
   "Range": "Rango",
   "Showing": "Mostrando",
   "of": "de",
-  "events": "eventos"
+  "events": "eventos",
+  "All repositories": "Todos los repositorios",
+  "Repository": "Repositorio",
+  "Run some GitPR commands (commit, review, linter)": "Ejecuta comandos de GitPR (commit, review, linter)",
+  "to generate telemetry. Then refresh with F5.": "para generar telemetría. Luego actualiza con F5.",
+  "Use GitPR commands normally — metrics are logged automatically. Press F5 to refresh.": "Usa los comandos de GitPR normalmente — las métricas se registran automáticamente. Pulsa F5 para actualizar.",
+  "Tokens (events)": "Tokens (eventos)",
+  "Tokens (cache)": "Tokens (cache)",
+  "Cache files": "Archivos de caché",
+  "Cache files found": "Archivos de caché encontrados",
+  "Press F5 to refresh": "Pulsa F5 para actualizar"
 }

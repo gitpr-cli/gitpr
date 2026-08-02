@@ -445,5 +445,15 @@
   "Range": "Intervalo",
   "Showing": "A mostrar",
   "of": "de",
-  "events": "eventos"
+  "events": "eventos",
+  "All repositories": "Todos os repositórios",
+  "Repository": "Repositório",
+  "Run some GitPR commands (commit, review, linter)": "Execute comandos do GitPR (commit, review, linter)",
+  "to generate telemetry. Then refresh with F5.": "para gerar telemetria. Depois atualize com F5.",
+  "Use GitPR commands normally — metrics are logged automatically. Press F5 to refresh.": "Use os comandos do GitPR normalmente — as métricas são registadas automaticamente. Pressione F5 para atualizar.",
+  "Tokens (events)": "Tokens (eventos)",
+  "Tokens (cache)": "Tokens (cache)",
+  "Cache files": "Ficheiros de cache",
+  "Cache files found": "Ficheiros de cache encontrados",
+  "Press F5 to refresh": "Pressione F5 para atualizar"
 }
