@@ -32,6 +32,8 @@ def get_github_repo_info():
 
 def generate_issue_content(context_text, context_type="diff"):
     """Sends the context (diff, blame, or history) to the AI and returns an issue dictionary."""
+    from src.metrics import log_command_metric
+
     if not context_text or not str(context_text).strip():
         return None
 
@@ -40,6 +42,7 @@ def generate_issue_content(context_text, context_type="diff"):
 
     if not api_key:
         click.secho(__("❌ Error: API Key not found."), fg="red")
+        log_command_metric(command="issue", status="error", provider=provider)
         return None
 
     # Use the advanced model to ensure Issue structure quality
@@ -69,11 +72,12 @@ def generate_issue_content(context_text, context_type="diff"):
         __("Generate the requested JSON object following the system instructions to {target_action}\n\n", target_action=target_action) +
         f"{data_label}\n{context_text}"
     )
-    
+
     # Try to retrieve from Cache
     cached_data = get_cached_response("issue", prompt)
     if cached_data:
         click.secho(__("⚡ Issue response retrieved from local cache."), fg="green", dim=True)
+        log_command_metric(command="issue", status="success", provider=provider, cache_hit=True)
         return cached_data
 
     click.secho(__("🤖 Structuring Issue using {provider} ({api_model})...", provider=provider.capitalize(), api_model=api_model), fg="cyan", dim=True)
@@ -81,8 +85,16 @@ def generate_issue_content(context_text, context_type="diff"):
     result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst, action="issue")
 
     if result_json and "titulo" in result_json and "corpo" in result_json:
-        # Save to Cache
-        save_cached_response("issue", "issue", prompt, result_json)
+        # Extract telemetry metadata and save to cache with real token counts
+        meta = result_json.pop("_telemetry_meta", None)
+        save_cached_response("issue", "issue", prompt, result_json, meta_raw=meta)
+        log_command_metric(
+            command="issue",
+            status="success",
+            provider=provider,
+            tokens_estimated=(meta or {}).get("total_tokens", 0),
+        )
         return result_json
-        
+
+    log_command_metric(command="issue", status="error", provider=provider)
     return {"titulo": __("Error generating title"), "corpo": __("Could not generate issue body by AI.")}
