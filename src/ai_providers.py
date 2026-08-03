@@ -73,6 +73,8 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
     spinner = Spinner(quiet=quiet)
     spinner.start()
 
+    start_time = time.perf_counter()
+
     try:
         for attempt in range(1, max_retries + 1):
             try:
@@ -135,6 +137,9 @@ def call_ai_model(provider, api_key, api_model, prompt, system_instruction, quie
                     result_json = result_json[0] if result_json else {}
 
                 # Inject telemetry metadata silently into the response dictionary
+                meta_raw["duration_ms"] = int((time.perf_counter() - start_time) * 1000)
+                meta_raw["provider"] = provider
+                meta_raw["model"] = api_model
                 result_json["_telemetry_meta"] = meta_raw
 
                 spinner.stop()

@@ -125,6 +125,8 @@ def enrich_metrics_from_cache(events):
             if not isinstance(data, dict):
                 continue
             response = data.get("response") or {}
+            if not isinstance(response, dict):
+                continue  # Skip list-typed responses (legacy format)
             meta = response.get("meta_raw") or response.get("_telemetry_meta")
             if not isinstance(meta, dict):
                 continue
@@ -235,6 +237,8 @@ def load_cache_token_summary(repo_name=None):
             continue
 
         response = data.get("response") or {}
+        if not isinstance(response, dict):
+            continue  # Skip list-typed responses (legacy format)
         meta = response.get("meta_raw") or response.get("_telemetry_meta")
         if not isinstance(meta, dict):
             continue
@@ -429,3 +433,156 @@ def show_metrics_summary():
         "disk_usage": disk_usage,
         "path": metrics_dir
     }
+
+
+# ---------------------------------------------------------------------------
+# Dashboard unified cache scanning + processed-file tracking (per-repo)
+# ---------------------------------------------------------------------------
+
+def get_project_metrics_dir():
+    """Returns the project-local .gitpr/metrics/ directory path."""
+    return os.path.join(os.getcwd(), ".gitpr", "metrics")
+
+
+def get_processed_cache_file(repo_name):
+    """Returns the path to the per-repo processed-cache tracking file.
+
+    The file lives at ./.gitpr/metrics/{repo_safe}/processed_cache.json
+    where {repo_safe} is the repo name with '/' replaced by '-'.
+    """
+    repo_safe = repo_name.replace("/", "-") if repo_name else "unknown"
+    return os.path.join(get_project_metrics_dir(), repo_safe, "processed_cache.json")
+
+
+def load_processed_cache_list(repo_name):
+    """Loads the set of absolute cache-file paths already processed for this repo.
+
+    Returns an empty set on any failure (missing file, corrupt JSON, etc.).
+    """
+    state_file = get_processed_cache_file(repo_name)
+    if not os.path.exists(state_file):
+        return set()
+    try:
+        with open(state_file, "r", encoding="utf-8", errors="replace") as f:
+            data = json.load(f)
+        return set(data.get("processed", []))
+    except Exception:
+        return set()
+
+
+def save_processed_cache_list(paths, repo_name):
+    """Saves the list of processed cache-file paths for the given repo.
+
+    Fire-and-forget — failures are silently ignored.
+    """
+    state_file = get_processed_cache_file(repo_name)
+    try:
+        os.makedirs(os.path.dirname(state_file), exist_ok=True)
+        payload = {
+            "processed": sorted(paths),
+            "last_scan": datetime.now().isoformat(),
+            "count": len(paths),
+        }
+        with open(state_file, "w", encoding="utf-8", errors="replace") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # Never break the dashboard for a state-file write failure
+
+
+# Map command names to cache action_type folders (mirrors enrich_metrics_from_cache)
+_ACTION_TYPE_TO_CACHE_FOLDER = {
+    "pr": "pr_desc",
+    "commit": "commit",
+    "review": "review",
+    "fullreview": "review",
+    "filereview": "review",
+    "issue": "issue",
+}
+
+
+def scan_cache_files_for_dashboard(repo_filter=None, progress_cb=None, since_date=None):
+    """Scans ALL ~/.gitpr/cache/prompts/*/*.json files and returns enriched rows.
+
+    Each row is a dict suitable for direct display in the DataTable:
+
+        {
+            "timestamp": "2026-08-02 10:30:00",
+            "command": "commit",
+            "status": "success",
+            "provider": "",
+            "tokens": 1266,
+            "duration_ms": 2340,
+            "repo": "owner/repo",
+            "branch": "main",
+            "source": "cache",
+            "md5": "00502e4...",
+            "path": "/home/user/.gitpr/cache/prompts/commit/00502e4....json",
+        }
+
+    Args:
+        repo_filter: If set, only includes rows whose repo matches.
+        progress_cb: Optional callback(done: int, total: int) called per file.
+        since_date: Minimum datetime string (YYYY-MM-DD) for cache files.
+                    Defaults to January 1st of the current year.
+    """
+    from datetime import date as _date
+
+    if since_date is None:
+        since_date = _date.today().replace(month=1, day=1).strftime("%Y-%m-%d")
+
+    cache_base = Path.home() / ".gitpr" / "cache" / "prompts"
+    rows = []
+
+    if not cache_base.is_dir():
+        return rows
+
+    # Collect all cache file paths first so we know the total for progress
+    all_files = sorted(cache_base.glob("*/*.json"))
+    total = len(all_files)
+
+    for idx, cache_file in enumerate(all_files, 1):
+        if progress_cb:
+            progress_cb(idx, total)
+
+        try:
+            with open(cache_file, "r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except Exception:
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        # Date filter: skip files older than since_date
+        file_dt = (data.get("datetime") or "")[:10]
+        if file_dt and file_dt < since_date:
+            continue
+
+        # Filter by repo when requested (include files without 'repo' — they may belong)
+        file_repo = data.get("repo", "")
+        if repo_filter is not None and file_repo and file_repo != repo_filter:
+            continue
+
+        response = data.get("response") or {}
+        if not isinstance(response, dict):
+            continue  # Skip list-typed responses (legacy format)
+        meta = response.get("meta_raw") or response.get("_telemetry_meta") or {}
+
+        row = {
+            "timestamp": (data.get("datetime") or "").replace("T", " ")[:19],
+            "command": data.get("action_type", "unknown"),
+            "status": "success",
+            "provider": meta.get("provider", ""),
+            "tokens": meta.get("total_tokens", 0),
+            "duration_ms": meta.get("duration_ms", 0),
+            "repo": file_repo,
+            "branch": data.get("branch", ""),
+            "source": "cache",
+            "md5": data.get("md5", ""),
+            "path": str(cache_file),
+        }
+        rows.append(row)
+
+    # Sort by timestamp, newest first
+    rows.sort(key=lambda r: r["timestamp"], reverse=True)
+    return rows

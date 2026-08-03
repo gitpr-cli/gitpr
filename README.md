@@ -9,6 +9,29 @@ GitPR CLI is a command-line automation tool that uses **Google Gemini** and **De
 
 🌐 **Website:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/) · 📂 **Repository:** [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
 
+----
+
+## ⚡ **Quick Start**
+
+### **1. Installation via PyPI**
+
+Install GitPR CLI using `pip`:
+
+```bash
+pip install gitpr-cli
+```
+
+### **2. Initializing in a Repository**
+
+To set up GitPR in a folder of a new repository, run:
+
+```bash
+gitpr --install
+```
+
+> **Guided Setup:** Guided configuration that downloads skill templates, installs Git Hooks, configures MCP for your editors, and verifies the API key for your AI provider.  
+> 📖 **Full Documentation:** [https://gitpr.natanfiuza.dev.br/docs/install-wizard?lang=en_us](https://gitpr.natanfiuza.dev.br/docs/install-wizard?lang=en_us)
+
 ## **🛠️ Technologies and Libraries Used**
 
 This project was developed in Python and uses the following main libraries:
