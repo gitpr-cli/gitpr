@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gitpr-cli"
-version = "0.0.30"
+version = "0.0.31"
 description = "AI-powered PR automation, commit messages, and code review (Gemini, DeepSeek, and Ollama)"
 readme = "README.md"
 requires-python = ">=3.10"
