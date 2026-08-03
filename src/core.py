@@ -262,6 +262,8 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
         click.secho(__("⚠️ No diff found. Make some changes before running the command."), fg="yellow")
         return None
 
+    t_start = time.perf_counter()
+
     # Cache folder configuration
     action_folder_map = {
         "pr": "pr_desc",
@@ -299,6 +301,15 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     cached_data = get_cached_response(action_folder, prompt)
     if cached_data:
         click.secho(__("⚡ Response retrieved from local cache."), fg="green", dim=True)
+        from src.metrics import log_command_metric
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
+        log_command_metric(
+            command=action_type,
+            status="success",
+            provider=provider,
+            duration_ms=duration_ms,
+            cache_hit=True,
+        )
         return cached_data
 
     # Key Preparation (Now dynamic per Provider)
@@ -318,13 +329,14 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...\n", provider=provider.capitalize(), model=api_model), fg="cyan")
     
     chunks = split_diff_into_chunks(diff_text, max_tokens=90000)
-    total_meta = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    
+    total_meta = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "duration_ms": 0}
+
     def _aggregate_meta(new_meta):
         if new_meta:
             total_meta["prompt_tokens"] += new_meta.get("prompt_tokens", 0)
             total_meta["completion_tokens"] += new_meta.get("completion_tokens", 0)
             total_meta["total_tokens"] += new_meta.get("total_tokens", 0)
+            total_meta["duration_ms"] += new_meta.get("duration_ms", 0)
             
     if len(chunks) == 1:
         result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema, action=action_folder)
@@ -375,18 +387,21 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
         save_cached_response(action_folder, action_type, prompt, result_json, meta_raw=total_meta)
         # Fire-and-forget metric for successful AI-powered command
         from src.metrics import log_command_metric
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
         log_command_metric(
             command=action_type,
             status="success",
             provider=provider,
             tokens_estimated=total_meta.get("total_tokens", 0),
+            duration_ms=duration_ms,
             map_reduce_triggered=(len(chunks) > 1),
         )
         return result_json
 
     # Command failed (AI returned None)
     from src.metrics import log_command_metric
-    log_command_metric(command=action_type, status="error", provider=provider)
+    duration_ms = int((time.perf_counter() - t_start) * 1000)
+    log_command_metric(command=action_type, status="error", provider=provider, duration_ms=duration_ms)
     return None
 
 

@@ -1,6 +1,7 @@
 import subprocess
 import re
 import os
+import time
 import click
 from src.ai_providers import call_ai_model
 from src.cache import get_cached_response, save_cached_response
@@ -37,12 +38,15 @@ def generate_issue_content(context_text, context_type="diff"):
     if not context_text or not str(context_text).strip():
         return None
 
+    t_start = time.perf_counter()
+
     provider = get_ai_provider()
     api_key = get_api_key(provider)
 
     if not api_key:
         click.secho(__("❌ Error: API Key not found."), fg="red")
-        log_command_metric(command="issue", status="error", provider=provider)
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
+        log_command_metric(command="issue", status="error", provider=provider, duration_ms=duration_ms)
         return None
 
     # Use the advanced model to ensure Issue structure quality
@@ -77,7 +81,8 @@ def generate_issue_content(context_text, context_type="diff"):
     cached_data = get_cached_response("issue", prompt)
     if cached_data:
         click.secho(__("⚡ Issue response retrieved from local cache."), fg="green", dim=True)
-        log_command_metric(command="issue", status="success", provider=provider, cache_hit=True)
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
+        log_command_metric(command="issue", status="success", provider=provider, duration_ms=duration_ms, cache_hit=True)
         return cached_data
 
     click.secho(__("🤖 Structuring Issue using {provider} ({api_model})...", provider=provider.capitalize(), api_model=api_model), fg="cyan", dim=True)
@@ -88,13 +93,16 @@ def generate_issue_content(context_text, context_type="diff"):
         # Extract telemetry metadata and save to cache with real token counts
         meta = result_json.pop("_telemetry_meta", None)
         save_cached_response("issue", "issue", prompt, result_json, meta_raw=meta)
+        duration_ms = int((time.perf_counter() - t_start) * 1000)
         log_command_metric(
             command="issue",
             status="success",
             provider=provider,
             tokens_estimated=(meta or {}).get("total_tokens", 0),
+            duration_ms=duration_ms,
         )
         return result_json
 
-    log_command_metric(command="issue", status="error", provider=provider)
+    duration_ms = int((time.perf_counter() - t_start) * 1000)
+    log_command_metric(command="issue", status="error", provider=provider, duration_ms=duration_ms)
     return {"titulo": __("Error generating title"), "corpo": __("Could not generate issue body by AI.")}
