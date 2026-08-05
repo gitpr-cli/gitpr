@@ -1,15 +1,34 @@
-#!/bin/bash
-# GitPR Metrics: post-checkout hook
-# Logs branch switch events for team telemetry.
-# Installed automatically by: gitpr --installhooks
+#!/usr/bin/env bash
+# GitPR: Post-Checkout Telemetry (Rastreador de troca de contexto)
 
-PREV_HEAD=$1
-NEW_HEAD=$2
-BRANCH_SWITCH=$3
+# Executa apenas se for mudança de branch (flag 1)
+if [ "$3" != "1" ]; then exit 0; fi
 
-# Only log actual branch switches (not file checkouts)
-if [ "$BRANCH_SWITCH" = "1" ]; then
-    FROM_BRANCH=$(git name-rev --name-only "$PREV_HEAD" 2>/dev/null || echo "unknown")
-    TO_BRANCH=$(git name-rev --name-only "$NEW_HEAD" 2>/dev/null || echo "unknown")
-    gitpr --hook-event "post-checkout" --quiet 2>/dev/null || true
-fi
+PREV_BRANCH=$(git name-rev --name-only "$1" 2>/dev/null || echo "detached")
+NEW_BRANCH=$(git name-rev --name-only "$2" 2>/dev/null || echo "detached")
+
+if [ "$PREV_BRANCH" = "$NEW_BRANCH" ]; then exit 0; fi
+
+REPO=$(git config --get remote.origin.url | grep -o 'github\.com[:/][^.]*' | sed 's/github.com[:/]//' || basename -s .git `git config --get remote.origin.url` || echo "local_repo")
+OWNER=$(echo "$REPO" | cut -d'/' -f1)
+if [ -z "$OWNER" ]; then OWNER=$(git config user.name | tr ' ' '_'); fi
+if [ -z "$OWNER" ]; then OWNER="local_user"; fi
+
+METRICS_DIR="$HOME/.gitpr/metrics/$OWNER/git"
+mkdir -p "$METRICS_DIR"
+
+UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s%N)
+DATE_STR=$(date +'%Y-%m-%dT%H:%M:%S')
+FILE_PATH="$METRICS_DIR/${UUID}_post-checkout.json"
+
+cat <<EOF > "$FILE_PATH"
+{
+  "timestamp": "$DATE_STR",
+  "command": "git_checkout",
+  "status": "success",
+  "repo": "$REPO",
+  "previous_branch": "$PREV_BRANCH",
+  "current_branch": "$NEW_BRANCH",
+  "provider": "git_hook"
+}
+EOF
