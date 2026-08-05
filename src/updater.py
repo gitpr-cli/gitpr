@@ -6,6 +6,8 @@ import shutil
 import click
 from datetime import datetime
 
+from src.i18n import __
+
 # Current version of your local executable (Update this on every new build!)
 __version__ = "0.0.31"  # GitPR current version
 __lang_version__ = "v0.0.9"  # Language dictionary version control

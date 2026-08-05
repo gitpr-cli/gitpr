@@ -5,9 +5,6 @@ import urllib.request
 from pathlib import Path
 from dotenv import load_dotenv, set_key
 
-# Import the current language version defined in the code
-from src.updater import __lang_version__
-
 # Global path to the .env file
 env_path = Path.home() / ".gitpr" / ".env"
 load_dotenv(env_path)
@@ -41,6 +38,8 @@ def get_translations(lang_code):
     """Loads the translation JSON. If outdated or missing, downloads remotely (OTA)."""
     if lang_code.startswith("en"):
         return {}
+
+    from src.updater import __lang_version__
 
     langs_dir = Path.home() / ".gitpr" / "langs"
     langs_dir.mkdir(parents=True, exist_ok=True)
@@ -76,12 +75,6 @@ def get_translations(lang_code):
 
     return {}
 
-# ==========================================
-# IN-MEMORY INITIALIZATION (SESSION CACHE)
-# ==========================================
-CURRENT_LANG = get_system_language()
-TRANSLATIONS = get_translations(CURRENT_LANG)
-
 
 def set_lang(lang: str) -> None:
     """
@@ -109,3 +102,10 @@ def __(key, **kwargs):
             pass
             
     return text
+
+
+# ==========================================
+# IN-MEMORY INITIALIZATION (SESSION CACHE)
+# ==========================================
+CURRENT_LANG = get_system_language()
+TRANSLATIONS = get_translations(CURRENT_LANG)

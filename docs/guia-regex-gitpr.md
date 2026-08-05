@@ -1,74 +1,73 @@
-# **Guia Prático: Expressões Regulares Performáticas no GitPR**
+# **Practical Guide: Performant Regular Expressions in GitPR**
 
-O Linter Estático do GitPR processa o git diff linha por linha usando o motor nativo re do Python (NFA \- *Nondeterministic Finite Automaton*). Motores NFA são poderosos, mas possuem um ponto cego perigoso: o **Retrocesso Catastrófico (Catastrophic Backtracking)**.
+GitPR's Static Linter processes `git diff` line by line using Python's native `re` engine (NFA - *Nondeterministic Finite Automaton*). NFA engines are powerful, but they have a dangerous blind spot: **Catastrophic Backtracking**.
 
-Este guia orienta como escrever regras para o .gitpr.linter.yml garantindo que o tempo de validação do commit permaneça na casa dos milissegundos.
+This guide explains how to write rules for `.gitpr.linter.yml` to ensure commit validation times remain in the order of milliseconds.
 
 ---
 
-## **1. O que é o Retrocesso Catastrófico?**
+## **1. What is Catastrophic Backtracking?**
 
-Ocorre quando uma Regex usa **quantificadores gulosos** `(*, +)` próximos uns dos outros ou aninhados, e a string testada quase dá *match*, mas falha no final.
+It occurs when a Regex uses **greedy quantifiers** `(*, +)` close to each other or nested, and the tested string almost matches, but fails at the end.
 
-Para tentar encontrar uma combinação válida, o motor "volta atrás" (backtracks) e tenta todas as permutações possíveis. O tempo de processamento cresce de forma exponencial ($O(2^n)$).
+To try to find a valid match, the engine "backtracks" and tests all possible permutations. Processing time grows exponentially ($O(2^n)$).
 
-**O Exemplo Clássico (O Código da Morte):**
+**The Classic Example (The Code of Death):**
 
 * **Regex:** `(a+)+$`  
-* **Texto:** aaaaaaaaaaaaaaaaaaaaaaaaaaaaaX  
-* *Resultado:* O terminal trava. O motor tentará mais de 700 milhões de combinações antes de perceber que o X no final impede o *match*.
+* **Text:** `aaaaaaaaaaaaaaaaaaaaaaaaaaaaaX`  
+* *Result:* The terminal freezes. The engine will attempt over 700 million combinations before realizing that the `X` at the end prevents a match.
 
 ---
 
-## **2. Regras de Ouro para Alta Performance**
+## **2. Golden Rules for High Performance**
 
-### **Regra 1: "Falhe Rápido" usando Âncoras**
+### **Rule 1: "Fail Fast" using Anchors**
 
-A melhor forma de economizar CPU é fazer a Regex desistir da linha o mais rápido possível.
+The best way to save CPU is to make the Regex give up on the line as quickly as possible.
 
-Se a palavra proibida deve ser uma palavra isolada, use a fronteira de palavra \b (Word Boundary). Isso impede que a Regex analise o interior de strings longas desnecessariamente.
+If the prohibited word should be an isolated word, use word boundary `\b`. This prevents Regex from analyzing the interior of long strings unnecessarily.
 
-* ❌ **Lento:** `dd\(` *(Procura os caracteres 'd', 'd', '(' em todas as posições da linha)*  
-* ✅ **Rápido:** `\bdd\(` *(Só inicia a busca no começo de uma palavra. Se a linha for add(), ele desiste no primeiro caractere)*
+* ❌ **Slow:** `dd\(` *(Searches for characters 'd', 'd', '(' at every position in the line)*  
+* ✅ **Fast:** `\bdd\(` *(Only starts searching at the beginning of a word. If the line is `add()`, it gives up on the first character)*
 
-### **Regra 2: Substitua o .* por Classes Negadas [^...]**
+### **Rule 2: Replace `.*` with Negated Classes `[^...]`**
 
-O .* (qualquer coisa, zero ou mais vezes) é o maior causador de backtracking. Ele é guloso: vai até o final da linha, e depois começa a voltar de trás para frente procurando o resto da sua regra.
+`.*` (anything, zero or more times) is the biggest cause of backtracking. It is greedy: it consumes until the end of the line, and then starts backtracking from right to left searching for the rest of your rule.
 
-Se você está a procurar algo dentro de aspas ou parênteses, diga exatamente onde ele deve parar.
+If you are looking for something inside quotes or parentheses, specify exactly where it should stop.
 
-* ❌ **Lento:** `console\.log\(.*\)` *(Vai até o fim da linha antes de voltar para achar o parêntese final)*  
-* ✅ **Rápido:** `console\.log\([^)]*\)` *(A classe `[^)]`* significa: "Capture tudo, desde que NÃO seja um parêntese fechado". Ele para no exato milissegundo em que encontra o limite)*
+* ❌ **Slow:** `console\.log\(.*\)` *(Goes to the end of the line before backtracking to find the closing parenthesis)*  
+* ✅ **Fast:** `console\.log\([^)]*\)` *(The `[^)]` class means: "Capture everything, as long as it is NOT a closing parenthesis". It stops at the exact millisecond it hits the boundary)*
 
-### **Regra 3: Evite Quantificadores Opcionais Aninhados**
+### **Rule 3: Avoid Nested Optional Quantifiers**
 
-Nunca coloque um quantificador opcional (* ou ?) logo após outro quantificador opcional, ou dentro de um grupo que também se repete.
+Never place an optional quantifier (`*` or `?`) right after another optional quantifier, or inside a group that also repeats.
 
-* ❌ **Lento:** `(localhost\s*)*`  
-* ✅ **Rápido:** `localhost(\s+localhost)*`
+* ❌ **Slow:** `(localhost\s*)*`  
+* ✅ **Fast:** `localhost(\s+localhost)*`
 
-### **Regra 4: Desligue a Captura em Grupos (?:...)**
+### **Rule 4: Disable Group Capture `(?:...)`**
 
-Por padrão, quando você usa parênteses (get|post) como a nossa regra de rotas, o Python guarda essa informação na memória para extração posterior. O GitPR não precisa extrair a palavra, ele só precisa saber se ela existe (True ou False).
+By default, when you use parentheses `(get|post)` as in our routing rule, Python saves that information in memory for later extraction. GitPR does not need to extract the word; it only needs to know if it exists (`True` or `False`).
 
-Use grupos não-capturantes (?:...) para economizar alocação de memória.
+Use non-capturing groups `(?:...)` to save memory allocation.
 
-* ❌ **Lento:** Route::(?:get|post)\(  
-* ✅ **Rápido:** Route::(?:get|post)\(
+* ❌ **Slow:** `Route::(get|post)\(`  
+* ✅ **Fast:** `Route::(?:get|post)\(`
 
 ---
 
-## **3. Comparativo Prático para o .gitpr.linter.yml**
+## **3. Practical Comparison for `.gitpr.linter.yml`**
 
-Veja como transformar regras ingênuas em regras blindadas:
+See how to transform naive rules into bulletproof rules:
 
-| Objetivo | ❌ Regex Ingênua (Perigosa) | ✅ Regex Performática (GitPR) | Por que é melhor? |
+| Objective | ❌ Naive Regex (Dangerous) | ✅ Performant Regex (GitPR) | Why is it better? |
 | :---- | :---- | :---- | :---- |
-| Bloquear IP Fixo | `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+` | `\b(?:\d{1,3}\.){3}\d{1,3}\b` | Usa `\b` e `(?:)` para não alocar memória extra, e limita o tamanho a 3 dígitos. |
-| Achar TODOs | `.*TODO.*` | `\bTODO\b:` | Elimina o .* inútil. A âncora \b já resolve a busca na linha inteira. |
-| Rotas (Verbos) | `Route::.*\('get.*` | `Route::[A-Za-z]+(\s*['"](?:get \| post)` |
+| Block Fixed IP | `[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+` | `\b(?:\d{1,3}\.){3}\d{1,3}\b` | Uses `\b` and `(?:)` to avoid extra memory allocation, and limits length to 3 digits. |
+| Find TODOs | `.*TODO.*` | `\bTODO\b:` | Eliminates useless `.*`. The `\b` anchor resolves matching across the entire line. |
+| Routes (Verbs) | `Route::.*\('get.*` | `Route::[A-Za-z]+(\s*['"](?:get\|post)` | Uses character classes and fast non-capturing alternation. |
 
-**Dica de Prevenção:** Como o GitPR processa linhas com arquivos minificados (ex: app.min.js), uma única linha pode ter milhares de caracteres. Aplicar a **Regra 2 (Classes Negadas)** é a sua maior garantia contra travamentos de terminal.
+**Prevention Tip:** Since GitPR processes lines in minified files (e.g., `app.min.js`), a single line can contain thousands of characters. Applying **Rule 2 (Negated Classes)** is your best defense against terminal freezes.
 
 ---
-
