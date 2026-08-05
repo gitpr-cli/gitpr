@@ -3,6 +3,13 @@ from datetime import datetime
 import click
 import sys
 
+# Reconfigure stdout to utf-8 to prevent UnicodeEncodeError with emojis on Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 # Internal module imports
 from src.config import setup_environment, check_internet_connection, get_ai_provider
 from src.updater import check_and_update, __version__, print_update_notice

@@ -30,3 +30,9 @@ gitpr-mcp = "src.mcp_server:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src", "src.*"]
+
+[tool.pyright]
+include = ["src"]
+executionEnvironments = [
+  { root = "." }
+]
