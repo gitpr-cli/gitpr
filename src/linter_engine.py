@@ -2,6 +2,7 @@ import re
 import fnmatch
 from src.config import load_linter_rules
 from src.i18n import __
+from src.metrics import log_local_metric
 
 def _is_rule_applicable(rule, current_file, file_extension):
     """Checks whether the rule applies to the current file based on extension and paths."""
@@ -85,6 +86,7 @@ def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
                     continue
                 _apply_rule(rule, code_line, i, current_file, alerts)
 
+        log_local_metric(command="linter", status="success", linter_errors=len(alerts["errors"]), linter_warnings=len(alerts["warnings"]), mode="full_file")
         return alerts
 
     # ==========================================
@@ -119,4 +121,5 @@ def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
                     continue
                 _apply_rule(rule, code_line, line_number, current_file, alerts)
 
+    log_local_metric(command="linter", status="success", linter_errors=len(alerts["errors"]), linter_warnings=len(alerts["warnings"]), mode="diff")
     return alerts

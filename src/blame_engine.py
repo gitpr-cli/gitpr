@@ -7,6 +7,7 @@ from src.core import get_current_branch
 from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __
+from src.metrics import log_local_metric
 
 def execute_git_blame(file_path, start_line, end_line, commit_hash=None):
     """Runs git blame and returns a list of unique hashes."""
@@ -153,6 +154,7 @@ def run_blame_analysis(file_path, start_line, end_line, return_data=False):
 
     # Direct Return to AI
     if return_data:
+        log_local_metric(command="blame", status="success", commits_analyzed=len(master_timeline), mode="return_data")
         return master_timeline
 
     # VISUAL DISPLAY IN TERMINAL (SINGLE)
@@ -221,5 +223,7 @@ def run_blame_analysis(file_path, start_line, end_line, return_data=False):
         with open(output_filename, "w", encoding="utf-8") as f:
             f.write(md_content)
         click.secho(__("✅ Unified report successfully saved: '{output_filename}'", output_filename=output_filename), fg="green", bold=True)
+        log_local_metric(command="blame", status="success", commits_analyzed=len(master_timeline), mode="report_generated")
     except Exception as e:
         click.secho(__("❌ Error saving report: {error}", error=str(e)), fg="red")
+        log_local_metric(command="blame", status="error", error_message=str(e))
