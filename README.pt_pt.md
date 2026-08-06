@@ -218,6 +218,32 @@ Para forçar um idioma específico, defina `GITPR_LANG=pt_pt` ou `GITPR_LANG=en`
 
 > 📖 **Guia completo do programador:** [docs/i18n_explanation.md](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — arquitetura, padrões de uso, precauções com import circular e como adicionar novos idiomas.
 
+## 🔄 Versionamento e Sincronização Automática de Scripts de Hooks
+
+O GitPR inclui um sistema automático de versionamento para scripts de Git hooks (`pre-commit`, `prepare-commit-msg`, `pre-push`, `post-checkout`, `post-merge`). Sempre que executa `gitpr`, o sistema verifica silenciosamente se os seus hooks instalados correspondem à versão mais recente e atualiza-os automaticamente se necessário — tudo respeitando a sua preferência de idioma.
+
+**Como funciona:**
+1. Lê `SCRIPTS_VERSION` e `SCRIPTS_LANG` do `~/.gitpr/.env`
+2. Compara com a versão mais recente (`__scripts_version__`) enviada com a sua release do GitPR
+3. Se as versões ou o idioma diferirem → descarrega e atualiza os hooks automaticamente
+4. Se tudo corresponder → ignora completamente (leitura única do `.env`, zero I/O de rede)
+
+**Exemplo:**
+```bash
+# Primeira execução — sem hooks instalados ainda
+$ gitpr --installhooks
+📥 A descarregar pre-commit...
+📥 A descarregar prepare-commit-msg...
+✅ Scripts sincronizados com sucesso!
+
+# Execuções seguintes — verificações silenciosas
+$ gitpr  # (sem saída = hooks estão atualizados)
+```
+
+O sistema suporta **5 idiomas**: Inglês (padrão), Português (Brasil), Português (Portugal), Francês e Espanhol. Os scripts são thin shims — a lógica real reside no CLI, pelo que mesmo hooks ligeiramente desatualizados continuam a funcionar corretamente.
+
+📚 [Documentação Completa](https://gitpr.natanfiuza.dev.br/docs/hooks-versioning?lang=pt_pt)
+
 ## 🔌 Integração MCP (Model Context Protocol)
 
 O GitPR pode ser executado como um **servidor MCP**, expondo as suas capacidades com IA como ferramentas que o assistente de IA do seu editor pode invocar diretamente — sem precisar de terminal. Isto permite um fluxo de trabalho totalmente integrado onde pode gerar mensagens de commit, rever código, executar linters, rastrear origens de código e criar issues sem sair do seu IDE.
@@ -293,6 +319,7 @@ Se deseja implementar o GitPR como uma barreira de qualidade automatizada na sua
 ### DevOps & CI/CD
 
 * [**Git Hooks Locais (Shift-Left)**](https://github.com/natanfiuza/gitpr/blob/main/docs/git-hooks-locais.md) — Como usar `gitpr --installhooks` para criar barreiras de qualidade na máquina do programador e usar IA para gerar mensagens de commit automaticamente.
+* [**Versionamento e Sincronização de Scripts de Hooks**](https://github.com/natanfiuza/gitpr/blob/main/docs/hooks-versioning.md) — Como o sistema de versionamento automático e sincronização com suporte a i18n mantém os seus Git hooks sempre atualizados.
 * [**Linter Estático Personalizável**](https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md) — Como criar regras de validação no `.gitpr.linter.yml` para CI/CD e hooks de pre-commit.
 * [**Integração CI/CD (GitHub Actions)**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-ci-linter.md) — Como executar o GitPR no pipeline para bloquear "Merge" de PRs com violações.
 

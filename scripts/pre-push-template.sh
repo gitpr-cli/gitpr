@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GitPR: Pre-Push Telemetry (Rastreador de entregas)
+# GitPR: Pre-Push Telemetry (Delivery tracker)
 
 REMOTE="$1"
 REPO=$(git config --get remote.origin.url | grep -o 'github\.com[:/][^.]*' | sed 's/github.com[:/]//' || basename -s .git `git config --get remote.origin.url` || echo "local_repo")

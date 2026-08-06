@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
-# GitPR: Post-Checkout Telemetry (Context switch tracker)
+# GitPR: Télémétrie Pre-Push (Suivi des livraisons)
 
-# Only run on branch switch (flag 1)
-if [ "$3" != "1" ]; then exit 0; fi
-
-PREV_BRANCH=$(git name-rev --name-only "$1" 2>/dev/null || echo "detached")
-NEW_BRANCH=$(git name-rev --name-only "$2" 2>/dev/null || echo "detached")
-
-if [ "$PREV_BRANCH" = "$NEW_BRANCH" ]; then exit 0; fi
-
+REMOTE="$1"
 REPO=$(git config --get remote.origin.url | grep -o 'github\.com[:/][^.]*' | sed 's/github.com[:/]//' || basename -s .git `git config --get remote.origin.url` || echo "local_repo")
 OWNER=$(echo "$REPO" | cut -d'/' -f1)
 if [ -z "$OWNER" ]; then OWNER=$(git config user.name | tr ' ' '_'); fi
@@ -19,16 +12,25 @@ mkdir -p "$METRICS_DIR"
 
 UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s%N)
 DATE_STR=$(date +'%Y-%m-%dT%H:%M:%S')
-FILE_PATH="$METRICS_DIR/${UUID}_post-checkout.json"
+
+COMMIT_COUNT=0
+while read local_ref local_sha remote_ref remote_sha; do
+    if [ "$local_sha" != "0000000000000000000000000000000000000000" ] && [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
+        COUNT=$(git rev-list --count $remote_sha..$local_sha 2>/dev/null || echo 0)
+        COMMIT_COUNT=$((COMMIT_COUNT + COUNT))
+    fi
+done
+
+FILE_PATH="$METRICS_DIR/${UUID}_pre-push.json"
 
 cat <<EOF > "$FILE_PATH"
 {
   "timestamp": "$DATE_STR",
-  "command": "git_checkout",
+  "command": "git_push",
   "status": "success",
   "repo": "$REPO",
-  "previous_branch": "$PREV_BRANCH",
-  "current_branch": "$NEW_BRANCH",
+  "commits_pushed": $COMMIT_COUNT,
+  "remote": "$REMOTE",
   "provider": "git_hook"
 }
 EOF
