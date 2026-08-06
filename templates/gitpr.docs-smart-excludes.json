@@ -1,0 +1,29 @@
+{
+    "description": "Documentation file extensions excluded from AI diffs to avoid wasting tokens on prose and markup. Changed documentation paths are still reported to the AI as metadata so it knows which docs were touched — just without their full content.",
+    "excludes": [
+        "*.md",
+        "*.txt",
+        "*.rst",
+        "*.adoc",
+        "*.asciidoc",
+        "*.org",
+        "*.textile",
+        "*.wiki",
+        "*.pod",
+        "*.tex",
+        "*.rtf",
+        "*.markdown",
+        "*.rdoc",
+        "*.mdx",
+        "*.rest",
+        "*.man",
+        "*.1",
+        "*.2",
+        "*.3",
+        "*.4",
+        "*.5",
+        "*.6",
+        "*.7",
+        "*.8"
+    ]
+}

@@ -304,6 +304,24 @@ Une fois configuré, utilisez le langage naturel dans le chat IA de votre édite
 
 > 💬 **MCP Prompts** — GitPR expose également 7 modèles de message prédéfinis (prompts) pour les flux courants comme « Réviser la PR », « Générer un Message de Commit » et « Créer une Issue depuis le Diff ». Consultez le [guide MCP Prompts](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) pour la liste complète.
 
+## 🎯 Smart Excludes (Optimisation des Tokens)
+
+GitPR supprime automatiquement les fichiers non-code de votre `git diff` avant de les envoyer à l'IA — réduisant la consommation de tokens et les coûts d'API sans aucune configuration requise.
+
+**Deux couches d'exclusions :**
+- **Lockfiles et fichiers générés :** `package-lock.json`, `*.min.js`, `*.map`, `*.pyc`, `*.svg` et plus de 30 autres motifs définis dans [`gitpr.smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.smart-excludes.json)
+- **Documentation en prose :** `*.md`, `*.txt`, `*.rst`, `*.adoc`, `*.tex` et plus de 20 autres extensions définies dans [`gitpr.docs-smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.docs-smart-excludes.json)
+
+**Suivi de la documentation :** Même si le contenu de la documentation est exclu du diff, GitPR indique toujours à l'IA _quels_ fichiers de documentation ont été modifiés en injectant leurs chemins comme métadonnées dans les instructions système. L'IA dispose ainsi du contexte complet sur les mises à jour de documentation sans consommer de tokens sur leur prose.
+
+**Avantages :**
+- ✅ Jusqu'à **98 % de réduction de tokens** sur les branches riches en documentation
+- ✅ **Réponses plus rapides de l'IA** — moins de texte à traiter par appel API
+- ✅ **Analyse de meilleure qualité** — l'IA se concentre sur le code, pas sur le balisage
+- ✅ **Zéro configuration** — fonctionne automatiquement à chaque exécution, géré à distance
+
+> 📖 **Documentation complète :** [docs/smart-excludes.md](https://github.com/natanfiuza/gitpr/blob/main/docs/smart-excludes.md) — disponible en 5 langues (EN, PT-BR, PT-PT, FR, ES).
+
 ## 📚 Documentation Technique et Guides Avancés
 
 Pour garder ce README concis, nous détaillons les implémentations les plus avancées axées sur le **DevOps** et l'**Intégration Continue** dans des documents séparés.

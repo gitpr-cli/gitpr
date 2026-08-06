@@ -304,6 +304,24 @@ Once configured, use natural language in your editor's AI chat:
 
 > 💬 **MCP Prompts** — GitPR also exposes 7 pre-defined message templates (prompts) for common flows like "Review PR", "Generate Commit Message", and "Create Issue from Diff". See the [MCP Prompts guide](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) for the full list.
 
+## 🎯 Smart Excludes (Token Optimization)
+
+GitPR automatically removes non-code files from your `git diff` before sending them to the AI — reducing token consumption and API costs with **zero configuration** required.
+
+**Two layers of exclusions:**
+- **Lockfiles & generated files:** `package-lock.json`, `*.min.js`, `*.map`, `*.pyc`, `*.svg`, and 30+ more patterns defined in [`gitpr.smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.smart-excludes.json)
+- **Documentation prose:** `*.md`, `*.txt`, `*.rst`, `*.adoc`, `*.tex`, and 20+ more extensions defined in [`gitpr.docs-smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.docs-smart-excludes.json)
+
+**Documentation tracking:** Even though documentation content is excluded from the diff, GitPR still tells the AI _which_ documentation files changed by injecting their paths as metadata into the system instructions. The AI has full context about doc updates without consuming tokens on their prose.
+
+**Benefits:**
+- ✅ Up to **98% token reduction** on documentation-heavy branches
+- ✅ **Faster AI responses** — less text to process per API call
+- ✅ **Higher-quality analysis** — AI focuses on code changes, not markup
+- ✅ **Zero configuration** — works automatically on every run, managed remotely
+
+> 📖 **Full documentation:** [docs/smart-excludes.md](https://github.com/natanfiuza/gitpr/blob/main/docs/smart-excludes.md) — available in 5 languages (EN, PT-BR, PT-PT, FR, ES).
+
 ## 📚 Technical Documentation and Advanced Guides
 
 To keep this README concise, we detail the most advanced **DevOps** and **Continuous Integration** focused implementations in separate documents.
