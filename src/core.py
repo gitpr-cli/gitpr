@@ -3,6 +3,7 @@ import re
 import json
 import stat
 import time
+import fnmatch
 import click
 import subprocess
 import urllib.request
@@ -37,6 +38,18 @@ _FALLBACK_SMART_EXCLUDES = [
 ]
 
 SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.smart-excludes.json"
+
+# Documentation file extensions excluded from AI diffs to avoid wasting tokens
+# on prose/markup. Changed doc paths are still reported as metadata.
+# The pattern list is managed remotely (templates/gitpr.docs-smart-excludes.json).
+_FALLBACK_DOCS_SMART_EXCLUDES = [
+    "*.md", "*.txt", "*.rst", "*.adoc", "*.asciidoc",
+    "*.org", "*.textile", "*.wiki", "*.pod", "*.tex",
+    "*.rtf", "*.markdown", "*.rdoc", "*.mdx", "*.rest",
+    "*.man", "*.1", "*.2", "*.3", "*.4", "*.5", "*.6", "*.7", "*.8",
+]
+
+DOCS_SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.docs-smart-excludes.json"
 
 # Hook scripts: language suffixes with shipped translations.
 # English is the default (no suffix) — fallback for any language not listed here.
@@ -98,7 +111,151 @@ def _load_smart_excludes():
     return [f":(exclude){pattern}" for pattern in _FALLBACK_SMART_EXCLUDES]
 
 
-SMART_EXCLUDES = _load_smart_excludes()
+def _load_docs_smart_excludes():
+    """
+    Load the doc-smart-exclude patterns and return them as git pathspec exclusions.
+
+    Resolution order (same as _load_smart_excludes, shares SMART_EXCLUDES_VERSION):
+    1. Local copy at ~/.gitpr/conf/gitpr.docs-smart-excludes.json when up to date.
+    2. Fresh download from the remote template (saved locally).
+    3. Stale local copy when the download fails.
+    4. _FALLBACK_DOCS_SMART_EXCLUDES as last resort.
+    """
+    env_file = Path.home() / ".gitpr" / ".env"
+    load_dotenv(env_file)
+
+    conf_dir = Path.home() / ".gitpr" / "conf"
+    local_file = conf_dir / "gitpr.docs-smart-excludes.json"
+    needs_update = os.getenv("SMART_EXCLUDES_VERSION") != __lang_version__
+
+    def _to_pathspecs(data):
+        return [f":(exclude){pattern}" for pattern in data.get("excludes", [])]
+
+    # 1. Local copy is present and up to date
+    if local_file.exists() and not needs_update:
+        try:
+            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                return _to_pathspecs(json.load(f))
+        except Exception:
+            pass
+
+    # 2. Download the updated list from the remote template
+    try:
+        with urllib.request.urlopen(DOCS_SMART_EXCLUDES_URL, timeout=3) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        conf_dir.mkdir(parents=True, exist_ok=True)
+        with open(local_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
+        return _to_pathspecs(data)
+    except Exception:
+        pass
+
+    # 3. Offline fallback: reuse the local copy even if outdated
+    if local_file.exists():
+        try:
+            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                return _to_pathspecs(json.load(f))
+        except Exception:
+            pass
+
+    # 4. Last resort: built-in defaults
+    return [f":(exclude){pattern}" for pattern in _FALLBACK_DOCS_SMART_EXCLUDES]
+
+
+SMART_EXCLUDES = _load_smart_excludes() + _load_docs_smart_excludes()
+
+
+def _get_raw_docs_patterns():
+    """
+    Returns raw glob patterns for documentation extensions (e.g. ['*.md', '*.txt']).
+
+    Uses the same resolution chain as _load_docs_smart_excludes but returns
+    plain patterns without the :(exclude) prefix — suitable for fnmatch filtering.
+    """
+    env_file = Path.home() / ".gitpr" / ".env"
+    load_dotenv(env_file)
+
+    conf_dir = Path.home() / ".gitpr" / "conf"
+    local_file = conf_dir / "gitpr.docs-smart-excludes.json"
+    needs_update = os.getenv("SMART_EXCLUDES_VERSION") != __lang_version__
+
+    # 1. Local copy is present and up to date
+    if local_file.exists() and not needs_update:
+        try:
+            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                return json.load(f).get("excludes", [])
+        except Exception:
+            pass
+
+    # 2. Download
+    try:
+        with urllib.request.urlopen(DOCS_SMART_EXCLUDES_URL, timeout=3) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        conf_dir.mkdir(parents=True, exist_ok=True)
+        with open(local_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
+        return data.get("excludes", [])
+    except Exception:
+        pass
+
+    # 3. Stale local copy
+    if local_file.exists():
+        try:
+            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                return json.load(f).get("excludes", [])
+        except Exception:
+            pass
+
+    # 4. Fallback
+    return list(_FALLBACK_DOCS_SMART_EXCLUDES)
+
+
+def get_changed_docs_list(ancestor_hash=None):
+    """
+    Returns a list of changed documentation file paths (names only, no content).
+
+    Runs ``git diff --name-only`` and filters by the documentation extensions
+    defined in gitpr.docs-smart-excludes.json.  This lets the AI know which
+    docs were touched without consuming tokens with their full content.
+
+    Args:
+        ancestor_hash: Optional merge-base hash for full-diff mode.
+                       When None, diffs against HEAD (local mode).
+    """
+    raw_patterns = _get_raw_docs_patterns()
+    if not raw_patterns:
+        return []
+
+    try:
+        if ancestor_hash:
+            cmd = ["git", "diff", "--name-only", ancestor_hash, "--"]
+        else:
+            cmd = ["git", "diff", "--name-only", "HEAD", "--"]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+
+        all_files = result.stdout.strip().split("\n")
+        doc_files = []
+        for f in all_files:
+            if not f:
+                continue
+            for pattern in raw_patterns:
+                if fnmatch.fnmatch(f, pattern):
+                    doc_files.append(f)
+                    break
+
+        return doc_files
+    except Exception:
+        return []
 
 
 def get_doc_url(filename):
@@ -301,6 +458,43 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     else:  # pr
         instrucao_sistema = skill_context if skill_context else __("You are a Tech Lead writing clean and technical PR descriptions.")
         prompt = __("Generate ONLY a JSON object in the format {json_format} for this diff:\n", json_format='{"commit_message": "...", "pr_description": "..."}') + f"{diff_text}"
+
+    # ── Inject changed documentation file list as metadata (no content) ──
+    # This lets the AI know which docs were touched without consuming tokens
+    # on their full prose/markup content (they are excluded from the diff).
+    try:
+        if action_type in ("pr", "fullreview"):
+            # Full diff: compute merge-base to match the diff scope
+            base_branch = get_base_branch()
+            merge_base_res = subprocess.run(
+                ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
+                capture_output=True, text=True, encoding="utf-8", errors="replace",
+            )
+            if merge_base_res.returncode == 0 and merge_base_res.stdout.strip():
+                ancestor = merge_base_res.stdout.strip()
+            else:
+                ancestor = None
+            changed_docs = get_changed_docs_list(ancestor)
+        else:
+            # Local diff: compare against HEAD
+            changed_docs = get_changed_docs_list()
+
+        if changed_docs:
+            docs_section = __("Changed documentation (content excluded from diff):\n")
+            for doc in changed_docs:
+                docs_section += f"- {doc}\n"
+            instrucao_sistema = docs_section + "\n" + instrucao_sistema
+            click.secho(
+                __("📄 {count} documentation file(s) excluded from diff (Smart Excludes).",
+                   count=len(changed_docs)),
+                fg="blue", dim=True,
+            )
+            click.secho(
+                f"📚 {__('Learn more:')} {get_doc_url('smart-excludes.md')}",
+                fg="blue", underline=True,
+            )
+    except Exception:
+        pass  # Non-critical — never block the main flow for this metadata
 
     # TRY TO RETRIEVE FROM CACHE
     cached_data = get_cached_response(action_folder, prompt)

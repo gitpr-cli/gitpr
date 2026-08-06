@@ -304,6 +304,24 @@ Una vez configurado, usa lenguaje natural en el chat de IA de tu editor:
 
 > 💬 **MCP Prompts** — GitPR también expone 7 plantillas de mensaje predefinidas (prompts) para flujos comunes como "Revisar PR", "Generar Mensaje de Commit" y "Crear Issue desde el Diff". Consulta la [guía de MCP Prompts](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) para la lista completa.
 
+## 🎯 Smart Excludes (Optimización de Tokens)
+
+GitPR elimina automáticamente los archivos que no son código de tu `git diff` antes de enviarlos a la IA — reduciendo el consumo de tokens y los costes de API sin necesidad de configuración.
+
+**Dos capas de exclusiones:**
+- **Lockfiles y archivos generados:** `package-lock.json`, `*.min.js`, `*.map`, `*.pyc`, `*.svg` y más de 30 otros patrones definidos en [`gitpr.smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.smart-excludes.json)
+- **Documentación en prosa:** `*.md`, `*.txt`, `*.rst`, `*.adoc`, `*.tex` y más de 20 otras extensiones definidas en [`gitpr.docs-smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.docs-smart-excludes.json)
+
+**Seguimiento de documentación:** Aunque el contenido de la documentación se excluye del diff, GitPR sigue informando a la IA sobre _qué_ archivos de documentación se modificaron, inyectando sus rutas como metadatos en las instrucciones del sistema. La IA tiene contexto completo sobre las actualizaciones de documentación sin consumir tokens con su contenido.
+
+**Beneficios:**
+- ✅ Hasta un **98% de reducción de tokens** en ramas con mucha documentación
+- ✅ **Respuestas más rápidas de la IA** — menos texto que procesar por llamada
+- ✅ **Análisis de mayor calidad** — la IA se centra en los cambios de código, no en el markup
+- ✅ **Configuración cero** — funciona automáticamente en cada ejecución, gestionado remotamente
+
+> 📖 **Documentación completa:** [docs/smart-excludes.md](https://github.com/natanfiuza/gitpr/blob/main/docs/smart-excludes.md) — disponible en 5 idiomas (EN, PT-BR, PT-PT, FR, ES).
+
 ## 📚 Documentación Técnica y Guías Avanzadas
 
 Para mantener este README conciso, detallamos las implementaciones más avanzadas enfocadas en **DevOps** e **Integración Continua** en documentos separados.

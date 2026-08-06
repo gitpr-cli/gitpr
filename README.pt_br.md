@@ -304,6 +304,24 @@ Uma vez configurado, use linguagem natural no chat de IA do seu editor:
 
 > 💬 **MCP Prompts** — O GitPR também expõe 7 modelos de mensagem predefinidos (prompts) para fluxos comuns como "Revisar PR", "Gerar Mensagem de Commit" e "Criar Issue a partir do Diff". Consulte o [guia de MCP Prompts](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-prompts.md) para a lista completa.
 
+## 🎯 Smart Excludes (Otimização de Tokens)
+
+O GitPR remove automaticamente arquivos que não são código do seu `git diff` antes de enviá-los para a IA — reduzindo o consumo de tokens e os custos da API sem necessidade de configuração.
+
+**Duas camadas de exclusões:**
+- **Lockfiles e arquivos gerados:** `package-lock.json`, `*.min.js`, `*.map`, `*.pyc`, `*.svg` e mais de 30 outros padrões definidos no [`gitpr.smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.smart-excludes.json)
+- **Documentação em prosa:** `*.md`, `*.txt`, `*.rst`, `*.adoc`, `*.tex` e mais de 20 outras extensões definidas no [`gitpr.docs-smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.docs-smart-excludes.json)
+
+**Rastreamento de documentação:** Mesmo que o conteúdo da documentação seja excluído do diff, o GitPR ainda informa à IA _quais_ arquivos de documentação foram alterados, injetando seus caminhos como metadados nas instruções do sistema. A IA tem contexto completo sobre as atualizações de documentação sem consumir tokens com seu conteúdo.
+
+**Benefícios:**
+- ✅ Até **98% de redução de tokens** em branches com muita documentação
+- ✅ **Respostas mais rápidas da IA** — menos texto para processar por chamada
+- ✅ **Análise de maior qualidade** — IA foca nas alterações de código, não em markup
+- ✅ **Configuração zero** — funciona automaticamente em cada execução, gerenciado remotamente
+
+> 📖 **Documentação completa:** [docs/smart-excludes.md](https://github.com/natanfiuza/gitpr/blob/main/docs/smart-excludes.md) — disponível em 5 idiomas (EN, PT-BR, PT-PT, FR, ES).
+
 ## 📚 Documentação Técnica e Guias Avançados
 
 Para manter este README conciso, detalhamos as implementações mais avançadas focadas em **DevOps** e **Integração Contínua** em documentos separados.
