@@ -6,12 +6,14 @@ import shutil
 import click
 from datetime import datetime
 
-from src.i18n import __
-
 # Current version of your local executable (Update this on every new build!)
+# ── Must stay ABOVE the i18n import: i18n.py lazily imports __lang_version__
+#     from here, and pyproject.toml reads __version__ via setuptools attr:.
 __version__ = "0.0.31"  # GitPR current version
 __lang_version__ = "v0.0.9"  # Language dictionary version control
 __scripts_version__ = "v0.0.1"  # Git Hook scripts version control (independent from __lang_version__)
+
+from src.i18n import __
 GITHUB_API_URL = "https://api.github.com/repos/natanfiuza/gitpr/releases/latest"
 PYPI_API_URL = "https://pypi.org/pypi/gitpr-cli/json"
 
