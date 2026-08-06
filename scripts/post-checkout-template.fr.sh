@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# GitPR: Post-Checkout Telemetry (Context switch tracker)
+# GitPR: Télémétrie Post-Checkout (Suivi des changements de contexte)
 
-# Only run on branch switch (flag 1)
+# Exécuter uniquement lors d'un changement de branche (flag 1)
 if [ "$3" != "1" ]; then exit 0; fi
 
 PREV_BRANCH=$(git name-rev --name-only "$1" 2>/dev/null || echo "detached")

@@ -12,10 +12,10 @@ from google import genai
 from dotenv import load_dotenv, set_key
 from src.security import decrypt_data
 from src.cache import get_cached_response, save_cached_response, get_cached_pr_descriptions
-from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_path, get_ai_provider, setup_environment
+from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_path, get_ai_provider, setup_environment, ENV_FILE
 from src.ai_providers import call_ai_model
 from src.i18n import __, CURRENT_LANG
-from src.updater import __lang_version__
+from src.updater import __lang_version__, __scripts_version__
 # Metrics are imported lazily inside generate_pr_content() to avoid circular imports
 
 # Smart Diff filter: files that consume AI tokens without adding semantic value.
@@ -37,6 +37,11 @@ _FALLBACK_SMART_EXCLUDES = [
 ]
 
 SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.smart-excludes.json"
+
+# Hook scripts: language suffixes with shipped translations.
+# English is the default (no suffix) — fallback for any language not listed here.
+_SCRIPT_LANG_SUFFIXES = {"pt_br", "pt_pt", "fr", "es"}
+SCRIPTS_BASE_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/scripts/"
 
 
 def _load_smart_excludes():
@@ -520,14 +525,27 @@ def get_git_full_diff():
         return None
     
 def install_git_hooks():
-    """Downloads and installs the pre-commit and prepare-commit-msg scripts."""
+    """Downloads and installs Git hook scripts with i18n support.
+
+    Detects the current language (CURRENT_LANG) and tries to download
+    language-specific scripts first (e.g. pre-commit-template.pt_br.sh).
+    Falls back to the English base version when a translation is unavailable.
+
+    After a successful install, stamps SCRIPTS_VERSION and SCRIPTS_LANG
+    in ~/.gitpr/.env so the auto-sync check can skip network calls.
+    """
     hooks_dir = os.path.join(os.getcwd(), ".git", "hooks")
-    
+
     if not os.path.exists(hooks_dir):
         click.secho(__("❌ Error: .git folder not found. Run at the project root."), fg="red")
         return False
 
-    # Mapping: Hook Name in Git -> Template Name on your GitHub
+    # Build language suffix (e.g. ".pt_br", ".fr") — English = no suffix
+    lang_suffix = ""
+    if CURRENT_LANG in _SCRIPT_LANG_SUFFIXES:
+        lang_suffix = f".{CURRENT_LANG}"
+
+    # Mapping: Hook Name in Git -> Template Name on GitHub
     hooks_to_install = {
         "pre-commit": "pre-commit-template.sh",
         "prepare-commit-msg": "prepare-commit-msg-template.sh",
@@ -536,31 +554,106 @@ def install_git_hooks():
         "post-merge": "post-merge-template.sh",
     }
 
-    base_url = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/scripts/"
     success_count = 0
 
     for hook_name, template_name in hooks_to_install.items():
         hook_path = os.path.join(hooks_dir, hook_name)
-        url = base_url + template_name
 
+        # Try language-specific URL first, fall back to base (English)
+        urls_to_try = []
+        if lang_suffix:
+            # Insert suffix before .sh: "pre-commit-template" + ".pt_br" + ".sh"
+            base_name = template_name[:-3]  # strip .sh
+            urls_to_try.append(f"{SCRIPTS_BASE_URL}{base_name}{lang_suffix}.sh")
+        urls_to_try.append(f"{SCRIPTS_BASE_URL}{template_name}")
+
+        downloaded = False
+        for url in urls_to_try:
+            try:
+                click.secho(__("📥 Downloading {hook_name}...", hook_name=hook_name), fg="cyan")
+
+                with urllib.request.urlopen(url) as response:
+                    content = response.read().decode('utf-8')
+
+                with open(hook_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+
+                # Apply execution permission (chmod +x)
+                st = os.stat(hook_path)
+                os.chmod(hook_path, st.st_mode | stat.S_IEXEC)
+
+                success_count += 1
+                downloaded = True
+                break  # success — skip fallback URLs
+            except urllib.error.HTTPError as e:
+                # 404 on language variant is expected — silently try fallback
+                if e.code == 404 and url != urls_to_try[-1]:
+                    continue
+                click.secho(__("⚠️ Failed to install {hook_name}: HTTP {code}", hook_name=hook_name, code=e.code), fg="yellow")
+            except Exception as e:
+                click.secho(__("⚠️ Failed to install {hook_name}: {error}", hook_name=hook_name, error=str(e)), fg="yellow")
+
+        # If the first URL (language-specific) failed and we're about to try the fallback,
+        # the loop continues naturally. If the last URL also fails, we just move on.
+
+    # Only stamp the version marker when ALL hooks installed successfully,
+    # so a partial failure is retried on the next run.
+    if success_count == len(hooks_to_install):
         try:
-            click.secho(__("📥 Downloading {hook_name}...", hook_name=hook_name), fg="cyan")
-            
-            with urllib.request.urlopen(url) as response:
-                content = response.read().decode('utf-8')
-                
-            with open(hook_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
+            set_key(ENV_FILE, "SCRIPTS_VERSION", __scripts_version__)
+            set_key(ENV_FILE, "SCRIPTS_LANG", lang_suffix.lstrip("."))
+        except Exception:
+            pass  # non-fatal — will retry next run
 
-            # Apply execution permission (chmod +x)
-            st = os.stat(hook_path)
-            os.chmod(hook_path, st.st_mode | stat.S_IEXEC)
-            
-            success_count += 1
-        except Exception as e:
-            click.secho(__("⚠️ Failed to install {hook_name}: {error}", hook_name=hook_name, error=str(e)), fg="yellow")
+    if success_count == len(hooks_to_install):
+        click.secho(f"📚 {__('Documentation:')} {get_doc_url('hooks-versioning.md')}", fg="blue", underline=True)
 
     return success_count == len(hooks_to_install)
+
+
+def check_and_update_hooks_scripts():
+    """Silent auto-sync of installed Git hooks (version + language gated).
+
+    Called on every gitpr execution.  Compares SCRIPPS_VERSION and
+    SCRIPPS_LANG in ~/.gitpr/.env against the shipped constants.  When
+    they match the check is a single .env read with no network I/O.
+
+    When they differ (or are missing) and the current project has a
+    .git/hooks directory, hooks are re-downloaded in the current language.
+    On success the markers are stamped so future runs skip the network.
+    """
+    # Fast path: version + language already match (pure .env read, no network)
+    load_dotenv(ENV_FILE)
+    env_version = os.getenv("SCRIPTS_VERSION")
+    env_lang = os.getenv("SCRIPTS_LANG", "")
+
+    # Compute expected language suffix (empty for English / unsupported langs)
+    expected_lang = CURRENT_LANG if CURRENT_LANG in _SCRIPT_LANG_SUFFIXES else ""
+
+    if env_version == __scripts_version__ and env_lang == expected_lang:
+        return  # up to date — nothing to do
+
+    # Only sync projects that actually have hooks installed (or could have them)
+    hooks_dir = os.path.join(os.getcwd(), ".git", "hooks")
+    if not os.path.exists(hooks_dir):
+        return  # not a git project or no hooks dir — keep gate open (don't stamp)
+
+    # Versions differ or missing → re-download
+    click.secho(__("🔍 Checking hook scripts version..."), fg="cyan", dim=True)
+    click.secho(__("   Current: {current} (from .env)", current=env_version or __("none")), fg="white", dim=True)
+    click.secho(__("   Latest: {latest} (from code)", latest=__scripts_version__), fg="white", dim=True)
+    click.secho(__("📦 Updating scripts to {version}...", version=__scripts_version__), fg="cyan")
+    if expected_lang:
+        click.secho(__("   Detected language: {lang}", lang=expected_lang), fg="white", dim=True)
+
+    install_git_hooks()
+
+    # Re-read to confirm stamping
+    load_dotenv(ENV_FILE, override=True)
+    if os.getenv("SCRIPTS_VERSION") == __scripts_version__:
+        click.secho(__("✅ Scripts synced successfully!"), fg="green")
+        click.secho(f"📚 {__('Documentation:')} {get_doc_url('hooks-versioning.md')}", fg="blue", underline=True)
 
 
 def run_install_wizard():

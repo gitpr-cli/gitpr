@@ -23,6 +23,7 @@ from src.core import (
     get_branch_history_text,
     get_doc_url,
     run_install_wizard,
+    check_and_update_hooks_scripts,
 )
 from src.linter_engine import parse_diff_and_lint
 from src.i18n import __
@@ -247,6 +248,12 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         from src.spinner import reload_thinking_words
         set_lang(lang)
         reload_thinking_words(lang)
+
+    # Auto-sync Git hooks (version + language gated — silent when up to date).
+    # Skipped for internal invocations (--quiet, --hook, --mcp) so hooks
+    # never update themselves mid-flight and MCP startup stays fast.
+    if not quiet and not hook and not mcp:
+        check_and_update_hooks_scripts()
 
     # MCP Server Mode — start stdio MCP server (handled before any interactive setup)
     if hook_event:
