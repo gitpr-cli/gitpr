@@ -1,4 +1,3 @@
-import os
 import requests
 from datetime import datetime
 from textual.app import App, ComposeResult
@@ -6,7 +5,7 @@ from textual.widgets import Header, Footer, Input, TextArea, Label
 from textual.containers import Vertical
 from textual.binding import Binding
 
-from src.core import get_current_branch
+from src.core import get_current_branch, resolve_output_path
 from src.ui.help_screen import HelpScreen
 from src.i18n import __
 
@@ -65,8 +64,11 @@ class IssueApp(App):
         branch_name = get_current_branch().replace("/", "-").replace("\\", "-")
         current_time = datetime.now().strftime("%Y%m%d%H%M%S")
         
-        pattern = os.getenv("OUTPUT_FILE_NAME_ISSUE", "{branch}_{datetime}_ISSUE.md")
-        output_filename = pattern.format(branch=branch_name, datetime=current_time)
+        output_filename = resolve_output_path(
+            "OUTPUT_FILE_NAME_ISSUE",
+            "{branch}_{datetime}_ISSUE.md",
+            branch_name, current_time,
+        )
         
         md_content = f"# {title_input.value}\n\n{body_input.text}"
         

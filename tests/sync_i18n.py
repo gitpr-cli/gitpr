@@ -33,7 +33,7 @@ for d in src_dirs:
         scan_dir(d)
 
 langs_dir = 'langs'
-lang_files = ['pt_br.json', 'pt_pt.json', 'es_es.json', 'fr_fr.json']
+lang_files = ['pt_br.json', 'pt_pt.json', 'es_es.json', 'fr_fr.json', 'es.json','fr.json']
 
 # List sorted to keep the json ordered
 sorted_keys = sorted(list(keys_in_code))

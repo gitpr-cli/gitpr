@@ -258,6 +258,48 @@ def get_changed_docs_list(ancestor_hash=None):
         return []
 
 
+# Mapping from env var to subfolder inside .gitpr/reports/
+_OUTPUT_FOLDER_MAP = {
+    "OUTPUT_FILE_NAME": "pr_desc",
+    "OUTPUT_FILE_NAME_REVIEW": "review",
+    "OUTPUT_FILE_NAME_FULLREVIEW": "full_review",
+    "OUTPUT_FILE_NAME_FILEREVIEW": "file_review",
+    "OUTPUT_FILE_NAME_BLAME": "blame",
+    "OUTPUT_FILE_NAME_ISSUE": "issue",
+}
+
+
+def resolve_output_path(env_var, default_pattern, safe_branch_name, current_time):
+    """
+    Resolve the output file path for a given action.
+
+    Behaviour (per the plan):
+    - If the env-var value contains a directory separator (``/`` or ``\\``),
+      use it as-is → backwards-compatible with user-configured custom paths.
+    - If it contains only a filename (no slash), prepend
+      ``.gitpr/reports/<folder>/`` so generated artefacts stay out of the
+      project root.
+    - If the env var is empty / not set, use *default_pattern* and place it
+      inside ``.gitpr/reports/<folder>/``.
+
+    Returns the final *relative* path (ready to pass to ``open()``).
+    """
+    raw = os.getenv(env_var, "")
+    pattern = raw.strip() if raw else default_pattern
+    filename = pattern.format(branch=safe_branch_name, datetime=current_time)
+
+    # Already contains a directory — honour the user's custom path as-is
+    if "/" in pattern or "\\" in pattern:
+        return filename
+
+    # Plain filename → place it inside .gitpr/reports/<folder>/
+    folder = _OUTPUT_FOLDER_MAP.get(env_var, "misc")
+    reports_dir = os.path.join(os.getcwd(), ".gitpr", "reports", folder)
+    os.makedirs(reports_dir, exist_ok=True)
+
+    return os.path.join(reports_dir, filename)
+
+
 def get_doc_url(filename):
     """Returns the complete URL for the official GitPR documentation website.
 

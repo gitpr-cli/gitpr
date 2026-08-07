@@ -24,6 +24,7 @@ from src.core import (
     get_doc_url,
     run_install_wizard,
     check_and_update_hooks_scripts,
+    resolve_output_path,
 )
 from src.linter_engine import parse_diff_and_lint
 from src.i18n import __
@@ -726,16 +727,23 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
     if action_type in ["review", "fullreview", "filereview"]:
         
         if fullreview:
-            pattern = os.getenv("OUTPUT_FILE_NAME_FULLREVIEW", "{branch}_{datetime}_PR_FULLREVIEW.txt")
+            output_filename = resolve_output_path(
+                "OUTPUT_FILE_NAME_FULLREVIEW",
+                "{branch}_{datetime}_PR_FULLREVIEW.txt",
+                safe_branch_name, current_time,
+            )
         elif action_type == "filereview":
-            pattern = os.getenv("OUTPUT_FILE_NAME_FILEREVIEW", "{branch}_{datetime}_FILE_REVIEW.txt")
+            output_filename = resolve_output_path(
+                "OUTPUT_FILE_NAME_FILEREVIEW",
+                "{branch}_{datetime}_FILE_REVIEW.txt",
+                safe_branch_name, current_time,
+            )
         else:
-            pattern = os.getenv("OUTPUT_FILE_NAME_REVIEW", "{branch}_{datetime}_PR_REVIEW.txt")            
-
-        output_filename = pattern.format(
-            branch=safe_branch_name,
-            datetime=current_time
-        )
+            output_filename = resolve_output_path(
+                "OUTPUT_FILE_NAME_REVIEW",
+                "{branch}_{datetime}_PR_REVIEW.txt",
+                safe_branch_name, current_time,
+            )
         content = data.get('review', __('No analysis generated.'))
         
         # Run the Linter. If "filereview", enable full-file mode.
@@ -770,8 +778,11 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         return
 
     # Default Pull Request (.md file)
-    filename_pattern = os.getenv("OUTPUT_FILE_NAME", "{branch}_{datetime}_PR_DESC.md")
-    output_filename = filename_pattern.format(branch=safe_branch_name, datetime=current_time)
+    output_filename = resolve_output_path(
+        "OUTPUT_FILE_NAME",
+        "{branch}_{datetime}_PR_DESC.md",
+        safe_branch_name, current_time,
+    )
 
     markdown_content = (
         __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
