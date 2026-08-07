@@ -21,3 +21,6 @@ dist/
 *.log
 *.txt
 gitpr_cli.egg-info
+
+# GitPR generated reports
+.gitpr/reports/

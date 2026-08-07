@@ -484,5 +484,10 @@
   "Generate ONLY a JSON object in the format {json_format} with a code review focused on improvements, using these summaries:\n": "Gere APENAS um objeto JSON no formato {json_format} com code review focado em melhorias, usando estes resumos:\n",
   "✅ Metrics purged ({count} files removed).": "✅ Métricas limpas ({count} arquivos removidos).",
   "❌ Model configuration not found for provider {provider}.": "❌ Configuração de modelo não encontrada para o provedor {provider}.",
-  "❌ No code blocks found in message #{n}.": "❌ Nenhum bloco de código encontrado na mensagem #{n}."
+  "❌ No code blocks found in message #{n}.": "❌ Nenhum bloco de código encontrado na mensagem #{n}.",
+  "Changed documentation (content excluded from diff):\n": "Documentação alterada (conteúdo excluído do diff):\n",
+  "📄 {count} documentation file(s) excluded from diff (Smart Excludes).": "📄 {count} arquivo(s) de documentação excluído(s) do diff (Smart Excludes).",
+  "Learn more:": "Saiba mais:",
+  "  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | -h,--help (use -h --flag for contextual help)\n": "  Opções: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | -h,--help (use -h --flag para ajuda contextual)\n",
+  "\n📊 Local Telemetry Summary": "\n📊 Resumo da Telemetria Local"
 }

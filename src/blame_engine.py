@@ -3,7 +3,7 @@ import click
 import re
 import os
 from datetime import datetime
-from src.core import get_current_branch
+from src.core import get_current_branch, resolve_output_path
 from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __
@@ -178,8 +178,11 @@ def run_blame_analysis(file_path, start_line, end_line, return_data=False):
     safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
     current_time = datetime.now().strftime("%Y%m%d%H%M%S")
 
-    pattern = os.getenv("OUTPUT_FILE_NAME_BLAME", "{branch}_{datetime}_BLAME_REPORT.md")
-    output_filename = pattern.format(branch=safe_branch_name, datetime=current_time)
+    output_filename = resolve_output_path(
+        "OUTPUT_FILE_NAME_BLAME",
+        "{branch}_{datetime}_BLAME_REPORT.md",
+        safe_branch_name, current_time,
+    )
 
     # Build the Markdown Table
     md_content = __("# Timeline of the investigated rule\n\n")
