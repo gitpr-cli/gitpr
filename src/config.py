@@ -26,7 +26,14 @@ DEFAULT_CONFIG = {
     "OUTPUT_FILE_NAME_FULLREVIEW": "{branch}_{datetime}_PR_FULLREVIEW.txt",
     "OUTPUT_FILE_NAME_FILEREVIEW": "{branch}_{datetime}_FILE_REVIEW.txt",
     "OUTPUT_FILE_NAME_BLAME": "{branch}_{datetime}_BLAME_REPORT.md",
-    "OUTPUT_FILE_NAME_ISSUE": "{branch}_{datetime}_ISSUE.md"
+    "OUTPUT_FILE_NAME_ISSUE": "{branch}_{datetime}_ISSUE.md",
+    "PR_DEFAULT_BASE": "",
+    "GITPR_AUTO_COMMIT": "false",
+    "GITPR_SKIP_LINT": "false",
+    "GITPR_AUTO_STAGE": "false",
+    "GITPR_SHOW_LOGS": "true",
+    "GITPR_SKIP_UNSTAGED_CHECK": "false",
+    "PR_PUBLISH_LOG": "true"
 }
 
 def get_skill_dir():

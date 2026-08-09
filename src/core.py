@@ -1010,3 +1010,69 @@ def get_branch_history_text():
         hybrid_context += __("=== AI PR HISTORY ===\nNo previous AI-generated PR found in cache for this branch.\n")
         
     return hybrid_context
+
+
+def has_uncommitted_changes():
+    """Returns True if there are uncommitted changes (staged or unstaged)."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--stat"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
+        return bool(result.stdout.strip())
+    except Exception:
+        return False
+
+
+def get_unstaged_files():
+    """Returns list of (filepath, status) for files not in the index.
+
+    Status codes: '??' = untracked, ' M' = unstaged modified, ' D' = unstaged deleted.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-c", "core.quotepath=false", "status", "--porcelain"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        files = []
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            status_x = line[0] if len(line) > 0 else ""
+            status_y = line[1] if len(line) > 1 else ""
+            filepath = line[3:].strip()
+            if status_y in ("M", "D") or (status_x == "?" and status_y == "?"):
+                status_label = {"??": "new", " M": "mod", " D": "del"}.get(
+                    status_x + status_y, status_x + status_y
+                )
+                files.append((filepath, status_label))
+        return files
+    except Exception:
+        return []
+
+
+def stage_files(filepaths):
+    """Run git add on the given file paths. Returns True on success."""
+    if not filepaths:
+        return True
+    try:
+        subprocess.run(
+            ["git", "add"] + filepaths,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            check=True,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def execute_git_commit(message, no_verify=False):
+    """Executes git commit -m with optional --no-verify. Returns (success: bool, output: str)."""
+    cmd = ["git", "commit", "-m", message]
+    if no_verify:
+        cmd.insert(2, "--no-verify")
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        return (result.returncode == 0, result.stdout + result.stderr)
+    except Exception as e:
+        return (False, str(e))

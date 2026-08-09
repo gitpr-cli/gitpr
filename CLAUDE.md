@@ -96,6 +96,8 @@ docs/
 | `-is` / `--issue`        | Issue via TUI          | `git diff` → AI (draft) → Textual TUI → save .md or POST to GitHub       |
 | `-is -ht` / `--history`  | Epic/Release issue     | `git log` + PR cache → AI → TUI                                           |
 | `-is -b <file:lines>`    | Technical debt issue   | `git blame` timeline → AI → TUI                                           |
+| `--publish`              | PR publisher (TUI)     | `git fetch` → diff → AI → .md → Textual TUI → POST to GitHub             |
+| `--publish --no-edit`    | Direct PR publish      | Same as above, but skips TUI and POSTs directly                            |
 | `-b` / `--blame`         | Code archaeology       | `git blame` → AI classifies commits → timeline + summary                  |
 | `-s` / `--skill`         | Download templates      | Download `.gitpr.*.md` from GitHub (never overwrites)                     |
 | `-ih` / `--installhooks` | Install hooks           | Download + install hooks in `.git/hooks/`                                  |
@@ -108,7 +110,7 @@ docs/
 | Component        | Technology                             |
 |------------------|----------------------------------------|
 | CLI framework    | Click >= 8.0.0                         |
-| TUI (issues)     | Textual (ModalScreen, App, bindings)   |
+| TUI (issues, PRs)| Textual (ModalScreen, App, bindings)   |
 | AI (Gemini)      | `google-genai` SDK                     |
 | AI (DeepSeek)    | `openai` SDK (API compatible)          |
 | GitHub API       | `requests` (REST, PAT via header)      |
@@ -265,7 +267,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
 - Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json` (auto-downloaded, re-fetched when `__lang_version__` changes)
-- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL`, `DEEPSEEK_API_MODEL`, `SECONDARY_GEMINI_API_MODEL`, `SECONDARY_DEEPSEEK_API_MODEL`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL`, `DEEPSEEK_API_MODEL`, `SECONDARY_GEMINI_API_MODEL`, `SECONDARY_DEEPSEEK_API_MODEL`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `PR_AUTO_PUBLISH`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
 
 ### AI Providers (Multi-Model Architecture)
 - **Gemini:** `gemini-2.5-flash` (primary/advanced) / `gemini-2.5-flash-lite` (secondary/simple)
