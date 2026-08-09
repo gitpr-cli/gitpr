@@ -10,11 +10,35 @@ When you run the `gitpr` command (default behavior), GitPR generates the PR desc
 
 ---
 
-## 2. Execution Modes
+## 2. Complete Execution Flow
+
+```
+gitpr
+  ├─ Banner
+  ├─ Unstaged files check (before PR generation)
+  │   ├─ GITPR_SKIP_UNSTAGED_CHECK=true → skip
+  │   ├─ No unstaged files → proceed
+  │   ├─ GITPR_AUTO_STAGE=true → auto git add → proceed
+  │   └─ Has unstaged files → StageFilesApp TUI
+  │       ├─ Stage Selected → git add → proceed
+  │       ├─ Skip → proceed (no staging)
+  │       └─ Cancel → abort
+  ├─ PR generation (AI) → .md file saved to .gitpr/reports/pr_desc/
+  └─ TUI (default) or --no-publish / --no-edit
+      └─ F3 Publish PR → auto-commit (no duplicate unstaged check)
+          ├─ Commit → git push → PR check
+          │   ├─ No existing PR → POST create PR
+          │   └─ Existing PR found → PATCH update PR
+          └─ Merge prompt (if GITPR_AUTO_MERGE is not set)
+```
+
+---
+
+## 3. Execution Modes
 
 The PR Publisher has **3 execution modes**, triggered by flags (or lack thereof).
 
-### 2.1 Interactive Mode (Default) — `gitpr`
+### 3.1 Interactive Mode (Default) — `gitpr`
 
 Running `gitpr` without any flags generates the PR description and opens the TUI for review and editing before publishing.
 
@@ -24,7 +48,7 @@ gitpr
 
 | Characteristic | Description |
 |---|---|
-| **Flow** | `git fetch` → AI generates PR → `.md` saved → TUI opens → user edits → POST to GitHub |
+| **Flow** | Unstaged check → `git fetch` → AI generates PR → `.md` saved → TUI opens → user edits → POST to GitHub |
 | **When to use** | Standard workflow — full control over what gets published |
 | **Result** | Pull Request created on GitHub with the edited content |
 | **Ideal for** | Day-to-day development — review and adjust PR content before publishing |
@@ -33,7 +57,7 @@ gitpr
 
 ---
 
-### 2.2 Skip Publisher — `gitpr --no-publish`
+### 3.2 Skip Publisher — `gitpr --no-publish`
 
 Generates the PR and saves it locally without opening the interactive editor.
 
@@ -43,16 +67,16 @@ gitpr --no-publish
 
 | Characteristic | Description |
 |---|---|
-| **Flow** | `git fetch` → AI generates PR → `.md` saved → exit |
+| **Flow** | Unstaged check → `git fetch` → AI generates PR → `.md` saved → exit |
 | **When to use** | When you only need the PR description file for documentation or later review |
 | **Result** | Markdown file saved locally; no TUI opens |
 | **Ideal for** | Documentation, offline review, saving PR drafts for later |
 
 ---
 
-### 2.3 Direct Publish — `gitpr --no-edit`
+### 3.3 Direct Publish — `gitpr --no-edit`
 
-Skips the interactive editor, auto-commits pending changes with lint validation, and publishes directly to GitHub.
+Skips the interactive editor, auto-commits pending changes with lint validation, pushes to remote, and publishes directly to GitHub.
 
 ```bash
 gitpr --no-edit
@@ -60,7 +84,7 @@ gitpr --no-edit
 
 | Characteristic | Description |
 |---|---|
-| **Flow** | `git fetch` → AI generates PR → `.md` saved → auto-commit (lint + AI commit message) → POST directly to GitHub |
+| **Flow** | Unstaged check → `git fetch` → AI generates PR → `.md` saved → auto-commit (lint + AI commit message) → git push → POST directly to GitHub |
 | **When to use** | When you trust the AI output and want to publish immediately |
 | **Result** | Pull Request created on GitHub without opening the TUI |
 | **Ideal for** | CI/CD pipelines, quick fixes, automated workflows |
@@ -69,29 +93,75 @@ gitpr --no-edit
 
 ---
 
-## 3. Auto-Commit Flow (--no-edit and TUI F3)
+## 4. Unstaged Files Management
+
+Before PR generation begins, GitPR checks for unstaged files and offers a modal interface to manage them. This check runs at the very beginning of the `gitpr` execution, before any AI calls.
+
+### 4.1 Startup Check Flow
+
+```
+gitpr starts
+  ├─ GITPR_SKIP_UNSTAGED_CHECK=true → skip entire check, proceed
+  ├─ No unstaged files detected → proceed
+  ├─ GITPR_AUTO_STAGE=true → auto git add all → proceed
+  └─ Unstaged files found → StageFilesApp TUI opens
+      ├─ [Stage Selected] → git add <selected> → proceed
+      ├─ [Skip] → proceed without staging
+      └─ [Cancel] → abort (exit without generating PR)
+```
+
+### 4.2 File Detection
+
+Unstaged files are detected via `git status --porcelain`, looking for:
+- `??` — untracked files
+- ` M` — modified but not staged (working tree changes)
+- ` D` — deleted but not staged
+
+### 4.3 Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `GITPR_SKIP_UNSTAGED_CHECK` | `false` | Set to `true` to skip the unstaged files check entirely at startup |
+| `GITPR_AUTO_STAGE` | `false` | Set to `true` to automatically stage all unstaged files without showing the selection modal |
+
+---
+
+## 5. Auto-Commit Flow (--no-edit and TUI F3)
 
 When using `--no-edit` or pressing `F3` in the TUI with uncommitted changes, GitPR runs an automatic commit flow:
 
 ```
 1. Check for uncommitted changes (git diff HEAD --stat)
    └─ If clean → skip commit, proceed to publish
-   
+
 2. Run static linter (.gitpr.linter.yml rules)
    ├─ ✅ Pass → proceed
    ├─ ⚠️ Warnings → shown, proceed
    └─ 🚨 Errors:
         ├─ [Commit with --no-verify] → proceed
         └─ [Abort] → operation cancelled
-   
+
 3. Generate commit message via AI (Conventional Commits format)
-   └─ Display message, request confirmation
-   
+   └─ Display message in editable field, request confirmation
+   └─ Option to regenerate the message
+
 4. Execute: git commit -m "<message>" [--no-verify]
-   └─ Proceed with PR publication
+   ├─ Success → proceed with git push + PR publication
+   └─ "Nothing to commit" → treated as success, proceed to publish
 ```
 
-### Linter Decision Flowchart
+### 5.1 "Nothing to Commit" Handling
+
+When `git commit` returns non-zero but the output indicates no actual changes exist, the flow treats this as a success and continues. The following patterns are recognized:
+
+- `nothing to commit`
+- `nothing added to commit`
+- `no changes added to commit`
+- `changes not staged`
+- `working tree clean`
+- `no changes`
+
+### 5.2 Linter Decision Flowchart
 
 ```
 Has uncommitted changes?
@@ -108,9 +178,95 @@ Has uncommitted changes?
                   └─ No → Abort
 ```
 
+### 5.3 TUI Commit Dialogs
+
+The auto-commit flow in the TUI uses a series of modal screens:
+
+| Screen | Purpose |
+|---|---|
+| `CommitConfirmScreen` | Confirmation before starting the commit flow. Customizable button labels for different contexts |
+| `FileStageScreen` | Toggleable file list for selective `git add` before commit |
+| `CommitProgressScreen` | Terminal-like `RichLog` modal isolating commit logs from the main TUI |
+| `CommitMessageScreen` | Editable commit message with "Regenerate" button for AI message regeneration |
+| `LinterErrorScreen` | Shows linter errors with options to commit with `--no-verify` or abort |
+| `ErrorScreen` | Generic error display with `max-height: 80%` and scroll for large error outputs |
+
 ---
 
-## 4. Base Branch Configuration
+## 6. Git Push and Existing PR Handling
+
+After a successful commit, GitPR pushes the branch and checks for existing PRs.
+
+### 6.1 Push Flow
+
+```
+git push origin <branch>
+  ├─ Success → check for existing PRs
+  └─ Failure with "upstream" / "no upstream" in error
+      └─ Auto-retry: git push --set-upstream origin <branch>
+```
+
+### 6.2 Existing PR Detection
+
+Before creating a new PR, GitPR checks if a PR already exists for the current branch:
+
+```
+Check existing PRs (GET /repos/{owner}/{repo}/pulls?head={branch})
+  ├─ No existing PR → POST create new PR
+  └─ Existing PR found
+      ├─ User chooses "Push to existing PR" → PATCH update PR body
+      └─ User chooses "Create new PR" → POST create new PR
+```
+
+### 6.3 PR Update
+
+When pushing to an existing PR, GitPR updates only the PR body (description) via `PATCH /repos/{owner}/{repo}/pulls/{number}`. The PR title remains unchanged. The content sent is only the PR Body field from the TUI — no wrapper or commit message prefix is added.
+
+---
+
+## 7. Merge Flow
+
+After a PR is created or updated, GitPR can optionally merge it.
+
+```
+PR created/updated successfully
+  ├─ GITPR_AUTO_MERGE=true → auto-merge via PUT /repos/{owner}/{repo}/pulls/{number}/merge
+  ├─ GITPR_AUTO_MERGE=false → prompt user to merge
+  └─ User declines → exit with PR URL displayed
+```
+
+| Variable | Default | Description |
+|---|---|---|
+| `GITPR_AUTO_MERGE` | `false` | Set to `true` to auto-merge PRs after creation/update without prompting |
+
+---
+
+## 8. Output Directory Structure
+
+By default, GitPR saves all output files in the `.gitpr/reports/` directory, organized by artifact type:
+
+| Env var | Subfolder in `.gitpr/reports/` |
+|---------|-------------------------------|
+| `OUTPUT_FILE_NAME` | `pr_desc` |
+| `OUTPUT_FILE_NAME_REVIEW` | `review` |
+| `OUTPUT_FILE_NAME_FULLREVIEW` | `full_review` |
+| `OUTPUT_FILE_NAME_FILEREVIEW` | `file_review` |
+| `OUTPUT_FILE_NAME_BLAME` | `blame` |
+| `OUTPUT_FILE_NAME_ISSUE` | `issue` |
+
+### 8.1 Path Resolution Rules
+
+The `resolve_output_path()` function in `src/core.py` handles three scenarios:
+
+1. **Env var contains a directory separator** (`/` or `\`) → used as-is (custom path)
+2. **Env var contains only a filename** → saved in `.gitpr/reports/{folder}/`
+3. **Env var is empty/default** → uses the default pattern in `.gitpr/reports/{folder}/`
+
+Directories are created automatically via `os.makedirs(exist_ok=True)`. This ensures full backward compatibility — users with custom directory paths in their `.env` keep their existing behavior.
+
+---
+
+## 9. Base Branch Configuration
 
 The target branch for the Pull Request is resolved in the following priority order:
 
@@ -122,7 +278,7 @@ The target branch for the Pull Request is resolved in the following priority ord
 
 ---
 
-## 5. TUI Shortcuts and Navigation
+## 10. TUI Shortcuts and Navigation
 
 The interface was designed to be fast and not require constant mouse use. You can navigate through fields using the `Tab` key and use the following shortcuts:
 
@@ -130,17 +286,17 @@ The interface was designed to be fast and not require constant mouse use. You ca
 |---|---|---|
 | **`F1`** | Help | Opens a floating modal with quick interface usage instructions |
 | **`F2`** | Save Local `.md` | Saves the updated content to the PR description file in the current project. Ideal when you want to refine the content later |
-| **`F3`** | Publish PR | Runs auto-commit (lint + AI message) if there are pending changes, then creates the Pull Request on GitHub via API. The direct link to the newly created PR will be displayed in the terminal |
+| **`F3`** | Publish PR | Runs auto-commit (lint + AI message + file staging if needed) if there are pending changes, then creates or updates the Pull Request on GitHub via API. The direct link to the PR will be displayed in the terminal |
 | **`Esc`** | Exit | Aborts the operation and closes the interface without publishing |
 | **`Tab`** | Navigate | Toggles focus between the interface fields |
 
 ---
 
-## 6. GitHub Integration (PAT Token)
+## 11. GitHub Integration (PAT Token)
 
 To create Pull Requests directly in the remote repository (`F3`), GitPR needs a **Personal Access Token (PAT)** from GitHub with `repo` scope.
 
-### 6.1 Token Configuration
+### 11.1 Token Configuration
 
 The first time you use `F3` or `--no-edit`, GitPR will:
 
@@ -151,7 +307,7 @@ The first time you use `F3` or `--no-edit`, GitPR will:
 
 > **Note:** The Issue TUI (`gitpr -is`) shares the same token. If you already configured a token for Issues, it will be reused automatically.
 
-### 6.2 Security
+### 11.2 Security
 
 - The token is stored as an encrypted hash — never in plain text
 - The master decryption key is located at `~/.gitpr/secret.key`
@@ -160,37 +316,64 @@ The first time you use `F3` or `--no-edit`, GitPR will:
 
 ---
 
-## 7. GitHub API — PR Creation
+## 12. GitHub API Reference
 
-The PR is created via `POST https://api.github.com/repos/{owner}/{repo}/pulls` with the following payload:
+### 12.1 PR Creation
+
+`POST https://api.github.com/repos/{owner}/{repo}/pulls`
 
 ```json
 {
   "title": "PR title (editable in TUI)",
-  "body": "Full markdown PR description with commit message",
+  "body": "PR body content from the TUI text area",
   "head": "Current branch (source)",
   "base": "Target branch (main, develop, etc.)"
 }
 ```
 
+> **Note:** Only the content of the PR Body field is sent as the `body` — no wrapper or commit message prefix is included.
+
+### 12.2 PR Update (Existing PR)
+
+`PATCH https://api.github.com/repos/{owner}/{repo}/pulls/{number}`
+
+```json
+{
+  "body": "Updated PR body content from the TUI text area"
+}
+```
+
+### 12.3 PR Merge
+
+`PUT https://api.github.com/repos/{owner}/{repo}/pulls/{number}/merge`
+
+```json
+{
+  "merge_method": "merge"
+}
+```
+
 ---
 
-## 8. Error Handling
+## 13. Error Handling
 
 | Error | Behavior |
 |---|---|
 | Invalid/expired token (401) | Prompts for a new token (up to 3 attempts) |
 | Branch not found (422) | Shows GitHub's error message with details |
 | No commits to merge (422) | Shows validation error suggesting to make changes first |
-| PR already exists (422) | Shows the specific conflict |
+| PR already exists (422) | Shows the specific conflict; in TUI, offers the option to push to existing PR |
 | Linter errors | Asks user: commit with `--no-verify` or abort |
-| Commit failure | Shows error and allows retry or cancellation |
+| Commit failure ("nothing to commit") | Treated as success — flow continues to publish |
+| Commit failure (other) | Shows error and allows retry or cancellation |
+| Push failure (no upstream) | Auto-retries with `--set-upstream origin <branch>` |
+| Push failure (other) | Shows error message with details |
 | Network failure | Shows connection error message |
 | Missing remote | Error before TUI opens — no API call attempted |
 
 ---
 
-## 9. Environment Variables
+## 14. Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
@@ -200,16 +383,25 @@ The PR is created via `POST https://api.github.com/repos/{owner}/{repo}/pulls` w
 | `GITPR_SKIP_LINT` | `false` | Set to `true` to skip linter validation during auto-commit |
 | `GITPR_AUTO_STAGE` | `false` | Set to `true` to automatically stage all unstaged files without showing the selection modal |
 | `GITPR_SKIP_UNSTAGED_CHECK` | `false` | Set to `true` to skip the unstaged files check entirely at startup |
+| `GITPR_SHOW_LOGS` | `true` | Set to `false` to hide commit/push progress logs in the TUI |
+| `GITPR_AUTO_MERGE` | `false` | Set to `true` to auto-merge PRs after creation/update without prompting |
+| `OUTPUT_FILE_NAME` | `{branch}_{datetime}_PR_DESC.md` | Default filename pattern for PR descriptions |
+| `OUTPUT_FILE_NAME_REVIEW` | `{branch}_{datetime}_PR_REVIEW.txt` | Default filename pattern for code reviews |
+| `OUTPUT_FILE_NAME_FULLREVIEW` | `{branch}_{datetime}_PR_FULLREVIEW.txt` | Default filename pattern for full reviews |
+| `OUTPUT_FILE_NAME_FILEREVIEW` | `{branch}_{datetime}_FILE_REVIEW.txt` | Default filename pattern for file reviews |
+| `OUTPUT_FILE_NAME_BLAME` | `{branch}_{datetime}_BLAME_REPORT.md` | Default filename pattern for blame reports |
+| `OUTPUT_FILE_NAME_ISSUE` | `{branch}_{datetime}_ISSUE.md` | Default filename pattern for issues |
 
 ---
 
-## 10. Practical Examples
+## 15. Practical Examples
 
 ### Example 1: Standard workflow — review and publish
 
 ```bash
 # You finished developing on the feature/login branch
 gitpr
+# → Unstaged files check (if any)
 # → AI generates the PR description and opens the TUI
 # → Review the title, body, and base branch
 # → Press F3 to auto-commit and create the PR on GitHub
@@ -219,7 +411,8 @@ gitpr
 
 ```bash
 gitpr --no-edit
-# → AI generates PR, auto-commits changes, and publishes immediately
+# → Unstaged files check (if any)
+# → AI generates PR, auto-commits changes, pushes, and publishes immediately
 # → The PR URL is displayed in the terminal
 ```
 
@@ -227,7 +420,7 @@ gitpr --no-edit
 
 ```bash
 gitpr --no-publish
-# → AI generates PR description, saves .md file, exits
+# → AI generates PR description, saves .md file to .gitpr/reports/pr_desc/, exits
 # → No TUI, no publication
 ```
 
@@ -242,7 +435,7 @@ gitpr --base staging
 
 ```bash
 GITPR_SKIP_LINT=true gitpr --no-edit
-# → Auto-commit skips lint, generates message, commits, and publishes
+# → Auto-commit skips lint, generates message, commits, pushes, and publishes
 ```
 
 ### Example 6: Auto-commit without confirmation
@@ -252,14 +445,41 @@ GITPR_AUTO_COMMIT=true gitpr --no-edit
 # → Commit message is generated and executed without asking for confirmation
 ```
 
+### Example 7: Skip unstaged files check
+
+```bash
+GITPR_SKIP_UNSTAGED_CHECK=true gitpr --no-edit
+# → Skips the startup unstaged files modal entirely
+```
+
+### Example 8: Auto-stage and auto-merge
+
+```bash
+GITPR_AUTO_STAGE=true GITPR_AUTO_MERGE=true gitpr --no-edit
+# → All unstaged files are automatically staged
+# → PR is automatically merged after creation
+```
+
+### Example 9: Custom output directory
+
+```bash
+# In ~/.gitpr/.env:
+OUTPUT_FILE_NAME=/home/user/prs/my_custom_pr.md
+# → PR description saved to /home/user/prs/my_custom_pr.md
+# → Directory paths in env vars are used as-is, never redirected to .gitpr/reports/
+```
+
 ---
 
-## 11. Related Files
+## 16. Related Files
 
 | File | Function |
 |---|---|
 | `.gitpr.pr.md` | Local template with custom rules for PR description generation (download with `gitpr -s`) |
 | `~/.gitpr/.env` | Global configuration: API keys, PR defaults, and encrypted GitHub token |
 | `~/.gitpr/secret.key` | Fernet master key for credential decryption |
+| `.gitpr/reports/pr_desc/` | Default output directory for PR description files |
+| `.gitpr/reports/review/` | Default output directory for code review files |
+| `.gitpr/reports/full_review/` | Default output directory for full review files |
 
 > **Note:** See also the [main documentation (README.md)](../README.md) for an overview of all GitPR features and the [PR Description guide](pr-descricao-padrao.md) for the default PR generation flow.
