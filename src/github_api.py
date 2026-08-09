@@ -49,3 +49,78 @@ def create_pull_request(repo_info, github_token, title, body, head, base, timeou
         return False, {"message": __("GitHub API timeout. Check your connection and try again.")}, 0
     except Exception as e:
         return False, {"message": __("Failed to connect to GitHub: {error}", error=str(e))}, 0
+
+
+def check_existing_pr(repo_info, github_token, head_branch, timeout=15):
+    """
+    Check if there's already an open PR from *head_branch* to any base.
+
+    Returns (exists: bool, pr_url: str | None, pr_number: int | None).
+    """
+    api_url = f"https://api.github.com/repos/{repo_info}/pulls"
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    params = {"head": f"{repo_info.split('/')[0]}:{head_branch}", "state": "open"}
+    try:
+        response = requests.get(api_url, headers=headers, params=params, timeout=timeout)
+        if response.status_code == 200:
+            prs = response.json()
+            if prs:
+                pr = prs[0]
+                return True, pr.get("html_url"), pr.get("number")
+        return False, None, None
+    except Exception:
+        return False, None, None
+
+
+def update_pull_request(repo_info, github_token, pr_number, title=None, body=None, timeout=15):
+    """
+    Update a pull request's title and/or body via GitHub REST API.
+
+    Returns (ok: bool, data: dict, http_status: int).
+    """
+    api_url = f"https://api.github.com/repos/{repo_info}/pulls/{pr_number}"
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    payload = {}
+    if title:
+        payload["title"] = title
+    if body:
+        payload["body"] = body
+    try:
+        response = requests.patch(api_url, json=payload, headers=headers, timeout=timeout)
+        if response.status_code == 200:
+            j = response.json()
+            return True, {"url": j.get("html_url"), "number": j.get("number")}, 200
+        return False, {"message": _extract_error_message(response)}, response.status_code
+    except requests.exceptions.ConnectionError:
+        return False, {"message": __("No internet connection.")}, 0
+    except Exception as e:
+        return False, {"message": str(e)}, 0
+
+
+def merge_pull_request(repo_info, github_token, pr_number, timeout=15):
+    """
+    Merge a pull request via GitHub REST API.
+
+    Returns (ok: bool, data: dict, http_status: int).
+    """
+    api_url = f"https://api.github.com/repos/{repo_info}/pulls/{pr_number}/merge"
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    try:
+        response = requests.put(api_url, json={}, headers=headers, timeout=timeout)
+        if response.status_code == 200:
+            j = response.json()
+            return True, {"merged": j.get("merged", False), "message": j.get("message", "")}, 200
+        return False, {"message": _extract_error_message(response)}, response.status_code
+    except requests.exceptions.ConnectionError:
+        return False, {"message": __("No internet connection.")}, 0
+    except Exception as e:
+        return False, {"message": str(e)}, 0
