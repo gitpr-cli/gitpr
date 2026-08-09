@@ -8,6 +8,7 @@ from src.cache import get_cached_response, save_cached_response
 from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __
+from src.core import estimate_token_count, split_diff_into_chunks, get_doc_url
 
 def get_github_repo_info():
     """Extracts the owner/repo format from git remote -v."""
@@ -87,22 +88,81 @@ def generate_issue_content(context_text, context_type="diff"):
 
     click.secho(__("🤖 Structuring Issue using {provider} ({api_model})...", provider=provider.capitalize(), api_model=api_model), fg="cyan", dim=True)
 
-    result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst, action="issue")
+    # ── Map-Reduce: chunk large diffs to avoid token limit errors ──
+    # Only applies to diff context; history and blame are compact by nature.
+    total_meta = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "duration_ms": 0}
+
+    def _aggregate_meta(new_meta):
+        if new_meta:
+            total_meta["prompt_tokens"] += new_meta.get("prompt_tokens", 0)
+            total_meta["completion_tokens"] += new_meta.get("completion_tokens", 0)
+            total_meta["total_tokens"] += new_meta.get("total_tokens", 0)
+            total_meta["duration_ms"] += new_meta.get("duration_ms", 0)
+
+    if context_type == "diff":
+        chunks = split_diff_into_chunks(context_text, max_tokens=90000)
+    else:
+        chunks = [context_text]
+
+    if len(chunks) == 1:
+        result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst, action="issue")
+        if result_json:
+            _aggregate_meta(result_json.pop("_telemetry_meta", None))
+    else:
+        from src.metrics import log_local_metric
+        log_local_metric(command="map_reduce", status="triggered", map_reduce_triggered=True, chunks_count=len(chunks))
+
+        click.secho(__("📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...", count=len(chunks)), fg="yellow", bold=True)
+        click.secho(f"📚 {__('Understand why:')} {get_doc_url('map-reduce-diff.md')}\n", fg="blue", underline=True)
+        resumos_parciais = []
+
+        for i, chunk in enumerate(chunks, 1):
+            click.secho(__("⏳ Analyzing batch {current}/{total}...", current=i, total=len(chunks)), fg="cyan", dim=True)
+
+            prompt_parcial = __("Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n", json_format='{"resumo": "..."}', idx=i) + chunk
+
+            resposta_parcial = call_ai_model(provider, api_key, api_model, prompt_parcial, sys_inst, quiet=True, action=f"issue_chunk_{i}")
+
+            if resposta_parcial:
+                _aggregate_meta(resposta_parcial.pop("_telemetry_meta", None))
+                if "resumo" in resposta_parcial:
+                    resumos_parciais.append(f"### Batch {i}\n{resposta_parcial['resumo']}")
+
+            time.sleep(1)
+
+        if not resumos_parciais:
+            click.secho(__("❌ Failed to extract context from the partial batches."), fg="red")
+            duration_ms = int((time.perf_counter() - t_start) * 1000)
+            log_command_metric(command="issue", status="error", provider=provider, duration_ms=duration_ms, map_reduce_triggered=True)
+            return {"titulo": __("Error generating title"), "corpo": __("Could not generate issue body by AI.")}
+
+        click.secho(__("🔄 Unifying intelligence and generating the final issue..."), fg="yellow")
+        diff_unificado = "\n\n".join(resumos_parciais)
+
+        prompt = (
+            __("Generate the requested JSON object following the system instructions to {target_action}\n\n", target_action=target_action) +
+            f"{data_label}\n{diff_unificado}"
+        )
+
+        result_json = call_ai_model(provider, api_key, api_model, prompt, sys_inst, action="issue")
+        if result_json:
+            _aggregate_meta(result_json.pop("_telemetry_meta", None))
 
     if result_json and "titulo" in result_json and "corpo" in result_json:
-        # Extract telemetry metadata and save to cache with real token counts
-        meta = result_json.pop("_telemetry_meta", None)
-        save_cached_response("issue", "issue", prompt, result_json, meta_raw=meta)
+        # Save to cache with aggregated token counts from all chunks
+        map_reduce_used = len(chunks) > 1
+        save_cached_response("issue", "issue", prompt, result_json, meta_raw=total_meta)
         duration_ms = int((time.perf_counter() - t_start) * 1000)
         log_command_metric(
             command="issue",
             status="success",
             provider=provider,
-            tokens_estimated=(meta or {}).get("total_tokens", 0),
+            tokens_estimated=total_meta.get("total_tokens", 0),
             duration_ms=duration_ms,
+            map_reduce_triggered=map_reduce_used,
         )
         return result_json
 
     duration_ms = int((time.perf_counter() - t_start) * 1000)
-    log_command_metric(command="issue", status="error", provider=provider, duration_ms=duration_ms)
+    log_command_metric(command="issue", status="error", provider=provider, duration_ms=duration_ms, map_reduce_triggered=(len(chunks) > 1))
     return {"titulo": __("Error generating title"), "corpo": __("Could not generate issue body by AI.")}
