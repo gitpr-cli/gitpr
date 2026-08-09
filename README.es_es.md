@@ -150,7 +150,7 @@ Puedes pasar las siguientes *flags* para acciones específicas:
   * **Issue de Código Nuevo (`gitpr -is`):** Lee el `git diff` actual. **Por qué usar:** Ideal para documentar rápidamente la tarea que acabas de programar, antes de hacer commit.
   * **Issue de Épico/Release (`gitpr -is -ht`):** Lee el historial completo de la rama actual (Git Log + Caché de PR). **Por qué usar:** Ideal para generar documentación consolidada de un release completo o de una *feature* grande que llevó varios días/commits completar.
   * **Issue de Deuda Técnica/Arqueológica (`gitpr -is -b archivo:líneas`):** Lee la línea de tiempo de una regla de negocio específica. **Por qué usar:** Ideal para documentar deuda técnica, explicando cómo un bloque de código legacy evolucionó y por qué necesita ser refactorizado.
-* **Publicador de PR (por defecto):** Ejecutar `gitpr` genera la descripción del PR con IA, guarda el archivo `.md` localmente y abre una interfaz interactiva en el terminal (TUI) para revisar, editar y publicar el Pull Request directamente en GitHub vía REST API. Use `--no-publish` para guardar solo el archivo del PR localmente sin abrir el publicador, o `--no-edit` para hacer auto-commit (con validación de lint) y publicar inmediatamente. Use `--base <branch>` para cambiar la rama de destino.
+* **Publicador de PR (predeterminado):** Ejecutar `gitpr` genera la descripción del PR con IA, guarda el archivo `.md` en `.gitpr/reports/pr_desc/` y abre una interfaz interactiva en el terminal (TUI) para revisar, editar y publicar el Pull Request directamente en GitHub vía REST API. Antes de la generación, detecta archivos sin commitear (*unstaged*) y ofrece un modal para gestionarlos. Usa `--no-publish` para guardar solo el archivo del PR localmente sin abrir el publicador, o `--no-edit` para hacer auto-commit de los cambios pendientes (con validación de lint), auto-push y publicar inmediatamente — con manejo de actualizaciones de PR existentes y auto-merge opcional. Usa `--base <branch>` para cambiar la rama de destino. 📖 [Documentación completa](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.es_es.md)
 * `-h` o `--help`: Muestra la ayuda general con todas las opciones. Úsalo junto con otra flag para **ayuda contextual** (ej.: `gitpr -h --issue`, `gitpr -h --linter`) con un enlace directo a la documentación detallada de cada funcionalidad.
 * `-u` o `--update`: Verifica e instala la versión más reciente de GitPR (Auto-Updater).
 
@@ -322,6 +322,21 @@ GitPR elimina automáticamente los archivos que no son código de tu `git diff` 
 - ✅ **Configuración cero** — funciona automáticamente en cada ejecución, gestionado remotamente
 
 > 📖 **Documentación completa:** [docs/smart-excludes.md](https://github.com/natanfiuza/gitpr/blob/main/docs/smart-excludes.md) — disponible en 5 idiomas (EN, PT-BR, PT-PT, FR, ES).
+
+## 📁 Estructura de Directorios de Salida
+
+Por defecto, GitPR guarda todos los archivos generados en el directorio `.gitpr/reports/`, organizados por tipo de artefacto:
+
+| Artefacto | Ubicación Predeterminada |
+| --------- | ------------------------- |
+| Descripción de PR | `.gitpr/reports/pr_desc/` |
+| Code Review | `.gitpr/reports/review/` |
+| Full Review | `.gitpr/reports/full_review/` |
+| File Review | `.gitpr/reports/file_review/` |
+| Informe de Blame | `.gitpr/reports/blame/` |
+| Borrador de Issue | `.gitpr/reports/issue/` |
+
+Los directorios se crean automáticamente en el primer uso. **Retrocompatible:** si tu `.env` ya contiene rutas personalizadas con separadores de directorio (ej.: `OUTPUT_FILE_NAME=/home/usuario/prs/mi_pr.md`), se respetan tal cual — GitPR solo redirige nombres de archivo simples a `.gitpr/reports/`.
 
 ## 📚 Documentación Técnica y Guías Avanzadas
 
