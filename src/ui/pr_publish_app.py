@@ -266,10 +266,12 @@ class CommitConfirmScreen(ModalScreen):
     }
     """
 
-    def __init__(self, title, message, **kwargs):
+    def __init__(self, title, message, btn_yes=None, btn_no=None, **kwargs):
         super().__init__(**kwargs)
         self._title_text = title
         self._message_text = message
+        self._btn_yes = btn_yes or __("Yes, Commit")
+        self._btn_no = btn_no or __("No, Skip")
         self.result = None
 
     def compose(self) -> ComposeResult:
@@ -277,8 +279,8 @@ class CommitConfirmScreen(ModalScreen):
             yield Static(self._title_text, classes="confirm_title")
             yield Static(self._message_text, classes="confirm_message")
             with Horizontal(id="confirm_buttons"):
-                yield Button(__("Yes, Commit"), variant="primary", id="btn_yes")
-                yield Button(__("No, Skip"), variant="default", id="btn_no")
+                yield Button(self._btn_yes, variant="primary", id="btn_yes")
+                yield Button(self._btn_no, variant="default", id="btn_no")
                 yield Button(__("Cancel"), variant="error", id="btn_cancel")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -837,72 +839,136 @@ class PrPublishApp(App):
         # cancel: do nothing
 
     def _start_commit_and_publish(self):
-        """Show progress screen, execute commit, then publish PR."""
+        """Show progress screen, then execute commit + push + publish in background thread."""
         self._log("Starting commit and publish flow")
         self._log(f"Commit message: {self._pending_commit_msg}")
         self._log(f"no_verify: {self._commit_no_verify}")
 
         def do_work():
             log = self._progress_screen
-            # ── Execute commit ──
-            log.add_log(__("📦 Executing commit..."))
-            self._log("Executing git commit...")
+            # Suppress stdout for thread safety
+            old = sys.stdout
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
             try:
-                success, output = execute_git_commit(self._pending_commit_msg, no_verify=self._commit_no_verify)
-                self._log(f"git commit result: success={success}, output={output.strip()}")
-            except Exception as e:
-                self._log(f"git commit exception: {e}")
-                success, output = False, str(e)
+                # ── Execute commit ──
+                self.call_from_thread(log.add_log, __("📦 Executing commit..."))
+                self._log("Executing git commit...")
+                try:
+                    success, output = execute_git_commit(self._pending_commit_msg, no_verify=self._commit_no_verify)
+                    self._log(f"git commit result: success={success}, output={output.strip()}")
+                except Exception as e:
+                    self._log(f"git commit exception: {e}")
+                    success, output = False, str(e)
 
-            if not success:
-                log.mark_finished()
-                self.pop_screen()
-                self._show_error(
-                    title=__("❌ Commit Failed"),
-                    message=output.strip() or __("Unknown error"),
-                    on_retry=self._start_commit_and_publish,
-                )
-                return
-            log.add_log(__("✅ Commit executed successfully!"))
-
-            # ── Push to remote ──
-            log.add_log(__("📤 Pushing to remote..."))
-            self._log("Executing git push...")
-            try:
-                push_result = subprocess.run(
-                    ["git", "push", "origin", self.head_branch],
-                    capture_output=True, text=True, encoding="utf-8", errors="replace",
-                )
-                self._log(f"git push result: rc={push_result.returncode} stdout={push_result.stdout.strip()} stderr={push_result.stderr.strip()}")
-                if push_result.returncode != 0:
-                    log.mark_finished()
-                    self.pop_screen()
-                    self._show_error(
-                        title=__("❌ Push Failed"),
-                        message=push_result.stderr.strip() or push_result.stdout.strip() or __("Unknown error"),
-                        on_retry=self._start_commit_and_publish,
-                    )
+                if not success:
+                    self.call_from_thread(self._on_commit_publish_error, __("❌ Commit Failed"), output.strip() or __("Unknown error"))
                     return
-                log.add_log(__("✅ Push successful!"))
-            except Exception as e:
-                self._log(f"git push exception: {e}")
-                log.mark_finished()
-                self.pop_screen()
-                self._show_error(
-                    title=__("❌ Push Failed"),
-                    message=str(e),
-                    on_retry=self._start_commit_and_publish,
-                )
-                return
+                self.call_from_thread(log.add_log, __("✅ Commit executed successfully!"))
 
-            # ── Publish PR ──
-            log.add_log(__("🚀 Creating pull request on GitHub..."))
-            self._log("Publishing PR to GitHub...")
-            self._publish_pr_from_progress(log)
-            log.mark_finished()
+                # ── Push ──
+                self.call_from_thread(log.add_log, __("📤 Pushing to remote..."))
+                self._log("Executing git push...")
+                try:
+                    push_result = subprocess.run(
+                        ["git", "push", "origin", self.head_branch],
+                        capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    )
+                    self._log(f"git push result: rc={push_result.returncode}")
+                    if push_result.returncode != 0:
+                        err = push_result.stderr.strip() or push_result.stdout.strip() or __("Unknown error")
+                        self.call_from_thread(self._on_commit_publish_error, __("❌ Push Failed"), err)
+                        return
+                    self.call_from_thread(log.add_log, __("✅ Push successful!"))
+                except Exception as e:
+                    self._log(f"git push exception: {e}")
+                    self.call_from_thread(self._on_commit_publish_error, __("❌ Push Failed"), str(e))
+                    return
 
-        self._progress_screen = CommitProgressScreen(work_callback=do_work, initial_status=__("📦 Executing commit..."))
+                # ── Check for existing PR before publishing ──
+                self._log("Checking for existing PR...")
+                try:
+                    from src.github_api import check_existing_pr
+                    exists, pr_url, pr_num = check_existing_pr(self.repo_info, self.github_token, self.head_branch)
+                    self._log(f"Existing PR check: exists={exists}, url={pr_url}")
+                except Exception as e:
+                    self._log(f"Existing PR check exception: {e}")
+                    exists, pr_url, pr_num = False, None, None
+
+                if exists:
+                    self.call_from_thread(self._on_existing_pr_found, pr_url)
+                else:
+                    self.call_from_thread(log.add_log, __("🚀 Creating pull request on GitHub..."))
+                    self.call_from_thread(self._publish_pr_from_progress, log)
+                self.call_from_thread(log.mark_finished)
+            finally:
+                sys.stdout.close()
+                sys.stdout = old
+
+        self._progress_screen = CommitProgressScreen(initial_status=__("📦 Executing commit..."))
         self.push_screen(self._progress_screen)
+
+        import threading
+        threading.Thread(target=do_work, daemon=True).start()
+
+    def _on_commit_publish_error(self, title, message):
+        """Called on main thread when commit/push/publish fails."""
+        self._progress_screen.mark_finished()
+        self.pop_screen()
+        self._show_error(title=title, message=message, on_retry=self._start_commit_and_publish)
+
+    def _on_existing_pr_found(self, pr_url):
+        """Called on main thread when an open PR already exists for this branch."""
+        self._progress_screen.mark_finished()
+        self.pop_screen()
+        self.push_screen(
+            CommitConfirmScreen(
+                title=__("⚠️ Existing Pull Request"),
+                message=__("An open Pull Request already exists for this branch.\n\n"
+                           "The commit was pushed to the existing PR.\n\n"
+                           "Create a new PR anyway?"),
+                btn_yes=__("Yes, Create New PR"),
+                btn_no=__("No, Just Open Existing"),
+            ),
+            callback=lambda r: self._on_existing_pr_result(r, pr_url),
+        )
+
+    def _on_existing_pr_result(self, result, pr_url):
+        if result == "yes":
+            # User wants to create a NEW PR anyway — publish (will likely fail with 422)
+            self._start_commit_and_publish()
+        elif result == "no":
+            # Show browser prompt
+            if pr_url:
+                self.final_pr_url = pr_url
+                self.final_action = "created"
+                self.final_message = __(
+                    "✅ Commit pushed to existing PR:\n👉 {pr_url}", pr_url=pr_url,
+                )
+                self._log(f"Existing PR: {pr_url}")
+                self._prompt_open_browser(pr_url)
+            else:
+                self.final_message = __("⚠️ Open PR exists but URL not found.")
+                self.final_action = "error"
+                self.exit()
+        # cancel: do nothing
+
+    def _prompt_open_browser(self, pr_url):
+        """Ask user if they want to open the PR in browser, then exit."""
+        self.push_screen(
+            CommitConfirmScreen(
+                title=__("🔗 Open in Browser"),
+                message=__("Open the Pull Request in your browser?"),
+                btn_yes=__("Yes, Open Browser"),
+                btn_no=__("No, Close"),
+            ),
+            callback=lambda r: self._on_browser_prompt_result(r, pr_url),
+        )
+
+    def _on_browser_prompt_result(self, result, pr_url):
+        if result == "yes":
+            import webbrowser
+            webbrowser.open(pr_url)
+        self.exit()
 
     def _publish_pr_from_progress(self, log_widget):
         """Create PR via GitHub API from within the progress screen. Updates final_* attrs."""

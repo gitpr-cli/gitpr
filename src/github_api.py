@@ -49,3 +49,27 @@ def create_pull_request(repo_info, github_token, title, body, head, base, timeou
         return False, {"message": __("GitHub API timeout. Check your connection and try again.")}, 0
     except Exception as e:
         return False, {"message": __("Failed to connect to GitHub: {error}", error=str(e))}, 0
+
+
+def check_existing_pr(repo_info, github_token, head_branch, timeout=15):
+    """
+    Check if there's already an open PR from *head_branch* to any base.
+
+    Returns (exists: bool, pr_url: str | None, pr_number: int | None).
+    """
+    api_url = f"https://api.github.com/repos/{repo_info}/pulls"
+    headers = {
+        "Authorization": f"token {github_token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+    params = {"head": f"{repo_info.split('/')[0]}:{head_branch}", "state": "open"}
+    try:
+        response = requests.get(api_url, headers=headers, params=params, timeout=timeout)
+        if response.status_code == 200:
+            prs = response.json()
+            if prs:
+                pr = prs[0]
+                return True, pr.get("html_url"), pr.get("number")
+        return False, None, None
+    except Exception:
+        return False, None, None
