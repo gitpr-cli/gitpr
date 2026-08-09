@@ -602,5 +602,14 @@
   "Yes, Create New PR": "Sim, Criar Novo PR",
   "No, Just Open Existing": "Não, Apenas Abrir Existente",
   "Yes, Open Browser": "Sim, Abrir Navegador",
-  "No, Close": "Não, Fechar"
-}
+  "No, Close": "Não, Fechar",
+  "🔄 Merge Pull Request": "🔄 Fazer Merge do Pull Request",
+  "PR created successfully. Merge it now?": "PR criado com sucesso. Fazer merge agora?",
+  "Yes, Merge Now": "Sim, Fazer Merge",
+  "No, Just Open PR": "Não, Apenas Abrir PR",
+  "✅ PR merged successfully:\n👉 {pr_url}": "✅ PR merged com sucesso:\n👉 {pr_url}",
+  "❌ Merge failed: {error}": "❌ Falha no merge: {error}",
+  "✅ Commit already done. Proceeding...": "✅ Commit já realizado. Prosseguindo...",
+  "Yes, Push and Update PR": "Sim, Enviar e Atualizar PR",
+  "An open Pull Request already exists for this branch.\n\nPush and update the existing PR?": "Já existe um Pull Request aberto para esta branch.\n\nEnviar commit e atualizar o PR existente?",
+  "✅ PR updated:\n👉 {pr_url}": "✅ PR atualizado:\n👉 {pr_url}"

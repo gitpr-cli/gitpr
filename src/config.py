@@ -33,7 +33,8 @@ DEFAULT_CONFIG = {
     "GITPR_AUTO_STAGE": "false",
     "GITPR_SHOW_LOGS": "true",
     "GITPR_SKIP_UNSTAGED_CHECK": "false",
-    "PR_PUBLISH_LOG": "true"
+    "PR_PUBLISH_LOG": "true",
+    "GITPR_AUTO_MERGE": "false"
 }
 
 def get_skill_dir():
