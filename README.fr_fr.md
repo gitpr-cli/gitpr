@@ -150,6 +150,7 @@ Vous pouvez passer les *flags* suivants pour des actions spécifiques :
   * **Issue de Nouveau Code (`gitpr -is`) :** Lit le `git diff` actuel. **Pourquoi utiliser :** Idéal pour documenter rapidement la tâche que vous venez de programmer, avant de commiter.
   * **Issue d'Épique/Release (`gitpr -is -ht`) :** Lit l'historique complet de la branche actuelle (Git Log + Cache PR). **Pourquoi utiliser :** Idéal pour générer une documentation consolidée d'une release entière ou d'une *feature* importante qui a pris plusieurs jours/commits à terminer.
   * **Issue de Dette Technique/Archéologique (`gitpr -is -b fichier:lignes`) :** Lit la chronologie d'une règle métier spécifique. **Pourquoi utiliser :** Idéal pour documenter la dette technique, en expliquant comment un bloc de code legacy a évolué et pourquoi il doit être refactorisé.
+* **Éditeur de Pull Request (par défaut) :** Exécuter `gitpr` génère la description de la PR avec l'IA, enregistre le fichier `.md` localement et ouvre une interface interactive dans le terminal (TUI) pour réviser, éditer et publier la Pull Request directement sur GitHub via l'API REST. Utilisez `--no-publish` pour enregistrer uniquement le fichier de la PR localement sans ouvrir l'éditeur, ou `--no-edit` pour faire un auto-commit (avec validation du lint) et publier immédiatement. Utilisez `--base <branch>` pour changer la branche cible.
 * `-h` ou `--help` : Affiche l'aide générale avec toutes les options. Utilisez-le avec un autre flag pour une **aide contextuelle** (ex. : `gitpr -h --issue`, `gitpr -h --linter`) avec un lien direct vers la documentation détaillée de chaque fonctionnalité.
 * `-u` ou `--update` : Vérifie et installe la version la plus récente de GitPR (Auto-Updater).
 
@@ -344,6 +345,7 @@ Si vous souhaitez implémenter GitPR comme une barrière de qualité automatisé
 ### Fonctionnalités Principales
 
 * [**Pull Request (Mode par Défaut)**](https://github.com/natanfiuza/gitpr/blob/main/docs/pr-descricao-padrao.md) — Flux complet pour générer des descriptions de PR sans flags.
+* [**Éditeur de Pull Request (TUI)**](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.fr_fr.md) — Comment réviser et publier des Pull Requests directement sur GitHub depuis le terminal.
 * [**Code Review avec IA**](https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md) — Guide des modes de review (`--review`, `--fullreview`) et d'audit de fichiers (`--input`).
 * [**Messages de Commit avec IA**](https://github.com/natanfiuza/gitpr/blob/main/docs/commit-message-ia.md) — Comment générer des messages au standard Conventional Commits et les intégrer avec Git Hooks.
 * [**Génération d'Issues et Interface TUI**](https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md) — Comment utiliser l'interface graphique de terminal (TUI) et les 3 moteurs de contexte pour gérer des Issues structurées.

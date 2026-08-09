@@ -44,7 +44,7 @@ def print_banner():
 """
     click.secho(banner, fg="cyan", bold=True)
     click.secho(__("  🚀 Intelligent PR Automation with AI (v{version})", version=__version__), fg="yellow", bold=True)
-    click.secho(__("  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | -h,--help (use -h --flag for contextual help)\n"), fg="white", dim=True)
+    click.secho(__("  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | --no-publish | --no-edit | -h,--help (use -h --flag for contextual help)\n"), fg="white", dim=True)
 
 
 # ============================================================
@@ -131,6 +131,16 @@ HELP_MAP: dict[str, dict[str, str]] = {
         'title': __('Metrics & Analytics (--metrics)'),
         'description': __('Export or purge local telemetry data for team analytics.'),
     },
+    'no-publish': {
+        'url': get_doc_url('pull-request-publication.md'),
+        'title': __('Skip Interactive Publisher (--no-publish)'),
+        'description': __('Generates the PR description and saves it locally without opening the interactive TUI.'),
+    },
+    'no-edit': {
+        'url': get_doc_url('pull-request-publication.md'),
+        'title': __('Direct Publish with Auto-Commit (--no-edit)'),
+        'description': __('Generates the PR, auto-commits pending changes (with lint validation), and publishes directly to GitHub without opening the TUI.'),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -151,6 +161,8 @@ HELP_PRIORITY: dict[str, int] = {
     'provider': 12,
     'lang': 13,
     'metrics': 15,
+    'no-publish': 16,
+    'no-edit': 17,
 }
 
 
@@ -180,13 +192,16 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('--purge', is_flag=True, help=__("Deletes all local metric files (~/.gitpr/metrics/). Requires confirmation."))
 @click.option('--hook-event', type=str, hidden=True, help=__("Internal: logs a git hook event name."))
 @click.option('--dashboard', 'show_dashboard', is_flag=True, help=__("Opens the interactive metrics dashboard (TUI)."))
+@click.option('--base', type=str, help=__("Target base branch for the Pull Request (overrides PR_DEFAULT_BASE)."))
+@click.option('--no-publish', is_flag=True, help=__("Saves the PR file locally without opening the interactive publisher."))
+@click.option('--no-edit', is_flag=True, help=__("Skips the interactive editor and publishes the Pull Request directly (with auto-commit)."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard, base, no_publish, no_edit):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
     DEFAULT BEHAVIOR (No options):
-    Fetches, compares with the remote main branch, and generates a Markdown (.md) file with the full description for the Pull Request.
+    Fetches, compares with the remote main branch, generates a Markdown (.md) file, and opens an interactive TUI to review, edit, and publish the Pull Request directly to GitHub.
     """
 
     # ============================================================
@@ -681,6 +696,45 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
     else:
         # Default: PR Description using Full Diff against the remote main
         action_type = "pr"
+
+        # ── Unstaged files check (before PR generation) ──
+        skip_check = os.getenv("GITPR_SKIP_UNSTAGED_CHECK", "false").lower() in ("true", "1", "yes", "y")
+        auto_stage = os.getenv("GITPR_AUTO_STAGE", "false").lower() in ("true", "1", "yes", "y")
+
+        if not skip_check:
+            from src.core import get_unstaged_files as _get_unstaged, stage_files as _stage
+            unstaged = _get_unstaged()
+            if unstaged:
+                click.secho(__("🔍 Checking unversioned files..."), fg="cyan")
+                if auto_stage:
+                    click.secho(__("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan")
+                    _stage([f for f, _ in unstaged])
+                    click.secho(__("✅ Files added to stage."), fg="green")
+                else:
+                    click.secho(__("📋 Opening file selection..."), fg="cyan")
+                    from src.ui.pr_publish_app import StageFilesApp
+                    app = StageFilesApp(unstaged_files=unstaged)
+                    app.run()
+                    if app.result == "cancel":
+                        click.secho(__("❌ Operation cancelled by user."), fg="red")
+                        return
+                    elif app.result == "stage":
+                        _stage(app.selected_files)
+                        count = len(app.selected_files) if app.selected_files else 0
+                        if count > 0:
+                            click.secho(
+                                __("✅ {count} file(s) added to stage.", count=count),
+                                fg="green",
+                            )
+                        else:
+                            click.secho(__("⏭️ No files selected. Proceeding..."), fg="yellow")
+                    else:
+                        click.secho(__("⏭️ Files ignored. Proceeding..."), fg="yellow")
+            else:
+                if not quiet:
+                    click.secho(__("✅ No unstaged files found. Proceeding..."), fg="green", dim=True)
+
+        click.secho(__("🚀 Starting pull request generation..."), fg="cyan")
         diff_text = get_git_full_diff()
 
     # CRITICAL: Warn the user before exiting if there are no changes
@@ -798,9 +852,203 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         click.secho(__("\n✅ Success! The file '{output_filename}' was generated in the current folder.", output_filename=output_filename), fg="green", bold=True)
     except Exception as e:
         click.secho("\n" + __("❌ Error saving file: {error}", error=str(e)), fg="red")
-    
+
+    # ── PR Publisher logic ──
+    from src.core import get_repo_name, get_base_branch
+
+    repo_info = get_repo_name()
+    if not repo_info or repo_info == "unknown/repo":
+        click.secho(__("❌ Remote repository not identified to create the pull request via API."), fg="red")
+        if not quiet:
+            print_update_notice()
+        return
+
+    head_branch = branch_name
+    target_base = base or os.getenv("PR_DEFAULT_BASE") or get_base_branch()
+
+    pr_data = {
+        "commit_message": data.get('commit_message', ''),
+        "pr_description": data.get('pr_description', __('No detailed description.')),
+    }
+
+    # ── --no-publish: save locally and exit ──
+    if no_publish:
+        if not quiet:
+            print_update_notice()
+        return
+
+    # ── --no-edit: auto-commit + direct publish ──
+    if no_edit:
+        if not _run_auto_commit_cli(active_provider):
+            return
+
+        github_token = _get_github_token_for_publish(repo_info)
+        if not github_token:
+            return
+
+        _publish_pr_directly(pr_data, repo_info, github_token, target_base, output_filename)
+        if not quiet:
+            print_update_notice()
+        return
+
+    # ── Default: Open TUI ──
+    from src.tui_issue import validate_or_request_github_token
+    from src.ui.pr_publish_app import PrPublishApp
+
+    github_token = validate_or_request_github_token(repo_info)
+    if not github_token:
+        click.secho(__("❌ Access canceled. GitHub Token is mandatory for this action."), fg="red")
+        if not quiet:
+            print_update_notice()
+        return
+
+    # Interactive TUI with reauth loop
+    while True:
+        app = PrPublishApp(
+            pr_data=pr_data,
+            repo_info=repo_info,
+            github_token=github_token,
+            base_branch=target_base,
+            output_filename=output_filename,
+        )
+        app.run()
+
+        if app.final_action == "reauth":
+            click.secho(f"\n{app.final_message}\n", fg="yellow")
+            github_token = validate_or_request_github_token(repo_info)
+            if not github_token:
+                click.secho(__("❌ Access canceled. GitHub Token is mandatory for this action."), fg="red")
+                break
+            continue
+
+        if app.final_message:
+            cor = "green" if app.final_action in ["saved", "created"] else "red"
+            click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
+
+        if app.final_action == "created" and app.final_pr_url:
+            if click.confirm(__("🔗 Open the Pull Request in your browser?")):
+                import webbrowser
+                webbrowser.open(app.final_pr_url)
+        click.secho(f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}", fg="cyan")
+        break
+
     if not quiet:
-        print_update_notice()    
-        
+        print_update_notice()
+
+
+def _run_auto_commit_cli(provider):
+    """Auto-commit flow for --no-edit mode. Returns True if commit succeeded or no changes."""
+    from src.core import has_uncommitted_changes, execute_git_commit, get_git_diff
+    from src.linter_engine import parse_diff_and_lint
+
+    if not has_uncommitted_changes():
+        return True  # nothing to commit, proceed
+
+    skip_lint = os.getenv("GITPR_SKIP_LINT", "false").lower() in ("true", "1", "yes", "y")
+    auto_commit = os.getenv("GITPR_AUTO_COMMIT", "false").lower() in ("true", "1", "yes", "y")
+
+    # ── Linter ──
+    no_verify = False
+    if not skip_lint:
+        click.secho("🔍 " + __("Running linter..."), fg="cyan")
+        diff_text = get_git_diff()
+        linter_results = parse_diff_and_lint(diff_text)
+        has_errors = len(linter_results["errors"]) > 0
+        has_warnings = len(linter_results["warnings"]) > 0
+
+        if has_warnings:
+            click.secho(__("\n⚠️ Linter generated {count} warning(s):", count=len(linter_results['warnings'])), fg="yellow")
+            for w in linter_results["warnings"]:
+                click.echo(f"  - {w}")
+
+        if has_errors:
+            click.secho(__("\n🚨 Linter found {count} error(s):", count=len(linter_results['errors'])), fg="red")
+            for e in linter_results["errors"]:
+                click.echo(f"  - {e}")
+            if click.confirm(__("\n⚠ Commit with --no-verify anyway?"), default=False):
+                no_verify = True
+            else:
+                click.secho(__("❌ Commit aborted by user."), fg="red")
+                return False
+        else:
+            if has_warnings:
+                click.secho(__("✅ Linter passed with warnings."), fg="green")
+            else:
+                click.secho(__("✅ Linter passed — no violations."), fg="green")
+
+    # ── Generate commit message via AI ──
+    click.secho("📝 " + __("Generating commit message..."), fg="cyan")
+    from src.core import generate_pr_content
+    diff_text = get_git_diff()
+    commit_data = generate_pr_content("commit", "commit", diff_text, provider)
+    commit_msg = commit_data.get("commit_message", __("Code update")) if commit_data else __("Code update")
+
+    click.secho(__("\n📝 Commit Message:\n"), fg="green", bold=True)
+    click.echo(commit_msg)
+    click.echo("")
+
+    if not auto_commit:
+        if not click.confirm(__("Proceed with this commit message?"), default=True):
+            click.secho(__("❌ Commit cancelled by user."), fg="red")
+            return False
+
+    # ── Execute commit ──
+    click.secho("📦 " + __("Executing commit..."), fg="cyan")
+    success, output = execute_git_commit(commit_msg, no_verify=no_verify)
+    if success:
+        click.secho(__("✅ Commit executed successfully!"), fg="green")
+        return True
+    else:
+        click.secho(__("❌ Commit failed: {output}", output=output), fg="red")
+        return False
+
+
+def _get_github_token_for_publish(repo_info):
+    """Get or request a GitHub token for PR publication. Returns token or None."""
+    from src.tui_issue import validate_or_request_github_token
+    token = validate_or_request_github_token(repo_info)
+    if not token:
+        click.secho(__("❌ Access canceled. GitHub Token is mandatory for this action."), fg="red")
+    return token
+
+
+def _publish_pr_directly(pr_data, repo_info, github_token, target_base, output_filename):
+    """Publish PR directly to GitHub without TUI (for --no-edit mode)."""
+    from src.github_api import create_pull_request
+    from src.core import get_current_branch
+
+    commit_msg = pr_data.get("commit_message", "")
+    pr_body = pr_data.get("pr_description", "")
+
+    full_body = (
+        __("**Recommended Commit Message:**\n")
+        + "```text\n"
+        + f"{commit_msg}\n"
+        + "```\n\n---\n\n"
+        + pr_body
+    )
+
+    head_branch = get_current_branch()
+    click.secho("🚀 " + __("Publishing Pull Request to GitHub..."), fg="cyan")
+
+    ok, data, status = create_pull_request(
+        repo_info, github_token, commit_msg, full_body, head_branch, target_base
+    )
+
+    if ok:
+        pr_url = data.get("url")
+        click.secho(__("✅ PR successfully created on GitHub:\n👉 {pr_url}", pr_url=pr_url), fg="green", bold=True)
+        from src.metrics import log_command_metric
+        log_command_metric(command="pr:publish", status="success", provider="github")
+        if click.confirm(__("🔗 Open the Pull Request in your browser?")):
+            import webbrowser
+            webbrowser.open(pr_url)
+        click.secho(f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}", fg="cyan")
+    elif status == 401:
+        click.secho(__("🔐 GitHub token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively."), fg="red")
+    else:
+        click.secho(__("❌ GitHub API Error ({code}): {msg}", code=status, msg=data.get("message", "")), fg="red")
+
+
 if __name__ == "__main__":
     cli()

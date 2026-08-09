@@ -151,6 +151,7 @@ You can pass the following *flags* for specific actions:
   * **New Code Issue (`gitpr -is`):** Reads the current `git diff`. **Why use:** Ideal for quickly documenting the task you just finished programming, before committing.
   * **Epic/Release Issue (`gitpr -is -ht`):** Reads the full history of the current branch (Git Log + PR Cache). **Why use:** Ideal for generating consolidated documentation of an entire release or a large *feature* that took several days/commits to complete.
   * **Archaeological/Technical Debt Issue (`gitpr -is -b file:lines`):** Reads the timeline of a specific business rule. **Why use:** Ideal for documenting technical debt, explaining how a legacy code block evolved and why it needs to be refactored.
+	* **PR Publisher (default):** Running `gitpr` generates the PR description with AI, saves the `.md` file locally, and opens an interactive terminal interface (TUI) to review, edit, and publish the Pull Request directly to GitHub via REST API. Use `--no-publish` to save only the PR file locally without opening the publisher, or `--no-edit` to auto-commit pending changes (with lint validation) and publish immediately. Use `--base <branch>` to change the target branch.
 * `-h` or `--help`: Shows the general help with all options. Use together with another flag for **contextual help** (e.g.: `gitpr -h --issue`, `gitpr -h --linter`) with a direct link to the detailed documentation of each feature.
 * `-u` or `--update`: Checks and installs the latest version of GitPR (Auto-Updater).
 
@@ -344,6 +345,7 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 ### Core Features
 
 * [**Pull Request (Default Mode)**](https://github.com/natanfiuza/gitpr/blob/main/docs/pr-descricao-padrao.md) — Complete flow for generating PR descriptions without flags.
+* [**Pull Request Publisher TUI**](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.md) — How to review and publish Pull Requests directly to GitHub from the terminal.
 * [**AI Code Review**](https://github.com/natanfiuza/gitpr/blob/main/docs/code-review-ia.md) — Guide to review modes (`--review`, `--fullreview`) and file auditing (`--input`).
 * [**AI Commit Messages**](https://github.com/natanfiuza/gitpr/blob/main/docs/commit-message-ia.md) — How to generate messages in the Conventional Commits standard and integrate with Git Hooks.
 * [**Issue Generation and TUI Interface**](https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md) — How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
