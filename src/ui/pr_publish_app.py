@@ -864,6 +864,36 @@ class PrPublishApp(App):
                 return
             log.add_log(__("✅ Commit executed successfully!"))
 
+            # ── Push to remote ──
+            log.add_log(__("📤 Pushing to remote..."))
+            self._log("Executing git push...")
+            try:
+                push_result = subprocess.run(
+                    ["git", "push", "origin", self.head_branch],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                )
+                self._log(f"git push result: rc={push_result.returncode} stdout={push_result.stdout.strip()} stderr={push_result.stderr.strip()}")
+                if push_result.returncode != 0:
+                    log.mark_finished()
+                    self.pop_screen()
+                    self._show_error(
+                        title=__("❌ Push Failed"),
+                        message=push_result.stderr.strip() or push_result.stdout.strip() or __("Unknown error"),
+                        on_retry=self._start_commit_and_publish,
+                    )
+                    return
+                log.add_log(__("✅ Push successful!"))
+            except Exception as e:
+                self._log(f"git push exception: {e}")
+                log.mark_finished()
+                self.pop_screen()
+                self._show_error(
+                    title=__("❌ Push Failed"),
+                    message=str(e),
+                    on_retry=self._start_commit_and_publish,
+                )
+                return
+
             # ── Publish PR ──
             log.add_log(__("🚀 Creating pull request on GitHub..."))
             self._log("Publishing PR to GitHub...")

@@ -586,5 +586,8 @@
   "⏭️ No files selected. Proceeding...": "⏭️ Nenhum arquivo selecionado. Prosseguindo...",
   "✅ {count} file(s) staged": "✅ {count} arquivo(s) adicionados ao stage",
   "❌ Failed to stage files": "❌ Falha ao adicionar arquivos ao stage",
-  "No files selected for staging.": "Nenhum arquivo selecionado para stage."
+  "No files selected for staging.": "Nenhum arquivo selecionado para stage.",
+  "📤 Pushing to remote...": "📤 Enviando para o repositório remoto...",
+  "❌ Push Failed": "❌ Falha no Push",
+  "✅ Push successful!": "✅ Push realizado com sucesso!"
 }
