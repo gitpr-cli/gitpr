@@ -865,6 +865,21 @@ class PrPublishApp(App):
                     return
                 self.call_from_thread(log.add_log, __("✅ Commit executed successfully!"))
 
+                # ── Check for existing PR BEFORE pushing ──
+                self._log("Checking for existing PR before push...")
+                try:
+                    from src.github_api import check_existing_pr
+                    exists, pr_url, pr_num = check_existing_pr(self.repo_info, self.github_token, self.head_branch)
+                    self._log(f"Existing PR check: exists={exists}, url={pr_url}")
+                except Exception as e:
+                    self._log(f"Existing PR check exception: {e}")
+                    exists, pr_url, pr_num = False, None, None
+
+                if exists:
+                    self.call_from_thread(self._on_existing_pr_found_before_push, pr_url)
+                    self.call_from_thread(log.mark_finished)
+                    return
+
                 # ── Push ──
                 self.call_from_thread(log.add_log, __("📤 Pushing to remote..."))
                 self._log("Executing git push...")
@@ -884,21 +899,9 @@ class PrPublishApp(App):
                     self.call_from_thread(self._on_commit_publish_error, __("❌ Push Failed"), str(e))
                     return
 
-                # ── Check for existing PR before publishing ──
-                self._log("Checking for existing PR...")
-                try:
-                    from src.github_api import check_existing_pr
-                    exists, pr_url, pr_num = check_existing_pr(self.repo_info, self.github_token, self.head_branch)
-                    self._log(f"Existing PR check: exists={exists}, url={pr_url}")
-                except Exception as e:
-                    self._log(f"Existing PR check exception: {e}")
-                    exists, pr_url, pr_num = False, None, None
-
-                if exists:
-                    self.call_from_thread(self._on_existing_pr_found, pr_url)
-                else:
-                    self.call_from_thread(log.add_log, __("🚀 Creating pull request on GitHub..."))
-                    self.call_from_thread(self._publish_pr_from_progress, log)
+                # ── Create PR ──
+                self.call_from_thread(log.add_log, __("🚀 Creating pull request on GitHub..."))
+                self.call_from_thread(self._publish_pr_from_progress, log)
                 self.call_from_thread(log.mark_finished)
             finally:
                 sys.stdout.close()
@@ -916,41 +919,71 @@ class PrPublishApp(App):
         self.pop_screen()
         self._show_error(title=title, message=message, on_retry=self._start_commit_and_publish)
 
-    def _on_existing_pr_found(self, pr_url):
-        """Called on main thread when an open PR already exists for this branch."""
+    def _on_existing_pr_found_before_push(self, pr_url):
+        """Called BEFORE push when an open PR already exists for this branch."""
         self._progress_screen.mark_finished()
         self.pop_screen()
         self.push_screen(
             CommitConfirmScreen(
                 title=__("⚠️ Existing Pull Request"),
                 message=__("An open Pull Request already exists for this branch.\n\n"
-                           "The commit was pushed to the existing PR.\n\n"
-                           "Create a new PR anyway?"),
-                btn_yes=__("Yes, Create New PR"),
+                           "Push commit to the existing PR?"),
+                btn_yes=__("Yes, Push to Existing PR"),
                 btn_no=__("No, Just Open Existing"),
             ),
-            callback=lambda r: self._on_existing_pr_result(r, pr_url),
+            callback=lambda r: self._on_existing_pr_before_push_result(r, pr_url),
         )
 
-    def _on_existing_pr_result(self, result, pr_url):
+    def _on_existing_pr_before_push_result(self, result, pr_url):
         if result == "yes":
-            # User wants to create a NEW PR anyway — publish (will likely fail with 422)
-            self._start_commit_and_publish()
+            # Push to existing PR, then exit
+            self._push_and_exit(pr_url)
         elif result == "no":
-            # Show browser prompt
             if pr_url:
                 self.final_pr_url = pr_url
                 self.final_action = "created"
-                self.final_message = __(
-                    "✅ Commit pushed to existing PR:\n👉 {pr_url}", pr_url=pr_url,
-                )
-                self._log(f"Existing PR: {pr_url}")
+                self.final_message = __("⚠️ Open PR already exists. Commit kept locally.")
                 self._prompt_open_browser(pr_url)
             else:
                 self.final_message = __("⚠️ Open PR exists but URL not found.")
                 self.final_action = "error"
                 self.exit()
-        # cancel: do nothing
+        # cancel: keep commit local, do nothing
+
+    def _push_and_exit(self, pr_url):
+        """Push to remote in background, then show result."""
+        def _do_push():
+            old = sys.stdout
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    ["git", "push", "origin", self.head_branch],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                )
+                ok = result.returncode == 0
+                self._log(f"Push to existing PR: ok={ok}, rc={result.returncode}")
+                if ok:
+                    self.final_pr_url = pr_url
+                    self.final_action = "created"
+                    self.final_message = __(
+                        "✅ Commit pushed to existing PR:\n👉 {pr_url}", pr_url=pr_url,
+                    )
+                else:
+                    self.final_action = "error"
+                    self.final_message = __(
+                        "❌ Push failed: {error}", error=result.stderr.strip() or result.stdout.strip(),
+                    )
+            except Exception as e:
+                self._log(f"Push exception: {e}")
+                self.final_action = "error"
+                self.final_message = __("❌ Push failed: {error}", error=str(e))
+            finally:
+                sys.stdout.close()
+                sys.stdout = old
+            self.call_from_thread(self._prompt_open_browser, pr_url)
+
+        import threading
+        threading.Thread(target=_do_push, daemon=True).start()
 
     def _prompt_open_browser(self, pr_url):
         """Ask user if they want to open the PR in browser, then exit."""
