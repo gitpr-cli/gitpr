@@ -389,7 +389,7 @@ class CommitProgressScreen(ModalScreen):
     CSS = """
     CommitProgressScreen { align: center middle; }
     #progress_dialog {
-        width: 60%; height: 30%; padding: 1 3;
+        width: 60%; height: 35%; padding: 1 3;
         background: $surface; border: thick $background 80%;
     }
     .progress_title {
@@ -398,7 +398,7 @@ class CommitProgressScreen(ModalScreen):
     }
     #progress_anim_line {
         text-align: center; width: 100%; min-height: 1;
-        color: $accent;
+        color: $accent; background: $background-darken-2;
     }
     #progress_status {
         text-align: center; color: $text-muted; margin-top: 1;
@@ -415,11 +415,12 @@ class CommitProgressScreen(ModalScreen):
 
     BAR_WIDTH = 30
 
-    def __init__(self, work_callback=None, **kwargs):
+    def __init__(self, work_callback=None, initial_status="", **kwargs):
         super().__init__(**kwargs)
         self._finished = False
         self.result = None
         self._work_callback = work_callback
+        self._initial_status = initial_status
         self._anim_pos = 0
         self._anim_dir = 1
         self._anim_timer = None
@@ -428,7 +429,7 @@ class CommitProgressScreen(ModalScreen):
         with Vertical(id="progress_dialog"):
             yield Static(__("📦 Processing commit..."), classes="progress_title")
             yield Static(_build_bar(0, 1), id="progress_anim_line")
-            yield Static("", id="progress_status")
+            yield Static(self._initial_status, id="progress_status")
             with Horizontal(id="progress_buttons"):
                 yield Button(__("Close"), variant="primary", id="btn_close")
 
@@ -730,7 +731,7 @@ class PrPublishApp(App):
         def do_work():
             self._run_linter_and_commit()
 
-        self._progress_screen = CommitProgressScreen(work_callback=do_work)
+        self._progress_screen = CommitProgressScreen(work_callback=do_work, initial_status=__("🔍 Running linter..."))
         self.push_screen(self._progress_screen)
 
     def _run_linter_and_commit(self):
@@ -900,7 +901,7 @@ class PrPublishApp(App):
             self._publish_pr_from_progress(log)
             log.mark_finished()
 
-        self._progress_screen = CommitProgressScreen(work_callback=do_work)
+        self._progress_screen = CommitProgressScreen(work_callback=do_work, initial_status=__("📦 Executing commit..."))
         self.push_screen(self._progress_screen)
 
     def _publish_pr_from_progress(self, log_widget):
@@ -933,6 +934,7 @@ class PrPublishApp(App):
             return
 
         self._log(f"PR title: {pr_title}")
+        self._log(f"PR body length: {len(pr_body)} chars, preview: {pr_body[:200]}")
         self._log(f"PR base: {self.base_branch}, head: {self.head_branch}, repo: {self.repo_info}")
 
         try:
