@@ -146,6 +146,16 @@ HELP_MAP: dict[str, dict[str, str]] = {
         'title': __('Plugin System (--plugins)'),
         'description': __('Lists all globally installed custom linter packs and MCP prompts loaded from ~/.gitpr/plugins/.'),
     },
+    'status': {
+        'url': get_doc_url('git-status.md'),
+        'title': __('Uncommitted File Status (--status)'),
+        'description': __('Lists uncommitted file changes categorized as new (untracked), modified (unstaged edits) and deleted — fast, no AI, no network.'),
+    },
+    'no-unstaged-check': {
+        'url': get_doc_url('git-status.md'),
+        'title': __('Skip Unstaged Check (--no-unstaged-check)'),
+        'description': __('Skips the unstaged-files verification that runs before PR, commit, review, full review and issue generation. Equivalent to GITPR_SKIP_UNSTAGED_CHECK=true for one run.'),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -169,6 +179,8 @@ HELP_PRIORITY: dict[str, int] = {
     'no-publish': 16,
     'no-edit': 17,
     'plugins': 18,
+    'status': 19,
+    'no-unstaged-check': 20,
 }
 
 
@@ -202,8 +214,10 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('--no-publish', is_flag=True, help=__("Saves the PR file locally without opening the interactive publisher."))
 @click.option('--no-edit', is_flag=True, help=__("Skips the interactive editor and publishes the Pull Request directly (with auto-commit)."))
 @click.option('--plugins', is_flag=True, help=__("Lists all active global plugins (linters and prompts)."))
+@click.option('--status', is_flag=True, help=__("Lists uncommitted file changes (new/modified/deleted) without AI processing."))
+@click.option('--no-unstaged-check', is_flag=True, help=__("Skips the unstaged files verification before AI processing."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard, base, no_publish, no_edit, plugins):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard, base, no_publish, no_edit, plugins, status, no_unstaged_check):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -352,6 +366,16 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             click.echo(__("  No global prompt plugins installed."))
 
         click.secho(f"\n💡 {__('Plugin directory:')} ~/.gitpr/plugins/", dim=True)
+        return
+
+    if status:
+        from src.core import get_unstaged_categorized
+        data = get_unstaged_categorized()
+        if not any(data.values()):
+            click.secho(__("✅ Working tree clean. No uncommitted changes found."), fg="green")
+            return
+        click.secho(__("📂 Uncommitted changes (no AI):"), fg="cyan", bold=True)
+        _print_unstaged_summary(data, quiet=quiet)
         return
 
     # Silencia o banner se estiver no modo quiet ou via hook
@@ -513,6 +537,10 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         from src.tui_issue import validate_or_request_github_token, IssueApp
 
         setup_environment()
+
+        # ── Unstaged files check (all 3 modes: diff, history, blame) ──
+        if not check_unstaged_files("issue", skip_check=no_unstaged_check, quiet=quiet, interactive=False):
+            return
 
         context_text = ""
         context_type = "diff"
@@ -717,54 +745,24 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             return
     elif commit:
         action_type = "commit"
+        if not hook and not check_unstaged_files("commit", skip_check=no_unstaged_check, quiet=quiet, interactive=False):
+            return
         diff_text = get_git_diff()
     elif review:
         action_type = "review"
+        if not hook and not check_unstaged_files("review", skip_check=no_unstaged_check, quiet=quiet, interactive=False):
+            return
         diff_text = get_git_diff()
     elif fullreview:
         action_type = "fullreview"
+        if not hook and not check_unstaged_files("fullreview", skip_check=no_unstaged_check, quiet=quiet, interactive=False):
+            return
         diff_text = get_git_full_diff()
     else:
         # Default: PR Description using Full Diff against the remote main
         action_type = "pr"
-
-        # ── Unstaged files check (before PR generation) ──
-        skip_check = os.getenv("GITPR_SKIP_UNSTAGED_CHECK", "false").lower() in ("true", "1", "yes", "y")
-        auto_stage = os.getenv("GITPR_AUTO_STAGE", "false").lower() in ("true", "1", "yes", "y")
-
-        if not skip_check:
-            from src.core import get_unstaged_files as _get_unstaged, stage_files as _stage
-            unstaged = _get_unstaged()
-            if unstaged:
-                click.secho(__("🔍 Checking unversioned files..."), fg="cyan")
-                if auto_stage:
-                    click.secho(__("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan")
-                    _stage([f for f, _ in unstaged])
-                    click.secho(__("✅ Files added to stage."), fg="green")
-                else:
-                    click.secho(__("📋 Opening file selection..."), fg="cyan")
-                    from src.ui.pr_publish_app import StageFilesApp
-                    app = StageFilesApp(unstaged_files=unstaged)
-                    app.run()
-                    if app.result == "cancel":
-                        click.secho(__("❌ Operation cancelled by user."), fg="red")
-                        return
-                    elif app.result == "stage":
-                        _stage(app.selected_files)
-                        count = len(app.selected_files) if app.selected_files else 0
-                        if count > 0:
-                            click.secho(
-                                __("✅ {count} file(s) added to stage.", count=count),
-                                fg="green",
-                            )
-                        else:
-                            click.secho(__("⏭️ No files selected. Proceeding..."), fg="yellow")
-                    else:
-                        click.secho(__("⏭️ Files ignored. Proceeding..."), fg="yellow")
-            else:
-                if not quiet:
-                    click.secho(__("✅ No unstaged files found. Proceeding..."), fg="green", dim=True)
-
+        if not check_unstaged_files("pr", skip_check=no_unstaged_check, quiet=quiet, interactive=True):
+            return
         click.secho(__("🚀 Starting pull request generation..."), fg="cyan")
         diff_text = get_git_full_diff()
 
@@ -965,6 +963,95 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
 
     if not quiet:
         print_update_notice()
+
+
+def _env_flag(name, default="false"):
+    """Reads a boolean environment variable (true/1/yes/y)."""
+    return os.getenv(name, default).lower() in ("true", "1", "yes", "y")
+
+
+def _print_unstaged_summary(categorized, quiet=False):
+    """Prints the 3-category unstaged summary to the console. No AI, no network."""
+    if not any(categorized.values()):
+        return
+    for label, emoji, fg in (
+        ("new", __("➕ New files"), "green"),
+        ("modified", __("✏️ Modified files"), "yellow"),
+        ("deleted", __("🗑️ Deleted files"), "red"),
+    ):
+        items = categorized.get(label, [])
+        if items:
+            click.secho(f"  {emoji} ({len(items)}):", fg=fg, bold=True)
+            for f in items:
+                click.echo(f"    - {f}")
+
+
+def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive=True):
+    """Unstaged-files verification run before AI commands.
+
+    Returns True to proceed, False to abort (only a TUI cancel aborts).
+
+    - skip_check=True or GITPR_SKIP_UNSTAGED_CHECK=true → no-op, return True.
+    - 'pr'/'issue' → interactive TUI/auto-stage flow.
+    - 'commit' → warn that the commit will NOT include unstaged files;
+      auto-stages when GITPR_AUTO_STAGE=true.
+    - 'review'/'fullreview' → informational warn only, never stages.
+    """
+    if skip_check or _env_flag("GITPR_SKIP_UNSTAGED_CHECK"):
+        return True
+
+    from src.core import get_unstaged_files, stage_files, get_unstaged_categorized
+    unstaged = get_unstaged_files()
+    if not unstaged:
+        if not quiet:
+            click.secho(__("✅ No unstaged files found. Proceeding..."), fg="green", dim=True)
+        return True
+
+    if action_type in ("pr", "issue"):
+        # ── Interactive flow (TUI or auto-stage) ──
+        click.secho(__("🔍 Checking unversioned files..."), fg="cyan")
+        if _env_flag("GITPR_AUTO_STAGE"):
+            click.secho(__("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan")
+            stage_files([f for f, _ in unstaged])
+            click.secho(__("✅ Files added to stage."), fg="green")
+            return True
+        click.secho(__("📋 Opening file selection..."), fg="cyan")
+        from src.ui.pr_publish_app import StageFilesApp
+        app = StageFilesApp(unstaged_files=unstaged)
+        app.run()
+        if app.result == "cancel":
+            click.secho(__("❌ Operation cancelled by user."), fg="red")
+            return False
+        if app.result == "stage":
+            stage_files(app.selected_files)
+            count = len(app.selected_files) if app.selected_files else 0
+            click.secho(
+                __("✅ {count} file(s) added to stage.", count=count) if count
+                else __("⏭️ No files selected. Proceeding..."), fg="green" if count else "yellow")
+        else:
+            click.secho(__("⏭️ Files ignored. Proceeding..."), fg="yellow")
+        return True
+
+    # ── Non-interactive informational path for commit/review/fullreview ──
+    categorized = get_unstaged_categorized()
+    if action_type == "commit":
+        click.secho(
+            __("⚠️ {count} file(s) are not staged and will NOT be included in the commit.",
+               count=len(unstaged)), fg="yellow", bold=True)
+        if _env_flag("GITPR_AUTO_STAGE"):
+            click.secho(__("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan")
+            stage_files([f for f, _ in unstaged])
+            click.secho(__("✅ Files added to stage."), fg="green")
+            return True
+    else:
+        click.secho(
+            __("ℹ️ {count} file(s) are not staged. They will still be included in this analysis.",
+               count=len(unstaged)), fg="yellow")
+    _print_unstaged_summary(categorized, quiet=quiet)
+    click.secho(
+        __("💡 Tip: Use 'git add <file>' to stage them, or pass --no-unstaged-check to skip this verification."),
+        fg="cyan", dim=True)
+    return True
 
 
 def _run_auto_commit_cli(provider):

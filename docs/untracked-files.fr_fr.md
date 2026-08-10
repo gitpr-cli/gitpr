@@ -28,4 +28,24 @@ git add .
 
 Après avoir exécuté `git add`, il vous suffit de relancer la commande **GitPR**. L'IA verra désormais vos nouveautés et générera l'analyse parfaitement ! 🚀
 
+## 🔎 Vérification Rapide : Quels fichiers ne sont pas en stage ?
 
+Vous pouvez vérifier rapidement quels fichiers ne sont pas en stage en utilisant la flag `--status` — **sans IA, sans réseau, instantané** :
+
+```bash
+gitpr --status
+```
+
+Cela affiche toutes les modifications non commitées en 3 catégories : nouveaux (non suivis), modifiés et supprimés. Consultez la [documentation Git Status](git-status.fr_fr.md) pour plus de détails.
+
+## 🛑 Ignorer la vérification unstaged
+
+Si vous souhaitez ignorer la vérification des fichiers unstaged qui s'exécute avant les commandes IA, utilisez :
+
+```bash
+gitpr -c --no-unstaged-check
+```
+
+Ou définissez `GITPR_SKIP_UNSTAGED_CHECK=true` dans votre fichier `~/.gitpr/.env` pour l'ignorer définitivement.
+
+> 📖 **Documentation complète :** [docs/git-status.fr_fr.md](git-status.fr_fr.md) — couvre `--status`, `--no-unstaged-check`, les outils MCP et la vérification unstaged qui s'exécute désormais sur toutes les commandes (`-c`, `-r`, `-f`, `-is`).

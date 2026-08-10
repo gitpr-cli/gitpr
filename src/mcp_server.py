@@ -265,7 +265,8 @@ def get_git_context() -> str:
 # =============================================================================
 
 @mcp.tool(
-    description=__("Get the current unstaged git diff (git diff HEAD). ")
+    description=__("Get the current uncommitted git diff (git diff HEAD — "
+                    "includes both staged and unstaged changes). ")
                 + __("Lists all changed files and their line-level modifications."),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
@@ -278,6 +279,52 @@ def analyze_diff() -> str:
         return json.dumps({
             "status": "no_changes",
             "message": __("No uncommitted changes detected."),
+        }, ensure_ascii=False)
+    return json.dumps({
+        "status": "changes_found",
+        "diff": diff,
+    }, ensure_ascii=False)
+
+
+@mcp.tool(
+    description=__("List uncommitted file changes categorized as new (untracked), "
+                    "modified (unstaged modifications) or deleted. Returns structured JSON."),
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
+)
+def list_unstaged_files() -> str:
+    """Return JSON with new/modified/deleted lists of unstaged files."""
+    from src.core import get_unstaged_categorized
+
+    data = _safe_call(get_unstaged_categorized) or {}
+    new_files = data.get("new", [])
+    modified_files = data.get("modified", [])
+    deleted_files = data.get("deleted", [])
+    total = len(new_files) + len(modified_files) + len(deleted_files)
+    return json.dumps({
+        "status": "changes_found" if total else "no_changes",
+        "new": new_files,
+        "modified": modified_files,
+        "deleted": deleted_files,
+        "total": total,
+        "message": "" if total else __("No unstaged files found."),
+    }, ensure_ascii=False)
+
+
+@mcp.tool(
+    description=__("Get only the unstaged git diff (git diff without HEAD — "
+                    "compares the index against the working tree). Excludes staged "
+                    "changes. Untracked files are not shown; use list_unstaged_files for them."),
+    annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
+)
+def analyze_unstaged_diff() -> str:
+    """Return the raw git diff for unstaged changes only (index vs working tree)."""
+    from src.core import get_unstaged_diff
+
+    diff = _safe_call(get_unstaged_diff, quiet=True)
+    if not diff or not diff.strip():
+        return json.dumps({
+            "status": "no_changes",
+            "message": __("No unstaged changes detected."),
         }, ensure_ascii=False)
     return json.dumps({
         "status": "changes_found",
