@@ -186,6 +186,7 @@ HELP_PRIORITY: dict[str, int] = {
 
 # Native Click configuration to accept -h in addition to --help
 @click.command()
+@click.version_option(version=__version__, prog_name="gitpr", message="%(prog)s v%(version)s")
 @click.option('-c', '--commit', is_flag=True, help=__("Generates only the commit message and displays it in the console."))
 @click.option('-r', '--review', is_flag=True, help=__("Performs a code review of local changes (git diff)."))
 @click.option('-f', '--fullreview', is_flag=True, help=__("Performs a code review of all changes since the remote main branch (origin/main)."))
@@ -240,6 +241,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         if not active_flags:
             # gitpr -h puro (sem outras flags): mostra help padrao do Click
             ctx = click.get_current_context()
+            click.secho(f"gitpr v{__version__}", fg="cyan", bold=True)
             click.echo(ctx.get_help())
             ctx.exit()
 
