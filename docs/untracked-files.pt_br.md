@@ -8,7 +8,7 @@ Quando você cria um arquivo novo no seu projeto, o Git não o rastreia automati
 
 ## 🛡️ Por que o GitPR não lê esses arquivos automaticamente?
 
-Nós desenhamos o GitPR com três pilares em mente:
+O GitPR foi desenhado com três pilares em mente:
 1. **Segurança (Prevenção de Vazamentos):** Imagine que você crie um arquivo `.env.local` com senhas do banco de dados de produção e esqueça de colocá-lo no `.gitignore`. Se o GitPR lesse tudo automaticamente, ele enviaria suas senhas para a API da IA.
 2. **Economia de Tokens (Dinheiro):** Alguns frameworks geram pastas gigantes de cache ou arquivos compilados. Enviar lixo para a IA consumiria seus tokens atoa e deixaria a resposta extremamente lenta.
 3. **Padrão Git:** O GitPR respeita o ciclo de vida oficial do Git. A IA só analisa o que você, como desenvolvedor, decide que tem valor.

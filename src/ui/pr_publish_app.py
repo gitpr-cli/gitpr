@@ -146,12 +146,12 @@ class StageFilesScreen(ModalScreen):
     StageFilesScreen { align: center middle; }
     #stage_root {
         width: 75%; height: auto; max-height: 85%;
-        padding: 1 2; overflow-y: auto;
+        padding: 1 2;
         background: $surface; border: thick $background 80%;
     }
     .stage_title { text-align: center; text-style: bold; margin-bottom: 1; }
     .stage_info { text-align: center; color: $text-muted; margin-bottom: 1; }
-    #file_list { height: auto; max-height: 16; overflow-y: auto; margin-bottom: 1; }
+    #file_list { height: 6; overflow-y: auto; margin-bottom: 1; }
     #stage_top_buttons { align-horizontal: center; margin-bottom: 1; }
     #stage_bottom_buttons { align-horizontal: center; margin-top: 1; }
     Button { margin: 0 1; min-width: 20; }
@@ -300,7 +300,7 @@ class FileStageScreen(ModalScreen):
     FileStageScreen { align: center middle; }
     #stage_dialog {
         width: 75%; height: auto; max-height: 85%;
-        padding: 1 2; overflow-y: auto;
+        padding: 1 2;
         background: $surface; border: thick $background 80%;
     }
     .stage_title {
@@ -310,7 +310,7 @@ class FileStageScreen(ModalScreen):
         text-align: center; color: $text-muted; margin-bottom: 1;
     }
     #file_list {
-        height: auto; max-height: 16; overflow-y: auto; margin-bottom: 1;
+        height: 6; overflow-y: auto; margin-bottom: 1;
     }
     #stage_top_buttons {
         align-horizontal: center; margin-bottom: 1;

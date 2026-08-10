@@ -1,0 +1,4 @@
+{
+  "_comment": "Project-specific Smart Excludes. Merged with the global list (~/.gitpr/conf/gitpr.smart-excludes.json) at runtime. Add extensions or folder names to exclude from AI diffs for this project only. Example: \"*.pyc\", \"dist/\", \"node_modules/\"",
+  "excludes": []
+}
