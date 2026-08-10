@@ -324,6 +324,22 @@ GitPR elimina automáticamente los archivos que no son código de tu `git diff` 
 - ✅ **Análisis de mayor calidad** — la IA se centra en los cambios de código, no en el markup
 - ✅ **Configuración cero** — funciona automáticamente en cada ejecución, gestionado remotamente
 
+**Configuración local del proyecto:** Cada proyecto puede definir exclusiones adicionales en `.gitpr/conf/gitpr.smart-excludes.json`. El archivo se crea automáticamente en la primera ejecución y se fusiona con la lista global en tiempo de ejecución:
+
+```json
+{
+  "_comment": "Exclusiones específicas del proyecto.",
+  "excludes": [
+    "dist/",
+    "*.pyc",
+    "build/",
+    "node_modules/"
+  ]
+}
+```
+
+Añade artefactos de compilación de frameworks específicos, carpetas generadas o cualquier patrón que solo se aplique a este proyecto. El archivo se puede versionar — tu equipo recibe las mismas exclusiones.
+
 > 📖 **Documentación completa:** [docs/smart-excludes.md](https://github.com/natanfiuza/gitpr/blob/main/docs/smart-excludes.md) — disponible en 5 idiomas (EN, PT-BR, PT-PT, FR, ES).
 
 ## 📁 Estructura de Directorios de Salida

@@ -61,17 +61,19 @@ Dessa forma, a IA sabe quais documentos foram alterados — um contexto útil pa
 | `templates/gitpr.docs-smart-excludes.json` | Extensões de documentação | Remoto (GitHub) |
 | `~/.gitpr/conf/gitpr.smart-excludes.json` | Cache local das exclusões centrais | Download automático |
 | `~/.gitpr/conf/gitpr.docs-smart-excludes.json` | Cache local das exclusões de documentação | Download automático |
+| `./.gitpr/conf/gitpr.smart-excludes.json` | Exclusões **específicas do projeto** (opcional) | Criado pelo usuário (versionável) |
 
 Ambos os templates remotos são **versionados** — o GitPR os baixa novamente automaticamente quando uma nova versão é publicada (disparada pelo marcador `__lang_version__`). Você nunca precisa atualizar esses arquivos manualmente.
 
 ### Cadeia de Resolução
 
-Ao iniciar, o GitPR carrega cada lista de exclusões por uma cadeia de fallback de 4 etapas:
+Ao iniciar, o GitPR carrega cada lista de exclusões por uma cadeia de fallback:
 
-1. **Cache local** — `~/.gitpr/conf/` (mais rápido, zero rede)
+1. **Cache global** — `~/.gitpr/conf/` (mais rápido, zero rede)
 2. **Download remoto** — do repositório oficial do GitHub (timeout: 3 segundos)
-3. **Cópia local obsoleta** — usada quando a rede está indisponível
+3. **Cópia global obsoleta** — usada quando a rede está indisponível
 4. **Fallback embutido** — padrões hardcoded (garante funcionalidade offline)
+5. **Mesclagem local do projeto** — `.gitpr/conf/gitpr.smart-excludes.json` na raiz do projeto é carregado e **mesclado** (união) com a lista global. Os itens no arquivo local são aditivos — adicionam exclusões extras específicas do seu projeto
 
 ## 📊 Exemplo de Uso
 
@@ -115,13 +117,38 @@ Para adicionar novos padrões permanentemente, edite os arquivos de template no 
 3. Aumente `__lang_version__` em `src/updater.py`
 4. Os novos padrões são propagados para todos os usuários na próxima execução
 
-### Sobrescrita Local (Temporária)
+### Configuração Local do Projeto (Recomendado)
 
-Você pode editar diretamente os arquivos em cache em `~/.gitpr/conf/`. Essas alterações persistem até o próximo aumento de `__lang_version__`, quando a versão remota os sobrescreve.
+Cada projeto pode ter seu próprio arquivo Smart Excludes em `.gitpr/conf/gitpr.smart-excludes.json`. Este arquivo é **mesclado** com a lista global em tempo de execução — adiciona exclusões extras que se aplicam apenas ao seu projeto (ex: `dist/`, `node_modules/`, artefatos de build de frameworks específicos).
 
-### Desabilitando Extensões Específicas
+**Criando o arquivo:**
 
-Não existe uma flag de desativação por projeto. O Smart Excludes foi projetado como uma otimização global. Se você precisa que determinados arquivos de documentação permaneçam no diff, remova a extensão deles da lista de exclusões (via um PR para o repositório de templates).
+O arquivo é criado automaticamente na primeira vez que o GitPR baixa a lista global do Smart Excludes. Você também pode criá-lo manualmente:
+
+```json
+{
+  "_comment": "Exclusões específicas do projeto. Mesclado com a lista global em tempo de execução.",
+  "excludes": [
+    "dist/",
+    "*.pyc",
+    "build/"
+  ]
+}
+```
+
+**Por que usar o arquivo local em vez de editar o cache global?**
+
+- O cache global (`~/.gitpr/conf/`) é sobrescrito a cada atualização de versão
+- O arquivo local persiste independentemente e pode ser **versionado** no seu repositório
+- Os membros da equipe recebem as mesmas exclusões específicas do projeto quando clonam o repositório
+
+### Substituição Temporária
+
+Você pode editar diretamente os arquivos em cache em `~/.gitpr/conf/`. Essas alterações persistem até o próximo aumento de `__lang_version__`, quando a versão remota os sobrescreve. Prefira o arquivo local do projeto para exclusões permanentes.
+
+### Desabilitando o Smart Excludes
+
+Defina a variável de ambiente `GITPR_SKIP_SMART_EXCLUDES=1` para desabilitar toda a filtragem do Smart Excludes na sessão atual. Use com moderação — remove tanto as exclusões globais quanto as locais do projeto.
 
 ## ❓ FAQ
 
@@ -135,7 +162,7 @@ O GitPR injeta automaticamente a lista de arquivos de documentação alterados n
 
 ### Posso desabilitar o Smart Excludes completamente?
 
-O Smart Excludes é uma otimização central e não pode ser desabilitado. Se você acredita que um tipo de arquivo não deveria ser excluído, abra uma issue ou um PR no [repositório do GitPR](https://github.com/natanfiuza/gitpr).
+O Smart Excludes é uma otimização central, mas pode ser desabilitado definindo `GITPR_SKIP_SMART_EXCLUDES=1` no seu ambiente. Para um controle mais refinado, use o arquivo de configuração local do projeto (`.gitpr/conf/gitpr.smart-excludes.json`) para adicionar ou ajustar exclusões para o seu projeto sem desabilitar o sistema globalmente.
 
 ### Isso afeta o repositório git real?
 

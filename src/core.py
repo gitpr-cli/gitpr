@@ -57,6 +57,35 @@ _SCRIPT_LANG_SUFFIXES = {"pt_br", "pt_pt", "fr", "es"}
 SCRIPTS_BASE_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/scripts/"
 
 
+def _seed_local_smart_excludes(project_root=None):
+    """
+    Create a template local smart-excludes file in the project's .gitpr/conf/ directory.
+
+    The file starts with an empty exclude list and a comment explaining its purpose.
+    Merged with the global list at load time — project-specific exclusions only.
+    Only creates the file if it does NOT already exist (never overwrites user config).
+    """
+    try:
+        root = Path(project_root) if project_root else Path.cwd()
+        local_dir = root / ".gitpr" / "conf"
+        local_file = local_dir / "gitpr.smart-excludes.json"
+        if not local_file.exists():
+            local_dir.mkdir(parents=True, exist_ok=True)
+            template = {
+                "_comment": (
+                    "Project-specific Smart Excludes. "
+                    "Merged with the global list (~/.gitpr/conf/gitpr.smart-excludes.json) at runtime. "
+                    "Add extensions or folder names to exclude from AI diffs for this project only. "
+                    "Example: \"*.pyc\", \"dist/\", \"node_modules/\""
+                ),
+                "excludes": []
+            }
+            with open(local_file, "w", encoding="utf-8") as f:
+                json.dump(template, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass  # Best-effort — never block the main flow for file seeding
+
+
 def _load_smart_excludes():
     """
     Load the smart-exclude patterns and return them as git pathspec exclusions.
@@ -67,48 +96,103 @@ def _load_smart_excludes():
     2. Fresh download from the remote template (saved locally + marker updated).
     3. Stale local copy when the download fails.
     4. _FALLBACK_SMART_EXCLUDES as last resort.
+    5. Project-local file at ./.gitpr/conf/gitpr.smart-excludes.json (merged on top).
+
+    The global and project-local lists are merged (union) at the end.
     Silent on failure — diff generation must never break because of this list.
+
+    Env vars:
+      GITPR_SKIP_SMART_EXCLUDES  — set to "1"/"true" to disable all smart excludes
+      GITPR_SMART_EXCLUDES_GLOBAL — override path to the global excludes file
+      GITPR_SMART_EXCLUDES_LOCAL  — override path to the project-local excludes file
     """
+    # --- Global skip switch ---
+    if os.getenv("GITPR_SKIP_SMART_EXCLUDES", "").lower() in ("1", "true", "yes"):
+        return []
+
     env_file = Path.home() / ".gitpr" / ".env"
     load_dotenv(env_file)
 
-    conf_dir = Path.home() / ".gitpr" / "conf"
-    local_file = conf_dir / "gitpr.smart-excludes.json"
+    # Resolve global file path (env override or default)
+    global_path_override = os.getenv("GITPR_SMART_EXCLUDES_GLOBAL")
+    if global_path_override:
+        global_file = Path(global_path_override)
+        conf_dir = global_file.parent
+    else:
+        conf_dir = Path.home() / ".gitpr" / "conf"
+        global_file = conf_dir / "gitpr.smart-excludes.json"
+
     needs_update = os.getenv("SMART_EXCLUDES_VERSION") != __lang_version__
 
     def _to_pathspecs(data):
         return [f":(exclude){pattern}" for pattern in data.get("excludes", [])]
 
-    # 1. Local copy is present and up to date
-    if local_file.exists() and not needs_update:
+    def _load_patterns_set(path):
+        """Load exclude patterns from a JSON file and return them as a set."""
         try:
-            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
-                return _to_pathspecs(json.load(f))
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                return set(json.load(f).get("excludes", []))
+        except Exception:
+            return set()
+
+    # 1. Local copy is present and up to date
+    if global_file.exists() and not needs_update:
+        try:
+            with open(global_file, "r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except Exception:
+            data = None
+    else:
+        data = None
+
+    # 2. Download the updated list from the remote template
+    if data is None:
+        try:
+            with urllib.request.urlopen(SMART_EXCLUDES_URL, timeout=3) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            conf_dir.mkdir(parents=True, exist_ok=True)
+            with open(global_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
+            # Seed the local project file as a convenience (idempotent)
+            _seed_local_smart_excludes()
         except Exception:
             pass
 
-    # 2. Download the updated list from the remote template
-    try:
-        with urllib.request.urlopen(SMART_EXCLUDES_URL, timeout=3) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        conf_dir.mkdir(parents=True, exist_ok=True)
-        with open(local_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
-        return _to_pathspecs(data)
-    except Exception:
-        pass
-
     # 3. Offline fallback: reuse the local copy even if outdated
-    if local_file.exists():
+    if data is None and global_file.exists():
         try:
-            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
-                return _to_pathspecs(json.load(f))
+            with open(global_file, "r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
         except Exception:
             pass
 
     # 4. Last resort: built-in defaults
-    return [f":(exclude){pattern}" for pattern in _FALLBACK_SMART_EXCLUDES]
+    if data is None:
+        global_pathspecs = [f":(exclude){p}" for p in _FALLBACK_SMART_EXCLUDES]
+    else:
+        global_pathspecs = _to_pathspecs(data)
+
+    # --- 5. Load and merge project-local exclusions ---
+    local_path_override = os.getenv("GITPR_SMART_EXCLUDES_LOCAL")
+    if local_path_override:
+        local_file = Path(local_path_override)
+    else:
+        local_file = Path(".gitpr") / "conf" / "gitpr.smart-excludes.json"
+
+    if local_file.exists():
+        local_set = _load_patterns_set(local_file)
+        if local_set:
+            # Build a set from global pathspecs for dedup, then merge
+            global_set = set(
+                p.replace(":(exclude)", "", 1) for p in global_pathspecs
+            )
+            merged = sorted(global_set | local_set)
+            global_pathspecs = [f":(exclude){p}" for p in merged]
+    else:
+        local_set = set()
+
+    return global_pathspecs
 
 
 def _load_docs_smart_excludes():
@@ -120,7 +204,13 @@ def _load_docs_smart_excludes():
     2. Fresh download from the remote template (saved locally).
     3. Stale local copy when the download fails.
     4. _FALLBACK_DOCS_SMART_EXCLUDES as last resort.
+
+    Also respects GITPR_SKIP_SMART_EXCLUDES — returns empty list when set.
     """
+    # --- Global skip switch ---
+    if os.getenv("GITPR_SKIP_SMART_EXCLUDES", "").lower() in ("1", "true", "yes"):
+        return []
+
     env_file = Path.home() / ".gitpr" / ".env"
     load_dotenv(env_file)
 

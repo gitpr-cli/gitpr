@@ -61,17 +61,19 @@ This way the AI knows which documents changed — which is useful context for co
 | `templates/gitpr.docs-smart-excludes.json` | Documentation extensions | Remote (GitHub) |
 | `~/.gitpr/conf/gitpr.smart-excludes.json` | Local cache of core exclusions | Auto-downloaded |
 | `~/.gitpr/conf/gitpr.docs-smart-excludes.json` | Local cache of doc exclusions | Auto-downloaded |
+| `./.gitpr/conf/gitpr.smart-excludes.json` | **Project-specific** exclusions (optional) | User-created (versionable) |
 
 Both remote templates are **version-controlled** — GitPR automatically re-downloads them when a new version is published (triggered by the `__lang_version__` marker). You never need to manually update these files.
 
 ### Resolution Chain
 
-When GitPR starts, each exclusion list is loaded through a 4-step fallback chain:
+When GitPR starts, each exclusion list is loaded through a fallback chain:
 
-1. **Local cache** — `~/.gitpr/conf/` (fastest, zero network)
+1. **Global cache** — `~/.gitpr/conf/` (fastest, zero network)
 2. **Remote download** — from the official GitHub repository (timeout: 3 seconds)
-3. **Stale local copy** — used when the network is unavailable
+3. **Stale global copy** — used when the network is unavailable
 4. **Built-in fallback** — hardcoded defaults (guarantees functionality offline)
+5. **Project-local merge** — `.gitpr/conf/gitpr.smart-excludes.json` at the project root is loaded and **merged** (union) with the global list. Items in the local file are additive — they add extra exclusions specific to your project
 
 ## 📊 Usage Example
 
@@ -115,13 +117,38 @@ To permanently add new patterns, edit the template files on the [GitPR repositor
 3. Bump `__lang_version__` in `src/updater.py`
 4. The new patterns propagate to all users on their next run
 
-### Local Override (Temporary)
+### Project-Local Configuration (Recommended)
 
-You can edit the cached files in `~/.gitpr/conf/` directly. These changes persist until the next `__lang_version__` bump, when the remote version overwrites them.
+Each project can have its own Smart Excludes file at `.gitpr/conf/gitpr.smart-excludes.json`. This file is **merged** with the global list at runtime — it adds extra exclusions that only apply to your project (e.g., `dist/`, `node_modules/`, framework-specific build artifacts).
 
-### Disabling Specific Extensions
+**Creating the file:**
 
-There is no per-project disable flag. Smart Excludes is designed as a global optimization. If you need certain documentation files to remain in the diff, remove their extension from the exclusion list (via a PR to the template repository).
+The file is auto-seeded the first time GitPR downloads the global Smart Excludes list. You can also create it manually:
+
+```json
+{
+  "_comment": "Project-specific Smart Excludes. Merged with the global list at runtime.",
+  "excludes": [
+    "dist/",
+    "*.pyc",
+    "build/"
+  ]
+}
+```
+
+**Why use the local file instead of editing the global cache?**
+
+- The global cache (`~/.gitpr/conf/`) is overwritten on every version update
+- The local file persists independently and can be **version-controlled** in your repository
+- Team members get the same project-specific exclusions when they clone the repo
+
+### Temporary Override
+
+You can edit the cached files in `~/.gitpr/conf/` directly. These changes persist until the next `__lang_version__` bump, when the remote version overwrites them. Prefer the project-local file for permanent exclusions.
+
+### Disabling Smart Excludes
+
+Set the environment variable `GITPR_SKIP_SMART_EXCLUDES=1` to disable all Smart Excludes filtering for the current session. Use this sparingly — it removes both global and project-local exclusions.
 
 ## ❓ FAQ
 
@@ -135,7 +162,7 @@ GitPR automatically injects the list of changed documentation files into the AI'
 
 ### Can I disable Smart Excludes entirely?
 
-Smart Excludes is a core optimization and cannot be disabled. If you believe a file type should not be excluded, please open an issue or PR on the [GitPR repository](https://github.com/natanfiuza/gitpr).
+Smart Excludes is a core optimization but can be disabled by setting `GITPR_SKIP_SMART_EXCLUDES=1` in your environment. For more granular control, use the project-local configuration file (`.gitpr/conf/gitpr.smart-excludes.json`) to add or adjust exclusions for your project without disabling the system globally.
 
 ### Does this affect the actual git repository?
 
