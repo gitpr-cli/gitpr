@@ -789,8 +789,19 @@ def get_linter_config() -> str:
 )
 def list_prompts() -> str:
     """Return a JSON list of available prompt resource URIs."""
+    prompts = [f"prompt://{name}" for name in PROMPT_FILES]
+
+    try:
+        from src.config import get_prompt_plugins
+        import os as _os
+        for plugin_path in get_prompt_plugins():
+            plugin_name = _os.path.basename(plugin_path).replace('.md', '')
+            prompts.append(f"prompt://plugin/{plugin_name}")
+    except Exception:
+        pass
+
     return json.dumps({
-        "prompts": [f"prompt://{name}" for name in PROMPT_FILES],
+        "prompts": prompts,
     })
 
 
@@ -943,6 +954,55 @@ def trace_code_origin_prompt() -> str:
 def explore_project_prompt() -> str:
     """Prompt: explore the current git context and available skills."""
     return _read_prompt_file("explore")
+
+
+def _register_plugin_prompts():
+    """Dynamically registers custom user prompts from plugins folder as MCP resources and prompts."""
+    try:
+        from src.config import get_prompt_plugins
+        import os as _os
+
+        for plugin_path in get_prompt_plugins():
+            plugin_name = _os.path.basename(plugin_path).replace('.md', '')
+            uri_string = f"prompt://plugin/{plugin_name}"
+
+            # Using closures to prevent late-binding issues in loops
+            def make_resource_handler(path, uri, name):
+                @mcp.resource(
+                    uri=uri,
+                    name=f"Plugin: {name}",
+                    description=f"Custom plugin prompt: {name}",
+                    mime_type="text/markdown",
+                )
+                def resource_handler() -> str:
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            return f.read()
+                    except Exception:
+                        return ""
+                return resource_handler
+
+            def make_prompt_handler(path, name):
+                @mcp.prompt(
+                    name=f"Plugin: {name}",
+                    description=f"Custom AI prompt loaded from plugins: {name}",
+                )
+                def prompt_handler() -> str:
+                    try:
+                        with open(path, "r", encoding="utf-8") as f:
+                            return f.read()
+                    except Exception:
+                        return ""
+                return prompt_handler
+
+            make_resource_handler(plugin_path, uri_string, plugin_name)
+            make_prompt_handler(plugin_path, plugin_name)
+
+    except Exception:
+        pass  # Silently skip if plugins fail to load so the MCP server boots normally
+
+# Fire the dynamic registration immediately
+_register_plugin_prompts()
 
 
 # =============================================================================

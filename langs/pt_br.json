@@ -612,4 +612,16 @@
   "✅ Commit already done. Proceeding...": "✅ Commit já realizado. Prosseguindo...",
   "Yes, Push and Update PR": "Sim, Enviar e Atualizar PR",
   "An open Pull Request already exists for this branch.\n\nPush and update the existing PR?": "Já existe um Pull Request aberto para esta branch.\n\nEnviar commit e atualizar o PR existente?",
-  "✅ PR updated:\n👉 {pr_url}": "✅ PR atualizado:\n👉 {pr_url}"
+  "✅ PR updated:\n👉 {pr_url}": "✅ PR atualizado:\n👉 {pr_url}",
+  "⚠️ Warning: Could not load linter plugin {file} ({error})": "⚠️ Aviso: Não foi possível carregar o plugin de linter {file} ({error})",
+  "\n❌ Syntax error in local .gitpr.linter.yml file:\n{error}": "\n❌ Erro de sintaxe no arquivo .gitpr.linter.yml local:\n{error}",
+  "Plugin System (--plugins)": "Sistema de Plugins (--plugins)",
+  "Lists all globally installed custom linter packs and MCP prompts loaded from ~/.gitpr/plugins/.": "Lista todos os pacotes de linter customizados e prompts MCP instalados globalmente e carregados de ~/.gitpr/plugins/.",
+  "Lists all active global plugins (linters and prompts).": "Lista todos os plugins globais ativos (linters e prompts).",
+  "\n🧩 GitPR Plugin System": "\n🧩 Sistema de Plugins do GitPR",
+  "\n🔍 Linter Packs ({count}):": "\n🔍 Pacotes de Linter ({count}):",
+  "  No global linter plugins installed.": "  Nenhum plugin de linter global instalado.",
+  "\n💬 Custom Prompts ({count}):": "\n💬 Prompts Customizados ({count}):",
+  "  No global prompt plugins installed.": "  Nenhum plugin de prompt global instalado.",
+  "Plugin directory:": "Diretório de plugins:"
+}

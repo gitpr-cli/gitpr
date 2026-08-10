@@ -1,7 +1,7 @@
 # Memory Index
 
-> Gerado automaticamente por `/reports-to-memory` em 2026-08-05
-> Baseado em 36 relatórios de 1 branch
+> Gerado automaticamente por `/reports-to-memory` em 2026-08-09
+> Baseado em 43 relatórios de 1 branch
 
 ## Project
 - [Help Contextual Pattern](help-contextual-pattern.md) — Padrão de help contextual com Click usando flag regular em vez de help_option (develop_natan, 2026-07-01)
@@ -18,9 +18,14 @@
 - [Metrics Cache Enrichment](metrics-cache-enrichment.md) — Enriquecimento de métricas com tokens reais via scan do cache de prompts (develop_natan, 2026-08-02)
 - [Dashboard Repo-Scope](dashboard-repo-scope.md) — Dashboard de métricas com escopo por repositório, merge cache+eventos (develop_natan, 2026-08-02)
 - [AI Call Duration Tracking](ai-call-duration-tracking.md) — Rastreamento de duração real (wall-clock) das chamadas de IA via perf_counter (develop_natan, 2026-08-02)
+- [Output Reports Centralized Paths](output-reports-centralized-paths.md) — Centralização de outputs em .gitpr/reports/ com resolve_output_path() e _OUTPUT_FOLDER_MAP (develop_natan, 2026-08-06)
+- [Plugin System Architecture](plugin-system-architecture.md) — Sistema de plugins globais: linter aditivo + prompts MCP dinâmicos com factory closures (develop_natan, 2026-08-09)
 
 ## Reference
 - [Pre-Save Debug Flag](pre-save-debug-flag.md) — Flag oculta --pre-save que dumps payload completo da IA em JSON (develop_natan, 2026-07-18)
+- [GitHub API Shared Module](github-api-shared-module.md) — src/github_api.py como módulo centralizado de chamadas à API REST do GitHub (develop_natan, 2026-08-06)
 
 ## Feedback
 - [Windows UTF-8 Encoding Fix](windows-utf8-encoding-fix.md) — Consoles Windows com cp1252 crasham em emojis; fix com sys.stdout.reconfigure (develop_natan, 2026-08-03)
+- [TUI Stdout Conflict Fix](tui-stdout-conflict-fix.md) — Textual substitui sys.stdout e quebra click.secho() no Windows; wrapper _with_real_stdout() resolve (develop_natan, 2026-08-07)
+- [Nothing to Commit Detection](nothing-to-commit-detection.md) — Detecção multilingue de "nothing to commit" no git commit — trata como sucesso, não erro (develop_natan, 2026-08-09)

@@ -118,6 +118,10 @@ def setup_environment():
     # Ensure the global folder exists
     os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
 
+    # Create global plugin directories
+    os.makedirs(os.path.join(os.path.dirname(ENV_FILE), "plugins", "linter"), exist_ok=True)
+    os.makedirs(os.path.join(os.path.dirname(ENV_FILE), "plugins", "prompts"), exist_ok=True)
+
     # Call the existing function in security.py to ensure the master key exists
     get_or_create_key()
 
@@ -186,34 +190,56 @@ def check_internet_connection(timeout=2):
         sys.exit(1)
         
 
+def get_plugin_dir(plugin_type):
+    """Returns the absolute path to the global plugin directory."""
+    return os.path.join(os.path.dirname(ENV_FILE), "plugins", plugin_type)
+
+def get_linter_plugins():
+    """Returns a list of all global linter plugin .yml files."""
+    linter_dir = get_plugin_dir("linter")
+    if not os.path.exists(linter_dir):
+        return []
+    return [os.path.join(linter_dir, f) for f in os.listdir(linter_dir) if f.endswith(('.yml', '.yaml'))]
+
+def get_prompt_plugins():
+    """Returns a list of all global prompt plugin .md files."""
+    prompt_dir = get_plugin_dir("prompts")
+    if not os.path.exists(prompt_dir):
+        return []
+    return [os.path.join(prompt_dir, f) for f in os.listdir(prompt_dir) if f.endswith('.md')]
+
 def load_linter_rules():
     """
-    Loads the static linter rules from the .gitpr.linter.yml file.
-    Returns a list of rules or an empty list if the file does not exist.
+    Loads the static linter rules from the local project and global plugins.
+    Returns a combined list of rules.
     """
-    file_path = resolve_skill_path(".gitpr.linter.yml")
+    rules = []
 
-    # If the file does not exist in the project, it's not an error. There are simply no rules to apply.
-    if not os.path.exists(file_path):
-        return []
+    # 1. Load Local Project Rules
+    local_path = resolve_skill_path(".gitpr.linter.yml")
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+                if config and "rules" in config:
+                    rules.extend(config.get("rules", []))
+        except yaml.YAMLError as e:
+            click.secho(__("\n❌ Syntax error in local .gitpr.linter.yml file:\n{error}", error=str(e)), fg="red")
+        except Exception as e:
+            click.secho(__("\n❌ Unexpected error reading local linter rules: {error}", error=str(e)), fg="red")
 
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
+    # 2. Load Global Plugin Rules
+    for plugin_file in get_linter_plugins():
+        try:
+            with open(plugin_file, "r", encoding="utf-8") as f:
+                config = yaml.safe_load(f)
+                if config and "rules" in config:
+                    rules.extend(config.get("rules", []))
+        except Exception as e:
+            # Silently skip malformed global plugins so we don't break the main flow
+            click.secho(__("⚠️ Warning: Could not load linter plugin {file} ({error})", file=os.path.basename(plugin_file), error=str(e)), fg="yellow")
 
-        # Return the list of rules or empty if the file is blank
-        if not config or "rules" not in config:
-            return []
-
-        return config.get("rules", [])
-
-    except yaml.YAMLError as e:
-        # If the user makes an indentation or quote error, warn without crashing the terminal
-        click.secho(__("\n❌ Syntax error in .gitpr.linter.yml file:\n{error}", error=str(e)), fg="red")
-        return []
-    except Exception as e:
-        click.secho(__("\n❌ Unexpected error reading linter rules: {error}", error=str(e)), fg="red")
-        return []
+    return rules
 
 def get_github_token():
     """Reads and decrypts the GitHub Personal Access Token (PAT)."""
