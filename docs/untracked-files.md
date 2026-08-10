@@ -27,3 +27,25 @@ git add .
 ```
 
 After running `git add`, simply run the **GitPR** command again. The AI will now see your new additions and generate the analysis perfectly! 🚀
+
+## 🔎 Quick Check: What files are not staged?
+
+You can quickly check which files are not staged using the `--status` flag — **no AI, no network, instant**:
+
+```bash
+gitpr --status
+```
+
+This shows all uncommitted changes in 3 categories: new (untracked), modified, and deleted. See the [Git Status documentation](git-status.md) for more details.
+
+## 🛑 Skip the unstaged check
+
+If you want to skip the unstaged verification that runs before AI commands, use:
+
+```bash
+gitpr -c --no-unstaged-check
+```
+
+Or set `GITPR_SKIP_UNSTAGED_CHECK=true` in your `~/.gitpr/.env` file to skip it permanently.
+
+> 📖 **Full documentation:** [docs/git-status.md](git-status.md) — covers `--status`, `--no-unstaged-check`, MCP tools, and the unstaged verification that now runs on all commands (`-c`, `-r`, `-f`, `-is`).

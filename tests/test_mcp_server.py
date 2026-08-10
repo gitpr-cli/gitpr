@@ -255,6 +255,69 @@ class TestPRDescriptionTool(unittest.TestCase):
         self.assertIn("Summary", result["pr_description"])
 
 
+class TestListUnstagedFilesTool(unittest.TestCase):
+    """Tests for the list_unstaged_files MCP tool."""
+
+    @patch("src.core.get_unstaged_categorized")
+    def test_returns_categorized_lists(self, mock_cat):
+        """Returns JSON with new/modified/deleted lists."""
+        mock_cat.return_value = {
+            "new": ["untracked.py"],
+            "modified": ["edited.py", "changed.py"],
+            "deleted": ["removed.py"],
+        }
+        result = json.loads(mcp_server.list_unstaged_files())
+        self.assertEqual(result["status"], "changes_found")
+        self.assertEqual(result["new"], ["untracked.py"])
+        self.assertEqual(result["modified"], ["edited.py", "changed.py"])
+        self.assertEqual(result["deleted"], ["removed.py"])
+        self.assertEqual(result["total"], 4)
+
+    @patch("src.core.get_unstaged_categorized")
+    def test_no_unstaged_files(self, mock_cat):
+        """Returns no_changes when nothing is unstaged."""
+        mock_cat.return_value = {"new": [], "modified": [], "deleted": []}
+        result = json.loads(mcp_server.list_unstaged_files())
+        self.assertEqual(result["status"], "no_changes")
+        self.assertEqual(result["total"], 0)
+
+    @patch("src.core.get_unstaged_categorized")
+    def test_handles_none_from_core(self, mock_cat):
+        """Handles None return from core function gracefully."""
+        mock_cat.return_value = None
+        result = json.loads(mcp_server.list_unstaged_files())
+        self.assertEqual(result["status"], "no_changes")
+        self.assertEqual(result["new"], [])
+        self.assertEqual(result["modified"], [])
+        self.assertEqual(result["deleted"], [])
+
+
+class TestAnalyzeUnstagedDiffTool(unittest.TestCase):
+    """Tests for the analyze_unstaged_diff MCP tool."""
+
+    @patch("src.core.get_unstaged_diff")
+    def test_returns_unstaged_diff(self, mock_diff):
+        """Returns only unstaged diff content."""
+        mock_diff.return_value = "diff --git a/x.py b/x.py\n-old\n+new"
+        result = json.loads(mcp_server.analyze_unstaged_diff())
+        self.assertEqual(result["status"], "changes_found")
+        self.assertIn("diff --git a/x.py", result["diff"])
+
+    @patch("src.core.get_unstaged_diff")
+    def test_no_unstaged_changes(self, mock_diff):
+        """Returns no_changes when working tree is clean."""
+        mock_diff.return_value = ""
+        result = json.loads(mcp_server.analyze_unstaged_diff())
+        self.assertEqual(result["status"], "no_changes")
+
+    @patch("src.core.get_unstaged_diff")
+    def test_handles_none_from_core(self, mock_diff):
+        """Handles None return from core function gracefully."""
+        mock_diff.return_value = None
+        result = json.loads(mcp_server.analyze_unstaged_diff())
+        self.assertEqual(result["status"], "no_changes")
+
+
 class TestBlameTool(unittest.TestCase):
     """Tests for the analyze_blame MCP tool."""
 

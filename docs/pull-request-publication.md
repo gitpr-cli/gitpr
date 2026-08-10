@@ -15,8 +15,8 @@ When you run the `gitpr` command (default behavior), GitPR generates the PR desc
 ```
 gitpr
   ├─ Banner
-  ├─ Unstaged files check (before PR generation)
-  │   ├─ GITPR_SKIP_UNSTAGED_CHECK=true → skip
+  ├─ Unstaged files check (before PR generation — also runs for -c, -r, -f, -is)
+  │   ├─ GITPR_SKIP_UNSTAGED_CHECK=true or --no-unstaged-check → skip
   │   ├─ No unstaged files → proceed
   │   ├─ GITPR_AUTO_STAGE=true → auto git add → proceed
   │   └─ Has unstaged files → StageFilesApp TUI
@@ -95,34 +95,57 @@ gitpr --no-edit
 
 ## 4. Unstaged Files Management
 
-Before PR generation begins, GitPR checks for unstaged files and offers a modal interface to manage them. This check runs at the very beginning of the `gitpr` execution, before any AI calls.
+GitPR checks for unstaged files before **all** AI commands — not just PR generation. The check runs before any AI calls.
+
+| Command | Behavior when unstaged files are found |
+|---------|----------------------------------------|
+| `gitpr` (PR default) | Interactive — opens TUI modal to stage, skip, or cancel |
+| `gitpr -c` (commit) | Warning — alerts that unstaged files will NOT be in the commit. Auto-stages if `GITPR_AUTO_STAGE=true` |
+| `gitpr -r` (review) | Informational — notes that unstaged files are still included in the diff. Never auto-stages |
+| `gitpr -f` (fullreview) | Informational — notes that unstaged files are still included in the diff. Never auto-stages |
+| `gitpr -is` (issue, diff mode) | Informational — notes that unstaged files are still included in the diff. Never auto-stages |
+
+Use `--no-unstaged-check` to skip the verification for a single invocation, or set `GITPR_SKIP_UNSTAGED_CHECK=true` to disable it permanently.
+
+Use `gitpr --status` for a quick, no-AI listing of uncommitted files by category (new/modified/deleted). 📖 [Full docs](git-status.md)
 
 ### 4.1 Startup Check Flow
 
 ```
 gitpr starts
   ├─ GITPR_SKIP_UNSTAGED_CHECK=true → skip entire check, proceed
+  ├─ --no-unstaged-check flag → skip entire check, proceed
   ├─ No unstaged files detected → proceed
-  ├─ GITPR_AUTO_STAGE=true → auto git add all → proceed
-  └─ Unstaged files found → StageFilesApp TUI opens
-      ├─ [Stage Selected] → git add <selected> → proceed
-      ├─ [Skip] → proceed without staging
-      └─ [Cancel] → abort (exit without generating PR)
+  ├─ Action is "pr":
+  │   ├─ GITPR_AUTO_STAGE=true → auto git add all → proceed
+  │   └─ Unstaged files found → StageFilesApp TUI opens
+  │       ├─ [Stage Selected] → git add <selected> → proceed
+  │       ├─ [Skip] → proceed without staging
+  │       └─ [Cancel] → abort (exit without generating PR)
+  ├─ Action is "commit":
+  │   ├─ GITPR_AUTO_STAGE=true → auto git add all → proceed
+  │   └─ Warning: "files will NOT be included in the commit" → proceed
+  └─ Action is "review"/"fullreview"/"issue":
+      └─ Informational: "files will still be included in this analysis" → proceed
 ```
+
+> **Note:** The unstaged check is **skipped** when GitPR runs inside a Git hook (`--hook` flag), as any prompt or TUI would hang the `git commit` process.
 
 ### 4.2 File Detection
 
 Unstaged files are detected via `git status --porcelain`, looking for:
 - `??` — untracked files
-- ` M` — modified but not staged (working tree changes)
-- ` D` — deleted but not staged
+- ` M`, `MM`, `AM`, `RM` — modified but not staged (working tree changes)
+- ` D`, `MD`, `AD`, `RD` — deleted but not staged
+
+Combined codes (e.g. `MM` = staged modified + unstaged modified) are normalized to their canonical labels (`mod`/`del`).
 
 ### 4.3 Environment Variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `GITPR_SKIP_UNSTAGED_CHECK` | `false` | Set to `true` to skip the unstaged files check entirely at startup |
-| `GITPR_AUTO_STAGE` | `false` | Set to `true` to automatically stage all unstaged files without showing the selection modal |
+| `GITPR_SKIP_UNSTAGED_CHECK` | `false` | Set to `true` to skip the unstaged files check entirely for all commands |
+| `GITPR_AUTO_STAGE` | `false` | Set to `true` to automatically stage all unstaged files without showing the selection modal (PR and commit only) |
 
 ---
 
@@ -460,7 +483,22 @@ GITPR_AUTO_STAGE=true GITPR_AUTO_MERGE=true gitpr --no-edit
 # → PR is automatically merged after creation
 ```
 
-### Example 9: Custom output directory
+### Example 9: Quick unstaged file listing
+
+```bash
+gitpr --status
+# → Lists all uncommitted changes in 3 categories (new/modified/deleted)
+# → No AI, no network, instant
+```
+
+### Example 10: Skip unstaged check for a single commit
+
+```bash
+gitpr -c --no-unstaged-check
+# → Generates commit message without checking for unstaged files
+```
+
+### Example 11: Custom output directory
 
 ```bash
 # In ~/.gitpr/.env:

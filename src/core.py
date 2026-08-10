@@ -359,6 +359,31 @@ def get_git_diff(quiet=False):
         return None
 
 
+def get_unstaged_diff(quiet=False):
+    """Runs 'git diff' (index vs working tree) — returns ONLY unstaged changes,
+    excluding staged ones. Untracked files are never shown by git diff.
+
+    Unlike get_git_diff() which uses 'git diff HEAD' (includes staged+unstaged),
+    this command compares the index (staging area) against the working tree.
+    """
+    try:
+        cmd = ["git", "diff", "-U1", "-w", "-M", "-B", "--"] + SMART_EXCLUDES
+        result = subprocess.run(
+            cmd,
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=True
+        )
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        if not quiet:
+            click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
+        return None
+    except FileNotFoundError:
+        if not quiet:
+            click.secho(__("❌ Git not found. Make sure it is installed and in the PATH."), fg="red")
+        return None
+
+
 def get_current_branch():
     """Returns the current branch name."""
     try:
@@ -1024,10 +1049,43 @@ def has_uncommitted_changes():
         return False
 
 
-def get_unstaged_files():
-    """Returns list of (filepath, status) for files not in the index.
+def get_uncommitted_summary():
+    """Returns {'staged': [...], 'unstaged': [...], 'untracked': [...]} path lists
+    parsed from 'git status --porcelain'.
 
-    Status codes: '??' = untracked, ' M' = unstaged modified, ' D' = unstaged deleted.
+    A file may appear in both 'staged' and 'unstaged' when it has staged changes
+    AND additional unstaged modifications (e.g. 'MM' = staged mod + unstaged mod,
+    'AM' = staged add + unstaged mod).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-c", "core.quotepath=false", "status", "--porcelain"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        summary = {"staged": [], "unstaged": [], "untracked": []}
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                continue
+            x, y = line[0], line[1]
+            path = line[3:].strip()
+            if x == "?" and y == "?":
+                summary["untracked"].append(path)
+            else:
+                if x in ("M", "D", "A", "R", "C"):
+                    summary["staged"].append(path)
+                if y in ("M", "D"):
+                    summary["unstaged"].append(path)
+        return summary
+    except Exception:
+        return {"staged": [], "unstaged": [], "untracked": []}
+
+
+def get_unstaged_files():
+    """Returns list of (filepath, status_label) for files with working-tree changes.
+
+    status_label: 'new' (untracked '??'), 'mod' (any unstaged modification:
+    ' M', 'MM', 'AM', 'RM', ...), 'del' (any unstaged deletion: ' D', 'MD', 'AD', ...).
+    Staged-only changes ('M ', 'A ', 'D ') are NOT returned.
     """
     try:
         result = subprocess.run(
@@ -1042,13 +1100,30 @@ def get_unstaged_files():
             status_y = line[1] if len(line) > 1 else ""
             filepath = line[3:].strip()
             if status_y in ("M", "D") or (status_x == "?" and status_y == "?"):
-                status_label = {"??": "new", " M": "mod", " D": "del"}.get(
-                    status_x + status_y, status_x + status_y
-                )
+                if status_x == "?" and status_y == "?":
+                    status_label = "new"
+                elif status_y == "M":
+                    status_label = "mod"
+                else:  # status_y == "D"
+                    status_label = "del"
                 files.append((filepath, status_label))
         return files
     except Exception:
         return []
+
+
+def get_unstaged_categorized():
+    """Returns {'new': [...], 'modified': [...], 'deleted': [...]} with unstaged
+    file paths, using the canonical labels from get_unstaged_files()."""
+    result = {"new": [], "modified": [], "deleted": []}
+    for filepath, label in get_unstaged_files():
+        if label == "new":
+            result["new"].append(filepath)
+        elif label == "mod":
+            result["modified"].append(filepath)
+        else:  # label == "del"
+            result["deleted"].append(filepath)
+    return result
 
 
 def stage_files(filepaths):
