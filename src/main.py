@@ -44,7 +44,7 @@ def print_banner():
 """
     click.secho(banner, fg="cyan", bold=True)
     click.secho(__("  🚀 Intelligent PR Automation with AI (v{version})", version=__version__), fg="yellow", bold=True)
-    click.secho(__("  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | --no-publish | --no-edit | -h,--help (use -h --flag for contextual help)\n"), fg="white", dim=True)
+    click.secho(__("  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | --no-publish | --no-edit | --plugins | -h,--help (use -h --flag for contextual help)\n"), fg="white", dim=True)
 
 
 # ============================================================
@@ -141,6 +141,11 @@ HELP_MAP: dict[str, dict[str, str]] = {
         'title': __('Direct Publish with Auto-Commit (--no-edit)'),
         'description': __('Generates the PR, auto-commits pending changes (with lint validation), and publishes directly to GitHub without opening the TUI.'),
     },
+    'plugins': {
+        'url': get_doc_url('plugins-system.md'),
+        'title': __('Plugin System (--plugins)'),
+        'description': __('Lists all globally installed custom linter packs and MCP prompts loaded from ~/.gitpr/plugins/.'),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -163,6 +168,7 @@ HELP_PRIORITY: dict[str, int] = {
     'metrics': 15,
     'no-publish': 16,
     'no-edit': 17,
+    'plugins': 18,
 }
 
 
@@ -195,8 +201,9 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('--base', type=str, help=__("Target base branch for the Pull Request (overrides PR_DEFAULT_BASE)."))
 @click.option('--no-publish', is_flag=True, help=__("Saves the PR file locally without opening the interactive publisher."))
 @click.option('--no-edit', is_flag=True, help=__("Skips the interactive editor and publishes the Pull Request directly (with auto-commit)."))
+@click.option('--plugins', is_flag=True, help=__("Lists all active global plugins (linters and prompts)."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard, base, no_publish, no_edit):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard, base, no_publish, no_edit, plugins):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -321,6 +328,30 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
     if mcp:
         from src.mcp_server import main as mcp_main
         mcp_main()
+        return
+
+    if plugins:
+        from src.config import get_linter_plugins, get_prompt_plugins
+        linter_plugins = get_linter_plugins()
+        prompt_plugins = get_prompt_plugins()
+
+        click.secho(__("\n🧩 GitPR Plugin System"), fg="cyan", bold=True)
+
+        click.secho(__("\n🔍 Linter Packs ({count}):", count=len(linter_plugins)), fg="yellow", bold=True)
+        if linter_plugins:
+            for p in linter_plugins:
+                click.echo(f"  - {os.path.basename(p)}")
+        else:
+            click.echo(__("  No global linter plugins installed."))
+
+        click.secho(__("\n💬 Custom Prompts ({count}):", count=len(prompt_plugins)), fg="yellow", bold=True)
+        if prompt_plugins:
+            for p in prompt_plugins:
+                click.echo(f"  - {os.path.basename(p)}")
+        else:
+            click.echo(__("  No global prompt plugins installed."))
+
+        click.secho(f"\n💡 {__('Plugin directory:')} ~/.gitpr/plugins/", dim=True)
         return
 
     # Silencia o banner se estiver no modo quiet ou via hook
