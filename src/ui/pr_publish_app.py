@@ -14,6 +14,28 @@ from src.github_api import create_pull_request
 from src.ui.pr_publish_help import PrPublishHelpScreen
 from src.i18n import __
 
+
+# ═══════════════════════════════════════════════════════════════════
+# File status display helper
+# ═══════════════════════════════════════════════════════════════════
+
+_STATUS_LABELS = {
+    "new": ("🆕", __("New")),
+    "mod": ("✏️ ", __("Modified")),
+    "del": ("🗑️", __("Deleted")),
+}
+
+
+def _fmt_status(status):
+    """Returns (emoji, label) for a file status code.
+
+    Maps internal short codes to user-facing display labels:
+      'new' → 🆕 New (untracked)
+      'mod' → ✏️ Modified (unstaged)
+      'del' → 🗑️ Deleted (unstaged)
+    """
+    return _STATUS_LABELS.get(status, ("❓", status))
+
 # Capture the real stdout before Textual replaces it.
 _REAL_STDOUT = sys.stdout
 
@@ -172,7 +194,7 @@ class StageFilesScreen(ModalScreen):
                 classes="stage_info",
             )
             options = [
-                (f"[{status}] {fname}", fname, self._selected.get(fname, True))
+                (f"{_fmt_status(status)[0]} {_fmt_status(status)[1]}: {fname}", fname, self._selected.get(fname, True))
                 for fname, status in self._files
             ]
             yield SelectionList(*options, id="file_list")
@@ -340,7 +362,7 @@ class FileStageScreen(ModalScreen):
                 classes="stage_info",
             )
             options = [
-                (f"[{status}] {fname}", fname, True)
+                (f"{_fmt_status(status)[0]} {_fmt_status(status)[1]}: {fname}", fname, True)
                 for fname, status in self._files
             ]
             yield SelectionList(*options, id="file_list")
@@ -354,7 +376,7 @@ class FileStageScreen(ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id
-      
+
         if bid == "btn_select_all":
             self.query_one("#file_list", SelectionList).select_all()
             self._selected = {fname: True for fname, _ in self._files}

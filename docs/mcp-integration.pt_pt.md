@@ -30,6 +30,34 @@ O instalador:
 * Mostra quais editores foram configurados
 * É idempotente — seguro executar várias vezes
 
+## Invocação Direta via CLI
+
+Pode invocar qualquer ferramenta MCP diretamente do terminal sem iniciar o servidor.
+Isto é útil para depuração, scripting e teste de ferramentas sem um cliente MCP.
+
+```bash
+# Ferramentas sem parâmetros
+gitpr-mcp --tool get_git_context
+gitpr-mcp --tool analyze_diff
+gitpr-mcp --tool run_linter
+
+# Ferramentas com parâmetros (JSON)
+gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_line":"10","end_line":"20"}'
+gitpr-mcp --tool generate_commit_message --tool-args '{"provider":"gemini"}'
+gitpr-mcp --tool generate_issue --tool-args '{"context_type":"history"}'
+
+# Listar todas as ferramentas disponíveis e os seus parâmetros
+gitpr-mcp --tool
+```
+
+A saída JSON vai para o stdout; todas as mensagens de diagnóstico (spinners, banners, logs)
+vão para o stderr. A configuração do `.env` é carregada automaticamente, pelo que as chaves
+de API funcionam sem prompts interativos.
+
+> **Nota:** No Windows Command Prompt, use aspas duplas para `--tool-args` e
+> escape as aspas internas: `"{\"file_path\":\"src/main.py\",\"start_line\":\"10\"}"`.
+> PowerShell e shells Unix aceitam aspas simples como mostrado acima.
+
 ## Ferramentas Disponíveis
 
 | Ferramenta | Descrição |

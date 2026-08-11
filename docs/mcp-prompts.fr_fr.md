@@ -89,6 +89,27 @@ du modèle :
 | `prompt://blame` | Modèle du prompt d'origine de code |
 | `prompt://explore` | Modèle du prompt de contexte du projet |
 
+## 🔧 Équivalents par CLI
+
+Alors que les prompts MCP sont des modèles de messages pour le chat IA de l'éditeur,
+vous pouvez obtenir les mêmes résultats depuis le terminal en utilisant `--tool` :
+
+| Prompt | Équivalent CLI |
+| ------ | -------------- |
+| Réviser la PR | `gitpr-mcp --tool full_review` |
+| Générer un message de commit | `gitpr-mcp --tool generate_commit_message` |
+| Créer une description de PR | `gitpr-mcp --tool generate_pr_description` |
+| Exécuter le linter | `gitpr-mcp --tool run_linter` |
+| Créer une issue depuis le diff | `gitpr-mcp --tool generate_issue` |
+| Tracer l'origine du code | `gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"...","start_line":"...","end_line":"..."}'` |
+| Explorer le contexte du projet | `gitpr-mcp --tool get_git_context` |
+
+> **Note :** `--tool` invoque uniquement des outils — les prompts (modèles de messages)
+> ne sont pas exécutables. Utilisez `gitpr-mcp --list` pour voir toutes les ressources
+> et prompts, puis exécutez l'outil sous-jacent avec `--tool`. Voir
+> [Intégration MCP — Invocation Directe par CLI](mcp-integration.md#invocation-directe-par-cli)
+> pour les détails.
+
 ## 📚 Documentation Connexe
 
 - [Intégration MCP](mcp-integration.md) — Comment configurer MCP pour votre éditeur

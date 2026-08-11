@@ -1,8 +1,23 @@
 {
   "mcpServers": {
     "gitpr": {
-      "command": "gitpr-mcp",
-      "args": []
+      "command": "C:\\Users\\nataniel\\.virtualenvs\\gitpr-KYkuEwua\\Scripts\\gitpr-mcp.exe",
+      "args": [],
+      "description": "GitPR MCP Server — AI-powered PR automation: generate commit messages, review code, run linters, trace code origins with git blame, create structured issues, and generate PR descriptions. Run 'gitpr-mcp --list' for the complete tools catalog.",
+      "_tools": [
+        { "name": "get_git_context", "description": "Get the current git branch, repository name, and remote origin URL." },
+        { "name": "analyze_diff", "description": "Get the current uncommitted git diff (includes both staged and unstaged changes)." },
+        { "name": "list_unstaged_files", "description": "List uncommitted file changes categorized as new, modified, or deleted." },
+        { "name": "analyze_unstaged_diff", "description": "Get only the unstaged git diff (index vs working tree)." },
+        { "name": "get_full_diff", "description": "Get the full diff of the current branch against origin/main. Runs git fetch first." },
+        { "name": "generate_commit_message", "description": "Generate a Conventional Commits commit message using AI." },
+        { "name": "review_code", "description": "Perform an AI code review on uncommitted local changes." },
+        { "name": "full_review", "description": "Perform a full AI code review comparing the branch against origin/main." },
+        { "name": "generate_pr_description", "description": "Generate a complete Pull Request description (title + body) using AI." },
+        { "name": "run_linter", "description": "Run the static local linter on the current git diff." },
+        { "name": "analyze_blame", "description": "Run AI-powered git blame analysis on a file region." },
+        { "name": "generate_issue", "description": "Generate a structured Issue from code context using AI." }
+      ]
     }
   }
 }

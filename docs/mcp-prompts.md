@@ -83,6 +83,27 @@ URI scheme, so AI agents can read the raw template content:
 | `prompt://blame` | Code origin prompt template |
 | `prompt://explore` | Project context prompt template |
 
+## 🔧 CLI Equivalents
+
+While MCP prompts are message templates for editor AI chats, you can achieve
+the same results from the terminal using `--tool`:
+
+| Prompt | CLI equivalent |
+| ------ | -------------- |
+| Review PR | `gitpr-mcp --tool full_review` |
+| Generate Commit Message | `gitpr-mcp --tool generate_commit_message` |
+| Create PR Description | `gitpr-mcp --tool generate_pr_description` |
+| Run Code Linter | `gitpr-mcp --tool run_linter` |
+| Create Issue from Diff | `gitpr-mcp --tool generate_issue` |
+| Trace Code Origin | `gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"...","start_line":"...","end_line":"..."}'` |
+| Explore Project Context | `gitpr-mcp --tool get_git_context` |
+
+> **Note:** `--tool` invokes tools only — prompts (message templates) are not
+> executable. Use `gitpr-mcp --list` to see all resources and prompts, then run
+> the underlying tool with `--tool`. See
+> [MCP Integration — Direct CLI Invocation](mcp-integration.md#direct-cli-invocation)
+> for details.
+
 ## 📚 Related Documentation
 
 - [MCP Integration](mcp-integration.md) — How to set up MCP for your editor

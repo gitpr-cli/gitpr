@@ -333,10 +333,10 @@ def get_changed_docs_list(ancestor_hash=None):
             check=True,
         )
 
-        all_files = result.stdout.strip().split("\n")
+        all_files = result.stdout.splitlines()
         doc_files = []
         for f in all_files:
-            if not f:
+            if not f.strip():
                 continue
             for pattern in raw_patterns:
                 if fnmatch.fnmatch(f, pattern):
@@ -1153,8 +1153,8 @@ def get_uncommitted_summary():
             capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         summary = {"staged": [], "unstaged": [], "untracked": []}
-        for line in result.stdout.strip().split("\n"):
-            if not line:
+        for line in result.stdout.splitlines():
+            if not line.strip():
                 continue
             x, y = line[0], line[1]
             path = line[3:].strip()
@@ -1183,8 +1183,8 @@ def get_unstaged_files():
             capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         files = []
-        for line in result.stdout.strip().split("\n"):
-            if not line:
+        for line in result.stdout.splitlines():
+            if not line.strip():
                 continue
             status_x = line[0] if len(line) > 0 else ""
             status_y = line[1] if len(line) > 1 else ""
