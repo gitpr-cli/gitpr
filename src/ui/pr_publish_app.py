@@ -1112,18 +1112,56 @@ class PrPublishApp(App):
             ok, data, status = merge_pull_request(self.repo_info, self.github_token, pr_number)
             self._log(f"Merge result: ok={ok}, status={status}, data={data}")
             if ok:
-                self.final_message = __(
-                    "✅ PR merged successfully:\n👉 {pr_url}", pr_url=pr_url,
-                )
+                self.call_from_thread(self._on_merge_success, pr_url)
             else:
-                msg = data.get("message", __("Unknown error"))
-                self.final_message = __(
-                    "❌ Merge failed: {error}", error=msg,
-                ) + "\n" + self.final_message
-            self.call_from_thread(self._prompt_open_browser, pr_url)
+                self.call_from_thread(self._on_merge_failure, pr_url, data, status)
 
         import threading
         threading.Thread(target=_merge, daemon=True).start()
+
+    def _on_merge_success(self, pr_url):
+        """Called on main thread after successful merge."""
+        self.final_action = "merged"
+        self.final_message = __(
+            "✅ PR merged successfully:\n👉 {pr_url}", pr_url=pr_url,
+        )
+        self._prompt_open_browser(pr_url)
+
+    def _on_merge_failure(self, pr_url, data, status):
+        """Called on main thread after failed merge."""
+        self.final_action = "merge_failed"
+        msg = data.get("message", __("Unknown error"))
+
+        # Special handling for merge conflicts (HTTP 405)
+        if status == 405:
+            title = __("❌ Merge Conflict")
+            detail = __(
+                "Pull Request has merge conflicts that must be resolved manually.\n\n"
+                "👉 {pr_url}\n\n"
+                "Error: {error}",
+                pr_url=pr_url, error=msg,
+            )
+        else:
+            title = __("❌ Merge Failed")
+            detail = __(
+                "Merge failed with status {status}.\n\n"
+                "👉 {pr_url}\n\n"
+                "Error: {error}",
+                status=status, pr_url=pr_url, error=msg,
+            )
+
+        self.final_message = f"{title}\n{detail}"
+
+        # Show error modal and offer to open the PR in browser
+        self.push_screen(
+            CommitConfirmScreen(
+                title=title,
+                message=detail,
+                btn_yes=__("Open PR in Browser"),
+                btn_no=__("Close"),
+            ),
+            callback=lambda r: self._on_browser_prompt_result(r, pr_url),
+        )
 
     def _publish_pr_from_progress(self, log_widget):
         """Create PR via GitHub API from within the progress screen. Updates final_* attrs."""

@@ -953,10 +953,10 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             continue
 
         if app.final_message:
-            cor = "green" if app.final_action in ["saved", "created"] else "red"
+            cor = "green" if app.final_action in ["saved", "created", "merged"] else "red"
             click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
 
-        if app.final_action == "created" and app.final_pr_url:
+        if app.final_action in ["created", "merged", "merge_failed"] and app.final_pr_url:
             if click.confirm(__("🔗 Open the Pull Request in your browser?")):
                 import webbrowser
                 webbrowser.open(app.final_pr_url)
