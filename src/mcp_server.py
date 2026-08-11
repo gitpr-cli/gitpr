@@ -7,12 +7,15 @@ MCP-compatible editors and AI agents.
 
 Usage:
     gitpr-mcp                        # Start the MCP server (stdio transport)
+    gitpr-mcp --list                 # Print the complete tools catalog as JSON
     gitpr-mcp --install vscode       # Install MCP config for VS Code
     gitpr-mcp --install cursor       # Install MCP config for Cursor
     gitpr-mcp --install claude-code  # Install MCP config for Claude Code
     gitpr-mcp --install claude       # Install MCP config for Claude Desktop
     gitpr-mcp --install zed          # Install MCP config for Zed
     gitpr-mcp --install auto         # Auto-detect and install for all found
+    gitpr-mcp --tool get_git_context  # Invoke a single tool directly (CLI)
+    gitpr-mcp --tool                 # List available tools for --tool
     gitpr --mcp                      # Alias via the main CLI (always starts server)
 
 Transport: stdio (standard for local CLI-tool MCP servers).
@@ -34,30 +37,19 @@ import sys
 import traceback
 from pathlib import Path
 
-import click
-from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
-from mcp.types import ToolAnnotations
-
-from src.i18n import __, CURRENT_LANG
 
 # =============================================================================
-# Output Patching System
+# Early Stdout Guard
 # =============================================================================
 # The MCP stdio transport owns stdout.  Any write to stdout that is not a
-# JSON-RPC message corrupts the protocol.  GitPR's existing code writes
-# banners, spinners, and colored messages to stdout via click and direct
-# sys.stdout.write().  The patching below redirects all of that to stderr.
+# JSON-RPC message corrupts the protocol.
+#
+# THE CRITICAL INSIGHT: some of GitPR's modules (e.g. src.i18n) call
+# load_dotenv() at *module level*, which runs during import — BEFORE main()
+# and BEFORE _patch_output() have a chance to redirect.  The guard below
+# is applied BEFORE any src.* import so those early writes land on stderr
+# instead of stdout, keeping the MCP transport clean.
 # =============================================================================
-
-_original_stdout = None
-_original_stdout_write = None
-_original_stdout_flush = None
-_original_secho = None
-_original_echo = None
-_original_exit = None
-_original_prompt = None
-_original_style = None
 
 
 class _MCPStdout:
@@ -84,14 +76,52 @@ class _MCPStdout:
         return False
 
 
+# Apply the stdout guard IMMEDIATELY, before any src.* imports.
+# _patch_output() (called later in main()) handles the remaining patches
+# (click.secho, click.echo, sys.exit, etc.).
+_original_stdout = sys.stdout
+sys.stdout = _MCPStdout()
+
+# =============================================================================
+# Imports that may write to stdout at module level
+# =============================================================================
+
+import click
+from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
+
+from src.i18n import __, CURRENT_LANG
+
+# =============================================================================
+# Output Patching System (remaining patches)
+# =============================================================================
+
+_original_stdout_write = None
+_original_stdout_flush = None
+_original_secho = None
+_original_echo = None
+_original_exit = None
+_original_prompt = None
+_original_style = None
+
+
 def _patch_output():
-    """Redirect all application-level stdout to stderr; neutralise exit/prompt."""
-    global _original_stdout, _original_stdout_write, _original_stdout_flush
+    """Apply remaining output patches: click functions, exit, and prompt.
+
+    sys.stdout is redirected to _MCPStdout at module level (before any
+    src.* imports), but this function re-applies the redirect in case
+    _unpatch_output() was called (e.g. during testing).
+    """
+    global _original_stdout_write, _original_stdout_flush
     global _original_secho, _original_echo, _original_style
     global _original_exit, _original_prompt
 
+    # --- Re-apply stdout guard (idempotent — safe if already applied) ---
+    if not isinstance(sys.stdout, _MCPStdout):
+        sys.stdout = _MCPStdout()
+
     # --- Save originals ---
-    _original_stdout = sys.stdout
     _original_stdout_write = sys.stdout.write
     _original_stdout_flush = sys.stdout.flush
     _original_secho = click.secho
@@ -99,9 +129,6 @@ def _patch_output():
     _original_style = click.style
     _original_exit = sys.exit
     _original_prompt = click.prompt
-
-    # --- Replace sys.stdout ---
-    sys.stdout = _MCPStdout()
 
     # --- Patch click output functions to write to stderr ---
     def _mcp_secho(message=None, **kwargs):
@@ -300,11 +327,19 @@ def list_unstaged_files() -> str:
     modified_files = data.get("modified", [])
     deleted_files = data.get("deleted", [])
     total = len(new_files) + len(modified_files) + len(deleted_files)
+    files = []
+    for f in new_files:
+        files.append({"path": f, "type": "new"})
+    for f in modified_files:
+        files.append({"path": f, "type": "modified"})
+    for f in deleted_files:
+        files.append({"path": f, "type": "deleted"})
     return json.dumps({
         "status": "changes_found" if total else "no_changes",
         "new": new_files,
         "modified": modified_files,
         "deleted": deleted_files,
+        "files": files,
         "total": total,
         "message": "" if total else __("No unstaged files found."),
     }, ensure_ascii=False)
@@ -1053,10 +1088,383 @@ _register_plugin_prompts()
 
 
 # =============================================================================
+# Tools Catalog — metadata for gitpr-mcp --list
+# =============================================================================
+# This catalog mirrors the @mcp.tool(), @mcp.resource(), and @mcp.prompt()
+# decorators above.  It is used by the --list CLI flag to print a complete
+# inventory of the server's capabilities as JSON, so that editors, IDEs and
+# AI agents can discover available tools without having to connect to the
+# running MCP server via stdio.
+
+def _build_tools_catalog() -> dict:
+    """Return a complete catalog of all MCP tools, resources, and prompts.
+
+    The returned dict is JSON-serialisable and safe for printing to stdout
+    (no stdio-patching required — --list runs BEFORE the MCP transport).
+    """
+    from src.updater import __version__
+
+    return {
+        "server": "gitpr",
+        "version": __version__,
+        "tools": [
+            {
+                "name": "get_git_context",
+                "description": "Get the current git branch, repository name, and remote origin URL.",
+                "parameters": {},
+                "annotations": {"readOnlyHint": True, "idempotentHint": True},
+            },
+            {
+                "name": "analyze_diff",
+                "description": "Get the current uncommitted git diff (git diff HEAD — includes both staged and unstaged changes). Lists all changed files and their line-level modifications.",
+                "parameters": {},
+                "annotations": {"readOnlyHint": True, "idempotentHint": True},
+            },
+            {
+                "name": "list_unstaged_files",
+                "description": "List uncommitted file changes categorized as new (untracked), modified (unstaged modifications) or deleted. Returns structured JSON.",
+                "parameters": {},
+                "annotations": {"readOnlyHint": True, "idempotentHint": True},
+            },
+            {
+                "name": "analyze_unstaged_diff",
+                "description": "Get only the unstaged git diff (git diff without HEAD — compares the index against the working tree). Excludes staged changes. Untracked files are not shown; use list_unstaged_files for them.",
+                "parameters": {},
+                "annotations": {"readOnlyHint": True, "idempotentHint": True},
+            },
+            {
+                "name": "get_full_diff",
+                "description": "Get the full diff of the current branch against the remote base branch (origin/main or origin/master). Runs git fetch first.",
+                "parameters": {},
+                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+            },
+            {
+                "name": "generate_commit_message",
+                "description": "Generate a Conventional Commits commit message from the current git diff using AI. Returns a message like 'feat: add user authentication'.",
+                "parameters": {
+                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama. Empty uses default from ~/.gitpr/.env."},
+                    "diff_text": {"type": "string", "required": False, "description": "Optional diff text. If empty, auto-detects from git."},
+                },
+                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+            },
+            {
+                "name": "review_code",
+                "description": "Perform an AI code review on uncommitted local changes (git diff HEAD). Returns structured feedback with issues and improvement suggestions.",
+                "parameters": {
+                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama."},
+                    "diff_text": {"type": "string", "required": False, "description": "Optional diff text. If empty, auto-detects from git."},
+                },
+                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+            },
+            {
+                "name": "full_review",
+                "description": "Perform a full AI code review comparing the entire current branch against origin/main. Runs git fetch automatically.",
+                "parameters": {
+                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama."},
+                },
+                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+            },
+            {
+                "name": "generate_pr_description",
+                "description": "Generate a complete Pull Request description (title + body) from the full diff against origin/main. Uses AI to create a structured, professional PR document.",
+                "parameters": {
+                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama."},
+                },
+                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+            },
+            {
+                "name": "run_linter",
+                "description": "Run the static local linter (regex-based rules from .gitpr.linter.yml) on the current git diff. Returns error and warning counts with detailed messages.",
+                "parameters": {},
+                "annotations": {"readOnlyHint": True, "idempotentHint": True},
+            },
+            {
+                "name": "analyze_blame",
+                "description": "Run AI-powered git blame analysis on a file region to trace the origin of business rules. Classifies each commit as ORIGIN (first introduction) or REFACTORING (later change).",
+                "parameters": {
+                    "file_path": {"type": "string", "required": True, "description": "Path to the source file (relative to the repository root)."},
+                    "start_line": {"type": "string", "required": True, "description": "Starting line number (as a string, e.g. '42')."},
+                    "end_line": {"type": "string", "required": True, "description": "Ending line number (as a string, e.g. '58')."},
+                },
+                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+            },
+            {
+                "name": "generate_issue",
+                "description": "Generate a structured Issue (What / Why / Where / How) from code context using AI. Supports three modes: diff (current changes), history (branch history), or blame (file region).",
+                "parameters": {
+                    "context_type": {"type": "string", "required": False, "description": "Context source: 'diff' (default), 'history', or 'blame'."},
+                },
+                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+            },
+        ],
+        "resources": [
+            {"uri": "skill://list", "name": "Available Skill Templates", "description": "Lists all available skill template resource URIs.", "mimeType": "application/json"},
+            {"uri": "skill://pr", "name": "PR Description Template", "description": "Custom AI instructions for generating Pull Request descriptions.", "mimeType": "text/markdown"},
+            {"uri": "skill://commit", "name": "Commit Message Template", "description": "Custom AI instructions for generating commit messages.", "mimeType": "text/markdown"},
+            {"uri": "skill://review", "name": "Code Review Template", "description": "Custom AI instructions for code reviews.", "mimeType": "text/markdown"},
+            {"uri": "skill://filereview", "name": "File Review Template", "description": "Custom AI instructions for full-file audits.", "mimeType": "text/markdown"},
+            {"uri": "skill://issue", "name": "Issue Template", "description": "Custom AI instructions for generating issues.", "mimeType": "text/markdown"},
+            {"uri": "skill://blame", "name": "Blame Analysis Template", "description": "Custom AI instructions for code archaeology (blame).", "mimeType": "text/markdown"},
+            {"uri": "linter://config", "name": "Linter Configuration", "description": "YAML rules for the static local linter.", "mimeType": "text/yaml"},
+            {"uri": "prompt://list", "name": "Available Prompt Templates", "description": "Lists all available MCP prompt template URIs.", "mimeType": "application/json"},
+            {"uri": "prompt://review", "name": "Review PR Prompt", "description": "Prompt template: full code review of the current branch.", "mimeType": "text/markdown"},
+            {"uri": "prompt://commit", "name": "Commit Message Prompt", "description": "Prompt template: generate a Conventional Commits message.", "mimeType": "text/markdown"},
+            {"uri": "prompt://pr", "name": "PR Description Prompt", "description": "Prompt template: generate a Pull Request description.", "mimeType": "text/markdown"},
+            {"uri": "prompt://linter", "name": "Linter Prompt", "description": "Prompt template: run the static linter on changes.", "mimeType": "text/markdown"},
+            {"uri": "prompt://issue", "name": "Issue Prompt", "description": "Prompt template: generate a structured issue from changes.", "mimeType": "text/markdown"},
+            {"uri": "prompt://blame", "name": "Blame Prompt", "description": "Prompt template: trace code origin with git blame + AI.", "mimeType": "text/markdown"},
+            {"uri": "prompt://explore", "name": "Explore Prompt", "description": "Prompt template: explore project context and available skills.", "mimeType": "text/markdown"},
+        ],
+        "prompts": [
+            {"name": "Review PR", "description": "Full code review of all changes in the current branch against origin/main. Runs the full review tool and linter, then composes a comprehensive report."},
+            {"name": "Generate Commit Message", "description": "Generate a Conventional Commits message (e.g., 'feat: add user auth') from the current uncommitted changes."},
+            {"name": "Create PR Description", "description": "Generate a complete Pull Request description (title + body) from all changes in the current branch."},
+            {"name": "Run Code Linter", "description": "Run the static linter (.gitpr.linter.yml rules) on current uncommitted changes and report violations."},
+            {"name": "Create Issue from Diff", "description": "Generate a structured issue (What / Why / Where / How) from the current uncommitted changes."},
+            {"name": "Trace Code Origin", "description": "Investigate the history of a specific file region using git blame + AI to trace where business rules came from."},
+            {"name": "Explore Project Context", "description": "Get current branch info, repository name, and list available skill templates for the project."},
+        ],
+    }
+
+
+def _get_tools_catalog_json() -> str:
+    """Return the tools catalog as a JSON string with indentation."""
+    return json.dumps(_build_tools_catalog(), indent=2, ensure_ascii=False)
+
+
+def _get_compact_tools() -> list[dict]:
+    """Return a compact tool list (name + description only) for embedding in config files.
+
+    Each entry: {"name": "...", "description": "..."}
+    Used by --install to enrich editor config files with tool metadata.
+    """
+    catalog = _build_tools_catalog()
+    return [
+        {"name": t["name"], "description": t["description"]}
+        for t in catalog["tools"]
+    ]
+
+
+def _write_real_stdout(text: str) -> None:
+    """Write *text* to the real OS-level stdout, bypassing the _MCPStdout guard.
+
+    Used by --list and --tool modes so that JSON output lands on actual
+    stdout, where human users and scripts can capture it.  All application
+    noise (spinners, banners, click output) has already been routed to
+    stderr by the guard + _patch_output().
+
+    Falls back to a plain ``print()`` if neither ``sys.__stdout__`` nor
+    ``_original_stdout`` is available.
+    """
+    real_stdout = getattr(sys, '__stdout__', None)
+    if real_stdout is None:
+        real_stdout = _original_stdout
+    try:
+        real_stdout.write(text)
+        real_stdout.flush()
+    except Exception:
+        # Last resort: print normally (may end up on stderr but won't crash)
+        print(text)
+
+
+def _run_list() -> None:
+    """Handle the --list command: print the tools catalog to stdout as JSON.
+
+    Writes directly to the *real* stdout (bypassing the _MCPStdout guard
+    that redirects application output to stderr) so that agents can call
+    ``gitpr-mcp --list``, capture stdout, and parse the JSON without
+    needing to connect to the stdio MCP transport.
+    """
+    _write_real_stdout(_get_tools_catalog_json() + "\n")
+
+
+# =============================================================================
+# Direct Tool Invocation (gitpr-mcp --tool <name> [--tool-args <json>])
+# =============================================================================
+
+# Map tool name → callable.  Built from the @mcp.tool() functions above.
+# The parameter metadata lives in _build_tools_catalog()["tools"] and is
+# merged at runtime by _get_tool_registry() — keeping callables and
+# metadata in separate dicts means --list can still json.dumps the catalog.
+_TOOL_FUNCS = {
+    "get_git_context": get_git_context,
+    "analyze_diff": analyze_diff,
+    "list_unstaged_files": list_unstaged_files,
+    "analyze_unstaged_diff": analyze_unstaged_diff,
+    "get_full_diff": get_full_diff,
+    "generate_commit_message": generate_commit_message,
+    "review_code": review_code,
+    "full_review": full_review,
+    "generate_pr_description": generate_pr_description,
+    "run_linter": run_linter,
+    "analyze_blame": analyze_blame,
+    "generate_issue": generate_issue,
+}
+
+
+def _get_tool_registry() -> dict:
+    """Return ``{name: {name, description, parameters, func}, ...}``.
+
+    Merges the hand-maintained catalog (parameter metadata) with the
+    ``_TOOL_FUNCS`` dict (actual callables).  The two are kept separate
+    so that ``_build_tools_catalog()`` remains JSON-serialisable for
+    ``--list``.
+    """
+    registry = {}
+    catalog_tools = _build_tools_catalog()["tools"]
+    for tool in catalog_tools:
+        name = tool["name"]
+        registry[name] = {
+            "name": name,
+            "description": tool["description"],
+            "parameters": tool.get("parameters", {}),
+            "func": _TOOL_FUNCS.get(name),
+        }
+    return registry
+
+
+def _prettify_result(raw: str) -> str:
+    """Try to parse *raw* as JSON and re-dump with indentation.
+
+    Returns *raw* unchanged if it is not valid JSON — some tools return
+    plain-text diffs rather than JSON objects.
+    """
+    try:
+        parsed = json.loads(raw)
+        return json.dumps(parsed, indent=2, ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError):
+        return raw
+
+
+def _print_tool_help() -> None:
+    """Print a human-readable list of available tools to real stdout."""
+    registry = _get_tool_registry()
+    lines = [
+        "",
+        "Available tools - gitpr-mcp --tool <name> [--tool-args '<json>']",
+        "=" * 72,
+        "",
+    ]
+    for name in sorted(registry):
+        entry = registry[name]
+        params = entry["parameters"]
+        if params:
+            required = [p for p, m in params.items() if m.get("required")]
+            optional = [p for p, m in params.items() if not m.get("required")]
+            tags = []
+            if required:
+                tags.append("(required) " + ", ".join(required))
+            if optional:
+                tags.append("(optional) " + ", ".join(optional))
+            param_str = "  ".join(tags)
+            lines.append(f"  {name:28s} {param_str}")
+        else:
+            lines.append(f"  {name}")
+        # Wrap description to ~70 chars
+        desc = entry["description"]
+        lines.append(f"      {desc}")
+        lines.append("")
+    lines.append("Example:")
+    lines.append('  gitpr-mcp --tool analyze_blame --tool-args \'{"file_path":"src/main.py","start_line":"10","end_line":"20"}\'')
+    lines.append("")
+    _write_real_stdout("\n".join(lines))
+
+
+def _run_tool(tool_name: str, tool_args_json: str = "") -> int:
+    """Invoke a single MCP tool and print its JSON result to real stdout.
+
+    Parameters:
+        tool_name: Name of the tool (must be in ``_get_tool_registry()``).
+        tool_args_json: JSON object string with tool parameters (may be empty).
+
+    Returns:
+        Exit code: 0 on success, 1 on error.
+    """
+    # --- Help mode: bare --tool (no name) ---
+    if not tool_name:
+        _print_tool_help()
+        return 0
+
+    # --- Look up the tool ---
+    registry = _get_tool_registry()
+    if tool_name not in registry:
+        _write_real_stdout(json.dumps({
+            "status": "error",
+            "message": f"Unknown tool: '{tool_name}'.",
+            "available_tools": sorted(registry.keys()),
+        }, ensure_ascii=False) + "\n")
+        _print_tool_help()
+        return 1
+
+    entry = registry[tool_name]
+
+    # --- Parse --tool-args ---
+    tool_args = {}
+    if tool_args_json and tool_args_json.strip():
+        try:
+            tool_args = json.loads(tool_args_json)
+        except json.JSONDecodeError as e:
+            _write_real_stdout(json.dumps({
+                "status": "error",
+                "message": f"Invalid --tool-args JSON: {e}",
+            }, ensure_ascii=False) + "\n")
+            return 1
+        if not isinstance(tool_args, dict):
+            _write_real_stdout(json.dumps({
+                "status": "error",
+                "message": "--tool-args must be a JSON object.",
+            }, ensure_ascii=False) + "\n")
+            return 1
+
+    # --- Validate required parameters ---
+    params_meta = entry["parameters"]
+    missing = [
+        p for p, meta in params_meta.items()
+        if meta.get("required") and p not in tool_args
+    ]
+    if missing:
+        msg = f"Missing required argument(s): {', '.join(missing)}. "
+        msg += f"Pass them via --tool-args, e.g. "
+        msg += f'--tool {tool_name} --tool-args \'{{"{missing[0]}": "..."}}\'.'
+        _write_real_stdout(json.dumps({
+            "status": "error",
+            "message": msg,
+        }, ensure_ascii=False) + "\n")
+        return 1
+
+    # --- Execute: mirror server mode (patch output → load .env → safe call) ---
+    _patch_output()
+    _init_config()
+    try:
+        result = _safe_call(entry["func"], **tool_args)
+    finally:
+        _unpatch_output()
+
+    if result is None:
+        _write_real_stdout(json.dumps({
+            "status": "error",
+            "message": f"Tool '{tool_name}' failed. See stderr for details.",
+        }, ensure_ascii=False) + "\n")
+        return 1
+
+    _write_real_stdout(_prettify_result(str(result)) + "\n")
+    return 0
+
+
+# =============================================================================
 # MCP Config Installer (gitpr-mcp --install <editor>)
 # =============================================================================
 
-# Config templates for each supported editor
+# Config templates for each supported editor.
+# Each template includes a "description" field so that editors, IDEs,
+# and AI agents can understand what the server does without connecting.
+_GITPR_MCP_DESCRIPTION = (
+    "GitPR MCP Server — AI-powered PR automation: generate commit messages, "
+    "review code, run linters, trace code origins with git blame, create "
+    "structured issues, and generate PR descriptions. "
+    "Run 'gitpr-mcp --list' for the complete tools catalog."
+)
+
 _CONFIG_TEMPLATES = {
     "vscode": {
         "dir": ".vscode",
@@ -1067,6 +1475,7 @@ _CONFIG_TEMPLATES = {
                 "type": "stdio",
                 "command": "gitpr-mcp",
                 "args": [],
+                "description": _GITPR_MCP_DESCRIPTION,
             }
         },
     },
@@ -1079,6 +1488,7 @@ _CONFIG_TEMPLATES = {
                 "type": "stdio",
                 "command": "gitpr-mcp",
                 "args": [],
+                "description": _GITPR_MCP_DESCRIPTION,
             }
         },
     },
@@ -1090,6 +1500,7 @@ _CONFIG_TEMPLATES = {
             "gitpr": {
                 "command": "gitpr-mcp",
                 "args": [],
+                "description": _GITPR_MCP_DESCRIPTION,
             }
         },
     },
@@ -1102,6 +1513,7 @@ _CONFIG_TEMPLATES = {
             "gitpr": {
                 "command": "gitpr-mcp",
                 "args": [],
+                "description": _GITPR_MCP_DESCRIPTION,
             }
         },
     },
@@ -1115,6 +1527,7 @@ _CONFIG_TEMPLATES = {
                 "command": {
                     "path": "gitpr-mcp",
                     "args": [],
+                    "description": _GITPR_MCP_DESCRIPTION,
                 }
             }
         },
@@ -1182,9 +1595,14 @@ def _merge_json_file(filepath: Path, key: str, entry: dict) -> dict:
 def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
     """Install MCP config for a single editor.
 
+    Enriches the config entry with a compact ``_tools`` array so that
+    editors, IDEs, and AI agents can discover available tools just by
+    reading the config file — no need to connect to the MCP server or
+    run ``gitpr-mcp --list``.
+
     Args:
-        editor: One of vscode, cursor, claude, zed.
-        project_root: Project root directory (used for vscode/cursor;
+        editor: One of vscode, cursor, claude, zed, claude-code.
+        project_root: Project root directory (used for vscode/cursor/claude-code;
                       ignored for claude/zed which use global paths).
 
     Returns:
@@ -1196,7 +1614,7 @@ def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
 
     config_dir = Path(config["dir"])
     if not config_dir.is_absolute():
-        # Project-local editor (vscode, cursor): resolve relative to project root
+        # Project-local editor (vscode, cursor, claude-code): resolve relative to project root
         config_dir = project_root / config_dir
     config_file = config_dir / config["file"]
 
@@ -1206,8 +1624,19 @@ def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
     except OSError as e:
         return False, f"Failed to create directory '{config_dir}': {e}"
 
+    # --- Enrich the entry with dynamic tool metadata ---
+    entry = dict(config["entry"])  # shallow copy to avoid mutating the template
+    gitpr_entry = dict(entry["gitpr"])
+    gitpr_entry["_tools"] = _get_compact_tools()
+
+    # Zed nests the config under a "command" key — enrich inside it
+    if editor == "zed" and "command" in gitpr_entry:
+        gitpr_entry["command"]["_tools"] = _get_compact_tools()
+
+    entry["gitpr"] = gitpr_entry
+
     # Merge with existing config
-    merged = _merge_json_file(config_file, config["key"], config["entry"])
+    merged = _merge_json_file(config_file, config["key"], entry)
 
     # Write
     try:
@@ -1284,7 +1713,9 @@ def _run_install(editor: str) -> None:
 def main():
     """Entry point for gitpr-mcp and gitpr --mcp.
 
+    When called with --list, prints the complete tools catalog as JSON.
     When called with --install, sets up MCP config files for the chosen editor.
+    When called with --tool, invokes a single MCP tool directly (CLI mode).
     Otherwise, starts the MCP server on stdio transport.
     """
     # --- Parse CLI args before starting the server ---
@@ -1292,19 +1723,54 @@ def main():
         prog="gitpr-mcp",
         description="GitPR MCP Server — integrate GitPR with AI-powered editors.",
     )
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--list",
+        action="store_true",
+        help="Print the complete tools catalog as JSON (tools, resources, and prompts). "
+             "Use this to discover available capabilities without starting the server.",
+    )
+    mode_group.add_argument(
         "--install",
         nargs="?",
         const="auto",
         choices=["vscode", "cursor", "claude-code", "claude", "zed", "auto"],
         help="Install MCP configuration for an editor (vscode, cursor, claude, zed, or auto-detect).",
     )
+    mode_group.add_argument(
+        "--tool",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="NAME",
+        help="Invoke a single MCP tool directly and print its JSON result to stdout. "
+             "Use --tool-args to pass parameters as a JSON object. "
+             "Use '--tool' alone (no NAME) to list available tools.",
+    )
+    parser.add_argument(
+        "--tool-args",
+        type=str,
+        default="",
+        metavar="JSON",
+        help="JSON object with tool parameters, e.g. "
+             "'{\"file_path\": \"src/main.py\", \"start_line\": \"10\", \"end_line\": \"20\"}'. "
+             "Only meaningful with --tool.",
+    )
     args, _ = parser.parse_known_args()
+
+    # --- List mode: print tools catalog and exit ---
+    if args.list:
+        _run_list()
+        return
 
     # --- Install mode: set up config and exit ---
     if args.install:
         _run_install(args.install)
         return
+
+    # --- Tool mode: invoke a single tool directly (CLI) ---
+    if args.tool is not None:
+        sys.exit(_run_tool(args.tool, args.tool_args))
 
     # --- Server mode: patch output and start MCP transport ---
     try:
