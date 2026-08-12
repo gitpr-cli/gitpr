@@ -70,6 +70,11 @@ Le script est suffisamment intelligent pour ne pas écraser votre intention. Si 
 git commit -m "fix: corrige un problème de concurrence dans l'API"
 ```
 
+Les messages de fusion et générés par git sont également préservés. Lorsque le message provient
+de git lui-même — `git pull`/`git merge` (origine « merge »), `git merge --squash`
+(origine « squash ») ou `git commit --amend`/`-c`/`-C` (origine « commit ») — le hook
+**désactive silencieusement l'IA**, sans jamais toucher au message de fusion.
+
 ---
 
 ## **4. Résolution de problèmes (Troubleshooting)**

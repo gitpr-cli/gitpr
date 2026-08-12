@@ -70,6 +70,11 @@ O script é inteligente o suficiente para não sobrescrever a sua intenção. Se
 git commit -m "fix: corrige problema de concorrência na API"
 ```
 
+Mensagens de merge e geradas pelo git também são preservadas. Quando a mensagem vem
+do próprio git — `git pull`/`git merge` (origem "merge"), `git merge --squash`
+(origem "squash") ou `git commit --amend`/`-c`/`-C` (origem "commit") — o hook
+**desativa a IA silenciosamente**, sem nunca tocar na mensagem de merge.
+
 ---
 
 ## **4. Resolução de Problemas (Troubleshooting)**
