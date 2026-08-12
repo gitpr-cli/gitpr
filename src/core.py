@@ -449,6 +449,26 @@ def get_git_diff(quiet=False):
         return None
 
 
+def is_merge_in_progress():
+    """Returns True when a merge is in progress (MERGE_HEAD exists).
+
+    Used to skip AI commit-message generation for merge commits
+    (git pull, git merge, conflicted-merge finalization), where the
+    message must come from git, not from AI.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        return result.returncode == 0
+    except Exception:
+        return False  # git missing/unavailable — never block the commit
+
+
 def get_unstaged_diff(quiet=False):
     """Runs 'git diff' (index vs working tree) — returns ONLY unstaged changes,
     excluding staged ones. Untracked files are never shown by git diff.

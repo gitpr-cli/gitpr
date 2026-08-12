@@ -4,6 +4,7 @@ from src.core import (
     get_current_branch, get_git_diff,
     get_unstaged_files, get_unstaged_categorized,
     get_unstaged_diff, get_uncommitted_summary,
+    is_merge_in_progress,
 )
 
 class TestCore(unittest.TestCase):
@@ -248,6 +249,37 @@ class TestUncommittedSummary(unittest.TestCase):
         mock_run.side_effect = Exception("git not found")
         result = get_uncommitted_summary()
         self.assertEqual(result, {"staged": [], "unstaged": [], "untracked": []})
+
+
+class TestIsMergeInProgress(unittest.TestCase):
+    """Tests for is_merge_in_progress() (MERGE_HEAD detection)."""
+
+    @patch('src.core.subprocess.run')
+    def test_true_when_merge_in_progress(self, mock_run):
+        """MERGE_HEAD exists (rev-parse exits 0) -> merge in progress."""
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_run.return_value = mock_process
+
+        self.assertTrue(is_merge_in_progress())
+        mock_run.assert_called_once()
+        self.assertEqual(mock_run.call_args[0][0],
+                         ["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"])
+
+    @patch('src.core.subprocess.run')
+    def test_false_when_no_merge(self, mock_run):
+        """rev-parse exits 1 -> no merge in progress."""
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_run.return_value = mock_process
+
+        self.assertFalse(is_merge_in_progress())
+
+    @patch('src.core.subprocess.run')
+    def test_false_on_git_error(self, mock_run):
+        """git unavailable -> never block the commit."""
+        mock_run.side_effect = Exception("git not found")
+        self.assertFalse(is_merge_in_progress())
 
 
 if __name__ == '__main__':

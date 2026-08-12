@@ -69,6 +69,11 @@ The script is smart enough not to overwrite your intention. If you run the commi
 git commit -m "fix: resolves API concurrency issue"
 ```
 
+Merge and git-generated messages are also preserved. When the message comes from
+git itself — `git pull`/`git merge` (source "merge"), `git merge --squash`
+(source "squash"), or `git commit --amend`/`-c`/`-C` (source "commit") — the hook
+**silently disables AI**, never touching the merge message.
+
 ---
 
 ## **4. Troubleshooting**

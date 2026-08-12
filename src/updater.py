@@ -11,7 +11,7 @@ from datetime import datetime
 #     from here, and pyproject.toml reads __version__ via setuptools attr:.
 __version__ = "0.0.35"  # GitPR current version
 __lang_version__ = "v0.0.13"  # Language dictionary version control
-__scripts_version__ = "v0.0.1"  # Git Hook scripts version control (independent from __lang_version__)
+__scripts_version__ = "v0.0.2"  # Git Hook scripts version control (independent from __lang_version__)
 
 from src.i18n import __
 GITHUB_API_URL = "https://api.github.com/repos/natanfiuza/gitpr/releases/latest"

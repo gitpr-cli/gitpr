@@ -10,8 +10,16 @@ GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 NC='\033[0m' # Sem Cor
 
-# Se o utilizador já passou uma mensagem manual com 'git commit -m', aborta a IA
-if [ "$COMMIT_SOURCE" = "message" ]; then
+# Ignora a IA para mensagens geradas pelo git: -m/--file (message), merges (merge),
+# squash (squash) e --amend/-c/-C (commit). A mensagem do git prevalece.
+case "$COMMIT_SOURCE" in
+    message|merge|squash|commit)
+        exit 0
+        ;;
+esac
+
+# Segurança extra: nunca toca na mensagem de merge, mesmo com uma fonte inesperada
+if [ -f .git/MERGE_HEAD ]; then
     exit 0
 fi
 
