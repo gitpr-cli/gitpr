@@ -501,5 +501,8 @@
   "🤖 Hello! I am your AI assistant. I'm looking at your current diff. How can I help you?": "🤖 Olá! Sou seu assistente de IA. Estou vendo seu diff atual. Como posso ajudá-lo?",
   "🤖 Welcome to GitPR! Let's configure your AI engine.": "🤖 Bem-vindo ao GitPR! Vamos configurar o seu motor de IA.",
   "🧠 File {file_name} (Skill) found and loaded!\", file_name=nome_arquivo), fg=\"blue": "🧠 File {file_name} (Skill) found and loaded!\", file_name=nome_arquivo), fg=\"blue",
-  "🧹 Conversation cleared. A new session has started.": "🧹 Conversa limpa. Uma nova sessão foi iniciada."
+  "🧹 Conversation cleared. A new session has started.": "🧹 Conversa limpa. Uma nova sessão foi iniciada.",
+  "Modified": "Modificado",
+  "Deleted": "Excluido",
+  "New": "Novo"
 }

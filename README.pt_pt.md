@@ -153,7 +153,7 @@ Pode passar as seguintes *flags* para ações específicas:
   * **Issue de Código Novo (`gitpr -is`):** Lê o `git diff` atual. **Porquê usar:** Ideal para documentar rapidamente a tarefa que acabou de programar, antes de fazer commit.
   * **Issue de Épico/Release (`gitpr -is -ht`):** Lê o histórico completo do ramo atual (Git Log + Cache de PR). **Porquê usar:** Ideal para gerar documentação consolidada de uma release inteira ou de uma *feature* grande que levou vários dias/commits para ser concluída.
   * **Issue de Dívida Técnica/Arqueológica (`gitpr -is -b ficheiro:linhas`):** Lê a linha do tempo de uma regra de negócio específica. **Porquê usar:** Ideal para documentar dívida técnica, explicando como um bloco de código legado evoluiu e porque precisa de ser refatorado.
-* **Publicador de PR (predefinido):** Executar `gitpr` gera a descrição do PR com IA, guarda o ficheiro `.md` em `.gitpr/reports/pr_desc/` e abre uma interface interativa no terminal (TUI) para rever, editar e publicar o Pull Request diretamente no GitHub via REST API. Antes da geração, verifica se existem ficheiros não preparados (*unstaged*) e oferece um modal para os gerir. Use `--no-publish` para guardar apenas o ficheiro do PR localmente sem abrir o publicador, ou `--no-edit` para fazer commit automático das alterações pendentes (com validação de lint), fazer *push* automático e publicar imediatamente — tratando da atualização de PRs existentes e de *auto-merge* opcional. Use `--base <branch>` para alterar o ramo de destino. 📖 [Documentação completa](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.pt_pt.md)
+* **Publicador de PR (predefinido):** Executar `gitpr` gera a descrição do PR com IA, guarda o ficheiro `.md` em `.gitpr/reports/pr_desc/` e abre uma interface interativa no terminal (TUI) para rever, editar e publicar o Pull Request diretamente no GitHub via REST API. Antes da geração, verifica se existem ficheiros não preparados (*unstaged*) e oferece um modal para os gerir. Use `--no-publish` para guardar apenas o ficheiro do PR localmente sem abrir o publicador, ou `--no-edit` para fazer commit automático das alterações pendentes (com validação de lint), fazer *push* automático e publicar imediatamente — tratando da atualização de PRs existentes, de *auto-merge* opcional e de feedback claro de erro quando ocorrem conflitos de merge. Use `--base <branch>` para alterar o ramo de destino. 📖 [Documentação completa](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.pt_pt.md)
 * `-h` ou `--help`: Mostra a ajuda geral com todas as opções. Use juntamente com outra flag para **ajuda contextual** (ex.: `gitpr -h --issue`, `gitpr -h --linter`) com um link direto para a documentação detalhada de cada funcionalidade.
 * `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
 
@@ -303,6 +303,25 @@ Uma vez configurado, use linguagem natural no chat de IA do seu editor:
 | `run_linter` | Linter estático baseado no `.gitpr.linter.yml` |
 | `analyze_blame` | Git blame + classificação por IA |
 | `generate_issue` | Issue estruturada a partir de diff, histórico ou blame |
+| `list_unstaged_files` | Alterações não commitadas categorizadas (novos/modificados/eliminados) |
+| `analyze_unstaged_diff` | Diff apenas unstaged (working tree vs index) |
+
+### Invocação Direta via CLI
+
+Todas as ferramentas MCP do GitPR podem ser invocadas diretamente do terminal sem iniciar o servidor stdio:
+
+```bash
+# Listar todas as ferramentas disponíveis com as suas assinaturas
+gitpr-mcp --tool
+
+# Invocar uma ferramenta específica
+gitpr-mcp --tool get_git_context
+gitpr-mcp --tool review_code
+gitpr-mcp --tool generate_commit_message --tool-args '{"diff_text":"..."}'
+gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_line":"270","end_line":"284"}'
+```
+
+Ideal para scripts, pipelines de CI/CD e consultas pontuais onde não precisa de um servidor MCP persistente. A saída JSON vai para stdout; todas as mensagens de diagnóstico vão para stderr — seguro para pipe.
 
 📖 **Documentação completa:** [docs/mcp-integration.md](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — disponível em 5 idiomas (EN, PT-BR, PT-PT, ES, FR).
 

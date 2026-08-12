@@ -153,7 +153,7 @@ Você pode passar as seguintes *flags* para ações específicas:
   * **Issue de Código Novo (`gitpr -is`):** Lê o `git diff` atual. **Por que usar:** Ideal para documentar rapidamente a tarefa que você acabou de programar, antes de commitar.
   * **Issue de Épico/Release (`gitpr -is -ht`):** Lê o histórico completo da branch atual (Git Log + Cache de PR). **Por que usar:** Ideal para gerar documentação consolidada de uma release inteira ou de uma *feature* grande que levou vários dias/commits para ser concluída.
   * **Issue de Dívida Técnica/Arqueológica (`gitpr -is -b arquivo:linhas`):** Lê a linha do tempo de uma regra de negócio específica. **Por que usar:** Ideal para documentar dívida técnica, explicando como um bloco de código legado evoluiu e por que ele precisa ser refatorado.
-* **Publicador de PR (padrão):** Executar `gitpr` gera a descrição do PR com IA, salva o arquivo `.md` em `.gitpr/reports/pr_desc/` e abre uma interface interativa no terminal (TUI) para revisar, editar e publicar o Pull Request diretamente no GitHub via REST API. Antes da geração, verifica se há arquivos não commitados (unstaged) e oferece um modal para gerenciá-los. Use `--no-publish` para salvar apenas o arquivo do PR localmente sem abrir o publicador, ou `--no-edit` para fazer auto-commit das alterações pendentes (com validação de lint), auto-push e publicar imediatamente — tratando atualizações de PRs existentes e auto-merge opcional. Use `--base <branch>` para alterar a branch de destino. 📖 [Documentação completa](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.md)
+* **Publicador de PR (padrão):** Executar `gitpr` gera a descrição do PR com IA, salva o arquivo `.md` em `.gitpr/reports/pr_desc/` e abre uma interface interativa no terminal (TUI) para revisar, editar e publicar o Pull Request diretamente no GitHub via REST API. Antes da geração, verifica se há arquivos não commitados (unstaged) e oferece um modal para gerenciá-los. Use `--no-publish` para salvar apenas o arquivo do PR localmente sem abrir o publicador, ou `--no-edit` para fazer auto-commit das alterações pendentes (com validação de lint), auto-push e publicar imediatamente — tratando atualizações de PRs existentes, auto-merge opcional e feedback claro de erro quando ocorrem conflitos de merge. Use `--base <branch>` para alterar a branch de destino. 📖 [Documentação completa](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.md)
 * `-h` ou `--help`: Mostra a ajuda geral com todas as opções. Use junto com outra flag para **ajuda contextual** (ex.: `gitpr -h --issue`, `gitpr -h --linter`) com um link direto para a documentação detalhada de cada funcionalidade.
 * `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
 
@@ -303,6 +303,25 @@ Uma vez configurado, use linguagem natural no chat de IA do seu editor:
 | `run_linter` | Linter estático baseado no `.gitpr.linter.yml` |
 | `analyze_blame` | Git blame + classificação por IA |
 | `generate_issue` | Issue estruturada a partir de diff, histórico ou blame |
+| `list_unstaged_files` | Alterações não commitadas categorizadas (novos/modificados/deletados) |
+| `analyze_unstaged_diff` | Diff apenas unstaged (working tree vs index) |
+
+### Invocação Direta via CLI
+
+Todas as ferramentas MCP do GitPR podem ser invocadas diretamente do terminal sem iniciar o servidor stdio:
+
+```bash
+# Listar todas as ferramentas disponíveis com suas assinaturas
+gitpr-mcp --tool
+
+# Invocar uma ferramenta específica
+gitpr-mcp --tool get_git_context
+gitpr-mcp --tool review_code
+gitpr-mcp --tool generate_commit_message --tool-args '{"diff_text":"..."}'
+gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_line":"270","end_line":"284"}'
+```
+
+Ideal para scripts, pipelines de CI/CD e consultas pontuais onde você não precisa de um servidor MCP persistente. A saída JSON vai para stdout; todas as mensagens de diagnóstico vão para stderr — seguro para pipe.
 
 📖 **Documentação completa:** [docs/mcp-integration.pt_br.md](docs/mcp-integration.pt_br.md) — disponível em 5 idiomas (EN, PT-BR, PT-PT, ES, FR).
 

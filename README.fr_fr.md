@@ -153,7 +153,7 @@ Vous pouvez passer les *flags* suivants pour des actions spécifiques :
   * **Issue de Nouveau Code (`gitpr -is`) :** Lit le `git diff` actuel. **Pourquoi utiliser :** Idéal pour documenter rapidement la tâche que vous venez de programmer, avant de commiter.
   * **Issue d'Épique/Release (`gitpr -is -ht`) :** Lit l'historique complet de la branche actuelle (Git Log + Cache PR). **Pourquoi utiliser :** Idéal pour générer une documentation consolidée d'une release entière ou d'une *feature* importante qui a pris plusieurs jours/commits à terminer.
   * **Issue de Dette Technique/Archéologique (`gitpr -is -b fichier:lignes`) :** Lit la chronologie d'une règle métier spécifique. **Pourquoi utiliser :** Idéal pour documenter la dette technique, en expliquant comment un bloc de code legacy a évolué et pourquoi il doit être refactorisé.
-* **Publicateur de Pull Request (par défaut) :** Exécuter `gitpr` génère la description de la PR avec l'IA, enregistre le fichier `.md` dans `.gitpr/reports/pr_desc/` et ouvre une interface interactive dans le terminal (TUI) pour réviser, éditer et publier la Pull Request directement sur GitHub via l'API REST. Avant la génération, GitPR vérifie la présence de fichiers non suivis (unstaged) et propose un modal pour les gérer. Utilisez `--no-publish` pour enregistrer uniquement le fichier de la PR localement sans ouvrir le publicateur, ou `--no-edit` pour faire un auto-commit des modifications en attente (avec validation du lint), un auto-push et une publication immédiate — avec gestion des mises à jour des PR existantes et un auto-merge optionnel. Utilisez `--base <branch>` pour changer la branche cible. 📖 [Documentation complète](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.fr_fr.md)
+* **Publicateur de Pull Request (par défaut) :** Exécuter `gitpr` génère la description de la PR avec l'IA, enregistre le fichier `.md` dans `.gitpr/reports/pr_desc/` et ouvre une interface interactive dans le terminal (TUI) pour réviser, éditer et publier la Pull Request directement sur GitHub via l'API REST. Avant la génération, GitPR vérifie la présence de fichiers non suivis (unstaged) et propose un modal pour les gérer. Utilisez `--no-publish` pour enregistrer uniquement le fichier de la PR localement sans ouvrir le publicateur, ou `--no-edit` pour faire un auto-commit des modifications en attente (avec validation du lint), un auto-push et une publication immédiate — avec gestion des mises à jour des PR existantes, un auto-merge optionnel et un retour d'erreur clair en cas de conflits de merge. Utilisez `--base <branch>` pour changer la branche cible. 📖 [Documentation complète](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.fr_fr.md)
 * `-h` ou `--help` : Affiche l'aide générale avec toutes les options. Utilisez-le avec un autre flag pour une **aide contextuelle** (ex. : `gitpr -h --issue`, `gitpr -h --linter`) avec un lien direct vers la documentation détaillée de chaque fonctionnalité.
 * `-u` ou `--update` : Vérifie et installe la version la plus récente de GitPR (Auto-Updater).
 
@@ -303,6 +303,25 @@ Une fois configuré, utilisez le langage naturel dans le chat IA de votre édite
 | `run_linter` | Linter statique basé sur `.gitpr.linter.yml` |
 | `analyze_blame` | Git blame + classification par IA |
 | `generate_issue` | Issue structurée à partir du diff, de l'historique ou du blame |
+| `list_unstaged_files` | Modifications non commitées catégorisées (nouveaux/modifiés/supprimés) |
+| `analyze_unstaged_diff` | Diff unstaged uniquement (working tree vs index) |
+
+### Invocation Directe par CLI
+
+Tous les outils MCP de GitPR peuvent être invoqués directement depuis le terminal sans démarrer le serveur stdio :
+
+```bash
+# Lister tous les outils disponibles avec leurs signatures
+gitpr-mcp --tool
+
+# Invoquer un outil spécifique
+gitpr-mcp --tool get_git_context
+gitpr-mcp --tool review_code
+gitpr-mcp --tool generate_commit_message --tool-args '{"diff_text":"..."}'
+gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_line":"270","end_line":"284"}'
+```
+
+Idéal pour les scripts, les pipelines CI/CD et les requêtes ponctuelles où vous n'avez pas besoin d'un serveur MCP persistant. La sortie JSON va vers stdout ; tous les messages de diagnostic vont vers stderr — sûr pour les pipes.
 
 📖 **Documentation complète :** [docs/mcp-integration.md](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — disponible en 5 langues (EN, PT-BR, PT-PT, ES, FR).
 
