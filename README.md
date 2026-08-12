@@ -154,7 +154,7 @@ You can pass the following *flags* for specific actions:
   * **New Code Issue (`gitpr -is`):** Reads the current `git diff`. **Why use:** Ideal for quickly documenting the task you just finished programming, before committing.
   * **Epic/Release Issue (`gitpr -is -ht`):** Reads the full history of the current branch (Git Log + PR Cache). **Why use:** Ideal for generating consolidated documentation of an entire release or a large *feature* that took several days/commits to complete.
   * **Archaeological/Technical Debt Issue (`gitpr -is -b file:lines`):** Reads the timeline of a specific business rule. **Why use:** Ideal for documenting technical debt, explaining how a legacy code block evolved and why it needs to be refactored.
-	* **PR Publisher (default):** Running `gitpr` generates the PR description with AI, saves the `.md` file to `.gitpr/reports/pr_desc/`, and opens an interactive terminal interface (TUI) to review, edit, and publish the Pull Request directly to GitHub via REST API. Before generation, it checks for unstaged files and offers a modal to manage them. Use `--no-publish` to save only the PR file locally without opening the publisher, or `--no-edit` to auto-commit pending changes (with lint validation), auto-push, and publish immediately — handling existing PR updates and optional auto-merge. Use `--base <branch>` to change the target branch. 📖 [Full docs](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.md)
+	* **PR Publisher (default):** Running `gitpr` generates the PR description with AI, saves the `.md` file to `.gitpr/reports/pr_desc/`, and opens an interactive terminal interface (TUI) to review, edit, and publish the Pull Request directly to GitHub via REST API. Before generation, it checks for unstaged files and offers a modal to manage them. Use `--no-publish` to save only the PR file locally without opening the publisher, or `--no-edit` to auto-commit pending changes (with lint validation), auto-push, and publish immediately — handling existing PR updates, optional auto-merge, and clear error feedback when merge conflicts occur. Use `--base <branch>` to change the target branch. 📖 [Full docs](https://github.com/natanfiuza/gitpr/blob/main/docs/pull-request-publication.md)
 * `-h` or `--help`: Shows the general help with all options. Use together with another flag for **contextual help** (e.g.: `gitpr -h --issue`, `gitpr -h --linter`) with a direct link to the detailed documentation of each feature.
 * `-u` or `--update`: Checks and installs the latest version of GitPR (Auto-Updater).
 
@@ -303,6 +303,25 @@ Once configured, use natural language in your editor's AI chat:
 | `run_linter` | Static linter against `.gitpr.linter.yml` |
 | `analyze_blame` | Git blame + AI classification |
 | `generate_issue` | Structured issue from diff, history, or blame |
+| `list_unstaged_files` | Uncommitted file changes categorized (new/modified/deleted) |
+| `analyze_unstaged_diff` | Unstaged diff only (working tree vs index) |
+
+### Direct CLI Invocation
+
+All GitPR MCP tools can be invoked directly from the terminal without starting the stdio server:
+
+```bash
+# List all available tools with their parameter signatures
+gitpr-mcp --tool
+
+# Invoke a specific tool
+gitpr-mcp --tool get_git_context
+gitpr-mcp --tool review_code
+gitpr-mcp --tool generate_commit_message --tool-args '{"diff_text":"..."}'
+gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_line":"270","end_line":"284"}'
+```
+
+This is useful for scripting, CI/CD pipelines, and one-off queries where you don't need a persistent MCP server. JSON output goes to stdout; all diagnostic messages go to stderr — safe for piping.
 
 📖 **Full documentation:** [docs/mcp-integration.md](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — available in 5 languages (EN, PT-BR, PT-PT, ES, FR).
 

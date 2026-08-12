@@ -1,7 +1,7 @@
 # Memory Index
 
-> Gerado automaticamente por `/reports-to-memory` em 2026-08-09
-> Baseado em 43 relatórios de 1 branch
+> Gerado automaticamente por `/reports-to-memory` em 2026-08-11
+> Baseado em 54 relatórios de 1 branch
 
 ## Project
 - [Help Contextual Pattern](help-contextual-pattern.md) — Padrão de help contextual com Click usando flag regular em vez de help_option (develop_natan, 2026-07-01)
@@ -18,14 +18,20 @@
 - [Metrics Cache Enrichment](metrics-cache-enrichment.md) — Enriquecimento de métricas com tokens reais via scan do cache de prompts (develop_natan, 2026-08-02)
 - [Dashboard Repo-Scope](dashboard-repo-scope.md) — Dashboard de métricas com escopo por repositório, merge cache+eventos (develop_natan, 2026-08-02)
 - [AI Call Duration Tracking](ai-call-duration-tracking.md) — Rastreamento de duração real (wall-clock) das chamadas de IA via perf_counter (develop_natan, 2026-08-02)
+- [Gemini Reports Convention](gemini-reports-convention.md) — GEMINI.md estabelece relatórios em docs/gemini/reports/ paralelos aos do Claude (develop_natan, 2026-08-03)
 - [Output Reports Centralized Paths](output-reports-centralized-paths.md) — Centralização de outputs em .gitpr/reports/ com resolve_output_path() e _OUTPUT_FOLDER_MAP (develop_natan, 2026-08-06)
+- [Unstaged Check Before AI Commands](unstaged-check-before-ai-commands.md) — Verificação centralizada de arquivos unstaged antes de todos os comandos de IA (develop_natan, 2026-08-09)
 - [Plugin System Architecture](plugin-system-architecture.md) — Sistema de plugins globais: linter aditivo + prompts MCP dinâmicos com factory closures (develop_natan, 2026-08-09)
+- [Smart Excludes Local por Projeto](smart-excludes-local-projeto.md) — Arquivo local .gitpr/conf/gitpr.smart-excludes.json mergeado com lista global no runtime (develop_natan, 2026-08-10)
+- [MCP Tool CLI Invocação Direta](mcp-tool-cli-invocacao-direta.md) — gitpr-mcp --tool <name> invoca tools MCP diretamente sem servidor stdio (develop_natan, 2026-08-11)
 
 ## Reference
 - [Pre-Save Debug Flag](pre-save-debug-flag.md) — Flag oculta --pre-save que dumps payload completo da IA em JSON (develop_natan, 2026-07-18)
+- [Docs Multilíngue Convenção](docs-multilingue-convencao.md) — Convenção docs/<nome>.<lang>.md com inglês canônico e localizações por sufixo (develop_natan, 2026-08-03)
 - [GitHub API Shared Module](github-api-shared-module.md) — src/github_api.py como módulo centralizado de chamadas à API REST do GitHub (develop_natan, 2026-08-06)
 
 ## Feedback
 - [Windows UTF-8 Encoding Fix](windows-utf8-encoding-fix.md) — Consoles Windows com cp1252 crasham em emojis; fix com sys.stdout.reconfigure (develop_natan, 2026-08-03)
 - [TUI Stdout Conflict Fix](tui-stdout-conflict-fix.md) — Textual substitui sys.stdout e quebra click.secho() no Windows; wrapper _with_real_stdout() resolve (develop_natan, 2026-08-07)
 - [Nothing to Commit Detection](nothing-to-commit-detection.md) — Detecção multilingue de "nothing to commit" no git commit — trata como sucesso, não erro (develop_natan, 2026-08-09)
+- [Merge Conflict Error Handling](merge-conflict-error-handling.md) — Falha de merge no PR publisher exibe modal de erro em vez de prosseguir silenciosamente (develop_natan, 2026-08-11)
