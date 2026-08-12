@@ -10,8 +10,16 @@ GREEN='\033[0;32m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# If user already passed a manual message with 'git commit -m', skip AI
-if [ "$COMMIT_SOURCE" = "message" ]; then
+# Skip AI for git-generated messages: -m/--file (message), merges (merge),
+# squash (squash) and --amend/-c/-C (commit). Git's own message wins.
+case "$COMMIT_SOURCE" in
+    message|merge|squash|commit)
+        exit 0
+        ;;
+esac
+
+# Belt-and-braces: never touch a merge message even with an unusual source
+if [ -f .git/MERGE_HEAD ]; then
     exit 0
 fi
 

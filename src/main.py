@@ -25,6 +25,7 @@ from src.core import (
     run_install_wizard,
     check_and_update_hooks_scripts,
     resolve_output_path,
+    is_merge_in_progress,
 )
 from src.linter_engine import parse_diff_and_lint
 from src.i18n import __
@@ -747,6 +748,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             return
     elif commit:
         action_type = "commit"
+        if hook and is_merge_in_progress():
+            return  # merge in progress: git owns the message, skip AI silently
         if not hook and not check_unstaged_files("commit", skip_check=no_unstaged_check, quiet=quiet, interactive=False):
             return
         diff_text = get_git_diff()
