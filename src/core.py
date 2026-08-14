@@ -1237,18 +1237,24 @@ def get_unstaged_categorized():
 
 
 def stage_files(filepaths):
-    """Run git add on the given file paths. Returns True on success."""
+    """Run git add on the given file paths.
+
+    Returns (success, message): on failure, message carries git's error
+    output so callers can surface the real reason instead of a generic
+    warning (empty string when the staging succeeded).
+    """
     if not filepaths:
-        return True
+        return True, ""
     try:
-        subprocess.run(
+        result = subprocess.run(
             ["git", "add"] + filepaths,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            check=True,
         )
-        return True
-    except Exception:
-        return False
+        if result.returncode == 0:
+            return True, ""
+        return False, (result.stderr or result.stdout).strip()
+    except Exception as e:
+        return False, str(e)
 
 
 def execute_git_commit(message, no_verify=False):

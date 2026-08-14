@@ -4,7 +4,7 @@ from src.core import (
     get_current_branch, get_git_diff,
     get_unstaged_files, get_unstaged_categorized,
     get_unstaged_diff, get_uncommitted_summary,
-    is_merge_in_progress,
+    is_merge_in_progress, stage_files,
 )
 
 class TestCore(unittest.TestCase):
@@ -280,6 +280,49 @@ class TestIsMergeInProgress(unittest.TestCase):
         """git unavailable -> never block the commit."""
         mock_run.side_effect = Exception("git not found")
         self.assertFalse(is_merge_in_progress())
+
+
+class TestStageFiles(unittest.TestCase):
+    """Tests for stage_files() (git add wrapper)."""
+
+    def test_empty_list_is_success(self):
+        """No files to stage -> success without touching git."""
+        ok, err = stage_files([])
+        self.assertTrue(ok)
+        self.assertEqual(err, "")
+
+    @patch('src.core.subprocess.run')
+    def test_success_on_zero_returncode(self, mock_run):
+        """git add exits 0 -> (True, '')."""
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_run.return_value = mock_process
+
+        ok, err = stage_files(["docs/foo.md"])
+        self.assertTrue(ok)
+        self.assertEqual(err, "")
+        self.assertEqual(mock_run.call_args[0][0], ["git", "add", "docs/foo.md"])
+
+    @patch('src.core.subprocess.run')
+    def test_failure_returns_git_error(self, mock_run):
+        """git add fails -> (False, error message from git)."""
+        mock_process = MagicMock()
+        mock_process.returncode = 128
+        mock_process.stderr = "fatal: pathspec 'x.md' did not match any files\n"
+        mock_process.stdout = ""
+        mock_run.return_value = mock_process
+
+        ok, err = stage_files(["x.md"])
+        self.assertFalse(ok)
+        self.assertIn("pathspec", err)
+
+    @patch('src.core.subprocess.run')
+    def test_failure_on_exception(self, mock_run):
+        """git unavailable -> (False, exception message)."""
+        mock_run.side_effect = Exception("git not found")
+        ok, err = stage_files(["x.md"])
+        self.assertFalse(ok)
+        self.assertEqual(err, "git not found")
 
 
 if __name__ == '__main__':

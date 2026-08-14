@@ -15,6 +15,7 @@ La forma más fácil de configurar MCP es con el instalador integrado:
 # Instalar para un editor específico
 gitpr-mcp --install vscode      # Crea .vscode/mcp.json
 gitpr-mcp --install cursor      # Crea .cursor/mcp.json
+gitpr-mcp --install claude-code # Crea .mcp.json
 gitpr-mcp --install claude      # Actualiza config de Claude Desktop
 gitpr-mcp --install zed         # Actualiza config de Zed
 
@@ -64,6 +65,8 @@ de API funcionan sin prompts interactivos.
 |-------------|-------------|
 | `get_git_context` | Rama actual, nombre del repositorio y URL del remote |
 | `analyze_diff` | Diff git de cambios no commiteados (`git diff HEAD`) |
+| `list_unstaged_files` | Archivos no commiteados agrupados como nuevos, modificados o eliminados (JSON estructurado) |
+| `analyze_unstaged_diff` | Solo cambios sin staged (`git diff` — índice vs árbol de trabajo) |
 | `get_full_diff` | Diff completo contra origin/main (`git fetch` + diff) |
 | `generate_commit_message` | Mensaje de commit en formato Conventional Commits generado por IA |
 | `review_code` | Code review con IA de cambios locales (no commiteados) |
@@ -85,6 +88,30 @@ de API funcionan sin prompts interactivos.
 | `skill://issue` | Instrucciones de IA personalizadas para generación de issues |
 | `skill://blame` | Instrucciones de IA personalizadas para análisis de blame |
 | `linter://config` | Reglas YAML del linter (`.gitpr.linter.yml`) |
+
+### Plantillas de Prompt
+
+Las plantillas de prompt también se exponen como recursos — y como prompts
+seleccionables en el chat de IA de su editor:
+
+| URI | Contenido |
+|-----|-----------|
+| `prompt://list` | Lista de todos los URIs de plantillas de prompt disponibles |
+| `prompt://review` | Code review completo de la rama actual |
+| `prompt://commit` | Generación de mensajes Conventional Commits |
+| `prompt://pr` | Generación de descripciones de Pull Request |
+| `prompt://linter` | Ejecución del linter estático en los cambios |
+| `prompt://issue` | Generación de issues estructuradas a partir de los cambios |
+| `prompt://blame` | Rastreo del origen del código con git blame + IA |
+| `prompt://explore` | Exploración del contexto del proyecto y skills disponibles |
+
+Los prompts personalizados instalados en `~/.gitpr/plugins/` se registran
+automáticamente como `prompt://plugin/<nombre>`.
+
+El servidor también expone estos **prompts** integrados (mensajes iniciales
+seleccionables en el chat de IA del editor): *Review PR*, *Generate Commit
+Message*, *Create PR Description*, *Run Code Linter*, *Create Issue from Diff*,
+*Trace Code Origin* y *Explore Project Context*.
 
 ## Configuración en Editores
 
@@ -115,6 +142,21 @@ Cree `.cursor/mcp.json` en la raíz de su proyecto:
   "mcpServers": {
     "gitpr": {
       "type": "stdio",
+      "command": "gitpr-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+### Claude Code
+
+Cree `.mcp.json` en la raíz de su proyecto:
+
+```json
+{
+  "mcpServers": {
+    "gitpr": {
       "command": "gitpr-mcp",
       "args": []
     }

@@ -65,6 +65,8 @@ interactive prompts.
 |------|-------------|
 | `get_git_context` | Current branch, repository name, and remote URL |
 | `analyze_diff` | Raw git diff of uncommitted changes (`git diff HEAD`) |
+| `list_unstaged_files` | Uncommitted files categorized as new, modified, or deleted (structured JSON) |
+| `analyze_unstaged_diff` | Unstaged changes only (`git diff` — index vs working tree) |
 | `get_full_diff` | Full diff against origin/main (`git fetch` + diff) |
 | `generate_commit_message` | AI-generated Conventional Commits message |
 | `review_code` | AI code review of local (uncommitted) changes |
@@ -86,6 +88,30 @@ interactive prompts.
 | `skill://issue` | Custom issue generation AI instructions |
 | `skill://blame` | Custom blame analysis AI instructions |
 | `linter://config` | YAML linter rules (`.gitpr.linter.yml`) |
+
+### Prompt Resources
+
+Prompt templates are also exposed as resources — and as selectable prompts in
+your editor's AI chat:
+
+| URI | Content |
+|-----|---------|
+| `prompt://list` | List of all available prompt template URIs |
+| `prompt://review` | Full code review of the current branch |
+| `prompt://commit` | Conventional Commits message generation |
+| `prompt://pr` | Pull Request description generation |
+| `prompt://linter` | Static linter run on changes |
+| `prompt://issue` | Structured issue generation from changes |
+| `prompt://blame` | Code origin tracing with git blame + AI |
+| `prompt://explore` | Project context exploration and available skills |
+
+Custom prompts installed in `~/.gitpr/plugins/` are registered automatically
+as `prompt://plugin/<name>`.
+
+The server also exposes these built-in **prompts** (starter messages selectable
+in the editor's AI chat): *Review PR*, *Generate Commit Message*, *Create PR
+Description*, *Run Code Linter*, *Create Issue from Diff*, *Trace Code Origin*,
+and *Explore Project Context*.
 
 ## Editor Configuration
 

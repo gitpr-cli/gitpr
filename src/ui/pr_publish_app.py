@@ -210,14 +210,12 @@ class StageFilesScreen(ModalScreen):
         bid = event.button.id
         if bid == "btn_select_all":
             self.query_one("#file_list", SelectionList).select_all()
-            self._selected = {fname: True for fname, _ in self._files}
         elif bid == "btn_deselect_all":
             self.query_one("#file_list", SelectionList).deselect_all()
-            self._selected = {fname: False for fname, _ in self._files}
         elif bid == "btn_stage":
-            self.staged = [f for f, s in self._selected.items() if s]
-            if self.staged:
-                stage_files(self.staged)
+            # Read the real selection from the widget — individual row
+            # toggles are only tracked by the SelectionList itself.
+            self.staged = list(self.query_one("#file_list", SelectionList).selected)
             self.result = "stage"
             self.dismiss("stage")
         elif bid == "btn_skip":
@@ -379,20 +377,16 @@ class FileStageScreen(ModalScreen):
 
         if bid == "btn_select_all":
             self.query_one("#file_list", SelectionList).select_all()
-            self._selected = {fname: True for fname, _ in self._files}
         elif bid == "btn_deselect_all":
             self.query_one("#file_list", SelectionList).deselect_all()
-            self._selected = {fname: False for fname, _ in self._files}
         elif bid == "btn_stage":
-            self.notify(__("No files selected for staging."), severity="warning")
-            # Use manual tracking dict — SelectionList.selected is unreliable
-            self._result_files = [f for f, s in self._selected.items() if s]
+            self._result_files = list(self.query_one("#file_list", SelectionList).selected)
             if self._result_files:
-                ok = stage_files(self._result_files)
+                ok, err = stage_files(self._result_files)
                 self.notify(
                     __("✅ {count} file(s) staged", count=len(self._result_files))
                     if ok else
-                    __("❌ Failed to stage files"),
+                    __("❌ Failed to stage files: {error}", error=err),
                     severity="information" if ok else "error",
                 )
             else:
