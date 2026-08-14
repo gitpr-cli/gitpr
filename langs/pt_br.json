@@ -425,6 +425,7 @@
   "❌ Error: API Key not found.": "❌ Erro: Chave de API não encontrada.",
   "❌ Error: Could not determine model for provider '{provider}'.\", provider=provider), fg=\"red": "❌ Error: Could not determine model for provider '{provider}'.\", provider=provider), fg=\"red",
   "❌ Failed to apply update: {error}\", error=str(e)), fg=\"red": "❌ Failed to apply update: {error}\", error=str(e)), fg=\"red",
+  "❌ Failed to stage files: {error}": "❌ Falha ao adicionar arquivos ao stage: {error}",
   "❌ Failed to extract context from the partial batches.": "❌ Falha na extração de contexto dos lotes parciais.",
   "❌ Failed to get response from AI.": "❌ Falha ao obter resposta da IA.",
   "❌ Failed to process {local_name}: {error}\", local_name=local_name, error=str(e)), fg=\"red": "❌ Failed to process {local_name}: {error}\", local_name=local_name, error=str(e)), fg=\"red",

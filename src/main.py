@@ -1017,8 +1017,11 @@ def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive
         click.secho(__("🔍 Checking unversioned files..."), fg="cyan")
         if _env_flag("GITPR_AUTO_STAGE"):
             click.secho(__("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan")
-            stage_files([f for f, _ in unstaged])
-            click.secho(__("✅ Files added to stage."), fg="green")
+            ok, err = stage_files([f for f, _ in unstaged])
+            if ok:
+                click.secho(__("✅ Files added to stage."), fg="green")
+            else:
+                click.secho(__("❌ Failed to stage files: {error}", error=err), fg="red")
             return True
         click.secho(__("📋 Opening file selection..."), fg="cyan")
         from src.ui.pr_publish_app import StageFilesApp
@@ -1028,11 +1031,14 @@ def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive
             click.secho(__("❌ Operation cancelled by user."), fg="red")
             return False
         if app.result == "stage":
-            stage_files(app.selected_files)
+            ok, err = stage_files(app.selected_files)
             count = len(app.selected_files) if app.selected_files else 0
-            click.secho(
-                __("✅ {count} file(s) added to stage.", count=count) if count
-                else __("⏭️ No files selected. Proceeding..."), fg="green" if count else "yellow")
+            if ok and count:
+                click.secho(__("✅ {count} file(s) added to stage.", count=count), fg="green")
+            elif not ok:
+                click.secho(__("❌ Failed to stage files: {error}", error=err), fg="red")
+            else:
+                click.secho(__("⏭️ No files selected. Proceeding..."), fg="yellow")
         else:
             click.secho(__("⏭️ Files ignored. Proceeding..."), fg="yellow")
         return True
@@ -1045,8 +1051,11 @@ def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive
                count=len(unstaged)), fg="yellow", bold=True)
         if _env_flag("GITPR_AUTO_STAGE"):
             click.secho(__("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan")
-            stage_files([f for f, _ in unstaged])
-            click.secho(__("✅ Files added to stage."), fg="green")
+            ok, err = stage_files([f for f, _ in unstaged])
+            if ok:
+                click.secho(__("✅ Files added to stage."), fg="green")
+            else:
+                click.secho(__("❌ Failed to stage files: {error}", error=err), fg="red")
             return True
     else:
         click.secho(
