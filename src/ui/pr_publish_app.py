@@ -9,7 +9,7 @@ from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.binding import Binding
 
-from src.core import get_current_branch, has_uncommitted_changes, execute_git_commit, get_unstaged_files, stage_files
+from src.core import get_current_branch, has_uncommitted_changes, execute_git_commit
 from src.github_api import create_pull_request
 from src.ui.pr_publish_help import PrPublishHelpScreen
 from src.i18n import __
@@ -311,94 +311,6 @@ class CommitConfirmScreen(ModalScreen):
         elif event.button.id == "btn_cancel":
             self.result = "cancel"
         self.dismiss(self.result)
-
-
-class FileStageScreen(ModalScreen):
-    """Modal for selecting unstaged files to add with git add."""
-
-    CSS = """
-    FileStageScreen { align: center middle; }
-    #stage_dialog {
-        width: 75%; height: auto; max-height: 85%;
-        padding: 1 2;
-        background: $surface; border: thick $background 80%;
-    }
-    .stage_title {
-        text-align: center; text-style: bold; margin-bottom: 1;
-    }
-    .stage_info {
-        text-align: center; color: $text-muted; margin-bottom: 1;
-    }
-    #file_list {
-        height: 6; overflow-y: auto; margin-bottom: 1;
-    }
-    #stage_top_buttons {
-        align-horizontal: center; margin-bottom: 1;
-    }
-    #stage_bottom_buttons {
-        align-horizontal: center; margin-top: 1;
-    }
-    Button {
-        margin: 0 1;
-        min-width: 20;
-    }
-    """
-
-    def __init__(self, unstaged_files, **kwargs):
-        super().__init__(**kwargs)
-        self._files = unstaged_files  # list of (filepath, status)
-        self.result = None
-        self._result_files = []
-        # Track selection manually — fallback if SelectionList.selected misbehaves
-        self._selected = {fname: True for fname, _ in unstaged_files}
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="stage_dialog"):
-            yield Static(__("📂 Unstaged Files"), classes="stage_title")
-            yield Static(
-                __("{count} file(s) not staged. Select which ones to add:", count=len(self._files)),
-                classes="stage_info",
-            )
-            options = [
-                (f"{_fmt_status(status)[0]} {_fmt_status(status)[1]}: {fname}", fname, True)
-                for fname, status in self._files
-            ]
-            yield SelectionList(*options, id="file_list")
-            with Horizontal(id="stage_top_buttons"):
-                yield Button(__("Select All"), variant="default", id="btn_select_all")
-                yield Button(__("Deselect All"), variant="default", id="btn_deselect_all")
-            with Horizontal(id="stage_bottom_buttons"):
-                yield Button(__("Stage Selected"), variant="primary", id="btn_stage")
-                yield Button(__("Skip Staging"), variant="default", id="btn_skip")
-                yield Button(__("Cancel"), variant="error", id="btn_cancel")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        bid = event.button.id
-
-        if bid == "btn_select_all":
-            self.query_one("#file_list", SelectionList).select_all()
-        elif bid == "btn_deselect_all":
-            self.query_one("#file_list", SelectionList).deselect_all()
-        elif bid == "btn_stage":
-            self._result_files = list(self.query_one("#file_list", SelectionList).selected)
-            if self._result_files:
-                ok, err = stage_files(self._result_files)
-                self.notify(
-                    __("✅ {count} file(s) staged", count=len(self._result_files))
-                    if ok else
-                    __("❌ Failed to stage files: {error}", error=err),
-                    severity="information" if ok else "error",
-                )
-            else:
-                self.notify(__("No files selected for staging."), severity="warning")
-            self.result = "stage"
-            self.dismiss(self.result)
-        elif bid == "btn_skip":
-            self.result = "skip"
-            self.dismiss(self.result)
-        elif bid == "btn_cancel":
-            self.result = "cancel"
-            self.dismiss(self.result)
 
 
 class CommitProgressScreen(ModalScreen):

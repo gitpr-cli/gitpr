@@ -1735,7 +1735,7 @@ def main():
         nargs="?",
         const="auto",
         choices=["vscode", "cursor", "claude-code", "claude", "zed", "auto"],
-        help="Install MCP configuration for an editor (vscode, cursor, claude, zed, or auto-detect).",
+        help="Install MCP configuration for an editor (vscode, cursor, claude-code, claude, zed, or auto-detect).",
     )
     mode_group.add_argument(
         "--tool",

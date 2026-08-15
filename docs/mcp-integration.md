@@ -31,6 +31,20 @@ The installer:
 * Shows which editors were configured
 * Is idempotent — safe to run multiple times
 
+## Alternative Entry Point (`gitpr --mcp`)
+
+The main `gitpr` CLI also exposes a **hidden `--mcp` alias** that starts the
+MCP server directly:
+
+```bash
+gitpr --mcp    # Starts the MCP server (same as gitpr-mcp)
+```
+
+This alias always starts the server — it does not support the `--list`,
+`--install`, or `--tool` modes (use `gitpr-mcp` for those). The startup
+banner is suppressed automatically so stdout stays clean for the JSON-RPC
+transport.
+
 ## Direct CLI Invocation
 
 You can invoke any MCP tool directly from the terminal without starting the server.
