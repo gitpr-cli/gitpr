@@ -189,6 +189,20 @@ rules:
 
 O Linter analisa apenas as **linhas adicionadas** no seu `git diff`, garantindo uma execução focada e extremamente rápida. Se houver violações, elas aparecerão destacadas no topo do seu arquivo de review.
 
+### Linters Externos (Bridge via Checkstyle)
+
+Se o seu projeto já usa ferramentas como ESLint, PHP_CodeSniffer ou Stylelint, o GitPR pode atuar como bridge — executando-as em segundo plano e filtrando erros **apenas das linhas que você alterou** no seu diff atual. Qualquer linter que emita relatórios no formato `checkstyle` é suportado.
+
+Em vez de configurar o YAML manualmente, use o assistente interativo:
+
+```bash
+gitpr --linter-setup
+```
+
+O assistente mostra presets pré-configurados (PHPCS, ESLint, Stylelint — controlados remotamente via `templates/gitpr.linter-presets.json`), orienta o comando de instalação nativa (ex.: `npm install --save-dev eslint`) e injeta o bloco `external_linters` correto no seu `.gitpr.linter.yml`.
+
+Cada execução — manual via `--linter` ou automática antes dos commits — consolida as Regras Regex e os Linters Externos em um único relatório Markdown salvo em `.gitpr/reports/linter/` (personalizável via `OUTPUT_FILE_NAME_LINTER`).
+
 ## 🧠 Arquitetura Multi-Modelo (IA Agnóstica)
 
 O GitPR não está preso a uma única Inteligência Artificial. Durante a configuração inicial, o usuário pode escolher seu motor padrão. Atualmente oferecemos suporte a:
@@ -374,6 +388,7 @@ Por padrão, o GitPR salva todos os arquivos gerados no diretório `.gitpr/repor
 | File Review | `.gitpr/reports/file_review/` |
 | Relatório de Blame | `.gitpr/reports/blame/` |
 | Rascunho de Issue | `.gitpr/reports/issue/` |
+| Relatório do Linter | `.gitpr/reports/linter/` |
 
 Os diretórios são criados automaticamente no primeiro uso. **Compatível com versões anteriores:** se o seu `.env` já contém caminhos personalizados com separadores de diretório (ex.: `OUTPUT_FILE_NAME=/home/user/prs/my_pr.md`), eles são respeitados como estão — o GitPR apenas redireciona nomes de arquivo simples para `.gitpr/reports/`.
 
@@ -393,7 +408,7 @@ Se você deseja implementar o GitPR como uma barreira de qualidade automatizada 
 
 * [**Git Hooks Locais (Shift-Left)**](https://github.com/natanfiuza/gitpr/blob/main/docs/git-hooks-locais.md) — Como usar `gitpr --installhooks` para criar barreiras de qualidade na máquina do desenvolvedor e usar IA para gerar mensagens de commit automaticamente.
 * [**Versionamento e Sincronização de Scripts de Hooks**](https://github.com/natanfiuza/gitpr/blob/main/docs/hooks-versioning.md) — Como o sistema de versionamento automático e sincronização com suporte a i18n mantém seus Git hooks sempre atualizados.
-* [**Linter Estático Customizável**](https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md) — Como criar regras de validação no `.gitpr.linter.yml` para CI/CD e hooks de pre-commit.
+* [**Linter Estático Customizável**](https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md) — Como criar regras de validação no `.gitpr.linter.yml`, integrar linters externos (ESLint, PHPCS, Stylelint) e gerar relatórios Markdown para CI/CD e hooks de pre-commit.
 * [**Integração CI/CD (GitHub Actions)**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-ci-linter.md) — Como executar o GitPR no pipeline para bloquear "Merge" de PRs com violações.
 
 ### Funcionalidades Principais
