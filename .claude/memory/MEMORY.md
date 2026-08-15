@@ -1,7 +1,7 @@
 # Memory Index
 
-> Gerado automaticamente por `/reports-to-memory` em 2026-08-11
-> Baseado em 54 relatórios de 1 branch
+> Gerado automaticamente por `/reports-to-memory` em 2026-08-15
+> Baseado em 59 relatórios de 1 branch
 
 ## Project
 - [Help Contextual Pattern](help-contextual-pattern.md) — Padrão de help contextual com Click usando flag regular em vez de help_option (develop_natan, 2026-07-01)
@@ -24,6 +24,7 @@
 - [Plugin System Architecture](plugin-system-architecture.md) — Sistema de plugins globais: linter aditivo + prompts MCP dinâmicos com factory closures (develop_natan, 2026-08-09)
 - [Smart Excludes Local por Projeto](smart-excludes-local-projeto.md) — Arquivo local .gitpr/conf/gitpr.smart-excludes.json mergeado com lista global no runtime (develop_natan, 2026-08-10)
 - [MCP Tool CLI Invocação Direta](mcp-tool-cli-invocacao-direta.md) — gitpr-mcp --tool <name> invoca tools MCP diretamente sem servidor stdio (develop_natan, 2026-08-11)
+- [Hook Templates Release Ordering](hook-templates-release-ordering.md) — Templates de hook devem chegar ao main antes do bump de __scripts_version__ (develop_natan, 2026-08-12)
 
 ## Reference
 - [Pre-Save Debug Flag](pre-save-debug-flag.md) — Flag oculta --pre-save que dumps payload completo da IA em JSON (develop_natan, 2026-07-18)
@@ -35,3 +36,4 @@
 - [TUI Stdout Conflict Fix](tui-stdout-conflict-fix.md) — Textual substitui sys.stdout e quebra click.secho() no Windows; wrapper _with_real_stdout() resolve (develop_natan, 2026-08-07)
 - [Nothing to Commit Detection](nothing-to-commit-detection.md) — Detecção multilingue de "nothing to commit" no git commit — trata como sucesso, não erro (develop_natan, 2026-08-09)
 - [Merge Conflict Error Handling](merge-conflict-error-handling.md) — Falha de merge no PR publisher exibe modal de erro em vez de prosseguir silenciosamente (develop_natan, 2026-08-11)
+- [Staging Seleção Widget Erro Real](staging-selecao-widget-erro-real.md) — Modal de staging: seleção via dicionário paralelo dessincronizava e erros de git add eram engolidos (develop_natan, 2026-08-13)
