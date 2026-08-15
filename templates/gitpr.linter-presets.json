@@ -1,0 +1,22 @@
+{
+  "linters": [
+    {
+      "name": "PHP_CodeSniffer (PHPCS)",
+      "extensions": ["php"],
+      "command": "vendor/bin/phpcs --report=checkstyle",
+      "install_msg": "composer require --dev squizlabs/php_codesniffer"
+    },
+    {
+      "name": "ESLint (JavaScript/TypeScript)",
+      "extensions": ["js", "ts", "vue", "jsx", "tsx"],
+      "command": "npx eslint --format checkstyle",
+      "install_msg": "npm install --save-dev eslint"
+    },
+    {
+      "name": "Stylelint (CSS/SCSS)",
+      "extensions": ["css", "scss", "sass", "less", "vue"],
+      "command": "npx stylelint --custom-formatter=node_modules/stylelint-checkstyle-formatter",
+      "install_msg": "npm install --save-dev stylelint stylelint-checkstyle-formatter"
+    }
+  ]
+}

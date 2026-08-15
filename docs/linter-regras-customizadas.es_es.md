@@ -30,6 +30,11 @@ rules:
     require\_paths: \# Opcional: Carpetas exclusivas donde esta regla DEBE ejecutarse  
       \- "routes/\*"
 
+external_linters:
+  - name: "ESLint (JavaScript/TypeScript)"
+    extensions: ["js", "ts", "vue", "jsx", "tsx"]
+    command: "npx eslint --format checkstyle"
+
 ## ---
 
 ## **3. Tutorial: Creando Reglas con Expresiones Regulares (Regex)**
@@ -100,3 +105,30 @@ Para entender cómo crear las tuyas, mira cómo se construyó esta pieza por pie
 
 ---
 
+## **5. Integración con Linters Externos (Bridge vía Checkstyle)**
+
+GitPR CLI no necesita reinventar la rueda. Si tu proyecto ya usa herramientas como PHP_CodeSniffer, ESLint o Stylelint, GitPR puede actuar como un puente, ejecutando esas herramientas en segundo plano y filtrando los errores **solo para las líneas que modificaste en tu Pull Request actual**.
+
+Para ello, el linter externo debe soportar la salida de informes en formato `checkstyle` (estándar universal en CI/CD).
+
+### **Cómo Configurar Rápidamente (--linter-setup)**
+
+En lugar de configurar el YAML manualmente, puedes usar nuestro asistente interactivo:
+Ejecuta en el terminal:
+`gitpr --linter-setup`
+
+El asistente mostrará opciones preconfiguradas, te orientará sobre el comando de instalación en tu proyecto (ej.: `npm install --save-dev eslint`) e inyectará la configuración correcta automáticamente en tu `.gitpr.linter.yml`.
+
+Los presets del asistente se controlan remotamente mediante el archivo `templates/gitpr.linter-presets.json` (caché local en `~/.gitpr/conf/`), lo que permite añadir nuevos linters sin esperar una nueva versión de GitPR.
+
+---
+
+## **6. Informes de Análisis (Markdown)**
+
+Cada vez que el linter se ejecute (ya sea manualmente con `--linter` o automáticamente antes del commit), consolidará los errores generados por las Reglas de Regex y los Linters Externos en un único informe.
+
+Este informe formateado en Markdown se guardará automáticamente, manteniendo un historial de tus auditorías locales.
+
+**Ubicación Predeterminada:** `.gitpr/reports/linter/`
+
+**Personalización:** Puedes cambiar el nombre y la carpeta de este archivo definiendo la variable `OUTPUT_FILE_NAME_LINTER` en tu archivo `~/.gitpr/.env`.

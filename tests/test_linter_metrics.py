@@ -6,9 +6,10 @@ from unittest.mock import patch, MagicMock
 class TestLinterMetrics(unittest.TestCase):
     """Tests that log_local_metric is called with correct params after linting."""
 
+    @patch("src.linter_engine.load_external_linters", return_value=[])
     @patch("src.linter_engine.log_local_metric")
     @patch("src.linter_engine.load_linter_rules")
-    def test_full_file_mode_dispatches_metric(self, mock_load_rules, mock_metric):
+    def test_full_file_mode_dispatches_metric(self, mock_load_rules, mock_metric, mock_ext):
         """Full file mode should fire log_local_metric with mode='full_file'."""
         from src.linter_engine import parse_diff_and_lint
 
@@ -35,9 +36,10 @@ class TestLinterMetrics(unittest.TestCase):
             mode="full_file",
         )
 
+    @patch("src.linter_engine.load_external_linters", return_value=[])
     @patch("src.linter_engine.log_local_metric")
     @patch("src.linter_engine.load_linter_rules")
-    def test_diff_mode_dispatches_metric(self, mock_load_rules, mock_metric):
+    def test_diff_mode_dispatches_metric(self, mock_load_rules, mock_metric, mock_ext):
         """Standard diff mode should fire log_local_metric with mode='diff'."""
         from src.linter_engine import parse_diff_and_lint
 
@@ -69,9 +71,10 @@ class TestLinterMetrics(unittest.TestCase):
             mode="diff",
         )
 
+    @patch("src.linter_engine.load_external_linters", return_value=[])
     @patch("src.linter_engine.log_local_metric")
     @patch("src.linter_engine.load_linter_rules")
-    def test_full_file_mode_no_rules(self, mock_load_rules, mock_metric):
+    def test_full_file_mode_no_rules(self, mock_load_rules, mock_metric, mock_ext):
         """When no rules match, metric should still fire with zero counts."""
         from src.linter_engine import parse_diff_and_lint
 
@@ -98,9 +101,10 @@ class TestLinterMetrics(unittest.TestCase):
             mode="full_file",
         )
 
+    @patch("src.linter_engine.load_external_linters", return_value=[])
     @patch("src.linter_engine.log_local_metric")
     @patch("src.linter_engine.load_linter_rules")
-    def test_full_file_mode_no_file_path_skips_metric(self, mock_load_rules, mock_metric):
+    def test_full_file_mode_no_file_path_skips_metric(self, mock_load_rules, mock_metric, mock_ext):
         """When is_full_file is True but file_path is None, should return early without metric."""
         from src.linter_engine import parse_diff_and_lint
 

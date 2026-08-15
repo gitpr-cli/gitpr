@@ -356,6 +356,7 @@ _OUTPUT_FOLDER_MAP = {
     "OUTPUT_FILE_NAME_FILEREVIEW": "file_review",
     "OUTPUT_FILE_NAME_BLAME": "blame",
     "OUTPUT_FILE_NAME_ISSUE": "issue",
+    "OUTPUT_FILE_NAME_LINTER": "linter",
 }
 
 
