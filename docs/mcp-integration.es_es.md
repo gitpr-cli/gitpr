@@ -31,6 +31,20 @@ El instalador:
 * Muestra qué editores fueron configurados
 * Es idempotente — seguro ejecutar múltiples veces
 
+## Punto de Entrada Alternativo (`gitpr --mcp`)
+
+El CLI principal `gitpr` también expone un **alias oculto `--mcp`** que inicia
+el servidor MCP directamente:
+
+```bash
+gitpr --mcp    # Inicia el servidor MCP (igual que gitpr-mcp)
+```
+
+Este alias siempre inicia el servidor — no soporta los modos `--list`,
+`--install` ni `--tool` (use `gitpr-mcp` para ellos). El banner de inicio se
+suprime automáticamente para que stdout quede limpio para el transporte
+JSON-RPC.
+
 ## Invocación Directa por CLI
 
 Puede invocar cualquier herramienta MCP directamente desde la terminal sin iniciar el servidor.

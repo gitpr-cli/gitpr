@@ -185,7 +185,7 @@ Le flux d'auto-commit dans la TUI utilise une série d'écrans modaux :
 | Écran | Rôle |
 |---|---|
 | `CommitConfirmScreen` | Confirmation avant le lancement du flux de commit. Libellés de boutons personnalisables selon le contexte |
-| `FileStageScreen` | Liste de fichiers à cases à cocher pour le `git add` sélectif avant le commit |
+| `StageFilesScreen` | Liste de fichiers à cases à cocher pour sélectionner les fichiers à ajouter au stage avant le commit |
 | `CommitProgressScreen` | Modal `RichLog` de type terminal qui isole les journaux de commit de la TUI principale |
 | `CommitMessageScreen` | Message de commit modifiable avec un bouton « Regenerate » pour la régénération du message par l'IA |
 | `LinterErrorScreen` | Affiche les erreurs du linter avec les options de faire le commit avec `--no-verify` ou d'annuler |

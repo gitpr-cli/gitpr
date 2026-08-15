@@ -208,7 +208,7 @@ The auto-commit flow in the TUI uses a series of modal screens:
 | Screen | Purpose |
 |---|---|
 | `CommitConfirmScreen` | Confirmation before starting the commit flow. Customizable button labels for different contexts |
-| `FileStageScreen` | Toggleable file list for selective `git add` before commit |
+| `StageFilesScreen` | Toggleable file list to select which files to stage before commit |
 | `CommitProgressScreen` | Terminal-like `RichLog` modal isolating commit logs from the main TUI |
 | `CommitMessageScreen` | Editable commit message with "Regenerate" button for AI message regeneration |
 | `LinterErrorScreen` | Shows linter errors with options to commit with `--no-verify` or abort |
