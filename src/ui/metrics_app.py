@@ -3,6 +3,7 @@ Metrics Dashboard TUI - displays telemetry data in an interactive terminal UI.
 
 Usage: gitpr --dashboard
 """
+
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static, DataTable, ProgressBar
 from textual.containers import Vertical
@@ -88,6 +89,7 @@ class MetricsApp(App):
             state_file = get_processed_cache_file(self.repo_key)
             if os.path.exists(state_file):
                 import json as _json
+
                 with open(state_file, "r", encoding="utf-8", errors="replace") as f:
                     raw = _json.load(f)
                 self._last_scan_date = raw.get("last_scan", None)
@@ -169,6 +171,7 @@ class MetricsApp(App):
 
     def _scan_worker(self, since_date=None, incremental=False) -> None:
         """Background worker: scans cache files + metric events with progress."""
+
         # Phase 1: scan cache files
         def progress_cb(done: int, total_count: int):
             self.call_from_thread(self._update_progress, done, total_count)
@@ -317,14 +320,23 @@ class MetricsApp(App):
         if incremental and self.events:
             # Merge: deduplicate by (repo, branch, command, timestamp)
             existing_keys = {
-                (r.get("repo", ""), r.get("branch", ""),
-                 r.get("command", ""), r.get("timestamp", ""))
+                (
+                    r.get("repo", ""),
+                    r.get("branch", ""),
+                    r.get("command", ""),
+                    r.get("timestamp", ""),
+                )
                 for r in self.events
             }
             new_rows = [
-                r for r in rows
-                if (r.get("repo", ""), r.get("branch", ""),
-                    r.get("command", ""), r.get("timestamp", ""))
+                r
+                for r in rows
+                if (
+                    r.get("repo", ""),
+                    r.get("branch", ""),
+                    r.get("command", ""),
+                    r.get("timestamp", ""),
+                )
                 not in existing_keys
             ]
             new_count = len(new_rows)
@@ -370,7 +382,9 @@ class MetricsApp(App):
                 __("No metrics data found."),
                 __("Run some GitPR commands (commit, review, linter)"),
                 __("to generate telemetry. Then refresh with F5."),
-                "", "", "",
+                "",
+                "",
+                "",
             )
             return
 
@@ -393,7 +407,9 @@ class MetricsApp(App):
         if not self.events:
             summary.update(__("No metrics data found in ~/.gitpr/cache/prompts/"))
             status.update(
-                __("Use GitPR commands normally — metrics are logged automatically. Press F5 to refresh.")
+                __(
+                    "Use GitPR commands normally — metrics are logged automatically. Press F5 to refresh."
+                )
             )
             return
 

@@ -9,9 +9,10 @@ from src.core import get_current_branch, resolve_output_path
 from src.ui.help_screen import HelpScreen
 from src.i18n import __
 
+
 class IssueApp(App):
     """Terminal Interface for editing and submitting Issues."""
-    
+
     TITLE = __("GitPR - Issue Generator")
     ENABLE_COMMAND_PALETTE = False
 
@@ -25,7 +26,7 @@ class IssueApp(App):
         Binding("f1", "show_help", __("Help")),
         Binding("f2", "save_local", __("Save Local")),
         Binding("f3", "create_issue", __("Create on GitHub")),
-        Binding("escape", "quit", __("Exit"))
+        Binding("escape", "quit", __("Exit")),
     ]
 
     def __init__(self, issue_data, repo_info, github_token, **kwargs):
@@ -36,7 +37,7 @@ class IssueApp(App):
         self.final_action = None
         self.final_message = ""
         self.needs_new_token = False
-        
+
         branch = get_current_branch()
         repo_display = self.repo_info if self.repo_info else __("Local Repository")
         self.sub_title = f"{repo_display} | Branch: {branch}"
@@ -60,27 +61,31 @@ class IssueApp(App):
         """F2 button action: Saves the content to a local markdown file."""
         title_input = self.query_one("#issue_title", Input)
         body_input = self.query_one("#issue_body", TextArea)
-        
+
         branch_name = get_current_branch().replace("/", "-").replace("\\", "-")
         current_time = datetime.now().strftime("%Y%m%d%H%M%S")
-        
+
         output_filename = resolve_output_path(
             "OUTPUT_FILE_NAME_ISSUE",
             "{branch}_{datetime}_ISSUE.md",
-            branch_name, current_time,
+            branch_name,
+            current_time,
         )
-        
+
         md_content = f"# {title_input.value}\n\n{body_input.text}"
-        
+
         try:
             with open(output_filename, "w", encoding="utf-8") as f:
                 f.write(md_content)
-            self.final_message = __("✅ Issue saved locally: {output_filename}", output_filename=output_filename)
+            self.final_message = __(
+                "✅ Issue saved locally: {output_filename}",
+                output_filename=output_filename,
+            )
             self.final_action = "saved"
         except Exception as e:
             self.final_message = __("❌ Error saving file: {error}", error=str(e))
             self.final_action = "error"
-        
+
         self.exit()
 
     def action_create_issue(self):
@@ -91,41 +96,64 @@ class IssueApp(App):
         body_input = self.query_one("#issue_body", TextArea)
 
         if not self.repo_info:
-            self.final_message = __("❌ Remote repository not identified to create the issue via API.")
+            self.final_message = __(
+                "❌ Remote repository not identified to create the issue via API."
+            )
             self.final_action = "error"
-            log_command_metric(command="issue:github_create", status="error", provider="github")
+            log_command_metric(
+                command="issue:github_create", status="error", provider="github"
+            )
             self.exit()
             return
 
         api_url = f"https://api.github.com/repos/{self.repo_info}/issues"
         headers = {
             "Authorization": f"token {self.github_token}",
-            "Accept": "application/vnd.github.v3+json"
+            "Accept": "application/vnd.github.v3+json",
         }
-        payload = {
-            "title": title_input.value,
-            "body": body_input.text
-        }
+        payload = {"title": title_input.value, "body": body_input.text}
 
         try:
             response = requests.post(api_url, json=payload, headers=headers)
             if response.status_code == 201:
                 issue_url = response.json().get("html_url")
-                self.final_message = __("✅ Issue successfully created on GitHub:\n👉 {issue_url}", issue_url=issue_url)
+                self.final_message = __(
+                    "✅ Issue successfully created on GitHub:\n👉 {issue_url}",
+                    issue_url=issue_url,
+                )
                 self.final_action = "created"
-                log_command_metric(command="issue:github_create", status="success", provider="github")
+                log_command_metric(
+                    command="issue:github_create", status="success", provider="github"
+                )
             elif response.status_code == 401:
-                self.final_message = __("🔐 GitHub token expired or invalid. You'll be prompted for a new one.")
+                self.final_message = __(
+                    "🔐 GitHub token expired or invalid. You'll be prompted for a new one."
+                )
                 self.final_action = "reauth"
                 self.needs_new_token = True
-                log_command_metric(command="issue:github_create", status="reauth", provider="github")
+                log_command_metric(
+                    command="issue:github_create", status="reauth", provider="github"
+                )
             else:
-                self.final_message = __("❌ GitHub API Error ({status_code}): {response_text}", status_code=response.status_code, response_text=response.text)
+                self.final_message = __(
+                    "❌ GitHub API Error ({status_code}): {response_text}",
+                    status_code=response.status_code,
+                    response_text=response.text,
+                )
                 self.final_action = "error"
-                log_command_metric(command="issue:github_create", status="error", provider="github", http_status=response.status_code)
+                log_command_metric(
+                    command="issue:github_create",
+                    status="error",
+                    provider="github",
+                    http_status=response.status_code,
+                )
         except Exception as e:
-            self.final_message = __("❌ Failed to connect to GitHub: {error}", error=str(e))
+            self.final_message = __(
+                "❌ Failed to connect to GitHub: {error}", error=str(e)
+            )
             self.final_action = "error"
-            log_command_metric(command="issue:github_create", status="error", provider="github")
+            log_command_metric(
+                command="issue:github_create", status="error", provider="github"
+            )
 
         self.exit()

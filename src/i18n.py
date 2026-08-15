@@ -9,6 +9,7 @@ from dotenv import load_dotenv, set_key
 env_path = Path.home() / ".gitpr" / ".env"
 load_dotenv(env_path)
 
+
 def get_system_language():
     """Detects the system language or forces the language configured in .env.
     On first run, saves the detected language to .env for persistence."""
@@ -34,6 +35,7 @@ def get_system_language():
 
     return lang
 
+
 def get_translations(lang_code):
     """Loads the translation JSON. If outdated or missing, downloads remotely (OTA)."""
     if lang_code.startswith("en"):
@@ -54,7 +56,7 @@ def get_translations(lang_code):
         remote_url = f"https://raw.githubusercontent.com/natanfiuza/gitpr/main/langs/{lang_code}.json"
         try:
             with urllib.request.urlopen(remote_url, timeout=3) as response:
-                content = response.read().decode('utf-8')
+                content = response.read().decode("utf-8")
 
             with open(local_file, "w", encoding="utf-8") as f:
                 f.write(content)
@@ -94,13 +96,13 @@ def __(key, **kwargs):
     Tries to find the key in the dictionary. If not found, returns the key itself (English).
     """
     text = TRANSLATIONS.get(key, key)
-    
+
     if kwargs:
         try:
             text = text.format(**kwargs)
         except KeyError:
             pass
-            
+
     return text
 
 

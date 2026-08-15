@@ -5,24 +5,32 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+
 def get_cache_base_dir():
     """Returns the ~/.gitpr/cache/prompts/ path."""
     path = Path.home() / ".gitpr" / "cache" / "prompts"
     return path
 
+
 def generate_md5(text):
     """Generates the MD5 hash of a string."""
-    return hashlib.md5(text.encode('utf-8')).hexdigest()
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
 
 def get_git_user_info():
     """Recupera o nome e email configurados no git local."""
     try:
-        name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
-        email = subprocess.run(["git", "config", "user.email"], capture_output=True, text=True, check=True).stdout.strip()
+        name = subprocess.run(
+            ["git", "config", "user.name"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+        email = subprocess.run(
+            ["git", "config", "user.email"], capture_output=True, text=True, check=True
+        ).stdout.strip()
         return name, email
     except subprocess.CalledProcessError:
         return "unknown", "unknown"
-    
+
+
 def get_cached_response(action_folder, prompt_text):
     """Checks if a valid cache exists for the prompt and returns the content."""
     md5_hash = generate_md5(prompt_text)
@@ -37,14 +45,18 @@ def get_cached_response(action_folder, prompt_text):
             return None
     return None
 
-def save_cached_response(action_folder, action_type, prompt_text, response_dict, meta_raw=None):
+
+def save_cached_response(
+    action_folder, action_type, prompt_text, response_dict, meta_raw=None
+):
     """Saves the AI response to the local cache."""
     md5_hash = generate_md5(prompt_text)
     folder_path = get_cache_base_dir() / action_folder
     folder_path.mkdir(parents=True, exist_ok=True)
-    
+
     cache_file = folder_path / f"{md5_hash}.json"
     from src.core import get_current_branch, get_repo_name
+
     current_branch = get_current_branch()
     repo_name = get_repo_name()
     user_name, user_email = get_git_user_info()
@@ -61,7 +73,7 @@ def save_cached_response(action_folder, action_type, prompt_text, response_dict,
         "datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "action_type": action_type,
         "prompt": prompt_text,
-        "response": response_dict
+        "response": response_dict,
     }
 
     try:
@@ -69,10 +81,12 @@ def save_cached_response(action_folder, action_type, prompt_text, response_dict,
             json.dump(cache_data, f, indent=2, ensure_ascii=False)
     except IOError:
         pass  # Silent cache failure to avoid crashing the tool
-    
+
+
 def get_cached_pr_descriptions(repo_name, branch_name):
     """Searches the cache for all historically generated PRs for this repository and branch."""
     from src.i18n import __
+
     pr_cache_folder = get_cache_base_dir() / "pr_desc"
     history_texts = []
 

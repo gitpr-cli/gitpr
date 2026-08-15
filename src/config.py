@@ -35,8 +35,9 @@ DEFAULT_CONFIG = {
     "GITPR_SKIP_UNSTAGED_CHECK": "false",
     "PR_PUBLISH_LOG": "true",
     "GITPR_AUTO_MERGE": "false",
-    "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md"
+    "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md",
 }
+
 
 def get_skill_dir():
     """Returns the absolute path to the project's skill folder (.gitpr/skill)."""
@@ -64,10 +65,23 @@ def resolve_skill_path(filename):
         try:
             os.makedirs(skill_dir, exist_ok=True)
             shutil.move(legacy_path, target_path)
-            click.secho(__("📦 Skill file {filename} moved to .gitpr/skill/", filename=filename), fg="cyan", dim=True)
+            click.secho(
+                __(
+                    "📦 Skill file {filename} moved to .gitpr/skill/", filename=filename
+                ),
+                fg="cyan",
+                dim=True,
+            )
         except Exception as e:
             # If moving fails, fall back to the legacy location so the tool keeps working
-            click.secho(__("⚠️ Warning: Could not move {filename} to .gitpr/skill/ ({error})", filename=filename, error=str(e)), fg="yellow")
+            click.secho(
+                __(
+                    "⚠️ Warning: Could not move {filename} to .gitpr/skill/ ({error})",
+                    filename=filename,
+                    error=str(e),
+                ),
+                fg="yellow",
+            )
             return legacy_path
 
     return target_path
@@ -77,6 +91,7 @@ def get_ai_provider():
     """Returns the configured default AI provider, or 'gemini' as fallback."""
     load_dotenv(ENV_FILE)
     return os.getenv("DEFAULT_AI_PROVIDER", "gemini").lower()
+
 
 def get_api_key(provider):
     """Reads and decrypts the API key corresponding to the chosen provider."""
@@ -92,13 +107,14 @@ def get_api_key(provider):
     elif provider == "deepseek":
         encrypted_key = os.getenv("DEEPSEEK_API_KEY_ENCRYPTED")
     elif provider == "ollama":
-        return "ollama-local" # Olama does not require authentication!
+        return "ollama-local"  # Olama does not require authentication!
     else:
         return None
 
     if encrypted_key:
         return decrypt_data(encrypted_key)
     return None
+
 
 def get_api_model(provider, task_complexity="advanced"):
     """
@@ -114,14 +130,19 @@ def get_api_model(provider, task_complexity="advanced"):
     # Fetch from .env, otherwise use the default dictionary value
     return os.getenv(env_var, DEFAULT_CONFIG.get(env_var))
 
+
 def setup_environment():
     """Ensures that encryption keys, the default provider, and the API key are configured."""
     # Ensure the global folder exists
     os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
 
     # Create global plugin directories
-    os.makedirs(os.path.join(os.path.dirname(ENV_FILE), "plugins", "linter"), exist_ok=True)
-    os.makedirs(os.path.join(os.path.dirname(ENV_FILE), "plugins", "prompts"), exist_ok=True)
+    os.makedirs(
+        os.path.join(os.path.dirname(ENV_FILE), "plugins", "linter"), exist_ok=True
+    )
+    os.makedirs(
+        os.path.join(os.path.dirname(ENV_FILE), "plugins", "prompts"), exist_ok=True
+    )
 
     # Call the existing function in security.py to ensure the master key exists
     get_or_create_key()
@@ -141,11 +162,15 @@ def setup_environment():
     # Ask for the default provider if none exists
     provider = os.getenv("DEFAULT_AI_PROVIDER")
     if not provider:
-        click.secho(__("🤖 Welcome to GitPR! Let's configure your AI engine."), fg="cyan", bold=True)
+        click.secho(
+            __("🤖 Welcome to GitPR! Let's configure your AI engine."),
+            fg="cyan",
+            bold=True,
+        )
         provider = click.prompt(
             __("Which artificial intelligence do you want to use as default?"),
-            type=click.Choice(['gemini', 'deepseek', 'ollama'], case_sensitive=False),
-            default='gemini'
+            type=click.Choice(["gemini", "deepseek", "ollama"], case_sensitive=False),
+            default="gemini",
         ).lower()
         set_key(ENV_FILE, "DEFAULT_AI_PROVIDER", provider)
         click.echo("")
@@ -155,12 +180,29 @@ def setup_environment():
     if not api_key:
         # 🛡️ Escudo de CI/CD: Impede que o prompt trave a pipeline do GitHub Actions
         if os.getenv("CI") or os.getenv("GITHUB_ACTIONS"):
-            click.secho(__("❌ Error: API Key not configured for provider '{provider}' in the CI/CD environment.", provider=provider), fg="red")
-            click.secho(__("💡 Tip: Pass the key as an environment variable (e.g., GEMINI_API_KEY)."), fg="yellow")
+            click.secho(
+                __(
+                    "❌ Error: API Key not configured for provider '{provider}' in the CI/CD environment.",
+                    provider=provider,
+                ),
+                fg="red",
+            )
+            click.secho(
+                __(
+                    "💡 Tip: Pass the key as an environment variable (e.g., GEMINI_API_KEY)."
+                ),
+                fg="yellow",
+            )
             sys.exit(1)
-            
-        click.secho(__("🔑 API Key for {provider} not found.", provider=provider.capitalize()), fg="yellow")
-        raw_key = click.prompt(__("Paste your {provider} API key here", provider=provider.capitalize()), hide_input=True)
+
+        click.secho(
+            __("🔑 API Key for {provider} not found.", provider=provider.capitalize()),
+            fg="yellow",
+        )
+        raw_key = click.prompt(
+            __("Paste your {provider} API key here", provider=provider.capitalize()),
+            hide_input=True,
+        )
 
         # Encrypt and save with the correct prefix
         encrypted_key = encrypt_data(raw_key.strip())
@@ -169,6 +211,7 @@ def setup_environment():
         set_key(ENV_FILE, env_var_name, encrypted_key)
         click.secho(__("✅ Key safely stored on disk (Encrypted)!"), fg="green")
         click.echo("")
+
 
 def check_internet_connection(timeout=2):
     """Checks for internet connection by attempting to connect to a global DNS."""
@@ -186,28 +229,40 @@ def check_internet_connection(timeout=2):
         return True
     except socket.error:
         click.secho(__("\n❌ Error: No internet connection."), fg="red", bold=True)
-        click.secho(__("GitPR needs network access to query the AI and check for updates."), fg="yellow")
+        click.secho(
+            __("GitPR needs network access to query the AI and check for updates."),
+            fg="yellow",
+        )
         click.secho(__("Check your connection and try again.\n"), fg="white")
         sys.exit(1)
-        
+
 
 def get_plugin_dir(plugin_type):
     """Returns the absolute path to the global plugin directory."""
     return os.path.join(os.path.dirname(ENV_FILE), "plugins", plugin_type)
+
 
 def get_linter_plugins():
     """Returns a list of all global linter plugin .yml files."""
     linter_dir = get_plugin_dir("linter")
     if not os.path.exists(linter_dir):
         return []
-    return [os.path.join(linter_dir, f) for f in os.listdir(linter_dir) if f.endswith(('.yml', '.yaml'))]
+    return [
+        os.path.join(linter_dir, f)
+        for f in os.listdir(linter_dir)
+        if f.endswith((".yml", ".yaml"))
+    ]
+
 
 def get_prompt_plugins():
     """Returns a list of all global prompt plugin .md files."""
     prompt_dir = get_plugin_dir("prompts")
     if not os.path.exists(prompt_dir):
         return []
-    return [os.path.join(prompt_dir, f) for f in os.listdir(prompt_dir) if f.endswith('.md')]
+    return [
+        os.path.join(prompt_dir, f) for f in os.listdir(prompt_dir) if f.endswith(".md")
+    ]
+
 
 def load_linter_rules():
     """
@@ -225,9 +280,21 @@ def load_linter_rules():
                 if config and "rules" in config:
                     rules.extend(config.get("rules", []))
         except yaml.YAMLError as e:
-            click.secho(__("\n❌ Syntax error in local .gitpr.linter.yml file:\n{error}", error=str(e)), fg="red")
+            click.secho(
+                __(
+                    "\n❌ Syntax error in local .gitpr.linter.yml file:\n{error}",
+                    error=str(e),
+                ),
+                fg="red",
+            )
         except Exception as e:
-            click.secho(__("\n❌ Unexpected error reading local linter rules: {error}", error=str(e)), fg="red")
+            click.secho(
+                __(
+                    "\n❌ Unexpected error reading local linter rules: {error}",
+                    error=str(e),
+                ),
+                fg="red",
+            )
 
     # 2. Load Global Plugin Rules
     for plugin_file in get_linter_plugins():
@@ -238,9 +305,17 @@ def load_linter_rules():
                     rules.extend(config.get("rules", []))
         except Exception as e:
             # Silently skip malformed global plugins so we don't break the main flow
-            click.secho(__("⚠️ Warning: Could not load linter plugin {file} ({error})", file=os.path.basename(plugin_file), error=str(e)), fg="yellow")
+            click.secho(
+                __(
+                    "⚠️ Warning: Could not load linter plugin {file} ({error})",
+                    file=os.path.basename(plugin_file),
+                    error=str(e),
+                ),
+                fg="yellow",
+            )
 
     return rules
+
 
 def load_external_linters():
     """
@@ -272,6 +347,7 @@ def load_external_linters():
 
     return external_linters
 
+
 def get_github_token():
     """Reads and decrypts the GitHub Personal Access Token (PAT)."""
     load_dotenv(ENV_FILE)
@@ -292,16 +368,21 @@ def validate_github_token(token):
     try:
         headers = {
             "Authorization": f"token {token}",
-            "Accept": "application/vnd.github.v3+json"
+            "Accept": "application/vnd.github.v3+json",
         }
-        response = requests.get("https://api.github.com/user", headers=headers, timeout=10)
+        response = requests.get(
+            "https://api.github.com/user", headers=headers, timeout=10
+        )
 
         if response.status_code == 200:
             return True, ""
         elif response.status_code == 401:
             return False, __("Token expired or invalid. Please generate a new one.")
         else:
-            return False, __("Unexpected response from GitHub (HTTP {code})", code=response.status_code)
+            return False, __(
+                "Unexpected response from GitHub (HTTP {code})",
+                code=response.status_code,
+            )
     except requests.exceptions.ConnectionError:
         return False, __("No internet connection. Cannot validate GitHub token.")
     except requests.exceptions.Timeout:

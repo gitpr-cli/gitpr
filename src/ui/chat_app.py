@@ -4,7 +4,16 @@ import string
 import webbrowser
 from textual.app import App, ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Header, Footer, Input, Markdown, Static, Button, ListView, ListItem
+from textual.widgets import (
+    Header,
+    Footer,
+    Input,
+    Markdown,
+    Static,
+    Button,
+    ListView,
+    ListItem,
+)
 from textual.containers import VerticalScroll, Vertical
 from textual.binding import Binding
 from textual import work
@@ -13,8 +22,10 @@ from src.i18n import __, CURRENT_LANG
 from src.ai_providers import call_ai_chat, process_chat_command, load_chat_commands
 from src.spinner import THINKING_WORDS
 
+
 class ChatMessage(Static):
     """Custom component to render each message bubble."""
+
     def __init__(self, role, content, msg_index=-1, **kwargs):
         super().__init__(content, markup=False, **kwargs)
         self.role = role
@@ -23,6 +34,7 @@ class ChatMessage(Static):
     def compose(self) -> ComposeResult:
         # Add the class corresponding to the role (user, assistant or system)
         yield Markdown(self.content, classes=f"message {self.role}")
+
 
 class ChatHelpScreen(ModalScreen):
     """Help modal showing keyboard shortcuts and slash commands."""
@@ -66,7 +78,7 @@ class ChatHelpScreen(ModalScreen):
                     "• [bold]Ctrlhift+S[/bold] — Auto-Patch the focused AI message\n"
                     "• [bold]Ctrlhift+E[/bold] — Export the focused AI message\n"
                     "• [bold]Esc[/bold] Exit — Closes the chat",
-                    classes="help_text"
+                    classes="help_text",
                 )
                 yield Static("⚡ Slash Commands", classes="help_section")
                 yield Static(cmd_text, classes="help_text")
@@ -116,7 +128,9 @@ class CommandSuggestions(Vertical):
         """Update the list with commands matching the partial input."""
         list_view = self.query_one(ListView)
         list_view.clear()
-        list_view.index = None  # Reset highlight so stale index doesn't cause wrong auto-complete
+        list_view.index = (
+            None  # Reset highlight so stale index doesn't cause wrong auto-complete
+        )
 
         if not query.startswith("/"):
             self.display = False
@@ -124,7 +138,8 @@ class CommandSuggestions(Vertical):
 
         query_lower = query.lower()
         matches = [
-            (cmd, desc) for cmd, desc in self.commands.items()
+            (cmd, desc)
+            for cmd, desc in self.commands.items()
             if cmd.lower().startswith(query_lower)
         ]
         if not matches:
@@ -149,10 +164,10 @@ class CommandSuggestions(Vertical):
 
 class ChatApp(App):
     """Terminal interface for the Interactive Pair Programming Chat."""
-    
+
     TITLE = "GitPR - AI Pair Programming"
     ENABLE_COMMAND_PALETTE = False
-    
+
     CSS = """
     #chat_container {
         height: 1fr;
@@ -195,7 +210,7 @@ class ChatApp(App):
         margin: 1 2;
     }
     """
-    
+
     # Shortcuts already mapped for Phase 4!
     BINDINGS = [
         Binding("f1", "show_help", __("Help")),
@@ -206,10 +221,12 @@ class ChatApp(App):
         Binding("f8", "focus_next_msg", __("Next Msg")),
         Binding("ctrl+s", "auto_patch_focused", __("Auto-Patch Msg"), priority=True),
         Binding("ctrl+e", "export_focused_msg", __("Export Msg"), priority=True),
-        Binding("escape", "quit", __("Exit"))
+        Binding("escape", "quit", __("Exit")),
     ]
 
-    def __init__(self, memory_manager, provider, api_key, api_model, system_instruction, **kwargs):
+    def __init__(
+        self, memory_manager, provider, api_key, api_model, system_instruction, **kwargs
+    ):
         super().__init__(**kwargs)
         self.memory = memory_manager
         self.provider = provider
@@ -229,10 +246,12 @@ class ChatApp(App):
     def compose(self) -> ComposeResult:
         yield Header()
         with VerticalScroll(id="chat_container"):
-            pass # Populated dynamically in on_mount
+            pass  # Populated dynamically in on_mount
         yield Static("", id="focus_bar")
         yield CommandSuggestions(id="cmd_suggestions")
-        yield Input(placeholder=__("Type your message or / for commands..."), id="chat_input")
+        yield Input(
+            placeholder=__("Type your message or / for commands..."), id="chat_input"
+        )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -245,13 +264,17 @@ class ChatApp(App):
     def load_history(self):
         container = self.query_one("#chat_container")
         history = self.memory.get_history()
-        
+
         if not history:
-            welcome_msg = __("🤖 Hello! I am your AI assistant. I'm looking at your current diff. How can I help you?")
+            welcome_msg = __(
+                "🤖 Hello! I am your AI assistant. I'm looking at your current diff. How can I help you?"
+            )
             container.mount(ChatMessage("system", welcome_msg))
         else:
             for msg in history:
-                msg_index = len(self._ai_msg_widgets) if msg["role"] == "assistant" else -1
+                msg_index = (
+                    len(self._ai_msg_widgets) if msg["role"] == "assistant" else -1
+                )
                 widget = ChatMessage(msg["role"], msg["content"], msg_index=msg_index)
                 container.mount(widget)
 
@@ -261,7 +284,7 @@ class ChatApp(App):
             if self._ai_msg_widgets:
                 self._focused_msg_index = len(self._ai_msg_widgets) - 1
                 self._update_focus_visual()
-                
+
         container.scroll_end(animate=False)
 
     BRAILLE = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -278,11 +301,11 @@ class ChatApp(App):
         if len(st["discovered"]) < len(st["word"]):
             st["char_step"] += 1
             if st["char_step"] >= 4:
-                st["discovered"] = st["word"][:len(st["discovered"]) + 1]
+                st["discovered"] = st["word"][: len(st["discovered"]) + 1]
                 st["char_step"] = 0
             else:
                 fake = random.choice(string.ascii_uppercase + "0123456789!@#$")
-                st["discovered"] = st["word"][:len(st["discovered"])] + fake
+                st["discovered"] = st["word"][: len(st["discovered"])] + fake
             display = f"  {braille} {st['discovered']}"
         else:
             st["dots_cycle"] = (st["dots_cycle"] + 1) % 12
@@ -320,6 +343,7 @@ class ChatApp(App):
     def _notify_action(self, message, severity="information"):
         """Show a floating notification that does NOT scroll the chat."""
         self.notify(message, severity=severity, timeout=5)
+
     def _update_focus_visual(self):
         for message in self._ai_msg_widgets:
             message.query_one(Markdown).remove_class("focused")
@@ -331,14 +355,17 @@ class ChatApp(App):
 
             if self._focus_bar:
                 self._focus_bar.update(
-                    __("Msg #{n} focused | Ctrl+S: Auto-Patch | Ctrlhift+E: Export",
-                    n=self._focused_msg_index + 1)
+                    __(
+                        "Msg #{n} focused | Ctrl+S: Auto-Patch | Ctrlhift+E: Export",
+                        n=self._focused_msg_index + 1,
+                    )
                 )
         else:
             self._focused_msg_content = ""
 
             if self._focus_bar:
                 self._focus_bar.update("")
+
     # def _update_focus_visual(self):
     #     """Apply visual highlight to the active AI message and update the focus bar."""
     #     for m in self._ai_msg_widgets:
@@ -365,16 +392,21 @@ class ChatApp(App):
         """F8: move focus to the next AI message."""
         if not self._ai_msg_widgets:
             return
-        self._focused_msg_index = min(len(self._ai_msg_widgets) - 1, self._focused_msg_index + 1)
+        self._focused_msg_index = min(
+            len(self._ai_msg_widgets) - 1, self._focused_msg_index + 1
+        )
         self._update_focus_visual()
 
     def action_auto_patch_focused(self):
         """Ctrlhift+S: extract code from the focused AI message only."""
         if not self._focused_msg_content:
-            self._notify_action(__("❌ No AI message focused. Use F7/F8 to select one."), severity="warning")
+            self._notify_action(
+                __("❌ No AI message focused. Use F7/F8 to select one."),
+                severity="warning",
+            )
             return
         content = self._focused_msg_content
-        code_blocks = re.findall(r'`{3}\s*(?:\w+)?\s*\n(.*?)`{3}', content, re.DOTALL)
+        code_blocks = re.findall(r"`{3}\s*(?:\w+)?\s*\n(.*?)`{3}", content, re.DOTALL)
         if not code_blocks:
             parts = content.split("```")
             for i in range(1, len(parts), 2):
@@ -384,28 +416,57 @@ class ChatApp(App):
                     if first_line_end > 0 and first_line_end < 20:
                         first_line = block[:first_line_end].strip()
                         if first_line and " " not in first_line:
-                            block = block[first_line_end + 1:]
+                            block = block[first_line_end + 1 :]
                     code_blocks.append(block.strip())
         if code_blocks:
             extracted_code = "\n\n".join(code_blocks)
-            key = ''.join(random.choices(string.ascii_letters + string.digits, k=3)) + '-' + ''.join(random.choices(string.ascii_letters + string.digits, k=3))
+            key = (
+                "".join(random.choices(string.ascii_letters + string.digits, k=3))
+                + "-"
+                + "".join(random.choices(string.ascii_letters + string.digits, k=3))
+            )
             export_file = f"GITPR_PATCH_SUGGESTION_{key}.txt"
             with open(export_file, "w", encoding="utf-8") as f:
                 f.write(extracted_code)
-            self._notify_action(__("🧪 Auto-Patch: Code extracted from message #{n} and saved to {file}!", n=self._focused_msg_index + 1, file=export_file))
+            self._notify_action(
+                __(
+                    "🧪 Auto-Patch: Code extracted from message #{n} and saved to {file}!",
+                    n=self._focused_msg_index + 1,
+                    file=export_file,
+                )
+            )
         else:
-            self._notify_action(__("❌ No code blocks found in message #{n}.", n=self._focused_msg_index + 1), severity="warning")
+            self._notify_action(
+                __(
+                    "❌ No code blocks found in message #{n}.",
+                    n=self._focused_msg_index + 1,
+                ),
+                severity="warning",
+            )
 
     def action_export_focused_msg(self):
         """Ctrlhift+E: export the focused AI message to a Markdown file."""
         if not self._focused_msg_content:
-            self._notify_action(__("❌ No AI message focused. Use F7/F8 to select one."), severity="warning")
+            self._notify_action(
+                __("❌ No AI message focused. Use F7/F8 to select one."),
+                severity="warning",
+            )
             return
-        key = ''.join(random.choices(string.ascii_letters + string.digits, k=3)) + '-' + ''.join(random.choices(string.ascii_letters + string.digits, k=3))
+        key = (
+            "".join(random.choices(string.ascii_letters + string.digits, k=3))
+            + "-"
+            + "".join(random.choices(string.ascii_letters + string.digits, k=3))
+        )
         export_file = f"MESSAGE_{self.memory.session_uuid}_{key}.md"
         with open(export_file, "w", encoding="utf-8") as f:
             f.write(self._focused_msg_content)
-        self._notify_action(__("📤 Message #{n} exported to {file}!", n=self._focused_msg_index + 1, file=export_file))
+        self._notify_action(
+            __(
+                "📤 Message #{n} exported to {file}!",
+                n=self._focused_msg_index + 1,
+                file=export_file,
+            )
+        )
 
     # ── Input handlers ────────────────────────────────────────────────
 
@@ -440,7 +501,7 @@ class ChatApp(App):
         # Clear the input
         input_widget = self.query_one("#chat_input", Input)
         input_widget.value = ""
-        
+
         # Intercept dynamic commands (Phase 2)
         is_cmd, is_clear, processed_msg = process_chat_command(user_text)
 
@@ -449,20 +510,22 @@ class ChatApp(App):
             current_diff = self.memory.get_latest_diff()
             diff_md5 = self.memory._generate_md5(current_diff)
             self.memory._create_new_session(current_diff, diff_md5)
-            
+
             # Clear the screen visually
             container = self.query_one("#chat_container")
             await container.query("*").remove()
             self.sub_title = f"{self.memory.repo_name} | Branch: {self.memory.branch_name} | ID: {self.memory.session_uuid}"
-            self.add_message("system", __("🧹 Conversation cleared. A new session has started."))
+            self.add_message(
+                "system", __("🧹 Conversation cleared. A new session has started.")
+            )
             return
 
         # Display the user's message on screen (if it's a command, the screen shows the raw command, but the AI reads the processed one)
         self.add_message("user", user_text)
-        
+
         # Save the processed message to persistent memory
         self.memory.save_message("user", processed_msg if is_cmd else user_text)
-        
+
         # Show the animated thinking indicator (braille spinner + word discovery)
         container = self.query_one("#chat_container")
         self._thinking_widget = Static("  ⠋", classes="message system")
@@ -484,7 +547,7 @@ class ChatApp(App):
     def call_ai_background(self) -> None:
         """Run the AI in the background (Thread) to keep the UI responsive."""
         history = self.memory.get_history()
-        
+
         # Since we already saved the user's message in history,
         # we separate the last message from the rest to send to the Phase 2 function.
         history_to_send = history[:-1]
@@ -497,7 +560,7 @@ class ChatApp(App):
             system_instruction=self.system_instruction,
             chat_history=history_to_send,
             new_message=new_message,
-            quiet=True # Don't print terminal loading (sys.stdout) since we're in a TUI
+            quiet=True,  # Don't print terminal loading (sys.stdout) since we're in a TUI
         )
 
         # Update the interface from the main thread
@@ -528,24 +591,29 @@ class ChatApp(App):
         new_diff = get_git_diff(quiet=True)
         updated = self.memory.update_diff_if_changed(new_diff)
         if updated:
-            self.add_message("system", __("🔄 Diff updated! The AI now sees your latest changes."))
+            self.add_message(
+                "system", __("🔄 Diff updated! The AI now sees your latest changes.")
+            )
         else:
             self.add_message("system", __("✅ Diff is already up to date."))
 
     def action_apply_code(self):
         """F5 shortcut: Extract the last AI code block and save it to a suggestion file."""
         history = self.memory.get_history()
-        
+
         # Filter only the AI messages
         ai_messages = [m for m in history if m["role"] == "assistant"]
         if not ai_messages:
-            self._notify_action(__("❌ No AI responses available to extract code from."), severity="warning")
+            self._notify_action(
+                __("❌ No AI responses available to extract code from."),
+                severity="warning",
+            )
             return
 
         last_msg = ai_messages[-1]["content"]
 
         # Match triple-backtick code blocks: ```python, ``` python, ```, etc.
-        code_blocks = re.findall(r'`{3}\s*(?:\w+)?\s*\n(.*?)`{3}', last_msg, re.DOTALL)
+        code_blocks = re.findall(r"`{3}\s*(?:\w+)?\s*\n(.*?)`{3}", last_msg, re.DOTALL)
 
         # Fallback: split by triple backticks and take odd-indexed parts
         if not code_blocks:
@@ -563,25 +631,45 @@ class ChatApp(App):
 
         if code_blocks:
             extracted_code = "\n\n".join(code_blocks)
-            key = ''.join(random.choices(string.ascii_letters + string.digits, k=3)) + '-' + ''.join(random.choices(string.ascii_letters + string.digits, k=3))
+            key = (
+                "".join(random.choices(string.ascii_letters + string.digits, k=3))
+                + "-"
+                + "".join(random.choices(string.ascii_letters + string.digits, k=3))
+            )
             export_file = f"GITPR_PATCH_SUGGESTION_{key}.txt"
             with open(export_file, "w", encoding="utf-8") as f:
                 f.write(extracted_code)
-            self._notify_action(__("⚡ Auto-Patch: Code extracted and saved to {file}!", file=export_file))
+            self._notify_action(
+                __(
+                    "⚡ Auto-Patch: Code extracted and saved to {file}!",
+                    file=export_file,
+                )
+            )
         else:
-            self._notify_action(__("❌ No code blocks found in the last AI message."), severity="warning")
-    
+            self._notify_action(
+                __("❌ No code blocks found in the last AI message."),
+                severity="warning",
+            )
+
     def action_export_session(self):
         """F6 shortcut: Export the entire conversation to a structured Markdown file at the project root."""
         history = self.memory.get_history()
         export_text = f"# GitPR Chat Session Export\n**Repo:** {self.memory.repo_name} | **Branch:** {self.memory.branch_name}\n\n"
-        
+
         for msg in history:
-            role_icon = "🧑‍💻 User" if msg["role"] == "user" else "🤖 AI Assistant" if msg["role"] == "assistant" else "⚙️ System"
+            role_icon = (
+                "🧑‍💻 User"
+                if msg["role"] == "user"
+                else "🤖 AI Assistant"
+                if msg["role"] == "assistant"
+                else "⚙️ System"
+            )
             export_text += f"### {role_icon}\n{msg['content']}\n\n---\n\n"
-            
+
         export_file = f"GITPR_CHAT_EXPORT_{self.memory.session_uuid}.md"
         with open(export_file, "w", encoding="utf-8") as f:
             f.write(export_text)
-            
-        self._notify_action(__("📤 Session exported successfully to {file}!", file=export_file))
+
+        self._notify_action(
+            __("📤 Session exported successfully to {file}!", file=export_file)
+        )
