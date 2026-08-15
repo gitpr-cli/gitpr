@@ -30,6 +30,11 @@ rules:
     require\_paths: \# Optionnel : Dossiers exclusifs où cette règle DOIT s'exécuter  
       \- "routes/\*"
 
+external_linters:
+  - name: "ESLint (JavaScript/TypeScript)"
+    extensions: ["js", "ts", "vue", "jsx", "tsx"]
+    command: "npx eslint --format checkstyle"
+
 ## ---
 
 ## **3. Tutoriel : Créer des règles avec des expressions régulières (Regex)**
@@ -100,3 +105,30 @@ Pour comprendre comment créer les vôtres, voyez comment celle-ci a été const
 
 ---
 
+## **5. Intégration avec les Linters Externes (Bridge via Checkstyle)**
+
+GitPR CLI n'a pas besoin de réinventer la roue. Si votre projet utilise déjà des outils comme PHP_CodeSniffer, ESLint ou Stylelint, GitPR peut servir de pont, en exécutant ces outils en arrière-plan et en filtrant les erreurs **uniquement pour les lignes que vous avez modifiées dans votre Pull Request actuel**.
+
+Pour cela, le linter externe doit prendre en charge la sortie de rapports au format `checkstyle` (standard universel en CI/CD).
+
+### **Configuration rapide (--linter-setup)**
+
+Au lieu de configurer le YAML manuellement, vous pouvez utiliser notre assistant interactif :
+Exécutez dans le terminal :
+`gitpr --linter-setup`
+
+L'assistant affichera des options préconfigurées, vous guidera sur la commande d'installation dans votre projet (ex : `npm install --save-dev eslint`) et injectera automatiquement la bonne configuration dans votre `.gitpr.linter.yml`.
+
+Les presets de l'assistant sont contrôlés à distance via le fichier `templates/gitpr.linter-presets.json` (cache local dans `~/.gitpr/conf/`), ce qui permet d'ajouter de nouveaux linters sans attendre une nouvelle version de GitPR.
+
+---
+
+## **6. Rapports d'Analyse (Markdown)**
+
+Chaque fois que le linter s'exécute (que ce soit manuellement via `--linter` ou automatiquement avant le commit), il consolidera les erreurs générées par les Règles de Regex et les Linters Externes dans un rapport unique.
+
+Ce rapport formaté en Markdown sera enregistré automatiquement, conservant un historique de vos audits locaux.
+
+**Emplacement par défaut :** `.gitpr/reports/linter/`
+
+**Personnalisation :** Vous pouvez modifier le nom et le dossier de ce fichier en définissant la variable `OUTPUT_FILE_NAME_LINTER` dans votre fichier `~/.gitpr/.env`.

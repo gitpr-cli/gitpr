@@ -1,7 +1,8 @@
 import os
-from datetime import datetime
-import click
 import sys
+from datetime import datetime
+
+import click
 
 # Reconfigure stdout to utf-8 to prevent UnicodeEncodeError with emojis on Windows
 if hasattr(sys.stdout, 'reconfigure'):
@@ -11,27 +12,29 @@ if hasattr(sys.stdout, 'reconfigure'):
         pass
 
 # Internal module imports
-from src.config import setup_environment, check_internet_connection, get_ai_provider
-from src.updater import check_and_update, __version__, print_update_notice
+import subprocess
+
+from src.chat_memory import ChatMemoryManager
+from src.config import check_internet_connection, get_ai_provider, setup_environment
 from src.core import (
-    get_git_diff,
-    get_git_full_diff,
-    get_current_branch,
+    check_and_update_hooks_scripts,
     generate_pr_content,
     generate_skill_template,
-    install_git_hooks,
     get_branch_history_text,
+    get_current_branch,
     get_doc_url,
-    run_install_wizard,
-    check_and_update_hooks_scripts,
-    resolve_output_path,
+    get_git_diff,
+    get_git_full_diff,
+    install_git_hooks,
     is_merge_in_progress,
+    resolve_output_path,
+    run_install_wizard,
 )
-from src.linter_engine import parse_diff_and_lint
 from src.i18n import __
-import subprocess
-from src.chat_memory import ChatMemoryManager
+from src.linter_engine import generate_linter_report_content, parse_diff_and_lint
 from src.ui.chat_app import ChatApp
+from src.updater import __version__, check_and_update, print_update_notice
+
 
 def print_banner():
     """Displays the project ASCII Art signature"""
@@ -157,6 +160,11 @@ HELP_MAP: dict[str, dict[str, str]] = {
         'title': __('Skip Unstaged Check (--no-unstaged-check)'),
         'description': __('Skips the unstaged-files verification that runs before PR, commit, review, full review and issue generation. Equivalent to GITPR_SKIP_UNSTAGED_CHECK=true for one run.'),
     },
+    'linter-setup': {
+        'url': get_doc_url('linter-regras-customizadas.md'),
+        'title': __('External Linter Wizard (--linter-setup)'),
+        'description': __('Interactive wizard to configure external linters (ESLint, PHPCS, etc.) via Checkstyle XML integration.'),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -182,6 +190,7 @@ HELP_PRIORITY: dict[str, int] = {
     'plugins': 18,
     'status': 19,
     'no-unstaged-check': 20,
+    'linter-setup': 21,
 }
 
 
@@ -218,8 +227,9 @@ HELP_PRIORITY: dict[str, int] = {
 @click.option('--plugins', is_flag=True, help=__("Lists all active global plugins (linters and prompts)."))
 @click.option('--status', is_flag=True, help=__("Lists uncommitted file changes (new/modified/deleted) without AI processing."))
 @click.option('--no-unstaged-check', is_flag=True, help=__("Skips the unstaged files verification before AI processing."))
+@click.option('--linter-setup', is_flag=True, help=__("Interactive wizard to configure external linters (ESLint, PHPCS, etc)."))
 @click.option('-h', '--help', 'help_flag', is_flag=True, help=__("Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."))
-def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard, base, no_publish, no_edit, plugins, status, no_unstaged_check):
+def cli(commit, review, fullreview, linter, skill, update, installhooks, install, hook, quiet, pre_save, provider, input, blame, history, issue, chat, help_flag, lang, mcp, metrics, export, purge, hook_event, show_dashboard, base, no_publish, no_edit, plugins, status, no_unstaged_check, linter_setup):
     """
     GitPR CLI - Intelligent PR Automation and AI Code Review.
 
@@ -234,7 +244,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         # Identifica quais outras flags estao ativas (excluindo hidden: hook, quiet)
         active_flags: list[str] = []
         for param_name, help_info in HELP_MAP.items():
-            value = locals().get(param_name)
+            # Click converts hyphens into underscores for function parameter names
+            value = locals().get(param_name.replace('-', '_'))
             # Trata tanto flags booleanas (True) quanto parametros string (blame, input, provider)
             if value:
                 active_flags.append(param_name)
@@ -303,8 +314,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         return
 
     if metrics and export:
-        from src.metrics import export_metrics
         from src.core import get_repo_name
+        from src.metrics import export_metrics
         csv_path, json_path, count = export_metrics(repo_filter=get_repo_name())
         if count > 0:
             click.secho(__("✅ Metrics exported: {count} events.", count=count), fg="green", bold=True)
@@ -326,8 +337,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         return
 
     if show_dashboard:
-        from src.ui.metrics_app import launch_metrics_dashboard
         from src.core import get_repo_name
+        from src.ui.metrics_app import launch_metrics_dashboard
         launch_metrics_dashboard(repo_filter=get_repo_name())
         return
 
@@ -404,38 +415,34 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
 
     if linter:
         diff_text = get_git_diff()
-        
+
         if not diff_text or not diff_text.strip():
             if not quiet: click.secho(__("✅ Nothing to validate (empty diff)."), fg="green")
             return
 
         linter_results = parse_diff_and_lint(diff_text)
-        
         has_warnings = len(linter_results["warnings"]) > 0
         has_errors = len(linter_results["errors"]) > 0
 
-        # Warning processing (best-practice advisories only)
-        if has_warnings:
-            # Warnings MUST always appear, even in quiet mode
-            click.secho(__("\n⚠️ The Linter generated {count} best practice warning(s):", count=len(linter_results['warnings'])), fg="yellow", bold=True)
-            for alert in linter_results["warnings"]:
-                click.echo(f"  - {alert}")
+        # 1. Generate and save the Markdown report
+        branch_name = get_current_branch()
+        safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
+        current_time = datetime.now().strftime("%Y%m%d%H%M%S")
 
-        # Error Processing (Critical, Block the Commit)
-        if has_errors:
-            # Errors MUST always appear, even in quiet mode
-            click.secho(__("\n🚨 Validation failed! Found {count} critical error(s):", count=len(linter_results['errors'])), fg="red", bold=True)
-            for alert in linter_results["errors"]:
-                click.echo(f"  - {alert}")
-            # Locks Git only if there are critical errors
-            sys.exit(1)
+        report_path = resolve_output_path(
+            "OUTPUT_FILE_NAME_LINTER",
+            "{branch}_{datetime}_LINTER.md",
+            safe_branch_name,
+            current_time
+        )
 
-        # Silent success (No critical errors found)
-        if not quiet: 
-            if has_warnings:
-                click.secho(__("\n✅ Code approved with warnings. The commit will proceed."), fg="green")
-            else:
-                click.secho(__("\n✅ Clean code! No violations found by the local Linter."), fg="green", bold=True)
+        try:
+            with open(report_path, "w", encoding="utf-8", errors="replace") as f:
+                f.write(generate_linter_report_content(linter_results))
+            if not quiet:
+                click.secho(__("📄 Linter report saved to: {path}", path=report_path), fg="blue", dim=True)
+        except Exception as e:
+            click.secho(__("❌ Error saving linter report: {error}", error=str(e)), fg="red")
 
         # Fire-and-forget linter metric
         from src.metrics import log_command_metric
@@ -445,6 +452,29 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
             linter_errors=len(linter_results.get("errors", [])),
             linter_warnings=len(linter_results.get("warnings", [])),
         )
+
+        # 2. Display TUI if there are blocking errors and NOT in a hook/quiet mode
+        if has_errors:
+            if not quiet and not hook:
+                from src.ui.linter_app import LinterApp
+                app = LinterApp(alerts=linter_results)
+                app.run()
+            else:
+                # Hook safety: print to the terminal only
+                click.secho(__("\n🚨 Validation failed! Found {count} critical error(s):", count=len(linter_results['errors'])), fg="red", bold=True)
+                for alert in linter_results["errors"]:
+                    click.echo(f"  - {alert}")
+            sys.exit(1)
+
+        # 3. Warning processing (best-practice advisories only)
+        if has_warnings and not quiet:
+            click.secho(__("\n⚠️ The Linter generated {count} best practice warning(s):", count=len(linter_results['warnings'])), fg="yellow", bold=True)
+            for alert in linter_results["warnings"]:
+                click.echo(f"  - {alert}")
+            click.secho(__("\n✅ Code approved with warnings. The commit will proceed."), fg="green")
+        elif not quiet:
+            click.secho(__("\n✅ Clean code! No violations found by the local Linter."), fg="green", bold=True)
+
         return
 
     # Connection Guardian (Failing Fast)
@@ -463,6 +493,12 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         run_install_wizard()
         from src.metrics import log_command_metric
         log_command_metric(command="install", status="success", provider="git")
+        return
+
+    # --linter-setup option: External linter wizard
+    if linter_setup:
+        from src.linter_wizard import run_linter_setup_wizard
+        run_linter_setup_wizard()
         return
 
     # --skill option: Generate template and exit
@@ -537,7 +573,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
     # Issue Module (Hybrid)
     if issue:
         from src.issue_engine import generate_issue_content, get_github_repo_info
-        from src.tui_issue import validate_or_request_github_token, IssueApp
+        from src.tui_issue import IssueApp, validate_or_request_github_token
 
         setup_environment()
 
@@ -662,8 +698,8 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
 
 # Chat Module (Pair Programming TUI)
     if chat:
-        from src.issue_engine import get_github_repo_info
         from src.config import get_api_key
+        from src.issue_engine import get_github_repo_info
         
         setup_environment()
         
@@ -888,7 +924,7 @@ def cli(commit, review, fullreview, linter, skill, update, installhooks, install
         click.secho("\n" + __("❌ Error saving file: {error}", error=str(e)), fg="red")
 
     # ── PR Publisher logic ──
-    from src.core import get_repo_name, get_base_branch
+    from src.core import get_base_branch, get_repo_name
 
     repo_info = get_repo_name()
     if not repo_info or repo_info == "unknown/repo":
@@ -1005,7 +1041,7 @@ def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive
     if skip_check or _env_flag("GITPR_SKIP_UNSTAGED_CHECK"):
         return True
 
-    from src.core import get_unstaged_files, stage_files, get_unstaged_categorized
+    from src.core import get_unstaged_categorized, get_unstaged_files, stage_files
     unstaged = get_unstaged_files()
     if not unstaged:
         if not quiet:
@@ -1070,7 +1106,7 @@ def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive
 
 def _run_auto_commit_cli(provider):
     """Auto-commit flow for --no-edit mode. Returns True if commit succeeded or no changes."""
-    from src.core import has_uncommitted_changes, execute_git_commit, get_git_diff
+    from src.core import execute_git_commit, get_git_diff, has_uncommitted_changes
     from src.linter_engine import parse_diff_and_lint
 
     if not has_uncommitted_changes():
@@ -1146,8 +1182,8 @@ def _get_github_token_for_publish(repo_info):
 
 def _publish_pr_directly(pr_data, repo_info, github_token, target_base, output_filename):
     """Publish PR directly to GitHub without TUI (for --no-edit mode)."""
-    from src.github_api import create_pull_request
     from src.core import get_current_branch
+    from src.github_api import create_pull_request
 
     commit_msg = pr_data.get("commit_message", "")
     pr_body = pr_data.get("pr_description", "")

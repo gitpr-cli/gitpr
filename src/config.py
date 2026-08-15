@@ -34,7 +34,8 @@ DEFAULT_CONFIG = {
     "GITPR_SHOW_LOGS": "true",
     "GITPR_SKIP_UNSTAGED_CHECK": "false",
     "PR_PUBLISH_LOG": "true",
-    "GITPR_AUTO_MERGE": "false"
+    "GITPR_AUTO_MERGE": "false",
+    "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md"
 }
 
 def get_skill_dir():
@@ -240,6 +241,36 @@ def load_linter_rules():
             click.secho(__("⚠️ Warning: Could not load linter plugin {file} ({error})", file=os.path.basename(plugin_file), error=str(e)), fg="yellow")
 
     return rules
+
+def load_external_linters():
+    """
+    Loads external linter configurations (name, command, extensions)
+    from the local project and global plugins.
+    """
+    external_linters = []
+
+    # 1. Load Local Project External Linters
+    local_path = resolve_skill_path(".gitpr.linter.yml")
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, "r", encoding="utf-8", errors="replace") as f:
+                config = yaml.safe_load(f)
+                if config and "external_linters" in config:
+                    external_linters.extend(config.get("external_linters", []))
+        except Exception:
+            pass
+
+    # 2. Load Global Plugin External Linters
+    for plugin_file in get_linter_plugins():
+        try:
+            with open(plugin_file, "r", encoding="utf-8", errors="replace") as f:
+                config = yaml.safe_load(f)
+                if config and "external_linters" in config:
+                    external_linters.extend(config.get("external_linters", []))
+        except Exception:
+            pass
+
+    return external_linters
 
 def get_github_token():
     """Reads and decrypts the GitHub Personal Access Token (PAT)."""
