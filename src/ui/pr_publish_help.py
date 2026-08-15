@@ -3,9 +3,10 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 from textual.containers import Vertical
 from src.i18n import CURRENT_LANG, __
-from src.core import (    
-    get_doc_url,    
+from src.core import (
+    get_doc_url,
 )
+
 
 class PrPublishHelpScreen(ModalScreen):
     """Help modal with PR publishing interface usage instructions."""
@@ -25,18 +26,22 @@ class PrPublishHelpScreen(ModalScreen):
     }
     """
 
-    def compose(self) -> ComposeResult:        
+    def compose(self) -> ComposeResult:
         help_url = get_doc_url("pull-request-publication.md")
         with Vertical(id="help_dialog"):
             yield Static(__("💡 GitPR PR Publisher Help"), classes="help_title")
             yield Static(
-                __("• F1 (Help): Displays this instruction modal.\n") +
-                __("• F2 (Save Local): Saves the updated PR content to a local .md file.\n") +
-                __("• F3 (Publish PR): Auto-commits pending changes (with lint validation), then creates the Pull Request on GitHub via API.\n") +
-                __("• Esc (Exit): Closes the application without publishing.\n\n") +
-                __("📚 Read the complete PR publication guide:\n") +
-                help_url,
-                classes="help_text"
+                __("• F1 (Help): Displays this instruction modal.\n")
+                + __(
+                    "• F2 (Save Local): Saves the updated PR content to a local .md file.\n"
+                )
+                + __(
+                    "• F3 (Publish PR): Auto-commits pending changes (with lint validation), then creates the Pull Request on GitHub via API.\n"
+                )
+                + __("• Esc (Exit): Closes the application without publishing.\n\n")
+                + __("📚 Read the complete PR publication guide:\n")
+                + help_url,
+                classes="help_text",
             )
             yield Button(__("Got it"), variant="primary", id="close_help")
 

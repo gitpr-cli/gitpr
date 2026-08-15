@@ -12,8 +12,20 @@ from pathlib import Path
 from google import genai
 from dotenv import load_dotenv, set_key
 from src.security import decrypt_data
-from src.cache import get_cached_response, save_cached_response, get_cached_pr_descriptions
-from src.config import get_api_key, get_api_model, get_skill_dir, resolve_skill_path, get_ai_provider, setup_environment, ENV_FILE
+from src.cache import (
+    get_cached_response,
+    save_cached_response,
+    get_cached_pr_descriptions,
+)
+from src.config import (
+    get_api_key,
+    get_api_model,
+    get_skill_dir,
+    resolve_skill_path,
+    get_ai_provider,
+    setup_environment,
+    ENV_FILE,
+)
 from src.ai_providers import call_ai_model
 from src.i18n import __, CURRENT_LANG
 from src.updater import __lang_version__, __scripts_version__
@@ -34,7 +46,7 @@ _FALLBACK_SMART_EXCLUDES = [
     "go.sum",
     "*.min.js",
     "*.min.css",
-    "*.svg"
+    "*.svg",
 ]
 
 SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.smart-excludes.json"
@@ -43,10 +55,30 @@ SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/te
 # on prose/markup. Changed doc paths are still reported as metadata.
 # The pattern list is managed remotely (templates/gitpr.docs-smart-excludes.json).
 _FALLBACK_DOCS_SMART_EXCLUDES = [
-    "*.md", "*.txt", "*.rst", "*.adoc", "*.asciidoc",
-    "*.org", "*.textile", "*.wiki", "*.pod", "*.tex",
-    "*.rtf", "*.markdown", "*.rdoc", "*.mdx", "*.rest",
-    "*.man", "*.1", "*.2", "*.3", "*.4", "*.5", "*.6", "*.7", "*.8",
+    "*.md",
+    "*.txt",
+    "*.rst",
+    "*.adoc",
+    "*.asciidoc",
+    "*.org",
+    "*.textile",
+    "*.wiki",
+    "*.pod",
+    "*.tex",
+    "*.rtf",
+    "*.markdown",
+    "*.rdoc",
+    "*.mdx",
+    "*.rest",
+    "*.man",
+    "*.1",
+    "*.2",
+    "*.3",
+    "*.4",
+    "*.5",
+    "*.6",
+    "*.7",
+    "*.8",
 ]
 
 DOCS_SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.docs-smart-excludes.json"
@@ -76,9 +108,9 @@ def _seed_local_smart_excludes(project_root=None):
                     "Project-specific Smart Excludes. "
                     "Merged with the global list (~/.gitpr/conf/gitpr.smart-excludes.json) at runtime. "
                     "Add extensions or folder names to exclude from AI diffs for this project only. "
-                    "Example: \"*.pyc\", \"dist/\", \"node_modules/\""
+                    'Example: "*.pyc", "dist/", "node_modules/"'
                 ),
-                "excludes": []
+                "excludes": [],
             }
             with open(local_file, "w", encoding="utf-8") as f:
                 json.dump(template, f, ensure_ascii=False, indent=2)
@@ -184,9 +216,7 @@ def _load_smart_excludes():
         local_set = _load_patterns_set(local_file)
         if local_set:
             # Build a set from global pathspecs for dedup, then merge
-            global_set = set(
-                p.replace(":(exclude)", "", 1) for p in global_pathspecs
-            )
+            global_set = set(p.replace(":(exclude)", "", 1) for p in global_pathspecs)
             merged = sorted(global_set | local_set)
             global_pathspecs = [f":(exclude){p}" for p in merged]
     else:
@@ -417,17 +447,26 @@ def get_git_diff(quiet=False):
             capture_output=True,
             text=True,
             encoding="utf-8",
-            errors="replace"
+            errors="replace",
         )
         untracked_files = untracked_process.stdout.strip()
 
         # If there are new files, display an educational warning in the console
         if untracked_files and not quiet:
             click.secho(__("⚠️ Warning: Git detected new untracked files:"), fg="yellow")
-            for file in untracked_files.split('\n'):
+            for file in untracked_files.split("\n"):
                 click.secho(f"  - {file}", fg="yellow", dim=True)
-            click.secho(__("💡 Tip: Use 'git add <file>' to include them in the GitPR analysis."), fg="cyan")
-            click.secho(f"📚 {__('Understand why:')} {get_doc_url('untracked-files.md')}\n", fg="blue", underline=True)
+            click.secho(
+                __(
+                    "💡 Tip: Use 'git add <file>' to include them in the GitPR analysis."
+                ),
+                fg="cyan",
+            )
+            click.secho(
+                f"📚 {__('Understand why:')} {get_doc_url('untracked-files.md')}\n",
+                fg="blue",
+                underline=True,
+            )
 
         # Run the normal diff that captures tracked and staged files
         cmd = ["git", "diff", "-U1", "-w", "-M", "-B", "HEAD", "--"] + SMART_EXCLUDES
@@ -437,7 +476,7 @@ def get_git_diff(quiet=False):
             text=True,
             encoding="utf-8",
             errors="replace",
-            check=True
+            check=True,
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
@@ -446,7 +485,10 @@ def get_git_diff(quiet=False):
         return None
     except FileNotFoundError:
         if not quiet:
-            click.secho(__("❌ Git not found. Make sure it is installed and in the PATH."), fg="red")
+            click.secho(
+                __("❌ Git not found. Make sure it is installed and in the PATH."),
+                fg="red",
+            )
         return None
 
 
@@ -481,8 +523,11 @@ def get_unstaged_diff(quiet=False):
         cmd = ["git", "diff", "-U1", "-w", "-M", "-B", "--"] + SMART_EXCLUDES
         result = subprocess.run(
             cmd,
-            capture_output=True, text=True, encoding="utf-8",
-            errors="replace", check=True
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
         )
         return result.stdout
     except subprocess.CalledProcessError as e:
@@ -491,7 +536,10 @@ def get_unstaged_diff(quiet=False):
         return None
     except FileNotFoundError:
         if not quiet:
-            click.secho(__("❌ Git not found. Make sure it is installed and in the PATH."), fg="red")
+            click.secho(
+                __("❌ Git not found. Make sure it is installed and in the PATH."),
+                fg="red",
+            )
         return None
 
 
@@ -503,11 +551,11 @@ def get_current_branch():
             capture_output=True,
             text=True,
             encoding="utf-8",
-            check=True
+            check=True,
         )
         return result.stdout.strip()
     except subprocess.CalledProcessError:
-        return "main" # Fallback
+        return "main"  # Fallback
 
 
 def get_repo_name():
@@ -518,12 +566,14 @@ def get_repo_name():
             capture_output=True,
             text=True,
             encoding="utf-8",
-            check=True
+            check=True,
         )
-        match = re.search(r'github\.com[:/](.+?)/(.+?)(\.git)?\s+\(push\)', result.stdout)
+        match = re.search(
+            r"github\.com[:/](.+?)/(.+?)(\.git)?\s+\(push\)", result.stdout
+        )
         if match:
             owner = match.group(1)
-            repo = match.group(2).replace('.git', '')
+            repo = match.group(2).replace(".git", "")
             return f"{owner}/{repo}"
         return "unknown/repo"
     except subprocess.CalledProcessError:
@@ -551,55 +601,81 @@ def get_skill_context(action_type="pr"):
     legacy_file = resolve_skill_path(".gitpr.md")
 
     # Check the new one first; if not found, try the old one
-    file_to_load = skill_file if os.path.exists(skill_file) else (legacy_file if os.path.exists(legacy_file) else None)
+    file_to_load = (
+        skill_file
+        if os.path.exists(skill_file)
+        else (legacy_file if os.path.exists(legacy_file) else None)
+    )
 
     if file_to_load:
         try:
             with open(file_to_load, "r", encoding="utf-8") as f:
                 conteudo = f.read()
                 nome_arquivo = os.path.basename(file_to_load)
-                click.secho(__("🧠 File {file_name} (Skill) found and loaded!", file_name=nome_arquivo), fg="blue")
+                click.secho(
+                    __(
+                        "🧠 File {file_name} (Skill) found and loaded!",
+                        file_name=nome_arquivo,
+                    ),
+                    fg="blue",
+                )
                 return conteudo
         except Exception as e:
-            click.secho(__("⚠️ Warning: Failed to read file {file_name} ({error})", file_name=nome_arquivo, error=str(e)), fg="yellow")
+            click.secho(
+                __(
+                    "⚠️ Warning: Failed to read file {file_name} ({error})",
+                    file_name=nome_arquivo,
+                    error=str(e),
+                ),
+                fg="yellow",
+            )
 
     # Return empty if it does not exist
     return ""
+
 
 def estimate_token_count(text):
     """Estimates the token count using the safe rule of 4 characters per token."""
     return len(text) // 4
 
+
 def split_diff_into_chunks(diff_text, max_tokens=90000):
     """Splits the diff based on the token limit while preserving file header integrity."""
     if estimate_token_count(diff_text) <= max_tokens:
         return [diff_text]
-    
-    parts = re.split(r'(^diff --git a/)', diff_text, flags=re.MULTILINE)
+
+    parts = re.split(r"(^diff --git a/)", diff_text, flags=re.MULTILINE)
     chunks = []
     current_chunk = ""
-    
+
     for i in range(1, len(parts), 2):
-        file_diff = parts[i] + parts[i+1] if i + 1 < len(parts) else parts[i]
-        
-        if estimate_token_count(current_chunk + file_diff) > max_tokens and current_chunk:
+        file_diff = parts[i] + parts[i + 1] if i + 1 < len(parts) else parts[i]
+
+        if (
+            estimate_token_count(current_chunk + file_diff) > max_tokens
+            and current_chunk
+        ):
             chunks.append(current_chunk)
             current_chunk = file_diff
         else:
             current_chunk += file_diff
-            
+
     if current_chunk:
         chunks.append(current_chunk)
-        
+
     if not chunks:
         chunks = [diff_text]
-        
+
     return chunks
+
 
 def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"):
     """Sends the diff to the AI using System Instruction and returns a parsed JSON."""
     if not diff_text or not diff_text.strip():
-        click.secho(__("⚠️ No diff found. Make some changes before running the command."), fg="yellow")
+        click.secho(
+            __("⚠️ No diff found. Make some changes before running the command."),
+            fg="yellow",
+        )
         return None
 
     t_start = time.perf_counter()
@@ -623,19 +699,57 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
 
     # System Instruction Definition (Persona and Rules)
     if action_type == "commit":
-        instrucao_sistema = skill_context if skill_context else __("You are a Git expert. Generate concise commit messages.")
-        prompt = __("Generate ONLY a JSON object in the format {json_format} for this diff:\n", json_format='{"commit_message": "..."}') + f"{diff_text}"
+        instrucao_sistema = (
+            skill_context
+            if skill_context
+            else __("You are a Git expert. Generate concise commit messages.")
+        )
+        prompt = (
+            __(
+                "Generate ONLY a JSON object in the format {json_format} for this diff:\n",
+                json_format='{"commit_message": "..."}',
+            )
+            + f"{diff_text}"
+        )
 
     elif action_type in ["review", "fullreview", "filereview"]:
-        instrucao_sistema = skill_context if skill_context else __("You are a Senior Software Architect. Focus on pointing out improvements.")
+        instrucao_sistema = (
+            skill_context
+            if skill_context
+            else __(
+                "You are a Senior Software Architect. Focus on pointing out improvements."
+            )
+        )
 
         if action_type == "filereview":
-            prompt = __("Generate ONLY a JSON object in the format {json_format} with the analysis and improvements for the entire code of this file:\n", json_format='{"review": "..."}') + f"{diff_text}"
+            prompt = (
+                __(
+                    "Generate ONLY a JSON object in the format {json_format} with the analysis and improvements for the entire code of this file:\n",
+                    json_format='{"review": "..."}',
+                )
+                + f"{diff_text}"
+            )
         else:
-            prompt = __("Generate ONLY a JSON object in the format {json_format} pointing out errors and improvements for this diff:\n", json_format='{"review": "..."}') + f"{diff_text}"
+            prompt = (
+                __(
+                    "Generate ONLY a JSON object in the format {json_format} pointing out errors and improvements for this diff:\n",
+                    json_format='{"review": "..."}',
+                )
+                + f"{diff_text}"
+            )
     else:  # pr
-        instrucao_sistema = skill_context if skill_context else __("You are a Tech Lead writing clean and technical PR descriptions.")
-        prompt = __("Generate ONLY a JSON object in the format {json_format} for this diff:\n", json_format='{"commit_message": "...", "pr_description": "..."}') + f"{diff_text}"
+        instrucao_sistema = (
+            skill_context
+            if skill_context
+            else __("You are a Tech Lead writing clean and technical PR descriptions.")
+        )
+        prompt = (
+            __(
+                "Generate ONLY a JSON object in the format {json_format} for this diff:\n",
+                json_format='{"commit_message": "...", "pr_description": "..."}',
+            )
+            + f"{diff_text}"
+        )
 
     # ── Inject changed documentation file list as metadata (no content) ──
     # This lets the AI know which docs were touched without consuming tokens
@@ -646,7 +760,10 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
             base_branch = get_base_branch()
             merge_base_res = subprocess.run(
                 ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             )
             if merge_base_res.returncode == 0 and merge_base_res.stdout.strip():
                 ancestor = merge_base_res.stdout.strip()
@@ -663,13 +780,17 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
                 docs_section += f"- {doc}\n"
             instrucao_sistema = docs_section + "\n" + instrucao_sistema
             click.secho(
-                __("📄 {count} documentation file(s) excluded from diff (Smart Excludes).",
-                   count=len(changed_docs)),
-                fg="blue", dim=True,
+                __(
+                    "📄 {count} documentation file(s) excluded from diff (Smart Excludes).",
+                    count=len(changed_docs),
+                ),
+                fg="blue",
+                dim=True,
             )
             click.secho(
                 f"📚 {__('Learn more:')} {get_doc_url('smart-excludes.md')}",
-                fg="blue", underline=True,
+                fg="blue",
+                underline=True,
             )
     except Exception:
         pass  # Non-critical — never block the main flow for this metadata
@@ -679,6 +800,7 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     if cached_data:
         click.secho(__("⚡ Response retrieved from local cache."), fg="green", dim=True)
         from src.metrics import log_command_metric
+
         duration_ms = int((time.perf_counter() - t_start) * 1000)
         log_command_metric(
             command=action_type,
@@ -692,21 +814,45 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     # Key Preparation (Now dynamic per Provider)
     api_key = get_api_key(provider)
     if not api_key:
-        click.secho(__("❌ Error: API Key for provider '{provider}' not found.", provider=provider.capitalize()), fg="red")
+        click.secho(
+            __(
+                "❌ Error: API Key for provider '{provider}' not found.",
+                provider=provider.capitalize(),
+            ),
+            fg="red",
+        )
         return None
 
     # Fetch the Smart Model (NEW)
     # Send complexity to config.py to return the primary or secondary model
     api_model = get_api_model(provider, task_complexity)
     if not api_model:
-        click.secho(__("❌ Error: Could not determine model for provider '{provider}'.", provider=provider), fg="red")
+        click.secho(
+            __(
+                "❌ Error: Could not determine model for provider '{provider}'.",
+                provider=provider,
+            ),
+            fg="red",
+        )
         return None
 
     # API CALL
-    click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...\n", provider=provider.capitalize(), model=api_model), fg="cyan")
-    
+    click.secho(
+        __(
+            "🤖 GitPR is analyzing your code using {provider} ({model})...\n",
+            provider=provider.capitalize(),
+            model=api_model,
+        ),
+        fg="cyan",
+    )
+
     chunks = split_diff_into_chunks(diff_text, max_tokens=90000)
-    total_meta = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "duration_ms": 0}
+    total_meta = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "duration_ms": 0,
+    }
 
     def _aggregate_meta(new_meta):
         if new_meta:
@@ -714,56 +860,138 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
             total_meta["completion_tokens"] += new_meta.get("completion_tokens", 0)
             total_meta["total_tokens"] += new_meta.get("total_tokens", 0)
             total_meta["duration_ms"] += new_meta.get("duration_ms", 0)
-            
+
     if len(chunks) == 1:
-        result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema, action=action_folder)
+        result_json = call_ai_model(
+            provider,
+            api_key,
+            api_model,
+            prompt,
+            instrucao_sistema,
+            action=action_folder,
+        )
         if result_json:
             _aggregate_meta(result_json.pop("_telemetry_meta", None))
     else:
         from src.metrics import log_local_metric
-        log_local_metric(command="map_reduce", status="triggered", map_reduce_triggered=True, chunks_count=len(chunks))
-        
-        click.secho(__("📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...", count=len(chunks)), fg="yellow", bold=True)
-        click.secho(f"📚 {__('Understand why:')} {get_doc_url('map-reduce-diff.md')}\n", fg="blue", underline=True)
+
+        log_local_metric(
+            command="map_reduce",
+            status="triggered",
+            map_reduce_triggered=True,
+            chunks_count=len(chunks),
+        )
+
+        click.secho(
+            __(
+                "📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...",
+                count=len(chunks),
+            ),
+            fg="yellow",
+            bold=True,
+        )
+        click.secho(
+            f"📚 {__('Understand why:')} {get_doc_url('map-reduce-diff.md')}\n",
+            fg="blue",
+            underline=True,
+        )
         resumos_parciais = []
 
         for i, chunk in enumerate(chunks, 1):
-            click.secho(__("⏳ Analyzing batch {current}/{total}...", current=i, total=len(chunks)), fg="cyan", dim=True)
+            click.secho(
+                __(
+                    "⏳ Analyzing batch {current}/{total}...",
+                    current=i,
+                    total=len(chunks),
+                ),
+                fg="cyan",
+                dim=True,
+            )
 
-            prompt_parcial = __("Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n", json_format='{"resumo": "..."}', idx=i) + chunk
+            prompt_parcial = (
+                __(
+                    "Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n",
+                    json_format='{"resumo": "..."}',
+                    idx=i,
+                )
+                + chunk
+            )
 
-            resposta_parcial = call_ai_model(provider, api_key, api_model, prompt_parcial, instrucao_sistema, quiet=True, action=f"{action_folder}_chunk_{i}")
-            
+            resposta_parcial = call_ai_model(
+                provider,
+                api_key,
+                api_model,
+                prompt_parcial,
+                instrucao_sistema,
+                quiet=True,
+                action=f"{action_folder}_chunk_{i}",
+            )
+
             if resposta_parcial:
                 _aggregate_meta(resposta_parcial.pop("_telemetry_meta", None))
                 if "resumo" in resposta_parcial:
-                    resumos_parciais.append(f"### Batch {i}\n{resposta_parcial['resumo']}")
-            
+                    resumos_parciais.append(
+                        f"### Batch {i}\n{resposta_parcial['resumo']}"
+                    )
+
             time.sleep(1)
-            
+
         if not resumos_parciais:
-            click.secho(__("❌ Failed to extract context from the partial batches."), fg="red")
+            click.secho(
+                __("❌ Failed to extract context from the partial batches."), fg="red"
+            )
             return None
 
-        click.secho(__("🔄 Unifying intelligence and generating the final analysis..."), fg="yellow")
+        click.secho(
+            __("🔄 Unifying intelligence and generating the final analysis..."),
+            fg="yellow",
+        )
         diff_unificado = "\n\n".join(resumos_parciais)
 
         if action_type == "commit":
-            prompt = __("Generate ONLY a JSON object in the format {json_format} for the commit message, unifying these technical summaries:\n", json_format='{"commit_message": "..."}') + diff_unificado
+            prompt = (
+                __(
+                    "Generate ONLY a JSON object in the format {json_format} for the commit message, unifying these technical summaries:\n",
+                    json_format='{"commit_message": "..."}',
+                )
+                + diff_unificado
+            )
         elif action_type in ["review", "fullreview", "filereview"]:
-            prompt = __("Generate ONLY a JSON object in the format {json_format} with a code review focused on improvements, using these summaries:\n", json_format='{"review": "..."}') + diff_unificado
+            prompt = (
+                __(
+                    "Generate ONLY a JSON object in the format {json_format} with a code review focused on improvements, using these summaries:\n",
+                    json_format='{"review": "..."}',
+                )
+                + diff_unificado
+            )
         else:
-            prompt = __("Unify these technical summaries and generate ONLY a JSON object in the format {json_format} describing the Pull Request:\n", json_format='{"commit_message": "...", "pr_description": "..."}') + diff_unificado
-            
-        result_json = call_ai_model(provider, api_key, api_model, prompt, instrucao_sistema, action=action_folder)
+            prompt = (
+                __(
+                    "Unify these technical summaries and generate ONLY a JSON object in the format {json_format} describing the Pull Request:\n",
+                    json_format='{"commit_message": "...", "pr_description": "..."}',
+                )
+                + diff_unificado
+            )
+
+        result_json = call_ai_model(
+            provider,
+            api_key,
+            api_model,
+            prompt,
+            instrucao_sistema,
+            action=action_folder,
+        )
         if result_json:
             _aggregate_meta(result_json.pop("_telemetry_meta", None))
 
     # SAVE TO CACHE AND RETURN
     if result_json:
-        save_cached_response(action_folder, action_type, prompt, result_json, meta_raw=total_meta)
+        save_cached_response(
+            action_folder, action_type, prompt, result_json, meta_raw=total_meta
+        )
         # Fire-and-forget metric for successful AI-powered command
         from src.metrics import log_command_metric
+
         duration_ms = int((time.perf_counter() - t_start) * 1000)
         log_command_metric(
             command=action_type,
@@ -777,8 +1005,11 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
 
     # Command failed (AI returned None)
     from src.metrics import log_command_metric
+
     duration_ms = int((time.perf_counter() - t_start) * 1000)
-    log_command_metric(command=action_type, status="error", provider=provider, duration_ms=duration_ms)
+    log_command_metric(
+        command=action_type, status="error", provider=provider, duration_ms=duration_ms
+    )
     return None
 
 
@@ -787,10 +1018,12 @@ def generate_skill_template():
     Downloads templates directly from the official repository.
     Now dynamically supports languages.
     """
-    click.secho(__("\n📥 Starting GitPR templates configuration..."), fg="cyan", bold=True)
-    
+    click.secho(
+        __("\n📥 Starting GitPR templates configuration..."), fg="cyan", bold=True
+    )
+
     base_url = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/"
-    
+
     # Language logic:
     # - English (en) = original file without suffix (e.g.: gitpr.issue.md)
     # - Other languages = file with suffix (e.g.: gitpr.issue.pt_br.md)
@@ -809,7 +1042,7 @@ def generate_skill_template():
         ".gitpr.blame.md": f"gitpr.blame{lang_suffix}.md",
         ".gitpr.issue.md": f"gitpr.issue{lang_suffix}.md",
     }
-    
+
     success_count = 0
 
     # Templates now live inside the project's .gitpr/skill/ folder
@@ -822,28 +1055,58 @@ def generate_skill_template():
         url = base_url + remote_name
 
         if os.path.exists(file_path):
-            click.secho(__("⚠️ File {local_name} already exists in this directory. It will not be overwritten.", local_name=local_name), fg="yellow")
+            click.secho(
+                __(
+                    "⚠️ File {local_name} already exists in this directory. It will not be overwritten.",
+                    local_name=local_name,
+                ),
+                fg="yellow",
+            )
             continue
-            
+
         try:
             click.echo(__("Downloading {local_name}...", local_name=local_name))
             with urllib.request.urlopen(url, timeout=5) as response:
-                content = response.read().decode('utf-8')
-                
+                content = response.read().decode("utf-8")
+
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
-                
+
             success_count += 1
-            
+
         except urllib.error.URLError as e:
-            click.secho(__("❌ Network error while downloading {local_name}: {error}", local_name=local_name, error=e.reason), fg="red")
+            click.secho(
+                __(
+                    "❌ Network error while downloading {local_name}: {error}",
+                    local_name=local_name,
+                    error=e.reason,
+                ),
+                fg="red",
+            )
         except Exception as e:
-            click.secho(__("❌ Failed to process {local_name}: {error}", local_name=local_name, error=str(e)), fg="red")
+            click.secho(
+                __(
+                    "❌ Failed to process {local_name}: {error}",
+                    local_name=local_name,
+                    error=str(e),
+                ),
+                fg="red",
+            )
 
     if success_count > 0:
-        click.secho(__("\n✅ Base templates successfully configured!"), fg="green", bold=True)
-        click.echo(__("You can now open the generated files in '.gitpr/skill/' and customize the tool's behavior for your project:\n"))
-        click.echo(__("  1. Architecture rules for AI in '.gitpr/skill/.gitpr.pr.md' and '.gitpr/skill/.gitpr.review.md'\n"))
+        click.secho(
+            __("\n✅ Base templates successfully configured!"), fg="green", bold=True
+        )
+        click.echo(
+            __(
+                "You can now open the generated files in '.gitpr/skill/' and customize the tool's behavior for your project:\n"
+            )
+        )
+        click.echo(
+            __(
+                "  1. Architecture rules for AI in '.gitpr/skill/.gitpr.pr.md' and '.gitpr/skill/.gitpr.review.md'\n"
+            )
+        )
         click.echo(__("  2. Local regex rules in '.gitpr/skill/.gitpr.linter.yml'\n"))
     else:
         click.echo(__("\nNo new files were downloaded."))
@@ -855,12 +1118,19 @@ def get_base_branch():
         # Fetch the default branch reference from the remote
         result = subprocess.run(
             ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
-            capture_output=True, text=True, check=True
+            capture_output=True,
+            text=True,
+            check=True,
         )
         # The return is something like 'refs/remotes/origin/main', so we get the last part
-        return result.stdout.strip().split('/')[-1]
+        return result.stdout.strip().split("/")[-1]
     except subprocess.CalledProcessError:
-        click.secho(__("⚠️ Warning: Remote main branch not detected. Assuming 'main' as default fallback."), fg="yellow")
+        click.secho(
+            __(
+                "⚠️ Warning: Remote main branch not detected. Assuming 'main' as default fallback."
+            ),
+            fg="yellow",
+        )
         return "main"  # Default fallback if not found
 
 
@@ -870,32 +1140,40 @@ def get_git_full_diff():
     try:
         # Fetch to ensure we know where origin/main is
         subprocess.run(["git", "fetch", "origin"], check=True, capture_output=True)
-        
+
         base_branch = get_base_branch()
-        
+
         # Find the commit HASH where your branch was born (the common ancestor)
         merge_base_res = subprocess.run(
             ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
-            capture_output=True, text=True, check=True
+            capture_output=True,
+            text=True,
+            check=True,
         )
         ancestor_hash = merge_base_res.stdout.strip()
 
         # Diff between that HASH and your CURRENT WORKSPACE (without using HEAD)
         # By passing only the hash, Git compares that commit with the files on your disk.
-        cmd = ["git", "diff", "-U1", "-w", "-M", "-B", ancestor_hash, "--"] + SMART_EXCLUDES
+        cmd = [
+            "git",
+            "diff",
+            "-U1",
+            "-w",
+            "-M",
+            "-B",
+            ancestor_hash,
+            "--",
+        ] + SMART_EXCLUDES
         result = subprocess.run(
-            cmd, 
-            capture_output=True, 
-            text=True, 
-            encoding="utf-8",
-            check=True
+            cmd, capture_output=True, text=True, encoding="utf-8", check=True
         )
         return result.stdout
-        
+
     except subprocess.CalledProcessError as e:
         click.secho(__("❌ Error calculating diff: {error}", error=e.stderr), fg="red")
         return None
-    
+
+
 def install_git_hooks():
     """Downloads and installs Git hook scripts with i18n support.
 
@@ -909,7 +1187,9 @@ def install_git_hooks():
     hooks_dir = os.path.join(os.getcwd(), ".git", "hooks")
 
     if not os.path.exists(hooks_dir):
-        click.secho(__("❌ Error: .git folder not found. Run at the project root."), fg="red")
+        click.secho(
+            __("❌ Error: .git folder not found. Run at the project root."), fg="red"
+        )
         return False
 
     # Build language suffix (e.g. ".pt_br", ".fr") — English = no suffix
@@ -942,10 +1222,12 @@ def install_git_hooks():
         downloaded = False
         for url in urls_to_try:
             try:
-                click.secho(__("📥 Downloading {hook_name}...", hook_name=hook_name), fg="cyan")
+                click.secho(
+                    __("📥 Downloading {hook_name}...", hook_name=hook_name), fg="cyan"
+                )
 
                 with urllib.request.urlopen(url) as response:
-                    content = response.read().decode('utf-8')
+                    content = response.read().decode("utf-8")
 
                 with open(hook_path, "w", encoding="utf-8") as f:
                     f.write(content)
@@ -961,9 +1243,23 @@ def install_git_hooks():
                 # 404 on language variant is expected — silently try fallback
                 if e.code == 404 and url != urls_to_try[-1]:
                     continue
-                click.secho(__("⚠️ Failed to install {hook_name}: HTTP {code}", hook_name=hook_name, code=e.code), fg="yellow")
+                click.secho(
+                    __(
+                        "⚠️ Failed to install {hook_name}: HTTP {code}",
+                        hook_name=hook_name,
+                        code=e.code,
+                    ),
+                    fg="yellow",
+                )
             except Exception as e:
-                click.secho(__("⚠️ Failed to install {hook_name}: {error}", hook_name=hook_name, error=str(e)), fg="yellow")
+                click.secho(
+                    __(
+                        "⚠️ Failed to install {hook_name}: {error}",
+                        hook_name=hook_name,
+                        error=str(e),
+                    ),
+                    fg="yellow",
+                )
 
         # If the first URL (language-specific) failed and we're about to try the fallback,
         # the loop continues naturally. If the last URL also fails, we just move on.
@@ -979,7 +1275,11 @@ def install_git_hooks():
             pass  # non-fatal — will retry next run
 
     if success_count == len(hooks_to_install):
-        click.secho(f"📚 {__('Documentation:')} {get_doc_url('hooks-versioning.md')}", fg="blue", underline=True)
+        click.secho(
+            f"📚 {__('Documentation:')} {get_doc_url('hooks-versioning.md')}",
+            fg="blue",
+            underline=True,
+        )
 
     return success_count == len(hooks_to_install)
 
@@ -1013,11 +1313,24 @@ def check_and_update_hooks_scripts():
 
     # Versions differ or missing → re-download
     click.secho(__("🔍 Checking hook scripts version..."), fg="cyan", dim=True)
-    click.secho(__("   Current: {current} (from .env)", current=env_version or __("none")), fg="white", dim=True)
-    click.secho(__("   Latest: {latest} (from code)", latest=__scripts_version__), fg="white", dim=True)
-    click.secho(__("📦 Updating scripts to {version}...", version=__scripts_version__), fg="cyan")
+    click.secho(
+        __("   Current: {current} (from .env)", current=env_version or __("none")),
+        fg="white",
+        dim=True,
+    )
+    click.secho(
+        __("   Latest: {latest} (from code)", latest=__scripts_version__),
+        fg="white",
+        dim=True,
+    )
+    click.secho(
+        __("📦 Updating scripts to {version}...", version=__scripts_version__),
+        fg="cyan",
+    )
     if expected_lang:
-        click.secho(__("   Detected language: {lang}", lang=expected_lang), fg="white", dim=True)
+        click.secho(
+            __("   Detected language: {lang}", lang=expected_lang), fg="white", dim=True
+        )
 
     install_git_hooks()
 
@@ -1025,7 +1338,11 @@ def check_and_update_hooks_scripts():
     load_dotenv(ENV_FILE, override=True)
     if os.getenv("SCRIPTS_VERSION") == __scripts_version__:
         click.secho(__("✅ Scripts synced successfully!"), fg="green")
-        click.secho(f"📚 {__('Documentation:')} {get_doc_url('hooks-versioning.md')}", fg="blue", underline=True)
+        click.secho(
+            f"📚 {__('Documentation:')} {get_doc_url('hooks-versioning.md')}",
+            fg="blue",
+            underline=True,
+        )
 
 
 def run_install_wizard():
@@ -1034,15 +1351,25 @@ def run_install_wizard():
 
     Asks for confirmation before each step and prints a documentation URL at the end.
     """
-    click.secho(__("\n🔧 Starting GitPR Interactive Setup Wizard..."), fg="cyan", bold=True)
-    click.echo(__("This wizard will guide you through the essential GitPR setup steps.\n"))
+    click.secho(
+        __("\n🔧 Starting GitPR Interactive Setup Wizard..."), fg="cyan", bold=True
+    )
+    click.echo(
+        __("This wizard will guide you through the essential GitPR setup steps.\n")
+    )
 
     # ------------------------------------------------------------------
     # Step 1: Skill Templates (equivalent to --skill)
     # ------------------------------------------------------------------
     click.secho(__("Step 1 of 4: Skill Templates"), fg="yellow", bold=True)
-    click.echo(__("Downloads template files (.gitpr.*.md, .gitpr.linter.yml) into the .gitpr/skill/ folder."))
-    click.echo(__("These files allow customizing AI behavior for your team's conventions."))
+    click.echo(
+        __(
+            "Downloads template files (.gitpr.*.md, .gitpr.linter.yml) into the .gitpr/skill/ folder."
+        )
+    )
+    click.echo(
+        __("These files allow customizing AI behavior for your team's conventions.")
+    )
     if click.confirm(__("Proceed with downloading skill templates?"), default=True):
         generate_skill_template()
     else:
@@ -1052,11 +1379,19 @@ def run_install_wizard():
     # Step 2: Git Hooks (equivalent to --installhooks)
     # ------------------------------------------------------------------
     click.secho(__("\nStep 2 of 4: Git Hooks"), fg="yellow", bold=True)
-    click.echo(__("Installs pre-commit (static linter) and prepare-commit-msg (AI commit messages) hooks."))
-    click.echo(__("This enables automatic validation and AI assistance before every commit."))
+    click.echo(
+        __(
+            "Installs pre-commit (static linter) and prepare-commit-msg (AI commit messages) hooks."
+        )
+    )
+    click.echo(
+        __("This enables automatic validation and AI assistance before every commit.")
+    )
     if click.confirm(__("Proceed with installing Git hooks?"), default=True):
         if install_git_hooks():
-            click.secho(__("✅ Git Hooks successfully installed!"), fg="green", bold=True)
+            click.secho(
+                __("✅ Git Hooks successfully installed!"), fg="green", bold=True
+            )
         else:
             click.secho(__("⚠️ Some hooks could not be installed."), fg="yellow")
     else:
@@ -1066,11 +1401,20 @@ def run_install_wizard():
     # Step 3: MCP Configuration (equivalent to gitpr-mcp --install auto)
     # ------------------------------------------------------------------
     click.secho(__("\nStep 3 of 4: MCP Configuration"), fg="yellow", bold=True)
-    click.echo(__("Auto-detects and configures GitPR for VS Code, Cursor, Claude Desktop, and Zed."))
-    click.echo(__("This lets AI-powered editors use GitPR tools directly without the terminal."))
+    click.echo(
+        __(
+            "Auto-detects and configures GitPR for VS Code, Cursor, Claude Desktop, and Zed."
+        )
+    )
+    click.echo(
+        __(
+            "This lets AI-powered editors use GitPR tools directly without the terminal."
+        )
+    )
     if click.confirm(__("Proceed with MCP configuration?"), default=True):
         # Lazy import to avoid circular dependency at module level
         from src.mcp_server import _run_install
+
         _run_install("auto")
     else:
         click.echo(__("Skipped.\n"))
@@ -1083,15 +1427,24 @@ def run_install_wizard():
     existing_key = get_api_key(provider)
     if existing_key:
         click.secho(
-            __("✅ API key for {provider} is already configured.", provider=provider.capitalize()),
+            __(
+                "✅ API key for {provider} is already configured.",
+                provider=provider.capitalize(),
+            ),
             fg="green",
         )
     else:
-        click.echo(__("No API key found for {provider}.", provider=provider.capitalize()))
+        click.echo(
+            __("No API key found for {provider}.", provider=provider.capitalize())
+        )
         if click.confirm(__("Would you like to configure it now?"), default=True):
             setup_environment()
         else:
-            click.echo(__("You can configure it later by running 'gitpr' or editing ~/.gitpr/.env manually."))
+            click.echo(
+                __(
+                    "You can configure it later by running 'gitpr' or editing ~/.gitpr/.env manually."
+                )
+            )
 
     # ------------------------------------------------------------------
     # Final: documentation URL
@@ -1109,42 +1462,69 @@ def get_branch_history_text():
     base_branch = get_base_branch()
     repo_name = get_repo_name()
 
-    click.secho(__("🔄 Compiling history of repository '{repo_name}', branch '{branch}' against '{base_branch}'...", repo_name=repo_name, branch=branch, base_branch=base_branch), fg="cyan")
+    click.secho(
+        __(
+            "🔄 Compiling history of repository '{repo_name}', branch '{branch}' against '{base_branch}'...",
+            repo_name=repo_name,
+            branch=branch,
+            base_branch=base_branch,
+        ),
+        fg="cyan",
+    )
 
-    hybrid_context = __("Repository: {repo_name}\nBranch History Summary: {branch}\n\n", repo_name=repo_name, branch=branch)
+    hybrid_context = __(
+        "Repository: {repo_name}\nBranch History Summary: {branch}\n\n",
+        repo_name=repo_name,
+        branch=branch,
+    )
 
     # Get the real Git Commits
     try:
         # Get the timeline since the merge base
         merge_base_res = subprocess.run(
             ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
-            capture_output=True, text=True, check=True
+            capture_output=True,
+            text=True,
+            check=True,
         )
         ancestor_hash = merge_base_res.stdout.strip()
-        
+
         # Format: Hash | Date | Author | Message
         git_log_res = subprocess.run(
-            ["git", "log", f"{ancestor_hash}..HEAD", "--format=%h | %ad | %an | %s", "--date=short"],
-            capture_output=True, text=True, encoding="utf-8", check=True
+            [
+                "git",
+                "log",
+                f"{ancestor_hash}..HEAD",
+                "--format=%h | %ad | %an | %s",
+                "--date=short",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
         )
         git_log = git_log_res.stdout.strip()
-        
+
         hybrid_context += __("=== REGISTERED COMMITS ===\n")
         if git_log:
             hybrid_context += f"{git_log}\n\n"
         else:
             hybrid_context += __("No exclusive commits found in this branch.\n\n")
-            
+
     except subprocess.CalledProcessError as e:
-        click.secho(__("⚠️ Warning: Could not get Git Log: {error}", error=e.stderr), fg="yellow")
-    
+        click.secho(
+            __("⚠️ Warning: Could not get Git Log: {error}", error=e.stderr), fg="yellow"
+        )
+
     # Get the historical AI memory (Cache of old PRs from this repo + branch)
     cached_prs = get_cached_pr_descriptions(repo_name, branch)
     if cached_prs:
         hybrid_context += f"{cached_prs}\n"
     else:
-        hybrid_context += __("=== AI PR HISTORY ===\nNo previous AI-generated PR found in cache for this branch.\n")
-        
+        hybrid_context += __(
+            "=== AI PR HISTORY ===\nNo previous AI-generated PR found in cache for this branch.\n"
+        )
+
     return hybrid_context
 
 
@@ -1153,7 +1533,10 @@ def has_uncommitted_changes():
     try:
         result = subprocess.run(
             ["git", "diff", "HEAD", "--stat"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace"
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         return bool(result.stdout.strip())
     except Exception:
@@ -1171,7 +1554,10 @@ def get_uncommitted_summary():
     try:
         result = subprocess.run(
             ["git", "-c", "core.quotepath=false", "status", "--porcelain"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         summary = {"staged": [], "unstaged": [], "untracked": []}
         for line in result.stdout.splitlines():
@@ -1201,7 +1587,10 @@ def get_unstaged_files():
     try:
         result = subprocess.run(
             ["git", "-c", "core.quotepath=false", "status", "--porcelain"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         files = []
         for line in result.stdout.splitlines():
@@ -1249,7 +1638,10 @@ def stage_files(filepaths):
     try:
         result = subprocess.run(
             ["git", "add"] + filepaths,
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode == 0:
             return True, ""
@@ -1264,7 +1656,9 @@ def execute_git_commit(message, no_verify=False):
     if no_verify:
         cmd.insert(2, "--no-verify")
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8", errors="replace"
+        )
         return (result.returncode == 0, result.stdout + result.stderr)
     except Exception as e:
         return (False, str(e))

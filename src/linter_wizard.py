@@ -19,21 +19,22 @@ _LINTER_PRESETS = [
         "name": "PHP_CodeSniffer (PHPCS)",
         "extensions": ["php"],
         "command": "vendor/bin/phpcs --report=checkstyle",
-        "install_msg": "composer require --dev squizlabs/php_codesniffer"
+        "install_msg": "composer require --dev squizlabs/php_codesniffer",
     },
     {
         "name": "ESLint (JavaScript/TypeScript)",
         "extensions": ["js", "ts", "vue", "jsx", "tsx"],
         "command": "npx eslint --format checkstyle",
-        "install_msg": "npm install --save-dev eslint"
+        "install_msg": "npm install --save-dev eslint",
     },
     {
         "name": "Stylelint (CSS/SCSS)",
         "extensions": ["css", "scss", "sass", "less", "vue"],
         "command": "npx stylelint --custom-formatter=node_modules/stylelint-checkstyle-formatter",
-        "install_msg": "npm install --save-dev stylelint stylelint-checkstyle-formatter"
-    }
+        "install_msg": "npm install --save-dev stylelint stylelint-checkstyle-formatter",
+    },
 ]
+
 
 def load_linter_presets():
     """
@@ -96,6 +97,7 @@ def load_linter_presets():
     # 4. Last resort: built-in defaults
     return _LINTER_PRESETS
 
+
 def run_linter_setup_wizard():
     """
     Executes the interactive wizard to configure external linters via CLI.
@@ -103,7 +105,11 @@ def run_linter_setup_wizard():
     presets = load_linter_presets()
 
     click.secho(__("\n🔌 GitPR External Linter Setup"), fg="cyan", bold=True)
-    click.echo(__("Choose an external linter to configure as a bridge (Checkstyle XML format):"))
+    click.echo(
+        __(
+            "Choose an external linter to configure as a bridge (Checkstyle XML format):"
+        )
+    )
 
     for i, data in enumerate(presets, start=1):
         click.echo(f"  [{i}] {data.get('name', '')}")
@@ -122,8 +128,14 @@ def run_linter_setup_wizard():
     linter_name = selected_linter.get("name", "")
 
     # Shows the native install instruction
-    click.secho(__("\n🛠️  Step 1: Install the linter in your project"), fg="yellow", bold=True)
-    click.echo(__("Run the following command in your terminal if you haven't installed it yet:"))
+    click.secho(
+        __("\n🛠️  Step 1: Install the linter in your project"), fg="yellow", bold=True
+    )
+    click.echo(
+        __(
+            "Run the following command in your terminal if you haven't installed it yet:"
+        )
+    )
     click.secho(f"  {selected_linter.get('install_msg', '')}\n", fg="green")
 
     # Updates the YAML file
@@ -136,22 +148,30 @@ def run_linter_setup_wizard():
             with open(local_path, "r", encoding="utf-8", errors="replace") as f:
                 config = yaml.safe_load(f) or {}
         except Exception as e:
-            click.secho(__("❌ Error reading current linter config: {error}", error=str(e)), fg="red")
+            click.secho(
+                __("❌ Error reading current linter config: {error}", error=str(e)),
+                fg="red",
+            )
             return
 
     if "external_linters" not in config:
         config["external_linters"] = []
 
     # Avoid duplicate entries
-    already_exists = any(l.get("name") == linter_name for l in config["external_linters"])
+    already_exists = any(
+        l.get("name") == linter_name for l in config["external_linters"]
+    )
 
     if already_exists:
-        click.secho(__("⚠️  The linter '{name}' is already configured.", name=linter_name), fg="yellow")
+        click.secho(
+            __("⚠️  The linter '{name}' is already configured.", name=linter_name),
+            fg="yellow",
+        )
     else:
         new_entry = {
             "name": linter_name,
             "command": selected_linter.get("command", ""),
-            "extensions": selected_linter.get("extensions", [])
+            "extensions": selected_linter.get("extensions", []),
         }
         config["external_linters"].append(new_entry)
 
@@ -159,11 +179,28 @@ def run_linter_setup_wizard():
             # The .gitpr/skill/ folder may not exist yet on fresh projects
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             with open(local_path, "w", encoding="utf-8", errors="replace") as f:
-                yaml.dump(config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-            click.secho(__("✅ Successfully added '{name}' to your configuration!", name=linter_name), fg="green", bold=True)
+                yaml.dump(
+                    config,
+                    f,
+                    allow_unicode=True,
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
+            click.secho(
+                __(
+                    "✅ Successfully added '{name}' to your configuration!",
+                    name=linter_name,
+                ),
+                fg="green",
+                bold=True,
+            )
         except Exception as e:
-            click.secho(__("❌ Error saving configuration: {error}", error=str(e)), fg="red")
+            click.secho(
+                __("❌ Error saving configuration: {error}", error=str(e)), fg="red"
+            )
 
     # Full documentation link
     click.echo(__("For more details, see the full documentation:"))
-    click.secho(f"  {get_doc_url('linter-regras-customizadas.md')}", fg="blue", underline=True)
+    click.secho(
+        f"  {get_doc_url('linter-regras-customizadas.md')}", fg="blue", underline=True
+    )

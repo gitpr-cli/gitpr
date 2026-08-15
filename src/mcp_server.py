@@ -173,8 +173,10 @@ def _patch_output():
     # Block interactive prompts
     def _mcp_prompt(*args, **kwargs):
         raise RuntimeError(
-            __("Interactive prompt is unavailable in MCP mode. "
-               "Configure your API keys in ~/.gitpr/.env before using MCP tools.")
+            __(
+                "Interactive prompt is unavailable in MCP mode. "
+                "Configure your API keys in ~/.gitpr/.env before using MCP tools."
+            )
         )
 
     click.prompt = _mcp_prompt
@@ -214,6 +216,7 @@ def _init_config():
         try:
             from src.i18n import set_lang
             from src.spinner import reload_thinking_words
+
             set_lang(lang)
             reload_thinking_words(lang)
         except Exception:
@@ -223,6 +226,7 @@ def _init_config():
 # =============================================================================
 # Safe Call Wrapper
 # =============================================================================
+
 
 def _safe_call(fn, *args, **kwargs):
     """Call a GitPR function, catching SystemExit and unexpected errors.
@@ -243,12 +247,14 @@ def _safe_call(fn, *args, **kwargs):
 # Helper: resolve the active AI provider
 # =============================================================================
 
+
 def _resolve_provider(requested: str) -> str:
     """Return the effective provider: explicit override or the .env default."""
     if requested:
         return requested
     try:
         from src.config import get_ai_provider
+
         return _safe_call(get_ai_provider) or "gemini"
     except Exception:
         return "gemini"
@@ -260,9 +266,11 @@ def _resolve_provider(requested: str) -> str:
 
 mcp = FastMCP(
     "gitpr",
-    instructions=__("GitPR — Intelligent PR Automation and AI Code Review. "
-                     "Generate commit messages, review code, run linters, "
-                     "trace code origins, and create issues — all from your IDE."),
+    instructions=__(
+        "GitPR — Intelligent PR Automation and AI Code Review. "
+        "Generate commit messages, review code, run linters, "
+        "trace code origins, and create issues — all from your IDE."
+    ),
 )
 
 
@@ -270,8 +278,11 @@ mcp = FastMCP(
 # Tools — Git Context
 # =============================================================================
 
+
 @mcp.tool(
-    description=__("Get the current git branch, repository name, and remote origin URL."),
+    description=__(
+        "Get the current git branch, repository name, and remote origin URL."
+    ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def get_git_context() -> str:
@@ -281,20 +292,25 @@ def get_git_context() -> str:
     branch = _safe_call(get_current_branch) or "unknown"
     repo = _safe_call(get_repo_name) or "unknown/repo"
 
-    return json.dumps({
-        "branch": branch,
-        "repository": repo,
-    })
+    return json.dumps(
+        {
+            "branch": branch,
+            "repository": repo,
+        }
+    )
 
 
 # =============================================================================
 # Tools — Diff Inspection
 # =============================================================================
 
+
 @mcp.tool(
-    description=__("Get the current uncommitted git diff (git diff HEAD — "
-                    "includes both staged and unstaged changes). ")
-                + __("Lists all changed files and their line-level modifications."),
+    description=__(
+        "Get the current uncommitted git diff (git diff HEAD — "
+        "includes both staged and unstaged changes). "
+    )
+    + __("Lists all changed files and their line-level modifications."),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def analyze_diff() -> str:
@@ -303,19 +319,27 @@ def analyze_diff() -> str:
 
     diff = _safe_call(get_git_diff, quiet=True)
     if not diff or not diff.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No uncommitted changes detected."),
-        }, ensure_ascii=False)
-    return json.dumps({
-        "status": "changes_found",
-        "diff": diff,
-    }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No uncommitted changes detected."),
+            },
+            ensure_ascii=False,
+        )
+    return json.dumps(
+        {
+            "status": "changes_found",
+            "diff": diff,
+        },
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool(
-    description=__("List uncommitted file changes categorized as new (untracked), "
-                    "modified (unstaged modifications) or deleted. Returns structured JSON."),
+    description=__(
+        "List uncommitted file changes categorized as new (untracked), "
+        "modified (unstaged modifications) or deleted. Returns structured JSON."
+    ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def list_unstaged_files() -> str:
@@ -334,21 +358,26 @@ def list_unstaged_files() -> str:
         files.append({"path": f, "type": "modified"})
     for f in deleted_files:
         files.append({"path": f, "type": "deleted"})
-    return json.dumps({
-        "status": "changes_found" if total else "no_changes",
-        "new": new_files,
-        "modified": modified_files,
-        "deleted": deleted_files,
-        "files": files,
-        "total": total,
-        "message": "" if total else __("No unstaged files found."),
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "changes_found" if total else "no_changes",
+            "new": new_files,
+            "modified": modified_files,
+            "deleted": deleted_files,
+            "files": files,
+            "total": total,
+            "message": "" if total else __("No unstaged files found."),
+        },
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool(
-    description=__("Get only the unstaged git diff (git diff without HEAD — "
-                    "compares the index against the working tree). Excludes staged "
-                    "changes. Untracked files are not shown; use list_unstaged_files for them."),
+    description=__(
+        "Get only the unstaged git diff (git diff without HEAD — "
+        "compares the index against the working tree). Excludes staged "
+        "changes. Untracked files are not shown; use list_unstaged_files for them."
+    ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def analyze_unstaged_diff() -> str:
@@ -357,20 +386,30 @@ def analyze_unstaged_diff() -> str:
 
     diff = _safe_call(get_unstaged_diff, quiet=True)
     if not diff or not diff.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No unstaged changes detected."),
-        }, ensure_ascii=False)
-    return json.dumps({
-        "status": "changes_found",
-        "diff": diff,
-    }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No unstaged changes detected."),
+            },
+            ensure_ascii=False,
+        )
+    return json.dumps(
+        {
+            "status": "changes_found",
+            "diff": diff,
+        },
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool(
-    description=__("Get the full diff of the current branch against the remote "
-                    "base branch (origin/main or origin/master). Runs git fetch first."),
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
+    description=__(
+        "Get the full diff of the current branch against the remote "
+        "base branch (origin/main or origin/master). Runs git fetch first."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
 )
 def get_full_diff() -> str:
     """Return the full diff between the current branch and origin/main."""
@@ -378,25 +417,36 @@ def get_full_diff() -> str:
 
     diff = _safe_call(get_git_full_diff)
     if not diff or not diff.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No changes detected against the base branch."),
-        }, ensure_ascii=False)
-    return json.dumps({
-        "status": "changes_found",
-        "diff": diff,
-    }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No changes detected against the base branch."),
+            },
+            ensure_ascii=False,
+        )
+    return json.dumps(
+        {
+            "status": "changes_found",
+            "diff": diff,
+        },
+        ensure_ascii=False,
+    )
 
 
 # =============================================================================
 # Tools — AI-Powered Analysis
 # =============================================================================
 
+
 @mcp.tool(
-    description=__("Generate a Conventional Commits commit message from the "
-                    "current git diff using AI. "
-                    "Returns a message like 'feat: add user authentication'."),
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
+    description=__(
+        "Generate a Conventional Commits commit message from the "
+        "current git diff using AI. "
+        "Returns a message like 'feat: add user authentication'."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
 )
 def generate_commit_message(
     provider: str = "",
@@ -415,31 +465,46 @@ def generate_commit_message(
         diff_text = _safe_call(get_git_diff, quiet=True) or ""
 
     if not diff_text.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No diff to analyze. Make some changes first."),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No diff to analyze. Make some changes first."),
+            },
+            ensure_ascii=False,
+        )
 
     active_provider = _resolve_provider(provider)
-    result = _safe_call(generate_pr_content, "commit", "commit", diff_text, active_provider)
+    result = _safe_call(
+        generate_pr_content, "commit", "commit", diff_text, active_provider
+    )
 
     if result and "commit_message" in result:
-        return json.dumps({
-            "status": "success",
-            "commit_message": result["commit_message"],
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "success",
+                "commit_message": result["commit_message"],
+            },
+            ensure_ascii=False,
+        )
 
-    return json.dumps({
-        "status": "error",
-        "message": __("AI failed to generate a commit message."),
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "error",
+            "message": __("AI failed to generate a commit message."),
+        },
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool(
-    description=__("Perform an AI code review on uncommitted local changes "
-                    "(git diff HEAD). Returns structured feedback with issues "
-                    "and improvement suggestions."),
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
+    description=__(
+        "Perform an AI code review on uncommitted local changes "
+        "(git diff HEAD). Returns structured feedback with issues "
+        "and improvement suggestions."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
 )
 def review_code(
     provider: str = "",
@@ -457,30 +522,45 @@ def review_code(
         diff_text = _safe_call(get_git_diff, quiet=True) or ""
 
     if not diff_text.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No diff to review."),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No diff to review."),
+            },
+            ensure_ascii=False,
+        )
 
     active_provider = _resolve_provider(provider)
-    result = _safe_call(generate_pr_content, "review", "review", diff_text, active_provider)
+    result = _safe_call(
+        generate_pr_content, "review", "review", diff_text, active_provider
+    )
 
     if result and "review" in result:
-        return json.dumps({
-            "status": "success",
-            "review": result["review"],
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "success",
+                "review": result["review"],
+            },
+            ensure_ascii=False,
+        )
 
-    return json.dumps({
-        "status": "error",
-        "message": __("AI failed to generate a review."),
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "error",
+            "message": __("AI failed to generate a review."),
+        },
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool(
-    description=__("Perform a full AI code review comparing the entire current "
-                    "branch against origin/main. Runs git fetch automatically."),
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
+    description=__(
+        "Perform a full AI code review comparing the entire current "
+        "branch against origin/main. Runs git fetch automatically."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
 )
 def full_review(provider: str = "") -> str:
     """AI code review of all changes since origin/main.
@@ -492,31 +572,46 @@ def full_review(provider: str = "") -> str:
 
     diff_text = _safe_call(get_git_full_diff) or ""
     if not diff_text.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No changes against the base branch."),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No changes against the base branch."),
+            },
+            ensure_ascii=False,
+        )
 
     active_provider = _resolve_provider(provider)
-    result = _safe_call(generate_pr_content, "fullreview", "fullreview", diff_text, active_provider)
+    result = _safe_call(
+        generate_pr_content, "fullreview", "fullreview", diff_text, active_provider
+    )
 
     if result and "review" in result:
-        return json.dumps({
-            "status": "success",
-            "review": result["review"],
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "success",
+                "review": result["review"],
+            },
+            ensure_ascii=False,
+        )
 
-    return json.dumps({
-        "status": "error",
-        "message": __("AI failed to generate a full review."),
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "error",
+            "message": __("AI failed to generate a full review."),
+        },
+        ensure_ascii=False,
+    )
 
 
 @mcp.tool(
-    description=__("Generate a complete Pull Request description (title + body) "
-                    "from the full diff against origin/main. Uses AI to create a "
-                    "structured, professional PR document."),
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
+    description=__(
+        "Generate a complete Pull Request description (title + body) "
+        "from the full diff against origin/main. Uses AI to create a "
+        "structured, professional PR document."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
 )
 def generate_pr_description(provider: str = "") -> str:
     """Generate a full PR description from the branch diff.
@@ -528,35 +623,47 @@ def generate_pr_description(provider: str = "") -> str:
 
     diff_text = _safe_call(get_git_full_diff) or ""
     if not diff_text.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No changes against the base branch."),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No changes against the base branch."),
+            },
+            ensure_ascii=False,
+        )
 
     active_provider = _resolve_provider(provider)
     result = _safe_call(generate_pr_content, "pr", "pr", diff_text, active_provider)
 
     if result:
-        return json.dumps({
-            "status": "success",
-            "commit_message": result.get("commit_message", ""),
-            "pr_description": result.get("pr_description", ""),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "success",
+                "commit_message": result.get("commit_message", ""),
+                "pr_description": result.get("pr_description", ""),
+            },
+            ensure_ascii=False,
+        )
 
-    return json.dumps({
-        "status": "error",
-        "message": __("AI failed to generate a PR description."),
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "error",
+            "message": __("AI failed to generate a PR description."),
+        },
+        ensure_ascii=False,
+    )
 
 
 # =============================================================================
 # Tools — Linter
 # =============================================================================
 
+
 @mcp.tool(
-    description=__("Run the static local linter (regex-based rules from "
-                    ".gitpr.linter.yml) on the current git diff. "
-                    "Returns error and warning counts with detailed messages."),
+    description=__(
+        "Run the static local linter (regex-based rules from "
+        ".gitpr.linter.yml) on the current git diff. "
+        "Returns error and warning counts with detailed messages."
+    ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
 def run_linter() -> str:
@@ -566,32 +673,46 @@ def run_linter() -> str:
 
     diff_text = _safe_call(get_git_diff, quiet=True) or ""
     if not diff_text.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("Empty diff — nothing to lint."),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("Empty diff — nothing to lint."),
+            },
+            ensure_ascii=False,
+        )
 
-    results = _safe_call(parse_diff_and_lint, diff_text) or {"errors": [], "warnings": []}
+    results = _safe_call(parse_diff_and_lint, diff_text) or {
+        "errors": [],
+        "warnings": [],
+    }
 
-    return json.dumps({
-        "status": "success",
-        "error_count": len(results.get("errors", [])),
-        "warning_count": len(results.get("warnings", [])),
-        "errors": results.get("errors", []),
-        "warnings": results.get("warnings", []),
-        "passed": len(results.get("errors", [])) == 0,
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "success",
+            "error_count": len(results.get("errors", [])),
+            "warning_count": len(results.get("warnings", [])),
+            "errors": results.get("errors", []),
+            "warnings": results.get("warnings", []),
+            "passed": len(results.get("errors", [])) == 0,
+        },
+        ensure_ascii=False,
+    )
 
 
 # =============================================================================
 # Tools — Code Archaeology (Blame)
 # =============================================================================
 
+
 @mcp.tool(
-    description=__("Run AI-powered git blame analysis on a file region to trace "
-                    "the origin of business rules. Classifies each commit as "
-                    "ORIGIN (first introduction) or REFACTORING (later change)."),
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
+    description=__(
+        "Run AI-powered git blame analysis on a file region to trace "
+        "the origin of business rules. Classifies each commit as "
+        "ORIGIN (first introduction) or REFACTORING (later change)."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
 )
 def analyze_blame(
     file_path: str,
@@ -608,34 +729,51 @@ def analyze_blame(
     from src.blame_engine import run_blame_analysis
 
     if not os.path.exists(file_path):
-        return json.dumps({
-            "status": "error",
-            "message": __("File not found: {file_path}", file_path=file_path),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "error",
+                "message": __("File not found: {file_path}", file_path=file_path),
+            },
+            ensure_ascii=False,
+        )
 
-    timeline = _safe_call(run_blame_analysis, file_path, start_line, end_line, return_data=True)
+    timeline = _safe_call(
+        run_blame_analysis, file_path, start_line, end_line, return_data=True
+    )
 
     if not timeline:
-        return json.dumps({
-            "status": "no_data",
-            "message": __("No traceable commits found for this region."),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_data",
+                "message": __("No traceable commits found for this region."),
+            },
+            ensure_ascii=False,
+        )
 
-    return json.dumps({
-        "status": "success",
-        "entries": timeline,
-    }, ensure_ascii=False, default=str)
+    return json.dumps(
+        {
+            "status": "success",
+            "entries": timeline,
+        },
+        ensure_ascii=False,
+        default=str,
+    )
 
 
 # =============================================================================
 # Tools — Issue Generation
 # =============================================================================
 
+
 @mcp.tool(
-    description=__("Generate a structured Issue (What / Why / Where / How) from "
-                    "code context using AI. Supports three modes: diff (current "
-                    "changes), history (branch history), or blame (file region)."),
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False),
+    description=__(
+        "Generate a structured Issue (What / Why / Where / How) from "
+        "code context using AI. Supports three modes: diff (current "
+        "changes), history (branch history), or blame (file region)."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
 )
 def generate_issue(context_type: str = "diff") -> str:
     """Generate an issue from code context.
@@ -652,24 +790,33 @@ def generate_issue(context_type: str = "diff") -> str:
         context_text = _safe_call(get_git_diff, quiet=True) or ""
 
     if not context_text.strip():
-        return json.dumps({
-            "status": "no_changes",
-            "message": __("No context available for issue generation."),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "no_changes",
+                "message": __("No context available for issue generation."),
+            },
+            ensure_ascii=False,
+        )
 
     result = _safe_call(generate_issue_content, context_text, context_type=context_type)
 
     if result:
-        return json.dumps({
-            "status": "success",
-            "title": result.get("titulo", ""),
-            "body": result.get("corpo", ""),
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "status": "success",
+                "title": result.get("titulo", ""),
+                "body": result.get("corpo", ""),
+            },
+            ensure_ascii=False,
+        )
 
-    return json.dumps({
-        "status": "error",
-        "message": __("AI failed to generate an issue."),
-    }, ensure_ascii=False)
+    return json.dumps(
+        {
+            "status": "error",
+            "message": __("AI failed to generate an issue."),
+        },
+        ensure_ascii=False,
+    )
 
 
 # =============================================================================
@@ -706,17 +853,22 @@ def _read_resource_file(filename: str) -> str:
     """
     try:
         from src.config import resolve_skill_path
+
         path = resolve_skill_path(filename)
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 return f.read()
     except Exception:
         pass
-    return json.dumps({
-        "status": "not_found",
-        "message": __("Resource '{filename}' not found. Run 'gitpr --skill' to download templates.",
-                       filename=filename),
-    })
+    return json.dumps(
+        {
+            "status": "not_found",
+            "message": __(
+                "Resource '{filename}' not found. Run 'gitpr --skill' to download templates.",
+                filename=filename,
+            ),
+        }
+    )
 
 
 def _read_prompt_file(prompt_name: str) -> str:
@@ -745,8 +897,8 @@ def _read_prompt_file(prompt_name: str) -> str:
 
     # Search directories in priority order
     search_dirs = [
-        os.path.join(os.getcwd(), "templates"),              # dev / project-local
-        os.path.join(os.getcwd(), ".gitpr", "skill"),       # downloaded
+        os.path.join(os.getcwd(), "templates"),  # dev / project-local
+        os.path.join(os.getcwd(), ".gitpr", "skill"),  # downloaded
         os.path.join(os.path.dirname(__file__), "..", "templates"),  # bundled
     ]
 
@@ -783,10 +935,12 @@ def _read_prompt_file(prompt_name: str) -> str:
 )
 def list_skills() -> str:
     """Return a JSON list of available skill and config resource URIs."""
-    return json.dumps({
-        "skills": [f"skill://{name}" for name in SKILL_FILES],
-        "linter": "linter://config",
-    })
+    return json.dumps(
+        {
+            "skills": [f"skill://{name}" for name in SKILL_FILES],
+            "linter": "linter://config",
+        }
+    )
 
 
 @mcp.resource(
@@ -863,6 +1017,7 @@ def get_linter_config() -> str:
 # Resources — Prompt Templates
 # =============================================================================
 
+
 @mcp.resource(
     uri="prompt://list",
     name=__("Available Prompt Templates"),
@@ -876,15 +1031,18 @@ def list_prompts() -> str:
     try:
         from src.config import get_prompt_plugins
         import os as _os
+
         for plugin_path in get_prompt_plugins():
-            plugin_name = _os.path.basename(plugin_path).replace('.md', '')
+            plugin_name = _os.path.basename(plugin_path).replace(".md", "")
             prompts.append(f"prompt://plugin/{plugin_name}")
     except Exception:
         pass
 
-    return json.dumps({
-        "prompts": prompts,
-    })
+    return json.dumps(
+        {
+            "prompts": prompts,
+        }
+    )
 
 
 @mcp.resource(
@@ -968,10 +1126,13 @@ def get_prompt_explore() -> str:
 # variants), so translations can be updated independently of the Python code.
 # =============================================================================
 
+
 @mcp.prompt(
     name=__("Review PR"),
-    description=__("Full code review of all changes in the current branch against origin/main. "
-                    "Runs the full review tool and linter, then composes a comprehensive report."),
+    description=__(
+        "Full code review of all changes in the current branch against origin/main. "
+        "Runs the full review tool and linter, then composes a comprehensive report."
+    ),
 )
 def review_pr_prompt() -> str:
     """Prompt: full code review of the current branch."""
@@ -980,8 +1141,10 @@ def review_pr_prompt() -> str:
 
 @mcp.prompt(
     name=__("Generate Commit Message"),
-    description=__("Generate a Conventional Commits message (e.g., 'feat: add user auth') "
-                    "from the current uncommitted changes."),
+    description=__(
+        "Generate a Conventional Commits message (e.g., 'feat: add user auth') "
+        "from the current uncommitted changes."
+    ),
 )
 def generate_commit_message_prompt() -> str:
     """Prompt: generate a commit message from uncommitted changes."""
@@ -990,8 +1153,10 @@ def generate_commit_message_prompt() -> str:
 
 @mcp.prompt(
     name=__("Create PR Description"),
-    description=__("Generate a complete Pull Request description (title + body) "
-                    "from all changes in the current branch."),
+    description=__(
+        "Generate a complete Pull Request description (title + body) "
+        "from all changes in the current branch."
+    ),
 )
 def create_pr_description_prompt() -> str:
     """Prompt: generate a full PR description."""
@@ -1000,8 +1165,10 @@ def create_pr_description_prompt() -> str:
 
 @mcp.prompt(
     name=__("Run Code Linter"),
-    description=__("Run the static linter (.gitpr.linter.yml rules) on current "
-                    "uncommitted changes and report violations."),
+    description=__(
+        "Run the static linter (.gitpr.linter.yml rules) on current "
+        "uncommitted changes and report violations."
+    ),
 )
 def run_linter_prompt() -> str:
     """Prompt: run the static linter on current changes."""
@@ -1010,8 +1177,10 @@ def run_linter_prompt() -> str:
 
 @mcp.prompt(
     name=__("Create Issue from Diff"),
-    description=__("Generate a structured issue (What / Why / Where / How) from "
-                    "the current uncommitted changes."),
+    description=__(
+        "Generate a structured issue (What / Why / Where / How) from "
+        "the current uncommitted changes."
+    ),
 )
 def create_issue_prompt() -> str:
     """Prompt: generate an issue from the current diff."""
@@ -1020,8 +1189,10 @@ def create_issue_prompt() -> str:
 
 @mcp.prompt(
     name=__("Trace Code Origin"),
-    description=__("Investigate the history of a specific file region using git "
-                    "blame + AI to trace where business rules came from."),
+    description=__(
+        "Investigate the history of a specific file region using git "
+        "blame + AI to trace where business rules came from."
+    ),
 )
 def trace_code_origin_prompt() -> str:
     """Prompt: trace the origin of code in a file region."""
@@ -1030,8 +1201,10 @@ def trace_code_origin_prompt() -> str:
 
 @mcp.prompt(
     name=__("Explore Project Context"),
-    description=__("Get current branch info, repository name, and list available "
-                    "skill templates for the project."),
+    description=__(
+        "Get current branch info, repository name, and list available "
+        "skill templates for the project."
+    ),
 )
 def explore_project_prompt() -> str:
     """Prompt: explore the current git context and available skills."""
@@ -1045,7 +1218,7 @@ def _register_plugin_prompts():
         import os as _os
 
         for plugin_path in get_prompt_plugins():
-            plugin_name = _os.path.basename(plugin_path).replace('.md', '')
+            plugin_name = _os.path.basename(plugin_path).replace(".md", "")
             uri_string = f"prompt://plugin/{plugin_name}"
 
             # Using closures to prevent late-binding issues in loops
@@ -1062,6 +1235,7 @@ def _register_plugin_prompts():
                             return f.read()
                     except Exception:
                         return ""
+
                 return resource_handler
 
             def make_prompt_handler(path, name):
@@ -1075,6 +1249,7 @@ def _register_plugin_prompts():
                             return f.read()
                     except Exception:
                         return ""
+
                 return prompt_handler
 
             make_resource_handler(plugin_path, uri_string, plugin_name)
@@ -1082,6 +1257,7 @@ def _register_plugin_prompts():
 
     except Exception:
         pass  # Silently skip if plugins fail to load so the MCP server boots normally
+
 
 # Fire the dynamic registration immediately
 _register_plugin_prompts()
@@ -1095,6 +1271,7 @@ _register_plugin_prompts()
 # inventory of the server's capabilities as JSON, so that editors, IDEs and
 # AI agents can discover available tools without having to connect to the
 # running MCP server via stdio.
+
 
 def _build_tools_catalog() -> dict:
     """Return a complete catalog of all MCP tools, resources, and prompts.
@@ -1136,41 +1313,85 @@ def _build_tools_catalog() -> dict:
                 "name": "get_full_diff",
                 "description": "Get the full diff of the current branch against the remote base branch (origin/main or origin/master). Runs git fetch first.",
                 "parameters": {},
-                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                },
             },
             {
                 "name": "generate_commit_message",
                 "description": "Generate a Conventional Commits commit message from the current git diff using AI. Returns a message like 'feat: add user authentication'.",
                 "parameters": {
-                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama. Empty uses default from ~/.gitpr/.env."},
-                    "diff_text": {"type": "string", "required": False, "description": "Optional diff text. If empty, auto-detects from git."},
+                    "provider": {
+                        "type": "string",
+                        "required": False,
+                        "description": "AI provider override: gemini, deepseek, or ollama. Empty uses default from ~/.gitpr/.env.",
+                    },
+                    "diff_text": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Optional diff text. If empty, auto-detects from git.",
+                    },
                 },
-                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                },
             },
             {
                 "name": "review_code",
                 "description": "Perform an AI code review on uncommitted local changes (git diff HEAD). Returns structured feedback with issues and improvement suggestions.",
                 "parameters": {
-                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama."},
-                    "diff_text": {"type": "string", "required": False, "description": "Optional diff text. If empty, auto-detects from git."},
+                    "provider": {
+                        "type": "string",
+                        "required": False,
+                        "description": "AI provider override: gemini, deepseek, or ollama.",
+                    },
+                    "diff_text": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Optional diff text. If empty, auto-detects from git.",
+                    },
                 },
-                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                },
             },
             {
                 "name": "full_review",
                 "description": "Perform a full AI code review comparing the entire current branch against origin/main. Runs git fetch automatically.",
                 "parameters": {
-                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama."},
+                    "provider": {
+                        "type": "string",
+                        "required": False,
+                        "description": "AI provider override: gemini, deepseek, or ollama.",
+                    },
                 },
-                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                },
             },
             {
                 "name": "generate_pr_description",
                 "description": "Generate a complete Pull Request description (title + body) from the full diff against origin/main. Uses AI to create a structured, professional PR document.",
                 "parameters": {
-                    "provider": {"type": "string", "required": False, "description": "AI provider override: gemini, deepseek, or ollama."},
+                    "provider": {
+                        "type": "string",
+                        "required": False,
+                        "description": "AI provider override: gemini, deepseek, or ollama.",
+                    },
                 },
-                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                },
             },
             {
                 "name": "run_linter",
@@ -1182,47 +1403,172 @@ def _build_tools_catalog() -> dict:
                 "name": "analyze_blame",
                 "description": "Run AI-powered git blame analysis on a file region to trace the origin of business rules. Classifies each commit as ORIGIN (first introduction) or REFACTORING (later change).",
                 "parameters": {
-                    "file_path": {"type": "string", "required": True, "description": "Path to the source file (relative to the repository root)."},
-                    "start_line": {"type": "string", "required": True, "description": "Starting line number (as a string, e.g. '42')."},
-                    "end_line": {"type": "string", "required": True, "description": "Ending line number (as a string, e.g. '58')."},
+                    "file_path": {
+                        "type": "string",
+                        "required": True,
+                        "description": "Path to the source file (relative to the repository root).",
+                    },
+                    "start_line": {
+                        "type": "string",
+                        "required": True,
+                        "description": "Starting line number (as a string, e.g. '42').",
+                    },
+                    "end_line": {
+                        "type": "string",
+                        "required": True,
+                        "description": "Ending line number (as a string, e.g. '58').",
+                    },
                 },
-                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                },
             },
             {
                 "name": "generate_issue",
                 "description": "Generate a structured Issue (What / Why / Where / How) from code context using AI. Supports three modes: diff (current changes), history (branch history), or blame (file region).",
                 "parameters": {
-                    "context_type": {"type": "string", "required": False, "description": "Context source: 'diff' (default), 'history', or 'blame'."},
+                    "context_type": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Context source: 'diff' (default), 'history', or 'blame'.",
+                    },
                 },
-                "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                },
             },
         ],
         "resources": [
-            {"uri": "skill://list", "name": "Available Skill Templates", "description": "Lists all available skill template resource URIs.", "mimeType": "application/json"},
-            {"uri": "skill://pr", "name": "PR Description Template", "description": "Custom AI instructions for generating Pull Request descriptions.", "mimeType": "text/markdown"},
-            {"uri": "skill://commit", "name": "Commit Message Template", "description": "Custom AI instructions for generating commit messages.", "mimeType": "text/markdown"},
-            {"uri": "skill://review", "name": "Code Review Template", "description": "Custom AI instructions for code reviews.", "mimeType": "text/markdown"},
-            {"uri": "skill://filereview", "name": "File Review Template", "description": "Custom AI instructions for full-file audits.", "mimeType": "text/markdown"},
-            {"uri": "skill://issue", "name": "Issue Template", "description": "Custom AI instructions for generating issues.", "mimeType": "text/markdown"},
-            {"uri": "skill://blame", "name": "Blame Analysis Template", "description": "Custom AI instructions for code archaeology (blame).", "mimeType": "text/markdown"},
-            {"uri": "linter://config", "name": "Linter Configuration", "description": "YAML rules for the static local linter.", "mimeType": "text/yaml"},
-            {"uri": "prompt://list", "name": "Available Prompt Templates", "description": "Lists all available MCP prompt template URIs.", "mimeType": "application/json"},
-            {"uri": "prompt://review", "name": "Review PR Prompt", "description": "Prompt template: full code review of the current branch.", "mimeType": "text/markdown"},
-            {"uri": "prompt://commit", "name": "Commit Message Prompt", "description": "Prompt template: generate a Conventional Commits message.", "mimeType": "text/markdown"},
-            {"uri": "prompt://pr", "name": "PR Description Prompt", "description": "Prompt template: generate a Pull Request description.", "mimeType": "text/markdown"},
-            {"uri": "prompt://linter", "name": "Linter Prompt", "description": "Prompt template: run the static linter on changes.", "mimeType": "text/markdown"},
-            {"uri": "prompt://issue", "name": "Issue Prompt", "description": "Prompt template: generate a structured issue from changes.", "mimeType": "text/markdown"},
-            {"uri": "prompt://blame", "name": "Blame Prompt", "description": "Prompt template: trace code origin with git blame + AI.", "mimeType": "text/markdown"},
-            {"uri": "prompt://explore", "name": "Explore Prompt", "description": "Prompt template: explore project context and available skills.", "mimeType": "text/markdown"},
+            {
+                "uri": "skill://list",
+                "name": "Available Skill Templates",
+                "description": "Lists all available skill template resource URIs.",
+                "mimeType": "application/json",
+            },
+            {
+                "uri": "skill://pr",
+                "name": "PR Description Template",
+                "description": "Custom AI instructions for generating Pull Request descriptions.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "skill://commit",
+                "name": "Commit Message Template",
+                "description": "Custom AI instructions for generating commit messages.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "skill://review",
+                "name": "Code Review Template",
+                "description": "Custom AI instructions for code reviews.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "skill://filereview",
+                "name": "File Review Template",
+                "description": "Custom AI instructions for full-file audits.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "skill://issue",
+                "name": "Issue Template",
+                "description": "Custom AI instructions for generating issues.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "skill://blame",
+                "name": "Blame Analysis Template",
+                "description": "Custom AI instructions for code archaeology (blame).",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "linter://config",
+                "name": "Linter Configuration",
+                "description": "YAML rules for the static local linter.",
+                "mimeType": "text/yaml",
+            },
+            {
+                "uri": "prompt://list",
+                "name": "Available Prompt Templates",
+                "description": "Lists all available MCP prompt template URIs.",
+                "mimeType": "application/json",
+            },
+            {
+                "uri": "prompt://review",
+                "name": "Review PR Prompt",
+                "description": "Prompt template: full code review of the current branch.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "prompt://commit",
+                "name": "Commit Message Prompt",
+                "description": "Prompt template: generate a Conventional Commits message.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "prompt://pr",
+                "name": "PR Description Prompt",
+                "description": "Prompt template: generate a Pull Request description.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "prompt://linter",
+                "name": "Linter Prompt",
+                "description": "Prompt template: run the static linter on changes.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "prompt://issue",
+                "name": "Issue Prompt",
+                "description": "Prompt template: generate a structured issue from changes.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "prompt://blame",
+                "name": "Blame Prompt",
+                "description": "Prompt template: trace code origin with git blame + AI.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "prompt://explore",
+                "name": "Explore Prompt",
+                "description": "Prompt template: explore project context and available skills.",
+                "mimeType": "text/markdown",
+            },
         ],
         "prompts": [
-            {"name": "Review PR", "description": "Full code review of all changes in the current branch against origin/main. Runs the full review tool and linter, then composes a comprehensive report."},
-            {"name": "Generate Commit Message", "description": "Generate a Conventional Commits message (e.g., 'feat: add user auth') from the current uncommitted changes."},
-            {"name": "Create PR Description", "description": "Generate a complete Pull Request description (title + body) from all changes in the current branch."},
-            {"name": "Run Code Linter", "description": "Run the static linter (.gitpr.linter.yml rules) on current uncommitted changes and report violations."},
-            {"name": "Create Issue from Diff", "description": "Generate a structured issue (What / Why / Where / How) from the current uncommitted changes."},
-            {"name": "Trace Code Origin", "description": "Investigate the history of a specific file region using git blame + AI to trace where business rules came from."},
-            {"name": "Explore Project Context", "description": "Get current branch info, repository name, and list available skill templates for the project."},
+            {
+                "name": "Review PR",
+                "description": "Full code review of all changes in the current branch against origin/main. Runs the full review tool and linter, then composes a comprehensive report.",
+            },
+            {
+                "name": "Generate Commit Message",
+                "description": "Generate a Conventional Commits message (e.g., 'feat: add user auth') from the current uncommitted changes.",
+            },
+            {
+                "name": "Create PR Description",
+                "description": "Generate a complete Pull Request description (title + body) from all changes in the current branch.",
+            },
+            {
+                "name": "Run Code Linter",
+                "description": "Run the static linter (.gitpr.linter.yml rules) on current uncommitted changes and report violations.",
+            },
+            {
+                "name": "Create Issue from Diff",
+                "description": "Generate a structured issue (What / Why / Where / How) from the current uncommitted changes.",
+            },
+            {
+                "name": "Trace Code Origin",
+                "description": "Investigate the history of a specific file region using git blame + AI to trace where business rules came from.",
+            },
+            {
+                "name": "Explore Project Context",
+                "description": "Get current branch info, repository name, and list available skill templates for the project.",
+            },
         ],
     }
 
@@ -1240,8 +1586,7 @@ def _get_compact_tools() -> list[dict]:
     """
     catalog = _build_tools_catalog()
     return [
-        {"name": t["name"], "description": t["description"]}
-        for t in catalog["tools"]
+        {"name": t["name"], "description": t["description"]} for t in catalog["tools"]
     ]
 
 
@@ -1256,7 +1601,7 @@ def _write_real_stdout(text: str) -> None:
     Falls back to a plain ``print()`` if neither ``sys.__stdout__`` nor
     ``_original_stdout`` is available.
     """
-    real_stdout = getattr(sys, '__stdout__', None)
+    real_stdout = getattr(sys, "__stdout__", None)
     if real_stdout is None:
         real_stdout = _original_stdout
     try:
@@ -1365,7 +1710,9 @@ def _print_tool_help() -> None:
         lines.append(f"      {desc}")
         lines.append("")
     lines.append("Example:")
-    lines.append('  gitpr-mcp --tool analyze_blame --tool-args \'{"file_path":"src/main.py","start_line":"10","end_line":"20"}\'')
+    lines.append(
+        '  gitpr-mcp --tool analyze_blame --tool-args \'{"file_path":"src/main.py","start_line":"10","end_line":"20"}\''
+    )
     lines.append("")
     _write_real_stdout("\n".join(lines))
 
@@ -1388,11 +1735,17 @@ def _run_tool(tool_name: str, tool_args_json: str = "") -> int:
     # --- Look up the tool ---
     registry = _get_tool_registry()
     if tool_name not in registry:
-        _write_real_stdout(json.dumps({
-            "status": "error",
-            "message": f"Unknown tool: '{tool_name}'.",
-            "available_tools": sorted(registry.keys()),
-        }, ensure_ascii=False) + "\n")
+        _write_real_stdout(
+            json.dumps(
+                {
+                    "status": "error",
+                    "message": f"Unknown tool: '{tool_name}'.",
+                    "available_tools": sorted(registry.keys()),
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
         _print_tool_help()
         return 1
 
@@ -1404,32 +1757,51 @@ def _run_tool(tool_name: str, tool_args_json: str = "") -> int:
         try:
             tool_args = json.loads(tool_args_json)
         except json.JSONDecodeError as e:
-            _write_real_stdout(json.dumps({
-                "status": "error",
-                "message": f"Invalid --tool-args JSON: {e}",
-            }, ensure_ascii=False) + "\n")
+            _write_real_stdout(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "message": f"Invalid --tool-args JSON: {e}",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
             return 1
         if not isinstance(tool_args, dict):
-            _write_real_stdout(json.dumps({
-                "status": "error",
-                "message": "--tool-args must be a JSON object.",
-            }, ensure_ascii=False) + "\n")
+            _write_real_stdout(
+                json.dumps(
+                    {
+                        "status": "error",
+                        "message": "--tool-args must be a JSON object.",
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
             return 1
 
     # --- Validate required parameters ---
     params_meta = entry["parameters"]
     missing = [
-        p for p, meta in params_meta.items()
+        p
+        for p, meta in params_meta.items()
         if meta.get("required") and p not in tool_args
     ]
     if missing:
         msg = f"Missing required argument(s): {', '.join(missing)}. "
         msg += f"Pass them via --tool-args, e.g. "
         msg += f'--tool {tool_name} --tool-args \'{{"{missing[0]}": "..."}}\'.'
-        _write_real_stdout(json.dumps({
-            "status": "error",
-            "message": msg,
-        }, ensure_ascii=False) + "\n")
+        _write_real_stdout(
+            json.dumps(
+                {
+                    "status": "error",
+                    "message": msg,
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
         return 1
 
     # --- Execute: mirror server mode (patch output → load .env → safe call) ---
@@ -1441,10 +1813,16 @@ def _run_tool(tool_name: str, tool_args_json: str = "") -> int:
         _unpatch_output()
 
     if result is None:
-        _write_real_stdout(json.dumps({
-            "status": "error",
-            "message": f"Tool '{tool_name}' failed. See stderr for details.",
-        }, ensure_ascii=False) + "\n")
+        _write_real_stdout(
+            json.dumps(
+                {
+                    "status": "error",
+                    "message": f"Tool '{tool_name}' failed. See stderr for details.",
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
         return 1
 
     _write_real_stdout(_prettify_result(str(result)) + "\n")
@@ -1610,7 +1988,10 @@ def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
     """
     config = _resolve_editor_config(editor)
     if config is None:
-        return False, f"Unknown editor: '{editor}'. Valid options: vscode, cursor, claude, zed, auto"
+        return (
+            False,
+            f"Unknown editor: '{editor}'. Valid options: vscode, cursor, claude, zed, auto",
+        )
 
     config_dir = Path(config["dir"])
     if not config_dir.is_absolute():
@@ -1710,6 +2091,7 @@ def _run_install(editor: str) -> None:
 # Entry Point
 # =============================================================================
 
+
 def main():
     """Entry point for gitpr-mcp and gitpr --mcp.
 
@@ -1728,7 +2110,7 @@ def main():
         "--list",
         action="store_true",
         help="Print the complete tools catalog as JSON (tools, resources, and prompts). "
-             "Use this to discover available capabilities without starting the server.",
+        "Use this to discover available capabilities without starting the server.",
     )
     mode_group.add_argument(
         "--install",
@@ -1744,8 +2126,8 @@ def main():
         default=None,
         metavar="NAME",
         help="Invoke a single MCP tool directly and print its JSON result to stdout. "
-             "Use --tool-args to pass parameters as a JSON object. "
-             "Use '--tool' alone (no NAME) to list available tools.",
+        "Use --tool-args to pass parameters as a JSON object. "
+        "Use '--tool' alone (no NAME) to list available tools.",
     )
     parser.add_argument(
         "--tool-args",
@@ -1753,8 +2135,8 @@ def main():
         default="",
         metavar="JSON",
         help="JSON object with tool parameters, e.g. "
-             "'{\"file_path\": \"src/main.py\", \"start_line\": \"10\", \"end_line\": \"20\"}'. "
-             "Only meaningful with --tool.",
+        '\'{"file_path": "src/main.py", "start_line": "10", "end_line": "20"}\'. '
+        "Only meaningful with --tool.",
     )
     args, _ = parser.parse_known_args()
 

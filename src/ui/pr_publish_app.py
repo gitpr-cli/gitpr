@@ -4,7 +4,18 @@ import os
 import sys
 import subprocess
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Input, TextArea, Label, Button, Static, RichLog, SelectionList, ProgressBar
+from textual.widgets import (
+    Header,
+    Footer,
+    Input,
+    TextArea,
+    Label,
+    Button,
+    Static,
+    RichLog,
+    SelectionList,
+    ProgressBar,
+)
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.binding import Binding
@@ -36,6 +47,7 @@ def _fmt_status(status):
     """
     return _STATUS_LABELS.get(status, ("❓", status))
 
+
 # Capture the real stdout before Textual replaces it.
 _REAL_STDOUT = sys.stdout
 
@@ -60,6 +72,7 @@ def _call_with_log(log_widget, func, *args, **kwargs):
     and after the call to force click to re-read sys.stdout each time.
     """
     import click._compat
+
     _clear_click_cache()
 
     buffer = io.StringIO()
@@ -100,6 +113,7 @@ def _with_suppressed_stdout(func, *args, **kwargs):
 def _clear_click_cache():
     """Clear click's cached stdout/stderr wrappers so they pick up sys.stdout changes."""
     import click._compat
+
     for fn in (click._compat._default_text_stdout, click._compat._default_text_stderr):
         try:
             fn.cache_clear()
@@ -111,7 +125,7 @@ def _extract_title_from_body(body_text: str) -> str:
     """Extracts the first markdown heading from the PR body."""
     if not body_text:
         return ""
-    match = re.search(r'^#+\s+(.+)$', body_text, re.MULTILINE)
+    match = re.search(r"^#+\s+(.+)$", body_text, re.MULTILINE)
     return match.group(1).strip() if match else ""
 
 
@@ -139,6 +153,7 @@ def _init_publish_log():
     if os.getenv("PR_PUBLISH_LOG", "true").lower() not in ("true", "1", "yes", "y"):
         return None
     from src.chat_memory import gerar_uuid_base_15
+
     log_dir = os.path.join(os.path.expanduser("~"), ".gitpr", "logs", "pr_desc")
     os.makedirs(log_dir, exist_ok=True)
     session_id = gerar_uuid_base_15()
@@ -151,6 +166,7 @@ def _log_event(log_path, message):
     if not log_path:
         return
     from datetime import datetime
+
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Collapse newlines so every entry is a single line
     flat = message.replace("\n", " | ").replace("\r", "")
@@ -190,17 +206,26 @@ class StageFilesScreen(ModalScreen):
         with Vertical(id="stage_root"):
             yield Static(__("📂 Unstaged Files"), classes="stage_title")
             yield Static(
-                __("{count} file(s) not staged. Select which ones to add:", count=len(self._files)),
+                __(
+                    "{count} file(s) not staged. Select which ones to add:",
+                    count=len(self._files),
+                ),
                 classes="stage_info",
             )
             options = [
-                (f"{_fmt_status(status)[0]} {_fmt_status(status)[1]}: {fname}", fname, self._selected.get(fname, True))
+                (
+                    f"{_fmt_status(status)[0]} {_fmt_status(status)[1]}: {fname}",
+                    fname,
+                    self._selected.get(fname, True),
+                )
                 for fname, status in self._files
             ]
             yield SelectionList(*options, id="file_list")
             with Horizontal(id="stage_top_buttons"):
                 yield Button(__("Select All"), variant="default", id="btn_select_all")
-                yield Button(__("Deselect All"), variant="default", id="btn_deselect_all")
+                yield Button(
+                    __("Deselect All"), variant="default", id="btn_deselect_all"
+                )
             with Horizontal(id="stage_bottom_buttons"):
                 yield Button(__("Stage Selected"), variant="primary", id="btn_stage")
                 yield Button(__("Skip Staging"), variant="default", id="btn_skip")
@@ -441,7 +466,10 @@ class CommitMessageScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="msg_dialog"):
             yield Static(__("📝 Commit Message:"), classes="msg_title")
-            yield Label(__("Edit the message below before confirming:"), classes="msg_edit_label")
+            yield Label(
+                __("Edit the message below before confirming:"),
+                classes="msg_edit_label",
+            )
             yield Input(value=self._commit_message, id="msg_input")
             with Horizontal(id="msg_buttons"):
                 yield Button(__("Confirm"), variant="primary", id="btn_confirm")
@@ -496,10 +524,15 @@ class LinterErrorScreen(ModalScreen):
         if len(self._errors) > 10:
             errors_text += f"\n  ... ({len(self._errors) - 10} more)"
         with Vertical(id="linter_dialog"):
-            yield Static(__("🚨 Linter found {count} error(s):", count=len(self._errors)), classes="linter_title")
+            yield Static(
+                __("🚨 Linter found {count} error(s):", count=len(self._errors)),
+                classes="linter_title",
+            )
             yield Static(errors_text, classes="linter_errors")
             with Vertical(id="linter_buttons"):
-                yield Button(__("Commit with --no-verify"), variant="warning", id="btn_no_verify")
+                yield Button(
+                    __("Commit with --no-verify"), variant="warning", id="btn_no_verify"
+                )
                 yield Button(__("Abort"), variant="error", id="btn_abort")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -575,7 +608,9 @@ class PrPublishApp(App):
         Binding("escape", "quit", __("Exit")),
     ]
 
-    def __init__(self, pr_data, repo_info, github_token, base_branch, output_filename, **kwargs):
+    def __init__(
+        self, pr_data, repo_info, github_token, base_branch, output_filename, **kwargs
+    ):
         super().__init__(**kwargs)
         self.pr_data = pr_data
         self.repo_info = repo_info
@@ -615,13 +650,18 @@ class PrPublishApp(App):
         body_input = self.query_one("#pr_body", TextArea)
         md_content = (
             __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
-            + "```text\n" + f"{title_input.value}\n" + "```\n\n---\n\n"
+            + "```text\n"
+            + f"{title_input.value}\n"
+            + "```\n\n---\n\n"
             + body_input.text
         )
         try:
             with open(self.output_filename, "w", encoding="utf-8") as f:
                 f.write(md_content)
-            self.final_message = __("✅ PR saved locally: {output_filename}", output_filename=self.output_filename)
+            self.final_message = __(
+                "✅ PR saved locally: {output_filename}",
+                output_filename=self.output_filename,
+            )
             self.final_action = "saved"
         except Exception as e:
             self.final_message = __("❌ Error saving file: {error}", error=str(e))
@@ -642,7 +682,9 @@ class PrPublishApp(App):
             self.push_screen(
                 CommitConfirmScreen(
                     title=__("Uncommitted Changes"),
-                    message=__("Uncommitted changes detected. Auto-commit before publishing?"),
+                    message=__(
+                        "Uncommitted changes detected. Auto-commit before publishing?"
+                    ),
                 ),
                 callback=self._on_commit_confirm,
             )
@@ -659,16 +701,24 @@ class PrPublishApp(App):
 
     def _start_progress_and_commit(self):
         """Push the progress screen; work starts via on_mount when RichLog is ready."""
+
         def do_work():
             self._run_linter_and_commit()
 
-        self._progress_screen = CommitProgressScreen(work_callback=do_work, initial_status=__("🔍 Running linter..."))
+        self._progress_screen = CommitProgressScreen(
+            work_callback=do_work, initial_status=__("🔍 Running linter...")
+        )
         self.push_screen(self._progress_screen)
 
     def _run_linter_and_commit(self):
         """Run linter then generate commit message, logging to progress screen."""
         log = self._progress_screen
-        skip_lint = os.getenv("GITPR_SKIP_LINT", "false").lower() in ("true", "1", "yes", "y")
+        skip_lint = os.getenv("GITPR_SKIP_LINT", "false").lower() in (
+            "true",
+            "1",
+            "yes",
+            "y",
+        )
 
         if not skip_lint:
             log.add_log(__("🔍 Running linter..."))
@@ -739,11 +789,16 @@ class PrPublishApp(App):
             finally:
                 sys.stdout.close()
                 sys.stdout = old
-            commit_msg = data.get("commit_message", __("Code update")) if data else __("Code update")
+            commit_msg = (
+                data.get("commit_message", __("Code update"))
+                if data
+                else __("Code update")
+            )
             # Bounce back to main thread for UI updates
             self.call_from_thread(self._on_commit_msg_ready, commit_msg)
 
         import threading
+
         threading.Thread(target=_ai_work, daemon=True).start()
 
     def _on_commit_msg_ready(self, commit_msg):
@@ -783,40 +838,63 @@ class PrPublishApp(App):
                 self.call_from_thread(log.add_log, __("📦 Executing commit..."))
                 self._log("Executing git commit...")
                 try:
-                    success, output = execute_git_commit(self._pending_commit_msg, no_verify=self._commit_no_verify)
-                    self._log(f"git commit result: success={success}, output={output.strip()}")
+                    success, output = execute_git_commit(
+                        self._pending_commit_msg, no_verify=self._commit_no_verify
+                    )
+                    self._log(
+                        f"git commit result: success={success}, output={output.strip()}"
+                    )
                 except Exception as e:
                     self._log(f"git commit exception: {e}")
                     success, output = False, str(e)
 
                 if not success:
                     out_lower = output.lower()
-                    if any(phrase in out_lower for phrase in (
-                        "nothing to commit", "nothing added to commit",
-                        "no changes added to commit", "changes not staged",
-                        "no changes", "working tree clean",
-                    )):
+                    if any(
+                        phrase in out_lower
+                        for phrase in (
+                            "nothing to commit",
+                            "nothing added to commit",
+                            "no changes added to commit",
+                            "changes not staged",
+                            "no changes",
+                            "working tree clean",
+                        )
+                    ):
                         # Nothing new to commit — already done or staged, proceed
                         self._log(f"Commit skipped: {output.strip()[:200]}")
-                        self.call_from_thread(log.add_log, __("✅ Commit already done. Proceeding..."))
+                        self.call_from_thread(
+                            log.add_log, __("✅ Commit already done. Proceeding...")
+                        )
                     else:
-                        self.call_from_thread(self._on_commit_publish_error, __("❌ Commit Failed"), output.strip() or __("Unknown error"))
+                        self.call_from_thread(
+                            self._on_commit_publish_error,
+                            __("❌ Commit Failed"),
+                            output.strip() or __("Unknown error"),
+                        )
                         return
                 else:
-                    self.call_from_thread(log.add_log, __("✅ Commit executed successfully!"))
+                    self.call_from_thread(
+                        log.add_log, __("✅ Commit executed successfully!")
+                    )
 
                 # ── Check for existing PR BEFORE pushing ──
                 self._log("Checking for existing PR before push...")
                 try:
                     from src.github_api import check_existing_pr
-                    exists, pr_url, pr_num = check_existing_pr(self.repo_info, self.github_token, self.head_branch)
+
+                    exists, pr_url, pr_num = check_existing_pr(
+                        self.repo_info, self.github_token, self.head_branch
+                    )
                     self._log(f"Existing PR check: exists={exists}, url={pr_url}")
                 except Exception as e:
                     self._log(f"Existing PR check exception: {e}")
                     exists, pr_url, pr_num = False, None, None
 
                 if exists:
-                    self.call_from_thread(self._on_existing_pr_found_before_push, pr_url, pr_num)
+                    self.call_from_thread(
+                        self._on_existing_pr_found_before_push, pr_url, pr_num
+                    )
                     self.call_from_thread(log.mark_finished)
                     return
 
@@ -826,7 +904,10 @@ class PrPublishApp(App):
                 try:
                     push_result = subprocess.run(
                         ["git", "push", "origin", self.head_branch],
-                        capture_output=True, text=True, encoding="utf-8", errors="replace",
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
                     )
                     self._log(f"git push result: rc={push_result.returncode}")
                     if push_result.returncode != 0:
@@ -835,45 +916,77 @@ class PrPublishApp(App):
                         if "upstream" in err.lower() or "no upstream" in err.lower():
                             self._log("No upstream branch, setting upstream...")
                             up_result = subprocess.run(
-                                ["git", "push", "--set-upstream", "origin", self.head_branch],
-                                capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                [
+                                    "git",
+                                    "push",
+                                    "--set-upstream",
+                                    "origin",
+                                    self.head_branch,
+                                ],
+                                capture_output=True,
+                                text=True,
+                                encoding="utf-8",
+                                errors="replace",
                             )
                             if up_result.returncode == 0:
-                                self.call_from_thread(log.add_log, __("✅ Push successful!"))
+                                self.call_from_thread(
+                                    log.add_log, __("✅ Push successful!")
+                                )
                             else:
-                                err2 = up_result.stderr.strip() or up_result.stdout.strip() or __("Unknown error")
-                                self.call_from_thread(self._on_commit_publish_error, __("❌ Push Failed"), err2)
+                                err2 = (
+                                    up_result.stderr.strip()
+                                    or up_result.stdout.strip()
+                                    or __("Unknown error")
+                                )
+                                self.call_from_thread(
+                                    self._on_commit_publish_error,
+                                    __("❌ Push Failed"),
+                                    err2,
+                                )
                                 return
                         else:
-                            self.call_from_thread(self._on_commit_publish_error, __("❌ Push Failed"), err or __("Unknown error"))
+                            self.call_from_thread(
+                                self._on_commit_publish_error,
+                                __("❌ Push Failed"),
+                                err or __("Unknown error"),
+                            )
                             return
                     else:
                         self.call_from_thread(log.add_log, __("✅ Push successful!"))
                     self.call_from_thread(log.add_log, __("✅ Push successful!"))
                 except Exception as e:
                     self._log(f"git push exception: {e}")
-                    self.call_from_thread(self._on_commit_publish_error, __("❌ Push Failed"), str(e))
+                    self.call_from_thread(
+                        self._on_commit_publish_error, __("❌ Push Failed"), str(e)
+                    )
                     return
 
                 # ── Create PR ──
-                self.call_from_thread(log.add_log, __("🚀 Creating pull request on GitHub..."))
+                self.call_from_thread(
+                    log.add_log, __("🚀 Creating pull request on GitHub...")
+                )
                 self.call_from_thread(self._publish_pr_from_progress, log)
                 self.call_from_thread(log.mark_finished)
             finally:
                 sys.stdout.close()
                 sys.stdout = old
 
-        self._progress_screen = CommitProgressScreen(initial_status=__("📦 Executing commit..."))
+        self._progress_screen = CommitProgressScreen(
+            initial_status=__("📦 Executing commit...")
+        )
         self.push_screen(self._progress_screen)
 
         import threading
+
         threading.Thread(target=do_work, daemon=True).start()
 
     def _on_commit_publish_error(self, title, message):
         """Called on main thread when commit/push/publish fails."""
         self._progress_screen.mark_finished()
         self.pop_screen()
-        self._show_error(title=title, message=message, on_retry=self._start_commit_and_publish)
+        self._show_error(
+            title=title, message=message, on_retry=self._start_commit_and_publish
+        )
 
     def _on_existing_pr_found_before_push(self, pr_url, pr_num):
         """Called BEFORE push when an open PR already exists for this branch."""
@@ -882,12 +995,16 @@ class PrPublishApp(App):
         self.push_screen(
             CommitConfirmScreen(
                 title=__("⚠️ Existing Pull Request"),
-                message=__("An open Pull Request already exists for this branch.\n\n"
-                           "Push and update the existing PR?"),
+                message=__(
+                    "An open Pull Request already exists for this branch.\n\n"
+                    "Push and update the existing PR?"
+                ),
                 btn_yes=__("Yes, Push and Update PR"),
                 btn_no=__("No, Just Open Existing"),
             ),
-            callback=lambda r: self._on_existing_pr_before_push_result(r, pr_url, pr_num),
+            callback=lambda r: self._on_existing_pr_before_push_result(
+                r, pr_url, pr_num
+            ),
         )
 
     def _on_existing_pr_before_push_result(self, result, pr_url, pr_num):
@@ -919,7 +1036,10 @@ class PrPublishApp(App):
             try:
                 result = subprocess.run(
                     ["git", "push", "origin", self.head_branch],
-                    capture_output=True, text=True, encoding="utf-8", errors="replace",
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
                 )
                 ok = result.returncode == 0
                 self._log(f"Push to existing PR: ok={ok}, rc={result.returncode}")
@@ -928,25 +1048,48 @@ class PrPublishApp(App):
                     if "upstream" in err.lower():
                         self._log("No upstream branch, setting upstream...")
                         result2 = subprocess.run(
-                            ["git", "push", "--set-upstream", "origin", self.head_branch],
-                            capture_output=True, text=True, encoding="utf-8", errors="replace",
+                            [
+                                "git",
+                                "push",
+                                "--set-upstream",
+                                "origin",
+                                self.head_branch,
+                            ],
+                            capture_output=True,
+                            text=True,
+                            encoding="utf-8",
+                            errors="replace",
                         )
                         ok = result2.returncode == 0
                 if ok:
                     self.final_action = "created"
                     # Update PR description with new body
-                    self._log(f"Push to existing PR succeeded, pr_num={pr_num}, updating description")
+                    self._log(
+                        f"Push to existing PR succeeded, pr_num={pr_num}, updating description"
+                    )
                     if pr_num and pr_body:
                         from src.github_api import update_pull_request
+
                         up_ok, up_data, up_status = update_pull_request(
-                            self.repo_info, self.github_token, pr_num, body=pr_body,
+                            self.repo_info,
+                            self.github_token,
+                            pr_num,
+                            body=pr_body,
                         )
-                        self._log(f"Update PR description: ok={up_ok}, status={up_status}")
+                        self._log(
+                            f"Update PR description: ok={up_ok}, status={up_status}"
+                        )
                     self.final_message = __(
-                        "✅ PR updated:\n👉 {pr_url}", pr_url=pr_url,
+                        "✅ PR updated:\n👉 {pr_url}",
+                        pr_url=pr_url,
                     )
                     if pr_num:
-                        auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in ("true", "1", "yes", "y")
+                        auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in (
+                            "true",
+                            "1",
+                            "yes",
+                            "y",
+                        )
                         if auto_merge:
                             self.call_from_thread(self._do_merge, pr_num, pr_url)
                             return
@@ -955,7 +1098,8 @@ class PrPublishApp(App):
                 else:
                     self.final_action = "error"
                     self.final_message = __(
-                        "❌ Push failed: {error}", error=result.stderr.strip() or result.stdout.strip(),
+                        "❌ Push failed: {error}",
+                        error=result.stderr.strip() or result.stdout.strip(),
                     )
             except Exception as e:
                 self._log(f"Push exception: {e}")
@@ -967,6 +1111,7 @@ class PrPublishApp(App):
             self.call_from_thread(self._prompt_open_browser, pr_url)
 
         import threading
+
         threading.Thread(target=_do_push, daemon=True).start()
 
     def _prompt_open_browser(self, pr_url):
@@ -984,6 +1129,7 @@ class PrPublishApp(App):
     def _on_browser_prompt_result(self, result, pr_url):
         if result == "yes":
             import webbrowser
+
             webbrowser.open(pr_url)
         self.exit()
 
@@ -1012,10 +1158,14 @@ class PrPublishApp(App):
 
     def _do_merge(self, pr_number, pr_url):
         """Execute merge via GitHub API in background thread."""
+
         def _merge():
             from src.github_api import merge_pull_request
+
             self._log(f"Merging PR #{pr_number}...")
-            ok, data, status = merge_pull_request(self.repo_info, self.github_token, pr_number)
+            ok, data, status = merge_pull_request(
+                self.repo_info, self.github_token, pr_number
+            )
             self._log(f"Merge result: ok={ok}, status={status}, data={data}")
             if ok:
                 self.call_from_thread(self._on_merge_success, pr_url)
@@ -1023,13 +1173,15 @@ class PrPublishApp(App):
                 self.call_from_thread(self._on_merge_failure, pr_url, data, status)
 
         import threading
+
         threading.Thread(target=_merge, daemon=True).start()
 
     def _on_merge_success(self, pr_url):
         """Called on main thread after successful merge."""
         self.final_action = "merged"
         self.final_message = __(
-            "✅ PR merged successfully:\n👉 {pr_url}", pr_url=pr_url,
+            "✅ PR merged successfully:\n👉 {pr_url}",
+            pr_url=pr_url,
         )
         self._prompt_open_browser(pr_url)
 
@@ -1045,15 +1197,16 @@ class PrPublishApp(App):
                 "Pull Request has merge conflicts that must be resolved manually.\n\n"
                 "👉 {pr_url}\n\n"
                 "Error: {error}",
-                pr_url=pr_url, error=msg,
+                pr_url=pr_url,
+                error=msg,
             )
         else:
             title = __("❌ Merge Failed")
             detail = __(
-                "Merge failed with status {status}.\n\n"
-                "👉 {pr_url}\n\n"
-                "Error: {error}",
-                status=status, pr_url=pr_url, error=msg,
+                "Merge failed with status {status}.\n\n👉 {pr_url}\n\nError: {error}",
+                status=status,
+                pr_url=pr_url,
+                error=msg,
             )
 
         self.final_message = f"{title}\n{detail}"
@@ -1086,7 +1239,9 @@ class PrPublishApp(App):
             )
             return
 
-        pr_title = title_input.value.strip() or self._pending_commit_msg or self.pr_title
+        pr_title = (
+            title_input.value.strip() or self._pending_commit_msg or self.pr_title
+        )
         pr_body = body_input.text.strip()
         if not pr_body:
             self._log("PR publish failed: empty body")
@@ -1100,12 +1255,16 @@ class PrPublishApp(App):
 
         self._log(f"PR title: {pr_title}")
         self._log(f"PR body length: {len(pr_body)} chars, preview: {pr_body[:200]}")
-        self._log(f"PR base: {self.base_branch}, head: {self.head_branch}, repo: {self.repo_info}")
+        self._log(
+            f"PR base: {self.base_branch}, head: {self.head_branch}, repo: {self.repo_info}"
+        )
 
         try:
             md_content = (
                 __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
-                + "```text\n" + f"{pr_title}\n" + "```\n\n---\n\n"
+                + "```text\n"
+                + f"{pr_title}\n"
+                + "```\n\n---\n\n"
                 + pr_body
             )
             with open(self.output_filename, "w", encoding="utf-8") as f:
@@ -1117,9 +1276,12 @@ class PrPublishApp(App):
 
         try:
             ok, data, status = create_pull_request(
-                self.repo_info, self.github_token,
-                pr_title, full_body,
-                self.head_branch, self.base_branch,
+                self.repo_info,
+                self.github_token,
+                pr_title,
+                full_body,
+                self.head_branch,
+                self.base_branch,
             )
             self._log(f"create_pull_request result: ok={ok}, status={status}")
         except Exception as e:
@@ -1131,16 +1293,24 @@ class PrPublishApp(App):
             pr_url = data.get("url", "")
             pr_number = data.get("number", 0)
             self._log(f"PR created successfully: {pr_url}, number={pr_number}")
-            log_command_metric(command="pr:publish", status="success", provider="github")
+            log_command_metric(
+                command="pr:publish", status="success", provider="github"
+            )
             self.final_pr_url = pr_url
             self.final_action = "created"
             self.final_message = __(
-                "✅ PR successfully created on GitHub:\n👉 {pr_url}", pr_url=pr_url,
+                "✅ PR successfully created on GitHub:\n👉 {pr_url}",
+                pr_url=pr_url,
             )
             if self._log_path:
                 self.final_message += f"\n📋 Log: {self._log_path}"
 
-            auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in ("true", "1", "yes", "y")
+            auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in (
+                "true",
+                "1",
+                "yes",
+                "y",
+            )
             if auto_merge and pr_number:
                 self._do_merge(pr_number, pr_url)
             else:
@@ -1150,7 +1320,9 @@ class PrPublishApp(App):
             self.pop_screen()
             self.final_action = "reauth"
             self.needs_new_token = True
-            self.final_message = __("🔐 GitHub token expired or invalid. You'll be prompted for a new one.")
+            self.final_message = __(
+                "🔐 GitHub token expired or invalid. You'll be prompted for a new one."
+            )
             log_command_metric(command="pr:publish", status="reauth", provider="github")
             self.exit()
         else:

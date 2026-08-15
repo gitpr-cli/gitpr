@@ -3,6 +3,7 @@ Animated spinner with braille characters and thinking words.
 Visual effect: rotating braille character (magenta) + word being "discovered"
 letter by letter with random colors.
 """
+
 import os
 import sys
 import time
@@ -16,21 +17,21 @@ from src.i18n import __, CURRENT_LANG
 from src.updater import __lang_version__
 
 # ANSI color codes
-MAGENTA = '\033[35m'
-RESET = '\033[0m'
+MAGENTA = "\033[35m"
+RESET = "\033[0m"
 
 # Paleta de cores para as palavras
 WORD_COLORS = [
-    '\033[36m',  # cyan
-    '\033[33m',  # yellow
-    '\033[32m',  # green
-    '\033[34m',  # blue
-    '\033[95m',  # bright magenta
-    '\033[96m',  # bright cyan
-    '\033[93m',  # bright yellow
-    '\033[92m',  # bright green
-    '\033[94m',  # bright blue
-    '\033[91m',  # red
+    "\033[36m",  # cyan
+    "\033[33m",  # yellow
+    "\033[32m",  # green
+    "\033[34m",  # blue
+    "\033[95m",  # bright magenta
+    "\033[96m",  # bright cyan
+    "\033[93m",  # bright yellow
+    "\033[92m",  # bright green
+    "\033[94m",  # bright blue
+    "\033[91m",  # red
 ]
 
 # Caracteres braille unicode que simulam um giro
@@ -47,10 +48,18 @@ THINKING_WORDS_URL = (
 
 # Fallback interno caso o download falhe
 _FALLBACK_WORDS = [
-    __("Fabulous"), __("Thinking"), __("Analyzing"), __("Reasoning"),
-    __("Elaborating"), __("Processing"), __("Deciphering"), 
-    __("Calculating"),__("Reflecting"), __("Computing"),    
+    __("Fabulous"),
+    __("Thinking"),
+    __("Analyzing"),
+    __("Reasoning"),
+    __("Elaborating"),
+    __("Processing"),
+    __("Deciphering"),
+    __("Calculating"),
+    __("Reflecting"),
+    __("Computing"),
 ]
+
 
 def _parse_env_words(raw):
     """Parses the .env word list (supports | or ; separator)."""
@@ -127,6 +136,7 @@ def reload_thinking_words(lang: str) -> None:
 # Words representing AI "thinking" (loaded from .env or remote template)
 THINKING_WORDS = _load_thinking_words()
 
+
 class Spinner:
     """Animated spinner that runs in the background while the AI processes."""
 
@@ -164,9 +174,9 @@ class Spinner:
         word_idx = random.randrange(len(THINKING_WORDS))
         word = THINKING_WORDS[word_idx]
         word_color = random.choice(WORD_COLORS)
-        discovered = ""          # Letters already "discovered" of the word
-        dots_cycle = 0           # 0 = ".", 1 = "..", 2 = "..."
-        char_step = 0            # Frame counter for revealing letters
+        discovered = ""  # Letters already "discovered" of the word
+        dots_cycle = 0  # 0 = ".", 1 = "..", 2 = "..."
+        char_step = 0  # Frame counter for revealing letters
 
         # Adaptive speed based on word length
         chars_per_letter, sleep_time = self._adaptive_speed(word)
@@ -180,12 +190,12 @@ class Spinner:
                 char_step += 1
                 if char_step >= chars_per_letter:
                     # Reveal one more letter of the word
-                    discovered = word[:len(discovered) + 1]
+                    discovered = word[: len(discovered) + 1]
                     char_step = 0
                 else:
                     # Show a random character in place of the next letter
                     fake_char = random.choice(string.ascii_uppercase + "0123456789!@#$")
-                    discovered = word[:len(discovered)] + fake_char
+                    discovered = word[: len(discovered)] + fake_char
 
                 display_word = discovered
             else:

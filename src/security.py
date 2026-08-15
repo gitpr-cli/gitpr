@@ -4,6 +4,7 @@ from pathlib import Path
 # Path where the master encryption key will be stored
 KEY_PATH = Path.home() / ".gitpr" / "secret.key"
 
+
 def get_or_create_key():
     """
     Retrieves the master key from disk or generates a new one if it doesn't exist.
@@ -15,6 +16,7 @@ def get_or_create_key():
             key_file.write(key)
     return open(KEY_PATH, "rb").read()
 
+
 def encrypt_data(data: str) -> str:
     """
     Transforms a string into an encrypted hash.
@@ -25,6 +27,7 @@ def encrypt_data(data: str) -> str:
     f = Fernet(key)
     # Encrypts the string (converted to bytes) and returns as a readable string
     return f.encrypt(data.encode()).decode()
+
 
 def decrypt_data(encrypted_data: str) -> str:
     """

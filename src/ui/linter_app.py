@@ -3,8 +3,10 @@ from textual.containers import VerticalScroll, Horizontal
 from textual.widgets import Header, Footer, Label, Button
 from src.i18n import __
 
+
 class LinterApp(App):
     """TUI for displaying Linter errors."""
+
     CSS = """
     Screen { background: $surface; }
     .alert-container { margin: 1 2; }

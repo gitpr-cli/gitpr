@@ -7,39 +7,46 @@ from pathlib import Path
 from src.chat_memory import gerar_uuid_base_15
 from src.core import get_current_branch, get_repo_name
 
+
 def _get_owner_name():
     """Returns the repository owner or the local username as fallback."""
     repo = get_repo_name()
     if repo and repo != "unknown/repo":
-        return repo.split('/')[0]
-    
+        return repo.split("/")[0]
+
     try:
-        name = subprocess.run(["git", "config", "user.name"], capture_output=True, text=True, check=True).stdout.strip()
+        name = subprocess.run(
+            ["git", "config", "user.name"], capture_output=True, text=True, check=True
+        ).stdout.strip()
         return name.replace(" ", "_") if name else "local_user"
     except Exception:
         return "local_user"
+
 
 def _save_metric_async(payload):
     """Saves the JSON payload to the correct directory silently and asynchronously."""
     try:
         owner = _get_owner_name()
         branch = get_current_branch().replace("/", "-")
-        
+
         metrics_dir = Path.home() / ".gitpr" / "metrics" / owner / branch
         metrics_dir.mkdir(parents=True, exist_ok=True)
-        
+
         uuid_str = gerar_uuid_base_15()
         date_str = datetime.now().strftime("%Y%m%d")
         file_name = f"{uuid_str}_{date_str}.json"
-        
+
         file_path = metrics_dir / file_name
-        
+
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(payload, f, ensure_ascii=False, indent=2)
     except Exception:
         pass  # Fire-and-forget: failures must never break the CLI
 
-def log_local_metric(command, status, provider="local", tokens_estimated=0, duration_ms=0, **kwargs):
+
+def log_local_metric(
+    command, status, provider="local", tokens_estimated=0, duration_ms=0, **kwargs
+):
     """Fires a local metric log in a separate daemon thread."""
     payload = {
         "timestamp": datetime.now().isoformat(),
@@ -50,7 +57,7 @@ def log_local_metric(command, status, provider="local", tokens_estimated=0, dura
         "duration_ms": duration_ms,
         "repo": get_repo_name(),
         "branch": get_current_branch(),
-        **kwargs
+        **kwargs,
     }
 
     thread = threading.Thread(target=_save_metric_async, args=(payload,))
@@ -58,9 +65,16 @@ def log_local_metric(command, status, provider="local", tokens_estimated=0, dura
     thread.start()
 
 
-def log_command_metric(command, status="success", provider=None, tokens_estimated=0,
-                       duration_ms=0, cache_hit=False, map_reduce_triggered=False,
-                       **kwargs):
+def log_command_metric(
+    command,
+    status="success",
+    provider=None,
+    tokens_estimated=0,
+    duration_ms=0,
+    cache_hit=False,
+    map_reduce_triggered=False,
+    **kwargs,
+):
     """High-level metric logger for CLI commands.
 
     Args:
@@ -77,6 +91,7 @@ def log_command_metric(command, status="success", provider=None, tokens_estimate
         # Auto-detect: try config, fallback to 'local'
         try:
             from src.config import get_ai_provider
+
             provider = get_ai_provider()
         except Exception:
             provider = "local"
@@ -89,7 +104,7 @@ def log_command_metric(command, status="success", provider=None, tokens_estimate
         duration_ms=duration_ms,
         cache_hit=cache_hit,
         map_reduce_triggered=map_reduce_triggered,
-        **kwargs
+        **kwargs,
     )
 
 
@@ -335,9 +350,19 @@ def export_metrics(output_dir=None, repo_filter=None):
     json_path = os.path.join(output_dir, f"gitpr_metrics_{today_str}.json")
 
     # Write CSV
-    csv_columns = ["timestamp", "command", "status", "provider",
-                   "tokens_estimated", "duration_ms", "repo", "branch",
-                   "prompt_tokens", "completion_tokens", "tokens_actual"]
+    csv_columns = [
+        "timestamp",
+        "command",
+        "status",
+        "provider",
+        "tokens_estimated",
+        "duration_ms",
+        "repo",
+        "branch",
+        "prompt_tokens",
+        "completion_tokens",
+        "tokens_actual",
+    ]
     with open(csv_path, "w", encoding="utf-8", newline="") as f:
         f.write(",".join(csv_columns) + "\n")
         for evt in events:
@@ -356,11 +381,16 @@ def export_metrics(output_dir=None, repo_filter=None):
     exported_uuids.update(new_uuids)
 
     with open(state_file, "w", encoding="utf-8") as f:
-        json.dump({
-            "exported": sorted(exported_uuids),
-            "last_export": datetime.now().isoformat(),
-            "total_events": len(events) + len(exported_uuids)
-        }, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "exported": sorted(exported_uuids),
+                "last_export": datetime.now().isoformat(),
+                "total_events": len(events) + len(exported_uuids),
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
 
     return csv_path, json_path, len(events)
 
@@ -396,7 +426,12 @@ def show_metrics_summary():
     state_file = get_metrics_state_file()
 
     if not os.path.isdir(metrics_dir):
-        return {"total_files": 0, "total_events": 0, "disk_usage": "0 KB", "path": metrics_dir}
+        return {
+            "total_files": 0,
+            "total_events": 0,
+            "disk_usage": "0 KB",
+            "path": metrics_dir,
+        }
 
     total_files = 0
     exported_count = 0
@@ -431,13 +466,14 @@ def show_metrics_summary():
         "total_files": total_files,
         "total_events": exported_count,
         "disk_usage": disk_usage,
-        "path": metrics_dir
+        "path": metrics_dir,
     }
 
 
 # ---------------------------------------------------------------------------
 # Dashboard unified cache scanning + processed-file tracking (per-repo)
 # ---------------------------------------------------------------------------
+
 
 def get_project_metrics_dir():
     """Returns the project-local .gitpr/metrics/ directory path."""

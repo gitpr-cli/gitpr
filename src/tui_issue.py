@@ -33,7 +33,11 @@ def _show_auth_instructions(repo_info):
     """Displays instructions for generating a new GitHub PAT."""
     click.secho(__("\n🔐 GitHub Authentication Required"), fg="cyan", bold=True)
     click.echo(__("To create issues directly, we need a Personal Access Token (PAT)."))
-    click.echo(__("Click the link below to generate one with the 'repo' scope already selected:"))
+    click.echo(
+        __(
+            "Click the link below to generate one with the 'repo' scope already selected:"
+        )
+    )
 
     repo_param = repo_info if repo_info else "your-repository"
     url_token = f"https://github.com/settings/tokens/new?scopes=repo&description=GitPR+Token+({repo_param})"
@@ -42,7 +46,13 @@ def _show_auth_instructions(repo_info):
     # Dynamic link to the technical documentation with language suffix
     lang_suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
     doc_url = f"https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration{lang_suffix}.md"
-    click.secho(__("📚 Understand why we need the Token and how it is protected by encryption:"), fg="cyan", dim=True)
+    click.secho(
+        __(
+            "📚 Understand why we need the Token and how it is protected by encryption:"
+        ),
+        fg="cyan",
+        dim=True,
+    )
     click.secho(f"👉 {doc_url}\n", fg="blue", underline=True)
 
 
@@ -81,12 +91,24 @@ def validate_or_request_github_token(repo_info):
 
             # Token is invalid (expired, revoked, etc.)
             click.secho(
-                __("⚠️ GitHub token is no longer valid: {error_msg}", error_msg=error_msg),
-                fg="yellow"
+                __(
+                    "⚠️ GitHub token is no longer valid: {error_msg}",
+                    error_msg=error_msg,
+                ),
+                fg="yellow",
             )
-            click.secho(__("📋 Attempt {attempt} of {max}", attempt=attempt, max=MAX_TOKEN_ATTEMPTS), dim=True)
+            click.secho(
+                __(
+                    "📋 Attempt {attempt} of {max}",
+                    attempt=attempt,
+                    max=MAX_TOKEN_ATTEMPTS,
+                ),
+                dim=True,
+            )
             _remove_expired_token()
-            click.secho(__("🗑️  Expired token removed. Let's configure a new one."), fg="yellow")
+            click.secho(
+                __("🗑️  Expired token removed. Let's configure a new one."), fg="yellow"
+            )
         else:
             # No token found — first run or already removed
             if attempt == 1:
@@ -105,8 +127,10 @@ def validate_or_request_github_token(repo_info):
 
         # New token is also invalid — remove it and try again
         click.secho(
-            __("⚠️ The provided token is also invalid: {error_msg}", error_msg=error_msg),
-            fg="yellow"
+            __(
+                "⚠️ The provided token is also invalid: {error_msg}", error_msg=error_msg
+            ),
+            fg="yellow",
         )
         _remove_expired_token()
 
@@ -115,8 +139,10 @@ def validate_or_request_github_token(repo_info):
 
     # Exhausted all attempts
     click.secho(
-        __("❌ Maximum attempts ({max}) reached. Cannot proceed without a valid token.",
-           max=MAX_TOKEN_ATTEMPTS),
-        fg="red"
+        __(
+            "❌ Maximum attempts ({max}) reached. Cannot proceed without a valid token.",
+            max=MAX_TOKEN_ATTEMPTS,
+        ),
+        fg="red",
     )
     return None
