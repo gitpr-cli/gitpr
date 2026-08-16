@@ -17,6 +17,7 @@ import subprocess
 from src.chat_memory import ChatMemoryManager
 from src.config import check_internet_connection, get_ai_provider, setup_environment
 from src.core import (
+    append_coauthor_trailer,
     check_and_update_hooks_scripts,
     generate_pr_content,
     generate_skill_template,
@@ -1274,7 +1275,7 @@ def cli(
 
     # Commit only in console
     if action_type == "commit":
-        msg = data.get("commit_message", __("Code update"))
+        msg = append_coauthor_trailer(data.get("commit_message", __("Code update")))
 
         if hook:
             # HOOK MODE: Inject message directly into Git file
@@ -1642,7 +1643,13 @@ def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive
 
 def _run_auto_commit_cli(provider):
     """Auto-commit flow for --no-edit mode. Returns True if commit succeeded or no changes."""
-    from src.core import execute_git_commit, get_git_diff, has_uncommitted_changes
+    from src.core import (
+        append_coauthor_trailer,
+        execute_git_commit,
+        get_git_diff,
+        generate_pr_content,
+        has_uncommitted_changes,
+    )
     from src.linter_engine import parse_diff_and_lint
 
     if not has_uncommitted_changes():
@@ -1704,11 +1711,10 @@ def _run_auto_commit_cli(provider):
 
     # ── Generate commit message via AI ──
     click.secho("📝 " + __("Generating commit message..."), fg="cyan")
-    from src.core import generate_pr_content
 
     diff_text = get_git_diff()
     commit_data = generate_pr_content("commit", "commit", diff_text, provider)
-    commit_msg = (
+    commit_msg = append_coauthor_trailer(
         commit_data.get("commit_message", __("Code update"))
         if commit_data
         else __("Code update")

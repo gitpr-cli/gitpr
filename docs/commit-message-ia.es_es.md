@@ -20,6 +20,9 @@ feat: añade validación de email en el formulario de registro
 - Implementa regex de validación RFC 5322
 - Añade mensajes de error localizados (pt-BR)
 - Corrige edge case de emails con dominios internacionales
+
+
+Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>
 ```
 
 ---
@@ -74,5 +77,17 @@ gitpr -c -p deepseek     # Fuerza DeepSeek
 ## 6. Caché de Respuestas
 
 GitPR genera un hash MD5 de tu diff + instrucciones. Si ejecutas `gitpr -c` de nuevo **sin modificar el código**, la respuesta se devuelve instantáneamente desde la caché local, ahorrando cuotas de la API.
+
+---
+
+## 7. Firma de coautoría
+
+Cada mensaje de commit generado por GitPR lleva automáticamente el trailer de coautoría:
+
+```text
+Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>
+```
+
+El trailer se añade programáticamente (nunca por la IA) en todos los flujos: sugerencia en consola, hook `prepare-commit-msg`, auto-commit, TUI de publicación de PR y la herramienta MCP `generate_commit_message`. Se separa del mensaje con líneas en blanco adicionales para que no aparezca a primera vista en las vistas previas colapsadas de commits de GitHub, y nunca se duplica cuando el mensaje ya lo contiene.
 
 > **Nota:** Consulta también la [documentación principal (README.md)](../README.md) para una visión general de todas las funcionalidades.

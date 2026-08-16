@@ -172,6 +172,7 @@ class TestLinterTool(unittest.TestCase):
 class TestCommitMessageTool(unittest.TestCase):
     """Tests for the generate_commit_message MCP tool."""
 
+    @patch.dict("os.environ", {"GITPR_COAUTHOR": "true"})
     @patch("src.core.generate_pr_content")
     @patch("src.core.get_git_diff")
     def test_generates_commit_message(self, mock_diff, mock_gen):
@@ -181,7 +182,10 @@ class TestCommitMessageTool(unittest.TestCase):
 
         result = json.loads(mcp_server.generate_commit_message(provider="gemini"))
         self.assertEqual(result["status"], "success")
-        self.assertEqual(result["commit_message"], "feat: add hello world")
+        self.assertEqual(
+            result["commit_message"],
+            "feat: add hello world\n\n\nCo-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>",
+        )
 
     @patch("src.core.get_git_diff")
     def test_no_changes(self, mock_diff):
@@ -190,6 +194,7 @@ class TestCommitMessageTool(unittest.TestCase):
         result = json.loads(mcp_server.generate_commit_message())
         self.assertEqual(result["status"], "no_changes")
 
+    @patch.dict("os.environ", {"GITPR_COAUTHOR": "true"})
     @patch("src.core.generate_pr_content")
     @patch("src.core.get_git_diff")
     def test_uses_provided_diff(self, mock_diff, mock_gen):
@@ -202,7 +207,10 @@ class TestCommitMessageTool(unittest.TestCase):
         ))
         mock_diff.assert_not_called()
         self.assertEqual(result["status"], "success")
-        self.assertEqual(result["commit_message"], "fix: critical bug")
+        self.assertEqual(
+            result["commit_message"],
+            "fix: critical bug\n\n\nCo-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>",
+        )
 
     @patch("src.core.generate_pr_content")
     @patch("src.core.get_git_diff")

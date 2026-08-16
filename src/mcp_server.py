@@ -459,7 +459,7 @@ def generate_commit_message(
                   Empty uses the default from ~/.gitpr/.env.
         diff_text: Optional diff text. If empty, auto-detects from git.
     """
-    from src.core import generate_pr_content, get_git_diff
+    from src.core import append_coauthor_trailer, generate_pr_content, get_git_diff
 
     if not diff_text:
         diff_text = _safe_call(get_git_diff, quiet=True) or ""
@@ -482,7 +482,9 @@ def generate_commit_message(
         return json.dumps(
             {
                 "status": "success",
-                "commit_message": result["commit_message"],
+                "commit_message": append_coauthor_trailer(
+                    result["commit_message"]
+                ),
             },
             ensure_ascii=False,
         )
