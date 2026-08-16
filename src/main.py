@@ -719,31 +719,32 @@ def cli(
         has_warnings = len(linter_results["warnings"]) > 0
         has_errors = len(linter_results["errors"]) > 0
 
-        # 1. Generate and save the Markdown report
-        branch_name = get_current_branch()
-        safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
-        current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+        # 1. Generate and save the Markdown report (only when violations are found)
+        if has_warnings or has_errors:
+            branch_name = get_current_branch()
+            safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
+            current_time = datetime.now().strftime("%Y%m%d%H%M%S")
 
-        report_path = resolve_output_path(
-            "OUTPUT_FILE_NAME_LINTER",
-            "{branch}_{datetime}_LINTER.md",
-            safe_branch_name,
-            current_time,
-        )
-
-        try:
-            with open(report_path, "w", encoding="utf-8", errors="replace") as f:
-                f.write(generate_linter_report_content(linter_results))
-            if not quiet:
-                click.secho(
-                    __("📄 Linter report saved to: {path}", path=report_path),
-                    fg="blue",
-                    dim=True,
-                )
-        except Exception as e:
-            click.secho(
-                __("❌ Error saving linter report: {error}", error=str(e)), fg="red"
+            report_path = resolve_output_path(
+                "OUTPUT_FILE_NAME_LINTER",
+                "{branch}_{datetime}_LINTER.md",
+                safe_branch_name,
+                current_time,
             )
+
+            try:
+                with open(report_path, "w", encoding="utf-8", errors="replace") as f:
+                    f.write(generate_linter_report_content(linter_results))
+                if not quiet:
+                    click.secho(
+                        __("📄 Linter report saved to: {path}", path=report_path),
+                        fg="blue",
+                        dim=True,
+                    )
+            except Exception as e:
+                click.secho(
+                    __("❌ Error saving linter report: {error}", error=str(e)), fg="red"
+                )
 
         # Fire-and-forget linter metric
         from src.metrics import log_command_metric
