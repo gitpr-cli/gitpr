@@ -1142,8 +1142,7 @@ def review_pr_prompt() -> str:
 @mcp.prompt(
     name=__("Generate Commit Message"),
     description=__(
-        "Generate a Conventional Commits message (e.g., 'feat: add user auth') "
-        "from the current uncommitted changes."
+        "Generate a Conventional Commits message (e.g., 'feat: add user auth') from the current uncommitted changes."
     ),
 )
 def generate_commit_message_prompt() -> str:
