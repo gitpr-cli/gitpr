@@ -24,6 +24,7 @@ from src.config import (
     resolve_skill_path,
     get_ai_provider,
     setup_environment,
+    coauthor_enabled,
     ENV_FILE,
 )
 from src.ai_providers import call_ai_model
@@ -1648,6 +1649,23 @@ def stage_files(filepaths):
         return False, (result.stderr or result.stdout).strip()
     except Exception as e:
         return False, str(e)
+
+
+COAUTHOR_TRAILER = "Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>"
+
+
+def append_coauthor_trailer(message):
+    """Append the Gitpr-cli co-author trailer to a commit message (idempotent).
+
+    The extra blank line keeps the trailer out of the first body line, so it
+    does not show up in GitHub's collapsed commit previews at first glance.
+    """
+    message = (message or "").strip()
+    if not coauthor_enabled() or COAUTHOR_TRAILER in message:
+        return message
+    if not message:
+        return COAUTHOR_TRAILER
+    return f"{message}\n\n\n{COAUTHOR_TRAILER}"
 
 
 def execute_git_commit(message, no_verify=False):

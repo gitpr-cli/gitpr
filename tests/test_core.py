@@ -5,6 +5,7 @@ from src.core import (
     get_unstaged_files, get_unstaged_categorized,
     get_unstaged_diff, get_uncommitted_summary,
     is_merge_in_progress, stage_files,
+    append_coauthor_trailer, COAUTHOR_TRAILER,
 )
 
 class TestCore(unittest.TestCase):
@@ -323,6 +324,42 @@ class TestStageFiles(unittest.TestCase):
         ok, err = stage_files(["x.md"])
         self.assertFalse(ok)
         self.assertEqual(err, "git not found")
+
+
+class TestCoauthorTrailer(unittest.TestCase):
+    """Tests for append_coauthor_trailer()."""
+
+    @patch.dict('os.environ', {'GITPR_COAUTHOR': 'true'})
+    def test_appends_trailer_with_blank_lines(self):
+        """Trailer is appended separated from the message body."""
+        result = append_coauthor_trailer("feat: add hello world")
+        self.assertEqual(result, f"feat: add hello world\n\n\n{COAUTHOR_TRAILER}")
+
+    @patch.dict('os.environ', {'GITPR_COAUTHOR': 'true'})
+    def test_does_not_duplicate_existing_trailer(self):
+        """Already-signed messages are returned unchanged."""
+        signed = f"feat: add hello world\n\n\n{COAUTHOR_TRAILER}"
+        self.assertEqual(append_coauthor_trailer(signed), signed)
+
+    @patch.dict('os.environ', {'GITPR_COAUTHOR': 'true'})
+    def test_empty_message_returns_trailer_alone(self):
+        """None/empty messages become just the trailer (no leading blank lines)."""
+        self.assertEqual(append_coauthor_trailer(""), COAUTHOR_TRAILER)
+        self.assertEqual(append_coauthor_trailer(None), COAUTHOR_TRAILER)
+
+    @patch.dict('os.environ', {'GITPR_COAUTHOR': 'false'})
+    def test_respects_disable_env(self):
+        """GITPR_COAUTHOR=false keeps the message untouched."""
+        self.assertEqual(append_coauthor_trailer("fix: bug"), "fix: bug")
+
+    @patch.dict('os.environ', {'GITPR_COAUTHOR': 'true'})
+    def test_preserves_third_party_trailer(self):
+        """A human co-author trailer is kept and the gitpr one is added."""
+        result = append_coauthor_trailer(
+            "fix: bug\n\nCo-Authored-By: Human <human@example.com>"
+        )
+        self.assertIn("Co-Authored-By: Human <human@example.com>", result)
+        self.assertTrue(result.endswith(COAUTHOR_TRAILER))
 
 
 if __name__ == '__main__':

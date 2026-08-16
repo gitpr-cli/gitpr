@@ -764,7 +764,7 @@ class PrPublishApp(App):
 
     def _generate_commit_msg(self):
         """Generate commit message via AI (heavy part in background thread)."""
-        from src.core import get_git_diff, generate_pr_content
+        from src.core import append_coauthor_trailer, get_git_diff, generate_pr_content
         from src.config import get_ai_provider
 
         provider = get_ai_provider()
@@ -789,7 +789,7 @@ class PrPublishApp(App):
             finally:
                 sys.stdout.close()
                 sys.stdout = old
-            commit_msg = (
+            commit_msg = append_coauthor_trailer(
                 data.get("commit_message", __("Code update"))
                 if data
                 else __("Code update")

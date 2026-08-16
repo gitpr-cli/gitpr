@@ -93,6 +93,22 @@ def get_ai_provider():
     return os.getenv("DEFAULT_AI_PROVIDER", "gemini").lower()
 
 
+def coauthor_enabled():
+    """Returns True if the Gitpr-cli co-author trailer should be appended (default True).
+
+    Read-only opt-out: set GITPR_COAUTHOR=false in ~/.gitpr/.env to disable.
+    This variable is never auto-written to .env.
+    """
+    load_dotenv(ENV_FILE)
+    return os.getenv("GITPR_COAUTHOR", "true").strip().lower() not in (
+        "false",
+        "0",
+        "no",
+        "off",
+        "n",
+    )
+
+
 def get_api_key(provider):
     """Reads and decrypts the API key corresponding to the chosen provider."""
     load_dotenv(ENV_FILE)
