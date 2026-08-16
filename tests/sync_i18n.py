@@ -14,25 +14,30 @@ LANG_FILES = ['pt_br.json', 'pt_pt.json', 'es_es.json', 'fr_fr.json', 'es.json',
 PATTERN = re.compile(r'__\(\s*(["\'])(?:\\.|(?!\1).)*\1')
 
 
-def scan_file(filepath, keys):
-    """Scans a single .py file, adding every __() string literal to `keys`.
+def _extract_keys(text, keys):
+    """Adds every __() string literal in `text` to `keys`.
 
     Literals are parsed with ast.literal_eval so escape sequences resolve to
     the exact runtime string the translation lookup compares against.
     """
+    for m in PATTERN.finditer(text):
+        # The capture group is the opening quote; the whole match is
+        # __('body', so slice from the quote to get the full literal.
+        literal = m.group(0)[m.start(1) - m.start():]
+        try:
+            keys.add(ast.literal_eval(literal))
+        except (ValueError, SyntaxError):
+            keys.add(literal[1:-1])  # Fallback: raw body without quotes
+
+
+def scan_file(filepath, keys):
+    """Scans a single .py file, adding every __() string literal to `keys`."""
     try:
         with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
             # Handle potential multi-line matching or just basic matching.
             # Usually translations are on a single line.
-            for m in PATTERN.finditer(content):
-                # The capture group is the opening quote; the whole match is
-                # __('body', so slice from the quote to get the full literal.
-                literal = m.group(0)[m.start(1) - m.start():]
-                try:
-                    keys.add(ast.literal_eval(literal))
-                except (ValueError, SyntaxError):
-                    keys.add(literal[1:-1])  # Fallback: raw body without quotes
+            _extract_keys(content, keys)
     except Exception as e:
         print(f"Error scanning {filepath}: {e}")
 
