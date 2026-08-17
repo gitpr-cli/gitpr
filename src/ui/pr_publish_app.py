@@ -33,7 +33,7 @@ from src.i18n import __
 _STATUS_LABELS = {
     "new": ("🆕", __("New")),
     "mod": ("✏️ ", __("Modified")),
-    "del": ("🗑️", __("Deleted")),
+    "del": ("🗑️ ", __("Deleted")),
 }
 
 
