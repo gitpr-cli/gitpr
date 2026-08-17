@@ -77,7 +77,7 @@ click.echo(__("Downloading {file_name}...", file_name="template.md"))
 
 # Múltiples placeholders
 click.secho(__("🤖 GitPR is analyzing your code using {provider} ({model})...",
-               provider="Gemini", model="gemini-2.5-flash"), fg="cyan")
+               provider="Gemini", model="gemini-pro-latest"), fg="cyan")
 ```
 
 ### En decoradores de Click
