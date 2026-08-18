@@ -34,8 +34,12 @@ import argparse
 import json
 import os
 import sys
+import threading
 import traceback
+from functools import wraps
 from pathlib import Path
+
+import anyio
 
 
 # =============================================================================
@@ -206,6 +210,23 @@ def _unpatch_output():
 ENV_FILE = Path.home() / ".gitpr" / ".env"
 
 
+def _warm_up_imports():
+    """Pre-import src.core on a daemon thread.
+
+    src.core's module level downloads the smart-excludes lists OTA
+    (SMART_EXCLUDES at core.py:287) when SMART_EXCLUDES_VERSION is stale.
+    urllib's timeout does not bound DNS resolution on Windows, so a stalled
+    resolver can block for a long time.  Importing in the background means
+    the first tool call's ``import src.core`` (e.g. run_linter's handler)
+    finds the module already in sys.modules — or at worst blocks on the
+    import lock inside the tool's WORKER thread, never on the event loop.
+    """
+    try:
+        import src.core  # noqa: F401
+    except Exception:
+        pass  # Warm-up is best-effort; handlers retry on demand
+
+
 def _init_config():
     """Load .env silently.  Do NOT call setup_environment() which prompts."""
     load_dotenv(ENV_FILE)
@@ -221,6 +242,13 @@ def _init_config():
             reload_thinking_words(lang)
         except Exception:
             pass  # Translation is best-effort; the tool still works without it
+
+    # Warm src.core in the background so the OTA smart-excludes download
+    # never delays the first tool call.
+    warm_thread = threading.Thread(
+        target=_warm_up_imports, name="gitpr-mcp-warm-import", daemon=True
+    )
+    warm_thread.start()
 
 
 # =============================================================================
@@ -241,6 +269,35 @@ def _safe_call(fn, *args, **kwargs):
     except Exception:
         traceback.print_exc(file=sys.stderr)
         return None
+
+
+# =============================================================================
+# Offload Wrapper — keep sync tool handlers off the event loop
+# =============================================================================
+# FastMCP (mcp SDK 1.28.1) runs sync handlers INLINE on the asyncio event
+# loop (mcp/server/fastmcp/utilities/func_metadata.py:
+# call_fn_with_arg_validation), so any blocking work (git subprocess, OTA
+# downloads, AI SDK calls) freezes the entire stdio server — the stdin
+# reader and stdout writer stall and the client's tool call never returns.
+# Wrapping the handler as async + anyio.to_thread executes it on a worker
+# thread, keeping the loop free.
+#
+# NOTE: decorator ORDER matters — @mcp.tool(...) must sit ABOVE @_offload so
+# FastMCP registers the async wrapper (functools.wraps preserves __name__ and
+# __wrapped__, so FastMCP's inspect.signature() still sees the original sync
+# signature and _is_async_callable() sees an async function).
+#
+# anyio 4.x run_sync() takes no **kwargs, so marshal them via a closure.
+
+
+def _offload(fn):
+    """Wrap a sync MCP tool handler so it runs on an anyio worker thread."""
+
+    @wraps(fn)
+    async def wrapper(*args, **kwargs):
+        return await anyio.to_thread.run_sync(lambda: fn(*args, **kwargs))
+
+    return wrapper
 
 
 # =============================================================================
@@ -285,6 +342,7 @@ mcp = FastMCP(
     ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
+@_offload
 def get_git_context() -> str:
     """Return JSON with branch name and repository info."""
     from src.core import get_current_branch, get_repo_name
@@ -313,6 +371,7 @@ def get_git_context() -> str:
     + __("Lists all changed files and their line-level modifications."),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
+@_offload
 def analyze_diff() -> str:
     """Return the raw git diff for uncommitted local changes."""
     from src.core import get_git_diff
@@ -342,6 +401,7 @@ def analyze_diff() -> str:
     ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
+@_offload
 def list_unstaged_files() -> str:
     """Return JSON with new/modified/deleted lists of unstaged files."""
     from src.core import get_unstaged_categorized
@@ -380,6 +440,7 @@ def list_unstaged_files() -> str:
     ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
+@_offload
 def analyze_unstaged_diff() -> str:
     """Return the raw git diff for unstaged changes only (index vs working tree)."""
     from src.core import get_unstaged_diff
@@ -411,6 +472,7 @@ def analyze_unstaged_diff() -> str:
         readOnlyHint=False, destructiveHint=False, idempotentHint=False
     ),
 )
+@_offload
 def get_full_diff() -> str:
     """Return the full diff between the current branch and origin/main."""
     from src.core import get_git_full_diff
@@ -448,6 +510,7 @@ def get_full_diff() -> str:
         readOnlyHint=False, destructiveHint=False, idempotentHint=False
     ),
 )
+@_offload
 def generate_commit_message(
     provider: str = "",
     diff_text: str = "",
@@ -508,6 +571,7 @@ def generate_commit_message(
         readOnlyHint=False, destructiveHint=False, idempotentHint=False
     ),
 )
+@_offload
 def review_code(
     provider: str = "",
     diff_text: str = "",
@@ -564,6 +628,7 @@ def review_code(
         readOnlyHint=False, destructiveHint=False, idempotentHint=False
     ),
 )
+@_offload
 def full_review(provider: str = "") -> str:
     """AI code review of all changes since origin/main.
 
@@ -615,6 +680,7 @@ def full_review(provider: str = "") -> str:
         readOnlyHint=False, destructiveHint=False, idempotentHint=False
     ),
 )
+@_offload
 def generate_pr_description(provider: str = "") -> str:
     """Generate a full PR description from the branch diff.
 
@@ -668,6 +734,7 @@ def generate_pr_description(provider: str = "") -> str:
     ),
     annotations=ToolAnnotations(readOnlyHint=True, idempotentHint=True),
 )
+@_offload
 def run_linter() -> str:
     """Analyze the current diff against .gitpr.linter.yml rules."""
     from src.core import get_git_diff
@@ -716,6 +783,7 @@ def run_linter() -> str:
         readOnlyHint=False, destructiveHint=False, idempotentHint=False
     ),
 )
+@_offload
 def analyze_blame(
     file_path: str,
     start_line: str,
@@ -777,6 +845,7 @@ def analyze_blame(
         readOnlyHint=False, destructiveHint=False, idempotentHint=False
     ),
 )
+@_offload
 def generate_issue(context_type: str = "diff") -> str:
     """Generate an issue from code context.
 
@@ -1632,19 +1701,22 @@ def _run_list() -> None:
 # The parameter metadata lives in _build_tools_catalog()["tools"] and is
 # merged at runtime by _get_tool_registry() — keeping callables and
 # metadata in separate dicts means --list can still json.dumps the catalog.
+# Values use fn.__wrapped__ to deliberately unwrap the _offload decorator:
+# the --tool CLI mode runs the original SYNC functions inline (no event
+# loop involved), exactly as before the offload change.
 _TOOL_FUNCS = {
-    "get_git_context": get_git_context,
-    "analyze_diff": analyze_diff,
-    "list_unstaged_files": list_unstaged_files,
-    "analyze_unstaged_diff": analyze_unstaged_diff,
-    "get_full_diff": get_full_diff,
-    "generate_commit_message": generate_commit_message,
-    "review_code": review_code,
-    "full_review": full_review,
-    "generate_pr_description": generate_pr_description,
-    "run_linter": run_linter,
-    "analyze_blame": analyze_blame,
-    "generate_issue": generate_issue,
+    "get_git_context": get_git_context.__wrapped__,
+    "analyze_diff": analyze_diff.__wrapped__,
+    "list_unstaged_files": list_unstaged_files.__wrapped__,
+    "analyze_unstaged_diff": analyze_unstaged_diff.__wrapped__,
+    "get_full_diff": get_full_diff.__wrapped__,
+    "generate_commit_message": generate_commit_message.__wrapped__,
+    "review_code": review_code.__wrapped__,
+    "full_review": full_review.__wrapped__,
+    "generate_pr_description": generate_pr_description.__wrapped__,
+    "run_linter": run_linter.__wrapped__,
+    "analyze_blame": analyze_blame.__wrapped__,
+    "generate_issue": generate_issue.__wrapped__,
 }
 
 

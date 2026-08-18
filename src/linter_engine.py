@@ -79,6 +79,8 @@ def _run_external_linter(command, file_path):
             full_command,
             shell=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
+            timeout=120,
             text=True,
             encoding="utf-8",
             errors="replace",
