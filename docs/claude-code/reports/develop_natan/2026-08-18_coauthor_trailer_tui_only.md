@@ -10,6 +10,11 @@
 | File | Change type | Description |
 |------|-------------|-------------|
 | src/ui/pr_publish_app.py | fix | `_generate_commit_msg()` passes the raw AI message to the edit screen; `_start_commit_and_publish()` appends the trailer to a local variable only when the message is non-empty, immediately before `execute_git_commit()` |
+| docs/pull-request-publication.md | docs | New "Co-author signature" note in section 5 documenting the injection moment per flow (TUI: at commit execution; `--no-edit`: at generation) |
+| docs/pull-request-publication.pt_br.md | docs | Localized note (pt-BR) |
+| docs/pull-request-publication.pt_pt.md | docs | Localized note (pt-PT) |
+| docs/pull-request-publication.es_es.md | docs | Localized note (es-ES) |
+| docs/pull-request-publication.fr_fr.md | docs | Localized note (fr-FR) |
 
 ### Impact
 - **Functionality:** TUI users no longer see the trailer in the commit message edit screen; it is added to the final commit after confirmation. All other flows (console, hook, auto-commit, MCP) behave exactly as before.

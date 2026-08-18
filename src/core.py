@@ -6,6 +6,7 @@ import time
 import fnmatch
 import click
 import subprocess
+import threading
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -119,6 +120,33 @@ def _seed_local_smart_excludes(project_root=None):
         pass  # Best-effort — never block the main flow for file seeding
 
 
+def _download_smart_excludes(url: str, hard_timeout: float = 10.0):
+    """Fetch a remote template with a hard bound.
+
+    urllib's timeout does NOT bound DNS resolution on Windows — a stalled
+    resolver can block getaddrinfo() indefinitely.  Run the request on a
+    daemon thread and give up after *hard_timeout* seconds, returning None
+    so callers fall back to their offline copy.
+    """
+    result = {}
+
+    def _fetch():
+        try:
+            with urllib.request.urlopen(url, timeout=3) as response:
+                result["data"] = json.loads(response.read().decode("utf-8"))
+        except Exception as exc:
+            result["error"] = exc
+
+    fetcher = threading.Thread(target=_fetch, daemon=True)
+    fetcher.start()
+    fetcher.join(hard_timeout)
+    if fetcher.is_alive():
+        return None  # DNS stalled — caller uses the offline fallback
+    if "error" in result:
+        return None
+    return result["data"]
+
+
 def _load_smart_excludes():
     """
     Load the smart-exclude patterns and return them as git pathspec exclusions.
@@ -181,14 +209,14 @@ def _load_smart_excludes():
     # 2. Download the updated list from the remote template
     if data is None:
         try:
-            with urllib.request.urlopen(SMART_EXCLUDES_URL, timeout=3) as response:
-                data = json.loads(response.read().decode("utf-8"))
-            conf_dir.mkdir(parents=True, exist_ok=True)
-            with open(global_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
-            # Seed the local project file as a convenience (idempotent)
-            _seed_local_smart_excludes()
+            data = _download_smart_excludes(SMART_EXCLUDES_URL)
+            if data is not None:
+                conf_dir.mkdir(parents=True, exist_ok=True)
+                with open(global_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
+                # Seed the local project file as a convenience (idempotent)
+                _seed_local_smart_excludes()
         except Exception:
             pass
 
@@ -262,13 +290,13 @@ def _load_docs_smart_excludes():
 
     # 2. Download the updated list from the remote template
     try:
-        with urllib.request.urlopen(DOCS_SMART_EXCLUDES_URL, timeout=3) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        conf_dir.mkdir(parents=True, exist_ok=True)
-        with open(local_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
-        return _to_pathspecs(data)
+        data = _download_smart_excludes(DOCS_SMART_EXCLUDES_URL)
+        if data is not None:
+            conf_dir.mkdir(parents=True, exist_ok=True)
+            with open(local_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
+            return _to_pathspecs(data)
     except Exception:
         pass
 
@@ -311,13 +339,13 @@ def _get_raw_docs_patterns():
 
     # 2. Download
     try:
-        with urllib.request.urlopen(DOCS_SMART_EXCLUDES_URL, timeout=3) as response:
-            data = json.loads(response.read().decode("utf-8"))
-        conf_dir.mkdir(parents=True, exist_ok=True)
-        with open(local_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
-        return data.get("excludes", [])
+        data = _download_smart_excludes(DOCS_SMART_EXCLUDES_URL)
+        if data is not None:
+            conf_dir.mkdir(parents=True, exist_ok=True)
+            with open(local_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            set_key(str(env_file), "SMART_EXCLUDES_VERSION", __lang_version__)
+            return data.get("excludes", [])
     except Exception:
         pass
 
@@ -358,6 +386,7 @@ def get_changed_docs_list(ancestor_hash=None):
         result = subprocess.run(
             cmd,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -446,6 +475,7 @@ def get_git_diff(quiet=False):
         untracked_process = subprocess.run(
             ["git", "ls-files", "--others", "--exclude-standard"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -474,6 +504,7 @@ def get_git_diff(quiet=False):
         result = subprocess.run(
             cmd,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -504,6 +535,7 @@ def is_merge_in_progress():
         result = subprocess.run(
             ["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -525,6 +557,7 @@ def get_unstaged_diff(quiet=False):
         result = subprocess.run(
             cmd,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -550,6 +583,7 @@ def get_current_branch():
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             check=True,
@@ -565,6 +599,7 @@ def get_repo_name():
         result = subprocess.run(
             ["git", "remote", "-v"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             check=True,
@@ -762,6 +797,7 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
             merge_base_res = subprocess.run(
                 ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
@@ -1120,6 +1156,7 @@ def get_base_branch():
         result = subprocess.run(
             ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             check=True,
         )
@@ -1140,7 +1177,12 @@ def get_git_full_diff():
     click.secho(__("🔄 Synchronizing with remote repository (git fetch)..."), fg="cyan")
     try:
         # Fetch to ensure we know where origin/main is
-        subprocess.run(["git", "fetch", "origin"], check=True, capture_output=True)
+        subprocess.run(
+            ["git", "fetch", "origin"],
+            check=True,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+        )
 
         base_branch = get_base_branch()
 
@@ -1148,6 +1190,7 @@ def get_git_full_diff():
         merge_base_res = subprocess.run(
             ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             check=True,
         )
@@ -1166,7 +1209,12 @@ def get_git_full_diff():
             "--",
         ] + SMART_EXCLUDES
         result = subprocess.run(
-            cmd, capture_output=True, text=True, encoding="utf-8", check=True
+            cmd,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            check=True,
         )
         return result.stdout
 
@@ -1485,6 +1533,7 @@ def get_branch_history_text():
         merge_base_res = subprocess.run(
             ["git", "merge-base", f"origin/{base_branch}", "HEAD"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             check=True,
         )
@@ -1500,6 +1549,7 @@ def get_branch_history_text():
                 "--date=short",
             ],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             check=True,
@@ -1535,6 +1585,7 @@ def has_uncommitted_changes():
         result = subprocess.run(
             ["git", "diff", "HEAD", "--stat"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -1556,6 +1607,7 @@ def get_uncommitted_summary():
         result = subprocess.run(
             ["git", "-c", "core.quotepath=false", "status", "--porcelain"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -1589,6 +1641,7 @@ def get_unstaged_files():
         result = subprocess.run(
             ["git", "-c", "core.quotepath=false", "status", "--porcelain"],
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",

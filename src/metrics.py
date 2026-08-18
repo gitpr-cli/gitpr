@@ -16,7 +16,11 @@ def _get_owner_name():
 
     try:
         name = subprocess.run(
-            ["git", "config", "user.name"], capture_output=True, text=True, check=True
+            ["git", "config", "user.name"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            check=True,
         ).stdout.strip()
         return name.replace(" ", "_") if name else "local_user"
     except Exception:

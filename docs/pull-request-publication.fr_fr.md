@@ -150,6 +150,11 @@ Lorsque vous utilisez `--no-edit` ou appuyez sur `F3` dans la TUI avec des modif
    └─ "Nothing to commit" → treated as success, proceed to publish
 ```
 
+> **Remarque — Signature de co-auteur :** le trailer `Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>` est injecté à des moments différents selon le flux :
+>
+> - **TUI (F3) :** l'écran modifiable `CommitMessageScreen` affiche le message pur de l'IA ; le trailer n'est injecté qu'à l'exécution du commit (étape 4).
+> - **`--no-edit` (console) :** le trailer est ajouté à la génération et reste visible dans l'aperçu avant la confirmation.
+
 ### 5.1 Gestion du cas « Nothing to Commit »
 
 Lorsque `git commit` renvoie un code de sortie non nul mais que la sortie indique qu'aucun changement réel n'existe, le flux traite cela comme un succès et continue. Les motifs suivants sont reconnus :

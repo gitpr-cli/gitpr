@@ -3,16 +3,24 @@
 Covers tool functions, the output patching system, and the safe-call wrapper.
 """
 
+import asyncio
+import inspect
 import io
 import json
 import os
 import sys
+import threading
 import unittest
 from unittest.mock import patch, MagicMock
 
 # Import after patching checks — the mcp_server module does not call
 # _patch_output() at import time (only inside main()), so importing is safe.
 from src import mcp_server
+
+
+def _call_tool(fn, *args, **kwargs):
+    """Run an _offload-wrapped (async) MCP tool and return its result."""
+    return asyncio.run(fn(*args, **kwargs))
 
 
 class TestSafeCall(unittest.TestCase):
@@ -94,7 +102,7 @@ class TestGitContextTool(unittest.TestCase):
         mock_branch.return_value = "feature/login"
         mock_repo.return_value = "natanfiuza/gitpr"
 
-        result = json.loads(mcp_server.get_git_context())
+        result = json.loads(_call_tool(mcp_server.get_git_context))
         self.assertEqual(result["branch"], "feature/login")
         self.assertEqual(result["repository"], "natanfiuza/gitpr")
 
@@ -105,7 +113,7 @@ class TestGitContextTool(unittest.TestCase):
         mock_branch.side_effect = Exception("git failed")
         mock_repo.side_effect = Exception("git failed")
 
-        result = json.loads(mcp_server.get_git_context())
+        result = json.loads(_call_tool(mcp_server.get_git_context))
         self.assertEqual(result["branch"], "unknown")
         self.assertEqual(result["repository"], "unknown/repo")
 
@@ -117,7 +125,7 @@ class TestAnalyzeDiffTool(unittest.TestCase):
     def test_no_changes(self, mock_diff):
         """Returns no_changes status when there is no diff."""
         mock_diff.return_value = ""
-        result = json.loads(mcp_server.analyze_diff())
+        result = json.loads(_call_tool(mcp_server.analyze_diff))
         self.assertEqual(result["status"], "no_changes")
 
     @patch("src.core.get_git_diff")
@@ -125,7 +133,7 @@ class TestAnalyzeDiffTool(unittest.TestCase):
         """Returns the diff content."""
         diff_content = "diff --git a/file.py b/file.py\n+print('hello')"
         mock_diff.return_value = diff_content
-        result = json.loads(mcp_server.analyze_diff())
+        result = json.loads(_call_tool(mcp_server.analyze_diff))
         self.assertEqual(result["status"], "changes_found")
         self.assertIn("diff --git a/file.py", result["diff"])
 
@@ -140,7 +148,7 @@ class TestLinterTool(unittest.TestCase):
         mock_diff.return_value = "+print('hello')"
         mock_lint.return_value = {"errors": [], "warnings": []}
 
-        result = json.loads(mcp_server.run_linter())
+        result = json.loads(_call_tool(mcp_server.run_linter))
         self.assertEqual(result["status"], "success")
         self.assertTrue(result["passed"])
         self.assertEqual(result["error_count"], 0)
@@ -155,7 +163,7 @@ class TestLinterTool(unittest.TestCase):
             "warnings": ["Consider adding a docstring"],
         }
 
-        result = json.loads(mcp_server.run_linter())
+        result = json.loads(_call_tool(mcp_server.run_linter))
         self.assertEqual(result["status"], "success")
         self.assertFalse(result["passed"])
         self.assertEqual(result["error_count"], 1)
@@ -165,7 +173,7 @@ class TestLinterTool(unittest.TestCase):
     def test_empty_diff(self, mock_diff):
         """Returns no_changes when diff is empty."""
         mock_diff.return_value = ""
-        result = json.loads(mcp_server.run_linter())
+        result = json.loads(_call_tool(mcp_server.run_linter))
         self.assertEqual(result["status"], "no_changes")
 
 
@@ -180,7 +188,7 @@ class TestCommitMessageTool(unittest.TestCase):
         mock_diff.return_value = "+print('hello')"
         mock_gen.return_value = {"commit_message": "feat: add hello world"}
 
-        result = json.loads(mcp_server.generate_commit_message(provider="gemini"))
+        result = json.loads(_call_tool(mcp_server.generate_commit_message, provider="gemini"))
         self.assertEqual(result["status"], "success")
         self.assertEqual(
             result["commit_message"],
@@ -191,7 +199,7 @@ class TestCommitMessageTool(unittest.TestCase):
     def test_no_changes(self, mock_diff):
         """Returns no_changes when there is nothing to commit."""
         mock_diff.return_value = ""
-        result = json.loads(mcp_server.generate_commit_message())
+        result = json.loads(_call_tool(mcp_server.generate_commit_message))
         self.assertEqual(result["status"], "no_changes")
 
     @patch.dict("os.environ", {"GITPR_COAUTHOR": "true"})
@@ -202,7 +210,8 @@ class TestCommitMessageTool(unittest.TestCase):
         mock_gen.return_value = {"commit_message": "fix: critical bug"}
         custom_diff = "diff --git a/x.py b/x.py\n-foo\n+bar"
 
-        result = json.loads(mcp_server.generate_commit_message(
+        result = json.loads(_call_tool(
+            mcp_server.generate_commit_message,
             provider="deepseek", diff_text=custom_diff
         ))
         mock_diff.assert_not_called()
@@ -219,7 +228,7 @@ class TestCommitMessageTool(unittest.TestCase):
         mock_diff.return_value = "+some code"
         mock_gen.return_value = None
 
-        result = json.loads(mcp_server.generate_commit_message())
+        result = json.loads(_call_tool(mcp_server.generate_commit_message))
         self.assertEqual(result["status"], "error")
 
 
@@ -233,7 +242,7 @@ class TestReviewCodeTool(unittest.TestCase):
         mock_diff.return_value = "+new feature"
         mock_gen.return_value = {"review": "## Code Review\n\nLooks good!"}
 
-        result = json.loads(mcp_server.review_code(provider="gemini"))
+        result = json.loads(_call_tool(mcp_server.review_code, provider="gemini"))
         self.assertEqual(result["status"], "success")
         self.assertIn("Code Review", result["review"])
 
@@ -241,7 +250,7 @@ class TestReviewCodeTool(unittest.TestCase):
     def test_no_changes(self, mock_diff):
         """Returns no_changes when diff is empty."""
         mock_diff.return_value = ""
-        result = json.loads(mcp_server.review_code())
+        result = json.loads(_call_tool(mcp_server.review_code))
         self.assertEqual(result["status"], "no_changes")
 
 
@@ -258,7 +267,7 @@ class TestPRDescriptionTool(unittest.TestCase):
             "pr_description": "## Summary\n\nThis PR adds...",
         }
 
-        result = json.loads(mcp_server.generate_pr_description(provider="deepseek"))
+        result = json.loads(_call_tool(mcp_server.generate_pr_description, provider="deepseek"))
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["commit_message"], "feat: new feature")
         self.assertIn("Summary", result["pr_description"])
@@ -275,7 +284,7 @@ class TestListUnstagedFilesTool(unittest.TestCase):
             "modified": ["edited.py", "changed.py"],
             "deleted": ["removed.py"],
         }
-        result = json.loads(mcp_server.list_unstaged_files())
+        result = json.loads(_call_tool(mcp_server.list_unstaged_files))
         self.assertEqual(result["status"], "changes_found")
         self.assertEqual(result["new"], ["untracked.py"])
         self.assertEqual(result["modified"], ["edited.py", "changed.py"])
@@ -294,7 +303,7 @@ class TestListUnstagedFilesTool(unittest.TestCase):
     def test_no_unstaged_files(self, mock_cat):
         """Returns no_changes when nothing is unstaged."""
         mock_cat.return_value = {"new": [], "modified": [], "deleted": []}
-        result = json.loads(mcp_server.list_unstaged_files())
+        result = json.loads(_call_tool(mcp_server.list_unstaged_files))
         self.assertEqual(result["status"], "no_changes")
         self.assertEqual(result["total"], 0)
         self.assertEqual(result["files"], [])
@@ -303,7 +312,7 @@ class TestListUnstagedFilesTool(unittest.TestCase):
     def test_handles_none_from_core(self, mock_cat):
         """Handles None return from core function gracefully."""
         mock_cat.return_value = None
-        result = json.loads(mcp_server.list_unstaged_files())
+        result = json.loads(_call_tool(mcp_server.list_unstaged_files))
         self.assertEqual(result["status"], "no_changes")
         self.assertEqual(result["new"], [])
         self.assertEqual(result["modified"], [])
@@ -317,7 +326,7 @@ class TestAnalyzeUnstagedDiffTool(unittest.TestCase):
     def test_returns_unstaged_diff(self, mock_diff):
         """Returns only unstaged diff content."""
         mock_diff.return_value = "diff --git a/x.py b/x.py\n-old\n+new"
-        result = json.loads(mcp_server.analyze_unstaged_diff())
+        result = json.loads(_call_tool(mcp_server.analyze_unstaged_diff))
         self.assertEqual(result["status"], "changes_found")
         self.assertIn("diff --git a/x.py", result["diff"])
 
@@ -325,14 +334,14 @@ class TestAnalyzeUnstagedDiffTool(unittest.TestCase):
     def test_no_unstaged_changes(self, mock_diff):
         """Returns no_changes when working tree is clean."""
         mock_diff.return_value = ""
-        result = json.loads(mcp_server.analyze_unstaged_diff())
+        result = json.loads(_call_tool(mcp_server.analyze_unstaged_diff))
         self.assertEqual(result["status"], "no_changes")
 
     @patch("src.core.get_unstaged_diff")
     def test_handles_none_from_core(self, mock_diff):
         """Handles None return from core function gracefully."""
         mock_diff.return_value = None
-        result = json.loads(mcp_server.analyze_unstaged_diff())
+        result = json.loads(_call_tool(mcp_server.analyze_unstaged_diff))
         self.assertEqual(result["status"], "no_changes")
 
 
@@ -348,7 +357,8 @@ class TestBlameTool(unittest.TestCase):
         ]
 
         with patch.object(os.path, "exists", return_value=True):
-            result = json.loads(mcp_server.analyze_blame(
+            result = json.loads(_call_tool(
+                mcp_server.analyze_blame,
                 file_path="src/main.py",
                 start_line="10",
                 end_line="20",
@@ -361,7 +371,8 @@ class TestBlameTool(unittest.TestCase):
     def test_file_not_found(self):
         """Returns error when the file does not exist."""
         with patch.object(os.path, "exists", return_value=False):
-            result = json.loads(mcp_server.analyze_blame(
+            result = json.loads(_call_tool(
+                mcp_server.analyze_blame,
                 file_path="nonexistent.py",
                 start_line="1",
                 end_line="10",
@@ -375,7 +386,8 @@ class TestBlameTool(unittest.TestCase):
         """Returns no_data when no commits found."""
         mock_blame.return_value = None
         with patch.object(os.path, "exists", return_value=True):
-            result = json.loads(mcp_server.analyze_blame(
+            result = json.loads(_call_tool(
+                mcp_server.analyze_blame,
                 file_path="src/main.py",
                 start_line="1",
                 end_line="1",
@@ -396,7 +408,7 @@ class TestIssueTool(unittest.TestCase):
             "corpo": "## What\n\n...\n## Why\n\n...",
         }
 
-        result = json.loads(mcp_server.generate_issue(context_type="diff"))
+        result = json.loads(_call_tool(mcp_server.generate_issue, context_type="diff"))
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["title"], "Add user authentication")
         self.assertIn("What", result["body"])
@@ -411,7 +423,7 @@ class TestIssueTool(unittest.TestCase):
             "corpo": "## Context\n\n...",
         }
 
-        result = json.loads(mcp_server.generate_issue(context_type="history"))
+        result = json.loads(_call_tool(mcp_server.generate_issue, context_type="history"))
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["title"], "Epic: Dashboard v2")
 
@@ -419,7 +431,7 @@ class TestIssueTool(unittest.TestCase):
     def test_no_context(self, mock_diff):
         """Returns no_changes when no context is available."""
         mock_diff.return_value = ""
-        result = json.loads(mcp_server.generate_issue())
+        result = json.loads(_call_tool(mcp_server.generate_issue))
         self.assertEqual(result["status"], "no_changes")
 
 
@@ -866,6 +878,80 @@ class TestMainCli(unittest.TestCase):
         with patch.object(sys, "argv", ["gitpr-mcp", "--list", "--tool"]):
             with self.assertRaises(SystemExit):
                 mcp_server.main()
+
+
+class TestOffloadDecorator(unittest.TestCase):
+    """Tests for the _offload decorator that moves handlers off the event loop."""
+
+    def test_wrapped_handler_runs_on_worker_thread(self):
+        """_offload-wrapped functions execute on a different thread."""
+        caller_thread = threading.get_ident()
+        observed = {}
+
+        def handler():
+            observed["thread"] = threading.get_ident()
+            return "done"
+
+        result = asyncio.run(mcp_server._offload(handler)())
+        self.assertEqual(result, "done")
+        self.assertNotEqual(observed["thread"], caller_thread)
+
+    def test_wrapped_handler_returns_value(self):
+        """The wrapper returns the sync function's return value."""
+        async def run():
+            return await mcp_server._offload(lambda: {"ok": True})()
+
+        self.assertEqual(asyncio.run(run()), {"ok": True})
+
+    def test_wrapped_handler_propagates_exceptions(self):
+        """Exceptions from the sync function propagate through the wrapper."""
+        def boom():
+            raise ValueError("nope")
+
+        with self.assertRaises(ValueError):
+            asyncio.run(mcp_server._offload(boom)())
+
+    def test_wrapped_preserves_name_signature_and_wrapped(self):
+        """functools.wraps keeps name/signature/__wrapped__ for FastMCP."""
+        self.assertTrue(inspect.iscoroutinefunction(mcp_server.run_linter))
+        params = inspect.signature(mcp_server.generate_commit_message).parameters
+        self.assertIn("provider", params)
+        self.assertIn("diff_text", params)
+        self.assertTrue(callable(mcp_server.run_linter.__wrapped__))
+        self.assertFalse(
+            inspect.iscoroutinefunction(mcp_server.run_linter.__wrapped__)
+        )
+
+    def test_all_registered_tools_are_async_in_fastmcp(self):
+        """Every tool FastMCP registered must be async (offloaded)."""
+        for name in _get_expected_tool_names():
+            tool = mcp_server.mcp._tool_manager.get_tool(name)
+            self.assertTrue(
+                tool.is_async, f"Tool '{name}' is not async in FastMCP"
+            )
+
+    def test_tool_funcs_stay_sync_for_cli_mode(self):
+        """_TOOL_FUNCS values are the original sync functions (--tool mode)."""
+        for name, func in mcp_server._TOOL_FUNCS.items():
+            self.assertFalse(
+                inspect.iscoroutinefunction(func),
+                f"_TOOL_FUNCS['{name}'] must stay sync for --tool CLI mode",
+            )
+
+    def test_concurrent_calls_do_not_block_the_loop(self):
+        """A slow offloaded call does not block other loop work."""
+        import time
+
+        async def scenario():
+            slow = mcp_server._offload(lambda: time.sleep(0.3))()
+            fast = mcp_server._offload(lambda: "fast")()
+            slow_task = asyncio.create_task(slow)
+            await asyncio.sleep(0.05)  # let the slow one start on its worker
+            fast_result = await asyncio.wait_for(fast, timeout=1.0)
+            self.assertEqual(fast_result, "fast")
+            await slow_task
+
+        asyncio.run(scenario())
 
 
 def _get_expected_tool_names():
