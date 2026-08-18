@@ -20,7 +20,7 @@ report. Never overwrite an existing report — always create the new file.
 | Source | What it provides |
 |---|---|
 | `docs/reports/relatorio_estado_v*.md` | Previous report: the base to evolve, and the "previous" column values |
-| `.gitpr/reports/pr_desc/*_PR_DESC.txt` | GitPR-generated PR descriptions (commit message, summary, technical changes) |
+| `.gitpr/reports/pr_desc/*_PR_DESC.*` | GitPR-generated PR descriptions (commit message, summary, technical changes) |
 | `docs/*.md` (top level) | Newly documented features/topics |
 | `git log` | Commits since the previous report |
 | `docs/claude-code/reports/develop_natan/` and `docs/gemini/reports/` | Task reports since the previous report |

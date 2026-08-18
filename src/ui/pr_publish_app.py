@@ -764,7 +764,7 @@ class PrPublishApp(App):
 
     def _generate_commit_msg(self):
         """Generate commit message via AI (heavy part in background thread)."""
-        from src.core import append_coauthor_trailer, get_git_diff, generate_pr_content
+        from src.core import get_git_diff, generate_pr_content
         from src.config import get_ai_provider
 
         provider = get_ai_provider()
@@ -789,7 +789,7 @@ class PrPublishApp(App):
             finally:
                 sys.stdout.close()
                 sys.stdout = old
-            commit_msg = append_coauthor_trailer(
+            commit_msg = (
                 data.get("commit_message", __("Code update"))
                 if data
                 else __("Code update")
@@ -837,9 +837,15 @@ class PrPublishApp(App):
                 # ── Execute commit ──
                 self.call_from_thread(log.add_log, __("📦 Executing commit..."))
                 self._log("Executing git commit...")
+                # Inject the co-author trailer only now, so it never shows in the TUI
+                commit_msg = self._pending_commit_msg
+                if commit_msg:
+                    from src.core import append_coauthor_trailer
+
+                    commit_msg = append_coauthor_trailer(commit_msg)
                 try:
                     success, output = execute_git_commit(
-                        self._pending_commit_msg, no_verify=self._commit_no_verify
+                        commit_msg, no_verify=self._commit_no_verify
                     )
                     self._log(
                         f"git commit result: success={success}, output={output.strip()}"
