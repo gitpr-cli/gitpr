@@ -150,6 +150,11 @@ Cuando usas `--no-edit` o pulsas `F3` en la TUI con cambios sin confirmar, GitPR
    └─ "Nothing to commit" → treated as success, proceed to publish
 ```
 
+> **Nota — Firma de coautoría:** el trailer `Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>` se inyecta en momentos distintos según el flujo:
+>
+> - **TUI (F3):** la `CommitMessageScreen` editable muestra el mensaje puro de la IA; el trailer se inyecta solo cuando se ejecuta el commit (paso 4).
+> - **`--no-edit` (consola):** el trailer se añade en la generación y es visible en la vista previa antes de la confirmación.
+
 ### 5.1 Manejo de "Nothing to Commit"
 
 Cuando `git commit` devuelve un código distinto de cero pero la salida indica que no existen cambios reales, el flujo lo trata como un éxito y continúa. Se reconocen los siguientes patrones:
