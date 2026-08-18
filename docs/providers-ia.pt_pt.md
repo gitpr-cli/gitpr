@@ -35,14 +35,14 @@ DEFAULT_AI_PROVIDER=deepseek
 
 | Modelo | Utilização | Variável de Ambiente |
 | --- | --- | --- |
-| `gemini-2.5-flash` | Primário (avançado) — PRs, reviews, issues | `GEMINI_API_MODEL` |
-| `gemini-2.5-flash-lite` | Secundário (simples) — classificação no blame | `SECONDARY_GEMINI_API_MODEL` |
+| `gemini-pro-latest` | Primário (avançado) — PRs, reviews, issues | `GEMINI_API_MODEL_PRIMARY` |
+| `gemini-flash-lite-latest` | Secundário (simples) — classificação no blame | `GEMINI_API_MODEL_SECONDARY` |
 
 ### 3.2 DeepSeek
 
 | Modelo | Utilização | Variável de Ambiente |
 | --- | --- | --- |
-| `deepseek-chat` | Primário e Secundário | `DEEPSEEK_API_MODEL` / `SECONDARY_DEEPSEEK_API_MODEL` |
+| `deepseek-v4-pro` / `deepseek-v4-flash` | Primário e Secundário | `DEEPSEEK_API_MODEL_PRIMARY` / `DEEPSEEK_API_MODEL_SECONDARY` |
 
 ---
 

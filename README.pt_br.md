@@ -206,11 +206,11 @@ Cada execução — manual via `--linter` ou automática antes dos commits — c
 ## 🧠 Arquitetura Multi-Modelo (IA Agnóstica)
 
 O GitPR não está preso a uma única Inteligência Artificial. Durante a configuração inicial, o usuário pode escolher seu motor padrão. Atualmente oferecemos suporte a:
-* **Google Gemini** (Padrão: `gemini-2.5-flash`)
-* **DeepSeek** (Padrão: `deepseek-chat`)
+* **Google Gemini** (Padrão: `gemini-pro-latest`)
+* **DeepSeek** (Padrão: `deepseek-v4-pro`)
 * **Ollama** (Local) — execute modelos localmente sem internet, totalmente compatível com o formato da API OpenAI
 
-Você pode alternar dinamicamente os modelos configurando as variáveis `GEMINI_API_MODEL` ou `DEEPSEEK_API_MODEL` no seu arquivo `~/.gitpr/.env`, ou alternar em tempo real usando a flag `--provider`.
+Você pode alternar dinamicamente os modelos configurando as variáveis `GEMINI_API_MODEL_PRIMARY` ou `DEEPSEEK_API_MODEL_PRIMARY` no seu arquivo `~/.gitpr/.env`, ou alternar em tempo real usando a flag `--provider`.
 
 ## 🎯 Sistema de "Skills" Customizáveis (Prompt Engineering)
 

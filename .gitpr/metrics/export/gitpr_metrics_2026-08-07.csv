@@ -1,2 +1,0 @@
-timestamp,command,status,provider,tokens_estimated,duration_ms,repo,branch,prompt_tokens,completion_tokens,tokens_actual
-"2026-01-15T10:30:00","commit","success","gemini","0","500","owner/repo","main","200","80","280"
