@@ -10,7 +10,7 @@ from datetime import datetime
 # ── Must stay ABOVE the i18n import: i18n.py lazily imports __lang_version__
 #     from here, and pyproject.toml reads __version__ via setuptools attr:.
 __version__ = "0.0.37"  # GitPR current version
-__lang_version__ = "v0.0.19"  # Language dictionary version control
+__lang_version__ = "v0.0.20"  # Language dictionary version control
 __scripts_version__ = (
     "v0.0.3"  # Git Hook scripts version control (independent from __lang_version__)
 )

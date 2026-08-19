@@ -93,6 +93,14 @@ class TestLangFileIntegrity(unittest.TestCase):
                 f"{name}: stage-error key untranslated",
             )
 
+    def test_linter_modal_keys_present_and_translated(self):
+        # Keys rendered by LinterErrorScreen (--no-verify commit flow).
+        for name in LANG_FILES:
+            data = self.langs[name]
+            for key in ("Abort", "Commit with --no-verify"):
+                self.assertIn(key, data, f"{name}: {key!r} missing")
+                self.assertNotEqual(data[key], key, f"{name}: {key!r} untranslated")
+
     def test_orphan_keys_absent(self):
         for name in LANG_FILES:
             for orphan in REPAIR.ORPHAN_KEYS:
