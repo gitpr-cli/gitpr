@@ -4,7 +4,7 @@
   <img src="https://raw.githubusercontent.com/natanfiuza/gitpr/main/docs/logo.png" alt="GitPR Logo" width="150">
 </p>
 
-O GitPR CLI é uma ferramenta de automação via linha de comandos que utiliza inteligência artificial do **Google Gemini** e **DeepSeek** para analisar as suas alterações de código (git diff) ou ficheiros inteiros. A ferramenta gera automaticamente mensagens de commit no padrão *Conventional Commits*, descrições detalhadas de Pull Request e revisões profundas de código com foco na redução da dívida técnica.
+O GitPR CLI é uma ferramenta de automação via linha de comandos que utiliza inteligência artificial do **Google Gemini**, **DeepSeek** e **Ollama** para analisar as suas alterações de código (git diff) ou ficheiros inteiros. A ferramenta gera automaticamente mensagens de commit no padrão *Conventional Commits*, descrições detalhadas de Pull Request e revisões profundas de código com foco na redução da dívida técnica.
 
 🌐 **Site:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/) · 📂 **Repositório:** [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
 
@@ -201,7 +201,19 @@ gitpr --linter-setup
 
 O assistente apresenta presets pré-configurados (PHPCS, ESLint, Stylelint — controlados remotamente via `templates/gitpr.linter-presets.json`), orienta o comando de instalação nativa (ex.: `npm install --save-dev eslint`) e injeta o bloco `external_linters` correto no seu `.gitpr.linter.yml`.
 
-Cada execução — manual via `--linter` ou automática antes dos commits — consolida as Regras Regex e os Linters Externos num único relatório Markdown guardado em `.gitpr/reports/linter/` (personalizável via `OUTPUT_FILE_NAME_LINTER`).
+Cada execução — manual via `--linter` ou automática antes dos commits — consolida as Regras Regex e os Linters Externos num único relatório Markdown guardado em `.gitpr/reports/linter/` (personalizável via `OUTPUT_FILE_NAME_LINTER`). O relatório é gerado apenas quando há violações — execuções limpas não criam ficheiros.
+
+## 🤝 Assinatura de Coautoria
+
+Todas as mensagens de commit geradas pelo GitPR incluem automaticamente o trailer de coautoria:
+
+```text
+Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>
+```
+
+O trailer é anexado programaticamente (nunca pela IA) em todos os fluxos: sugestão na consola (`gitpr -c`), hook `prepare-commit-msg`, auto-commit (`--no-edit`), TUI de publicação de PR e a ferramenta MCP `generate_commit_message`. É idempotente — nunca é duplicado quando a mensagem já o contém — e permanece oculto do ecrã de edição da TUI, sendo injetado apenas na execução do commit.
+
+📖 **Documentação completa:** [docs/commit-message-ia.md](https://github.com/natanfiuza/gitpr/blob/main/docs/commit-message-ia.md)
 
 ## 🧠 Arquitetura Multi-Modelo (IA Agnóstica)
 
@@ -229,6 +241,7 @@ O GitPR deteta automaticamente o idioma do seu sistema e exibe as mensagens no s
 
 * **Deteção automática:** Na primeira execução, o GitPR deteta o idioma do SO e guarda em `~/.gitpr/.env` (`GITPR_LANG`).
 * **Ficheiros de tradução:** Os pacotes de idioma são descarregados automaticamente do repositório oficial para `~/.gitpr/langs/`.
+* **5 idiomas:** Inglês, Português (Brasil), Português (Portugal), Espanhol e Francês. Os pacotes são versionados (`__lang_version__`) e atualizam-se automaticamente (OTA) quando é publicada uma nova versão de traduções.
 * **Fallback em inglês:** Se uma tradução estiver em falta, o texto em inglês é exibido diretamente.
 * **API do programador:** Use `from src.i18n import __` e envolva todas as strings de interface com `__("O seu texto aqui")`.
 * **Placeholders:** Suporta parâmetros nomeados — `__("A descarregar {file}...", file="template.md")`.
@@ -426,6 +439,7 @@ Se deseja implementar o GitPR como uma barreira de qualidade automatizada na sua
 * [**Assistente de Instalação**](https://github.com/natanfiuza/gitpr/blob/main/docs/install-wizard.md) — Configuração guiada passo a passo para configurar o GitPR num novo projeto.
 * [**Provedores de IA**](https://github.com/natanfiuza/gitpr/blob/main/docs/providers-ia.md) — Configuração e seleção entre Google Gemini, DeepSeek e Ollama.
 * [**Auto-Updater**](https://github.com/natanfiuza/gitpr/blob/main/docs/auto-update.md) — Como funciona a atualização automática (hot-swap) do GitPR.
+* [**Arquitetura**](https://github.com/natanfiuza/gitpr/blob/main/docs/ARCHITECTURE.md) — Arquitetura do projeto, padrões de design e visão geral da stack técnica.
 * [**Token GitHub (PAT) — Integração e Segurança**](https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md) — Entenda como o GitPR cria issues diretamente no repositório com autenticação.
 * [**Internacionalização (i18n)**](https://github.com/natanfiuza/gitpr/blob/main/docs/i18n_explanation.md) — Arquitetura, padrões de uso e como adicionar novos idiomas.
 * [**Integração MCP**](https://github.com/natanfiuza/gitpr/blob/main/docs/mcp-integration.md) — Conecte o GitPR ao VS Code, Cursor e Claude Desktop via Model Context Protocol.
