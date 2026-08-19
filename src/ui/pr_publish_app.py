@@ -506,7 +506,7 @@ class LinterErrorScreen(ModalScreen):
         color: $error; max-height: 15; overflow-y: auto;
     }
     #linter_buttons {
-        align-horizontal: center;
+        align-horizontal: center; height: auto;
     }
     Button {
         margin: 0 1;
@@ -529,7 +529,7 @@ class LinterErrorScreen(ModalScreen):
                 classes="linter_title",
             )
             yield Static(errors_text, classes="linter_errors")
-            with Vertical(id="linter_buttons"):
+            with Horizontal(id="linter_buttons"):
                 yield Button(
                     __("Commit with --no-verify"), variant="warning", id="btn_no_verify"
                 )
@@ -699,25 +699,34 @@ class PrPublishApp(App):
 
     # ── Progress + commit flow ──
 
-    def _start_progress_and_commit(self):
-        """Push the progress screen; work starts via on_mount when RichLog is ready."""
+    def _start_progress_and_commit(self, skip_linter=False):
+        """Push the progress screen; work starts via on_mount when RichLog is ready.
+
+        skip_linter=True resumes the flow after the user chose --no-verify in
+        the linter error modal, so the linter is not run again.
+        """
 
         def do_work():
-            self._run_linter_and_commit()
+            self._run_linter_and_commit(skip_linter=skip_linter)
 
         self._progress_screen = CommitProgressScreen(
-            work_callback=do_work, initial_status=__("🔍 Running linter...")
+            work_callback=do_work,
+            initial_status=(
+                __("📝 Generating commit message...")
+                if skip_linter
+                else __("🔍 Running linter...")
+            ),
         )
         self.push_screen(self._progress_screen)
 
-    def _run_linter_and_commit(self):
+    def _run_linter_and_commit(self, skip_linter=False):
         """Run linter then generate commit message, logging to progress screen."""
         log = self._progress_screen
-        skip_lint = os.getenv("GITPR_SKIP_LINT", "false").lower() in (
-            "true",
-            "1",
-            "yes",
-            "y",
+        skip_lint = (
+            skip_linter
+            or self._commit_no_verify
+            or os.getenv("GITPR_SKIP_LINT", "false").lower()
+            in ("true", "1", "yes", "y")
         )
 
         if not skip_lint:
@@ -739,11 +748,15 @@ class PrPublishApp(App):
                     log.add_log(f"🚨 {e}")
                 log.add_log("")
                 self._progress_screen = log
-                # Pop progress, show linter error modal
-                self.pop_screen()
-                self.push_screen(
-                    LinterErrorScreen(errors=linter_results["errors"]),
-                    callback=self._on_linter_result,
+                # Defer to the app's message pump: this runs inside the
+                # progress screen's timer, and pushing the modal inline would
+                # bind its dismiss callback to the popped screen's dead queue
+                # (Textual uses the active message pump as callback requester),
+                # so the button result would never be delivered. call_next
+                # posts to the app itself, unlike call_after_refresh, which
+                # is forwarded to the current screen.
+                self.call_next(
+                    self._show_linter_error_modal, linter_results["errors"]
                 )
                 return
 
@@ -756,10 +769,20 @@ class PrPublishApp(App):
         log.add_log(__("📝 Generating commit message..."))
         self._generate_commit_msg()
 
+    def _show_linter_error_modal(self, errors):
+        """Pop the progress screen and show the linter error modal."""
+        self.pop_screen()
+        self.push_screen(
+            LinterErrorScreen(errors=errors),
+            callback=self._on_linter_result,
+        )
+
     def _on_linter_result(self, result):
         if result == "no_verify":
             self._commit_no_verify = True
-            self._start_progress_and_commit()
+            # Resume the flow with the linter skipped; otherwise it would run
+            # again, re-report the same errors, and loop back into this modal.
+            self._start_progress_and_commit(skip_linter=True)
         # abort: do nothing
 
     def _generate_commit_msg(self):
