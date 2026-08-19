@@ -2063,7 +2063,10 @@ def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
     if config is None:
         return (
             False,
-            f"Unknown editor: '{editor}'. Valid options: vscode, cursor, claude, zed, auto",
+            __(
+                "Unknown editor: '{editor}'. Valid options: vscode, cursor, claude, zed, auto",
+                editor=editor,
+            ),
         )
 
     config_dir = Path(config["dir"])
@@ -2076,7 +2079,14 @@ def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
     try:
         config_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        return False, f"Failed to create directory '{config_dir}': {e}"
+        return (
+            False,
+            __(
+                "Failed to create directory '{directory}': {error}",
+                directory=str(config_dir),
+                error=str(e),
+            ),
+        )
 
     # --- Enrich the entry with dynamic tool metadata ---
     entry = dict(config["entry"])  # shallow copy to avoid mutating the template
@@ -2098,7 +2108,14 @@ def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
             json.dump(merged, f, indent=2)
         return True, str(config_file)
     except OSError as e:
-        return False, f"Failed to write '{config_file}': {e}"
+        return (
+            False,
+            __(
+                "Failed to write '{file}': {error}",
+                file=str(config_file),
+                error=str(e),
+            ),
+        )
 
 
 def _detect_editors(project_root: Path) -> list[str]:
@@ -2138,10 +2155,10 @@ def _run_install(editor: str) -> None:
             # No editors detected — install for vscode and cursor by default
             # (they are project-local and most commonly used)
             editors = ["vscode", "cursor"]
-            print(f"No editor config directories detected.")
-            print(f"Installing for: {', '.join(editors)}")
+            print(__("No editor config directories detected."))
+            print(__("Installing for: {editors}", editors=", ".join(editors)))
         else:
-            print(f"Detected editors: {', '.join(editors)}")
+            print(__("Detected editors: {editors}", editors=", ".join(editors)))
     else:
         editors = [editor]
 
@@ -2149,15 +2166,21 @@ def _run_install(editor: str) -> None:
     for ed in editors:
         ok, msg = _install_for_editor(ed, project_root)
         if ok:
-            print(f"  [OK] {ed}: {msg}")
+            print(__("  [OK] {editor}: {message}", editor=ed, message=msg))
             success_count += 1
         else:
-            print(f"  [FAIL] {ed}: {msg}")
+            print(__("  [FAIL] {editor}: {message}", editor=ed, message=msg))
 
-    print(f"\nInstalled for {success_count}/{len(editors)} editor(s).")
+    print(
+        __(
+            "\nInstalled for {success}/{total} editor(s).",
+            success=success_count,
+            total=len(editors),
+        )
+    )
 
     if success_count > 0:
-        print("Restart your editor for the changes to take effect.")
+        print(__("Restart your editor for the changes to take effect."))
 
 
 # =============================================================================

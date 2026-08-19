@@ -63,7 +63,7 @@ class TestLangFileIntegrity(unittest.TestCase):
 
     def test_key_parity_and_count(self):
         reference = set(self.langs["pt_br.json"])
-        self.assertEqual(len(reference), 529)
+        self.assertEqual(len(reference), 547)
         for name in LANG_FILES:
             self.assertEqual(set(self.langs[name]), reference, f"{name}: key set differs")
 
@@ -99,10 +99,18 @@ class TestLangFileIntegrity(unittest.TestCase):
                 self.assertNotIn(orphan, self.langs[name], f"{name}: orphan {orphan!r} remains")
 
     def test_identity_keys_with_braces_allowlist(self):
+        # Deliberately-identical keys: the blame prompt must stay English for the
+        # AI, and [OK]/[FAIL] are universal status markers from the MCP installer.
+        status_markers = {"  [OK] {editor}: {message}", "  [FAIL] {editor}: {message}"}
         for name in LANG_FILES:
-            identity = [k for k, v in self.langs[name].items() if k == v and "{" in k]
-            self.assertEqual(len(identity), 1, f"{name}: unexpected identity keys with braces")
-            self.assertIn("You are a Software Architect.", identity[0])
+            identity = {k for k, v in self.langs[name].items() if k == v and "{" in k}
+            markers = {k for k in identity if "[OK] {" in k or "[FAIL] {" in k}
+            self.assertEqual(markers, status_markers, f"{name}: unexpected status markers")
+            prompts = identity - markers
+            self.assertEqual(
+                len(prompts), 1, f"{name}: unexpected identity keys with braces"
+            )
+            self.assertTrue(prompts.pop().startswith("You are a Software Architect."))
 
 
 class TestPatternExtraction(unittest.TestCase):

@@ -179,8 +179,14 @@ class TestLoadExternalLinters(unittest.TestCase):
 
 
 class TestGenerateLinterReportContent(unittest.TestCase):
-    """Tests for the Markdown report generator."""
+    """Tests for the Markdown report generator.
 
+    TRANSLATIONS is pinned to {} (English) so assertions are independent of
+    the machine's OS locale — on a pt-BR machine the loaded dictionary would
+    otherwise produce Portuguese report headers.
+    """
+
+    @patch("src.i18n.TRANSLATIONS", {})
     def test_report_with_errors_and_warnings(self):
         from src.linter_engine import generate_linter_report_content
 
@@ -191,6 +197,7 @@ class TestGenerateLinterReportContent(unittest.TestCase):
         self.assertIn("- issue a", content)
         self.assertIn("- issue b", content)
 
+    @patch("src.i18n.TRANSLATIONS", {})
     def test_report_clean(self):
         from src.linter_engine import generate_linter_report_content
 

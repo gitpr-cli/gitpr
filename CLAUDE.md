@@ -192,7 +192,7 @@ pipenv run twine upload dist/*
 - NEVER skip hooks (`--no-verify`, `--no-gpg-sign`)
 - Commits must be atomic — one logical change per commit
 - Messages in English
-- Co-authorship in collaborative projects: `Co-Authored-By: Claude <noreply@anthropic.com>`
+- Not show Co-authorship in commit messages
 
 ## Task rules (Task Workflow)
 
