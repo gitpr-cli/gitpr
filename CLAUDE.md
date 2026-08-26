@@ -5,7 +5,7 @@
 **GitPR** is a Python CLI for automating Pull Requests, commits, code review, and issue creation using AI (Google Gemini and DeepSeek). Distributed via PyPI (`pip install gitpr-cli`) and as a standalone executable (PyInstaller).
 
 - **Author:** Natan Fiuza (contato@natanfiuza.dev.br)
-- **Current version:** 0.0.30
+- **Current version:** 0.0.37
 - **Python:** >= 3.10
 - **Main branch:** `main`
 - **Development branch:** `develop_natan`
@@ -87,23 +87,32 @@ docs/
 
 | Flag                     | Action                  | Pipeline                                                                 |
 |--------------------------|------------------------|---------------------------------------------------------------------------|
-| *(default)*              | PR description         | `git fetch` → diff against `origin/main` → AI → `.md`                    |
+| *(default)*              | PR publisher (TUI)     | `git fetch` → diff against `origin/main` → AI → `.md` → Textual TUI → POST to GitHub |
+| `--no-publish`           | PR description only    | Same as default, but saves the `.md` locally without opening the TUI       |
+| `--no-edit`              | Direct PR publish      | Same as default, but auto-commits and POSTs directly (skips the TUI)      |
+| `--base <branch>`        | PR base override       | Target base branch for the PR (overrides `PR_DEFAULT_BASE`)               |
 | `-c` / `--commit`        | Commit message         | `git diff HEAD` → AI → console (Conventional Commits)                     |
 | `-r` / `--review`        | Local code review      | `git diff HEAD` → AI + Linter → `.txt`                                    |
 | `-f` / `--fullreview`    | Full code review       | `git fetch` → diff against remote base → AI + Linter → `.txt`             |
 | `-i` / `--input`         | File audit             | Entire file → AI (uses `.gitpr.filereview.md`)                            |
-| `-l` / `--linter`        | Static linter          | `git diff` → YAML regex → console (no AI)                                 |
+| `-l` / `--linter`        | Static linter          | `git diff` → YAML regex + external linters → console/TUI (no AI)          |
+| `--linter-setup`         | Linter wizard          | Interactive setup of external linters (Checkstyle bridge presets)         |
 | `-is` / `--issue`        | Issue via TUI          | `git diff` → AI (draft) → Textual TUI → save .md or POST to GitHub       |
 | `-is -ht` / `--history`  | Epic/Release issue     | `git log` + PR cache → AI → TUI                                           |
 | `-is -b <file:lines>`    | Technical debt issue   | `git blame` timeline → AI → TUI                                           |
-| `--publish`              | PR publisher (TUI)     | `git fetch` → diff → AI → .md → Textual TUI → POST to GitHub             |
-| `--publish --no-edit`    | Direct PR publish      | Same as above, but skips TUI and POSTs directly                            |
 | `-b` / `--blame`         | Code archaeology       | `git blame` → AI classifies commits → timeline + summary                  |
-| `-s` / `--skill`         | Download templates      | Download `.gitpr.*.md` from GitHub (never overwrites)                     |
+| `-ch` / `--chat`         | Interactive chat       | `git diff` → Textual TUI (`ChatApp`) → pair programming with auto-patch   |
+| `--install`              | Setup wizard           | Interactive wizard for templates, hooks, MCP, and API keys                |
+| `-s` / `--skill`         | Download templates      | Download `.gitpr.*.md` into `.gitpr/skill/` (never overwrites)            |
 | `-ih` / `--installhooks` | Install hooks           | Download + install hooks in `.git/hooks/`                                  |
+| `--metrics` / `--dashboard` | Telemetry & analytics | Summary, `--export` CSV/JSON, `--purge` data, or `--dashboard` TUI      |
+| `--status`               | Environment status      | Report provider, keys, versions, and local configuration state            |
+| `--plugins`              | Plugin management       | List and manage global plugins (linter rules + MCP prompts)              |
+| `--mcp` / `gitpr-mcp`    | MCP server              | Starts the stdio Model Context Protocol server for IDE/agent integration  |
 | `-u` / `--update`        | Update                  | Check PyPI/GitHub Releases → hot-swap binary                              |
 | `-h` / `--help`          | Contextual help         | Alone: all options. With flag: feature-specific help + docs link          |
-| `--provider`             | Force AI provider       | `gemini` or `deepseek` (overrides default config)                          |
+| `--provider`             | Force AI provider       | `gemini`, `deepseek`, or `ollama` (overrides default config)              |
+| `--lang <lang>`          | Override language       | Forces interface language (`en_us`, `pt_br`, `pt_pt`, `es_es`, `fr_fr`)   |
 
 ## Stack
 

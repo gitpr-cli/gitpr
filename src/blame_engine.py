@@ -3,7 +3,7 @@ import click
 import re
 import os
 from datetime import datetime
-from src.core import get_current_branch, resolve_output_path
+from src.core import get_current_branch, get_skill_context, resolve_output_path
 from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __
@@ -77,8 +77,13 @@ def get_commit_info(commit_hash):
     return {"author": __("Unknown"), "date": __("Unknown"), "message": __("No message")}
 
 
-def analyze_commit_with_ai(commit_hash, file_path):
-    """Uses AI to read the diff and classify as ORIGIN or REFACTORING."""
+def analyze_commit_with_ai(commit_hash, file_path, sys_inst=None):
+    """Uses AI to read the diff and classify as ORIGIN or REFACTORING.
+
+    sys_inst: skill context pre-loaded once by run_blame_analysis() (avoids
+    repeating the confirmation message for every commit). When None, the
+    skill file is loaded silently (return_data/silent modes).
+    """
     diff = execute_git_show(commit_hash, file_path)
     if not diff:
         return {
@@ -94,11 +99,14 @@ def analyze_commit_with_ai(commit_hash, file_path):
     # Use the 'simple' model (Flash/Lite) to save money in the loop
     api_model = get_api_model(provider, task_complexity="simple")
 
-    skill_path = resolve_skill_path(".gitpr.blame.md")
-    if os.path.exists(skill_path):
-        with open(skill_path, "r", encoding="utf-8") as f:
-            sys_inst = f.read()
-    else:
+    if sys_inst is None:
+        # Silent modes: load the skill file without the confirmation message
+        skill_path = resolve_skill_path(".gitpr.blame.md")
+        if os.path.exists(skill_path):
+            with open(skill_path, "r", encoding="utf-8") as f:
+                sys_inst = f.read()
+
+    if not sys_inst:
         sys_inst = __(
             'You are a Software Architect. Analyze the diff and determine if it is the ORIGIN of the rule (new logic) or REFACTORING. Respond ONLY with JSON: {"status": "ORIGIN", "reason": "Explain what was introduced"} or {"status": "REFACTORING", "reason": "Explain what was changed"}'
         )
@@ -153,6 +161,12 @@ def run_blame_analysis(file_path, start_line, end_line, return_data=False):
             click.secho(__("⚠️ No traceable commits found in these lines."), fg="yellow")
         return [] if return_data else None
 
+    # Load the blame skill ONCE per run — passing it by parameter avoids the
+    # "found and loaded" message repeating for every commit analyzed.
+    # Silent modes (return_data) stay quiet and fall back to the internal
+    # silent load inside analyze_commit_with_ai.
+    skill_context = get_skill_context("blame") if not return_data else None
+
     if not return_data:
         click.secho(
             __(
@@ -177,7 +191,7 @@ def run_blame_analysis(file_path, start_line, end_line, return_data=False):
 
             seen_hashes.add(current_commit)
             info = get_commit_info(current_commit)
-            ai_analysis = analyze_commit_with_ai(current_commit, file_path)
+            ai_analysis = analyze_commit_with_ai(current_commit, file_path, skill_context)
 
             status = str(ai_analysis.get("status", "ORIGIN")).upper()
             reason = str(ai_analysis.get("reason", ""))

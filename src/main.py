@@ -158,7 +158,7 @@ HELP_MAP: dict[str, dict[str, str]] = {
         ),
     },
     "chat": {
-        "url": get_doc_url("chat-interativo.md"),
+        "url": get_doc_url("understanding_chat_functionality.md"),
         "title": __("Interactive Pair Programming Chat (--chat)"),
         "description": __(
             "Opens an interactive terminal (TUI) to chat with the AI about the current uncommitted changes. Features memory, auto-patching (F5), and live diff refresh (F2)."
@@ -172,7 +172,7 @@ HELP_MAP: dict[str, dict[str, str]] = {
         ),
     },
     "metrics": {
-        "url": get_doc_url("metricas_analytics_dashboard.md"),
+        "url": get_doc_url("metricas-telemetria.md"),
         "title": __("Metrics & Analytics (--metrics)"),
         "description": __("Export or purge local telemetry data for team analytics."),
     },

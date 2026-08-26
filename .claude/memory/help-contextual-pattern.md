@@ -30,3 +30,13 @@ acompanha o `-h`.
 3. A flag `-h` DEVE ser `is_flag=True, is_eager=False` (regular, não eager)
 4. Flags com `exists=True` (como `--input`) precisam de guard `not help_flag`
    na validação, já que o Click não bloqueia mais automaticamente
+
+**Gotcha de flags com hífen (corrigido em 2026-08-15):** o dispatcher fazia
+`locals().get(param_name)` usando o nome da flag como está no `HELP_MAP`, então
+nenhuma flag com hífen (`--linter-setup`, `--no-publish`, `--no-edit`,
+`--no-unstaged-check`) era encontrada — o Click converte o nome do parâmetro para
+snake_case. A correção é `param_name.replace('-', '_')` antes do lookup. Flags de
+palavra única sempre funcionaram, o que escondeu o bug por meses.
+
+Atenção: duas entradas do `HELP_MAP` apontam para docs inexistentes — ver
+[[claude-md-desatualizado-vs-architecture]].

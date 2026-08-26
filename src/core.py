@@ -617,7 +617,7 @@ def get_repo_name():
 
 
 def get_skill_context(action_type="pr"):
-    """Reads the correct context file based on the action (PR/Commit or Review)."""
+    """Reads the correct context file based on the action (PR/Commit/Review/Issue/Blame)."""
 
     # Define which file to look for
     if action_type == "commit":
@@ -628,6 +628,8 @@ def get_skill_context(action_type="pr"):
         target_file = ".gitpr.filereview.md"
     elif action_type == "issue":
         target_file = ".gitpr.issue.md"
+    elif action_type == "blame":
+        target_file = ".gitpr.blame.md"
     else:  # review or fullreview
         target_file = ".gitpr.review.md"
 
@@ -644,10 +646,10 @@ def get_skill_context(action_type="pr"):
     )
 
     if file_to_load:
+        nome_arquivo = os.path.basename(file_to_load)
         try:
             with open(file_to_load, "r", encoding="utf-8") as f:
                 conteudo = f.read()
-                nome_arquivo = os.path.basename(file_to_load)
                 click.secho(
                     __(
                         "🧠 File {file_name} (Skill) found and loaded!",
