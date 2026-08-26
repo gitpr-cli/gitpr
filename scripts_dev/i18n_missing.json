@@ -1,0 +1,584 @@
+{
+  "📝 Pre-save: AI payload saved to {filename}": [
+    [
+      "src\\ai_providers.py",
+      100
+    ],
+    [
+      "src\\ai_providers.py",
+      309
+    ]
+  ],
+  "\r❌ Critical error in Chat API ({provider}): {error}": [
+    [
+      "src\\ai_providers.py",
+      373
+    ]
+  ],
+  "\r⚠️ API instability ({provider}). Retrying ({attempt}/{max_retries})...": [
+    [
+      "src\\ai_providers.py",
+      201
+    ]
+  ],
+  "\r❌ Critical error contacting {provider} API after {max_retries} attempts: {error}": [
+    [
+      "src\\ai_providers.py",
+      216
+    ]
+  ],
+  "**File:** `{file_path}` (Lines {start_line}-{end_line})\n\n": [
+    [
+      "src\\blame_engine.py",
+      291
+    ]
+  ],
+  "\n**Summary:** {summary}\n": [
+    [
+      "src\\blame_engine.py",
+      348
+    ]
+  ],
+  "Analyze the diff of commit {commit_hash} and return the requested JSON.\n\n": [
+    [
+      "src\\blame_engine.py",
+      115
+    ]
+  ],
+  "  🤖 Consulting AI ({api_model}) about commit {commit_hash}...": [
+    [
+      "src\\blame_engine.py",
+      123
+    ]
+  ],
+  "\n📜 Consolidated Rule History (Lines {start_line}-{end_line}):": [
+    [
+      "src\\blame_engine.py",
+      238
+    ]
+  ],
+  "  🤖 Consulting AI ({api_model}) for the Executive Summary...": [
+    [
+      "src\\blame_engine.py",
+      331
+    ]
+  ],
+  "📍 File: {file_path} (Lines: {start_line} to {end_line})": [
+    [
+      "src\\blame_engine.py",
+      149
+    ]
+  ],
+  "\n[{date}] {icon} {status}: By {author} (Commit: {hash})": [
+    [
+      "src\\blame_engine.py",
+      252
+    ]
+  ],
+  "   └─ Message: \"{message}\"": [
+    [
+      "src\\blame_engine.py",
+      263
+    ]
+  ],
+  "✅ Unified report successfully saved: '{output_filename}'": [
+    [
+      "src\\blame_engine.py",
+      355
+    ]
+  ],
+  "   └─ AI Analysis: {reason}": [
+    [
+      "src\\blame_engine.py",
+      266
+    ]
+  ],
+  "📦 Skill file {filename} moved to .gitpr/skill/": [
+    [
+      "src\\config.py",
+      69
+    ]
+  ],
+  "Failed to validate token: {error}": [
+    [
+      "src\\config.py",
+      407
+    ]
+  ],
+  "Unexpected response from GitHub (HTTP {code})": [
+    [
+      "src\\config.py",
+      398
+    ]
+  ],
+  "Repository: {repo_name}\nBranch History Summary: {branch}\n\n": [
+    [
+      "src\\core.py",
+      1526
+    ]
+  ],
+  "📦 Huge diff detected! Processing in {count} batches (Map-Reduce)...": [
+    [
+      "src\\core.py",
+      925
+    ],
+    [
+      "src\\issue_engine.py",
+      189
+    ]
+  ],
+  "📄 {count} documentation file(s) excluded from diff (Smart Excludes).": [
+    [
+      "src\\core.py",
+      822
+    ],
+    [
+      "src\\issue_engine.py",
+      87
+    ]
+  ],
+  "⏳ Analyzing batch {current}/{total}...": [
+    [
+      "src\\core.py",
+      941
+    ],
+    [
+      "src\\issue_engine.py",
+      205
+    ]
+  ],
+  "Generate ONLY a JSON object in the format {json_format} containing a technical summary of what was changed in this part ({idx}) of the diff:\n": [
+    [
+      "src\\core.py",
+      951
+    ],
+    [
+      "src\\issue_engine.py",
+      215
+    ]
+  ],
+  "Failed to connect to GitHub: {error}": [
+    [
+      "src\\github_api.py",
+      67
+    ]
+  ],
+  "Generate the requested JSON object following the system instructions to {target_action}\n\n": [
+    [
+      "src\\issue_engine.py",
+      118
+    ],
+    [
+      "src\\issue_engine.py",
+      266
+    ]
+  ],
+  "🤖 Structuring Issue using {provider} ({api_model})...": [
+    [
+      "src\\issue_engine.py",
+      142
+    ]
+  ],
+  "You are a Senior Software Engineer acting as a Pair Programmer. Analyze the code provided and answer the user's questions clearly, objectively, and technically. Use Markdown to format code blocks. The current git diff is:\n\n{diff}": [
+    [
+      "src\\main.py",
+      1146
+    ]
+  ],
+  "\n🔍 Linter Packs ({count}):": [
+    [
+      "src\\main.py",
+      651
+    ]
+  ],
+  "\n💬 Custom Prompts ({count}):": [
+    [
+      "src\\main.py",
+      662
+    ]
+  ],
+  "\n✅ Success! The file '{output_filename}' was generated in the current folder.": [
+    [
+      "src\\main.py",
+      1401
+    ]
+  ],
+  "⚠️ {count} file(s) are not staged and will NOT be included in the commit.": [
+    [
+      "src\\main.py",
+      1607
+    ]
+  ],
+  "ℹ️ {count} file(s) are not staged. They will still be included in this analysis.": [
+    [
+      "src\\main.py",
+      1628
+    ]
+  ],
+  "✅ PR successfully created on GitHub:\n👉 {pr_url}": [
+    [
+      "src\\main.py",
+      1785
+    ],
+    [
+      "src\\ui\\pr_publish_app.py",
+      1330
+    ]
+  ],
+  "✅ Metrics exported: {count} events.": [
+    [
+      "src\\main.py",
+      588
+    ]
+  ],
+  "\n⚠️ The Linter generated {count} best practice warning(s):": [
+    [
+      "src\\main.py",
+      783
+    ]
+  ],
+  ">> Selected file: {file_path}": [
+    [
+      "src\\main.py",
+      895
+    ],
+    [
+      "src\\main.py",
+      990
+    ]
+  ],
+  "\n❌ Error: The file '{input}' was not found.": [
+    [
+      "src\\main.py",
+      1185
+    ]
+  ],
+  "\n✅ Code Review successfully generated: '{output_filename}'": [
+    [
+      "src\\main.py",
+      1370
+    ]
+  ],
+  "\n🚨 Validation failed! Found {count} critical error(s):": [
+    [
+      "src\\main.py",
+      769
+    ]
+  ],
+  "✅ {count} file(s) added to stage.": [
+    [
+      "src\\main.py",
+      1591
+    ]
+  ],
+  "[{date}] Commit {hash} by {author}:": [
+    [
+      "src\\main.py",
+      1034
+    ]
+  ],
+  "Action: {status}": [
+    [
+      "src\\main.py",
+      1035
+    ]
+  ],
+  "AI Reason: {reason}": [
+    [
+      "src\\main.py",
+      1036
+    ]
+  ],
+  "GitPR — Intelligent PR Automation and AI Code Review. Generate commit messages, review code, run linters, trace code origins, and create issues — all from your IDE.": [
+    [
+      "src\\mcp_server.py",
+      326
+    ]
+  ],
+  "List uncommitted file changes categorized as new (untracked), modified (unstaged modifications) or deleted. Returns structured JSON.": [
+    [
+      "src\\mcp_server.py",
+      398
+    ]
+  ],
+  "Get only the unstaged git diff (git diff without HEAD — compares the index against the working tree). Excludes staged changes. Untracked files are not shown; use list_unstaged_files for them.": [
+    [
+      "src\\mcp_server.py",
+      436
+    ]
+  ],
+  "Get the full diff of the current branch against the remote base branch (origin/main or origin/master). Runs git fetch first.": [
+    [
+      "src\\mcp_server.py",
+      467
+    ]
+  ],
+  "Generate a Conventional Commits commit message from the current git diff using AI. Returns a message like 'feat: add user authentication'.": [
+    [
+      "src\\mcp_server.py",
+      504
+    ]
+  ],
+  "Perform an AI code review on uncommitted local changes (git diff HEAD). Returns structured feedback with issues and improvement suggestions.": [
+    [
+      "src\\mcp_server.py",
+      565
+    ]
+  ],
+  "Perform a full AI code review comparing the entire current branch against origin/main. Runs git fetch automatically.": [
+    [
+      "src\\mcp_server.py",
+      623
+    ]
+  ],
+  "Generate a complete Pull Request description (title + body) from the full diff against origin/main. Uses AI to create a structured, professional PR document.": [
+    [
+      "src\\mcp_server.py",
+      674
+    ]
+  ],
+  "Run the static local linter (regex-based rules from .gitpr.linter.yml) on the current git diff. Returns error and warning counts with detailed messages.": [
+    [
+      "src\\mcp_server.py",
+      730
+    ]
+  ],
+  "Run AI-powered git blame analysis on a file region to trace the origin of business rules. Classifies each commit as ORIGIN (first introduction) or REFACTORING (later change).": [
+    [
+      "src\\mcp_server.py",
+      777
+    ]
+  ],
+  "Generate a structured Issue (What / Why / Where / How) from code context using AI. Supports three modes: diff (current changes), history (branch history), or blame (file region).": [
+    [
+      "src\\mcp_server.py",
+      839
+    ]
+  ],
+  "Full code review of all changes in the current branch against origin/main. Runs the full review tool and linter, then composes a comprehensive report.": [
+    [
+      "src\\mcp_server.py",
+      1203
+    ]
+  ],
+  "Generate a complete Pull Request description (title + body) from all changes in the current branch.": [
+    [
+      "src\\mcp_server.py",
+      1226
+    ]
+  ],
+  "Run the static linter (.gitpr.linter.yml rules) on current uncommitted changes and report violations.": [
+    [
+      "src\\mcp_server.py",
+      1238
+    ]
+  ],
+  "Generate a structured issue (What / Why / Where / How) from the current uncommitted changes.": [
+    [
+      "src\\mcp_server.py",
+      1250
+    ]
+  ],
+  "Investigate the history of a specific file region using git blame + AI to trace where business rules came from.": [
+    [
+      "src\\mcp_server.py",
+      1262
+    ]
+  ],
+  "Get current branch info, repository name, and list available skill templates for the project.": [
+    [
+      "src\\mcp_server.py",
+      1274
+    ]
+  ],
+  "Interactive prompt is unavailable in MCP mode. Configure your API keys in ~/.gitpr/.env before using MCP tools.": [
+    [
+      "src\\mcp_server.py",
+      180
+    ]
+  ],
+  "Get the current uncommitted git diff (git diff HEAD — includes both staged and unstaged changes). ": [
+    [
+      "src\\mcp_server.py",
+      367
+    ]
+  ],
+  "Resource '{filename}' not found. Run 'gitpr --skill' to download templates.": [
+    [
+      "src\\mcp_server.py",
+      937
+    ]
+  ],
+  "File not found: {file_path}": [
+    [
+      "src\\mcp_server.py",
+      805
+    ]
+  ],
+  "❌ Maximum attempts ({max}) reached. Cannot proceed without a valid token.": [
+    [
+      "src\\tui_issue.py",
+      142
+    ]
+  ],
+  "⚠️ The provided token is also invalid: {error_msg}": [
+    [
+      "src\\tui_issue.py",
+      130
+    ]
+  ],
+  "⚠️ GitHub token is no longer valid: {error_msg}": [
+    [
+      "src\\tui_issue.py",
+      94
+    ]
+  ],
+  "📋 Attempt {attempt} of {max}": [
+    [
+      "src\\tui_issue.py",
+      101
+    ]
+  ],
+  "📤 Message #{n} exported to {file}!": [
+    [
+      "src\\ui\\chat_app.py",
+      464
+    ]
+  ],
+  "📤 Session exported successfully to {file}!": [
+    [
+      "src\\ui\\chat_app.py",
+      674
+    ]
+  ],
+  "🧪 Auto-Patch: Code extracted from message #{n} and saved to {file}!": [
+    [
+      "src\\ui\\chat_app.py",
+      432
+    ]
+  ],
+  "⚡ Auto-Patch: Code extracted and saved to {file}!": [
+    [
+      "src\\ui\\chat_app.py",
+      643
+    ]
+  ],
+  "Msg #{n} focused | Ctrl+S: Auto-Patch | Ctrlhift+E: Export": [
+    [
+      "src\\ui\\chat_app.py",
+      358
+    ]
+  ],
+  "✅ Issue saved locally: {output_filename}": [
+    [
+      "src\\ui\\issue_app.py",
+      80
+    ]
+  ],
+  "✅ Issue successfully created on GitHub:\n👉 {issue_url}": [
+    [
+      "src\\ui\\issue_app.py",
+      120
+    ]
+  ],
+  "❌ Failed to connect to GitHub: {error}": [
+    [
+      "src\\ui\\issue_app.py",
+      151
+    ]
+  ],
+  "❌ GitHub API Error ({status_code}): {response_text}": [
+    [
+      "src\\ui\\issue_app.py",
+      138
+    ]
+  ],
+  "Scanning cache files... {done} / {total}": [
+    [
+      "src\\ui\\metrics_app.py",
+      302
+    ]
+  ],
+  "✅ PR merged successfully:\n👉 {pr_url}": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1211
+    ]
+  ],
+  "✅ PR saved locally: {output_filename}": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      661
+    ]
+  ],
+  "❌ Merge Conflict": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1224
+    ]
+  ],
+  "Pull Request has merge conflicts that must be resolved manually.\n\n👉 {pr_url}\n\nError: {error}": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1225
+    ]
+  ],
+  "❌ Merge Failed": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1233
+    ]
+  ],
+  "Merge failed with status {status}.\n\n👉 {pr_url}\n\nError: {error}": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1234
+    ]
+  ],
+  "{count} file(s) not staged. Select which ones to add:": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      209
+    ]
+  ],
+  "An open Pull Request already exists for this branch.\n\nPush and update the existing PR?": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1027
+    ]
+  ],
+  "✅ PR updated:\n👉 {pr_url}": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1111
+    ]
+  ],
+  "❌ Push failed: {error}": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1129
+    ],
+    [
+      "src\\ui\\pr_publish_app.py",
+      1136
+    ]
+  ],
+  "Open PR in Browser": [
+    [
+      "src\\ui\\pr_publish_app.py",
+      1248
+    ]
+  ],
+  "[notice] A new release of gitpr is available: {current_version} -> {latest_version}": [
+    [
+      "src\\updater.py",
+      118
+    ]
+  ],
+  "\n🚀 New GitPR version found (v{latest_version})!": [
+    [
+      "src\\updater.py",
+      164
+    ]
+  ]
+}

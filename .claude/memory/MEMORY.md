@@ -1,7 +1,7 @@
 # Memory Index
 
-> Gerado automaticamente por `/reports-to-memory` em 2026-08-15
-> Baseado em 59 relatórios de 1 branch
+> Gerado automaticamente por `/reports-to-memory` em 2026-08-26
+> Baseado em 75 relatórios (67 Claude Code + 8 Gemini) de 1 branch
 
 ## Project
 - [Help Contextual Pattern](help-contextual-pattern.md) — Padrão de help contextual com Click usando flag regular em vez de help_option (develop_natan, 2026-07-01)
@@ -25,6 +25,10 @@
 - [Smart Excludes Local por Projeto](smart-excludes-local-projeto.md) — Arquivo local .gitpr/conf/gitpr.smart-excludes.json mergeado com lista global no runtime (develop_natan, 2026-08-10)
 - [MCP Tool CLI Invocação Direta](mcp-tool-cli-invocacao-direta.md) — gitpr-mcp --tool <name> invoca tools MCP diretamente sem servidor stdio (develop_natan, 2026-08-11)
 - [Hook Templates Release Ordering](hook-templates-release-ordering.md) — Templates de hook devem chegar ao main antes do bump de __scripts_version__ (develop_natan, 2026-08-12)
+- [Linter Externo Checkstyle Bridge](linter-externo-checkstyle-bridge.md) — Bridge ignora exit code do linter e cruza XML só com linhas adicionadas do diff (develop_natan, 2026-08-15)
+- [Co-Author Trailer Injeção Pós-Cache](coauthor-trailer-injecao-pos-cache.md) — Trailer anexado no consumo, nunca no prompt/cache; na TUI só no momento do commit (develop_natan, 2026-08-16)
+- [i18n Auditoria AST e Categorias](i18n-auditoria-ast-categorias.md) — Auditoria via AST dos __() em src/; 3 categorias de falha (mangled/untranslated/missing) (develop_natan, 2026-08-19)
+- [Smart Excludes no sys_inst (Map-Reduce)](smart-excludes-sys-inst-mapreduce.md) — Lista de docs excluídos vai no sys_inst para sobreviver ao fatiamento do Map-Reduce (develop_natan, 2026-08-19)
 
 ## Reference
 - [Pre-Save Debug Flag](pre-save-debug-flag.md) — Flag oculta --pre-save que dumps payload completo da IA em JSON (develop_natan, 2026-07-18)
@@ -37,3 +41,9 @@
 - [Nothing to Commit Detection](nothing-to-commit-detection.md) — Detecção multilingue de "nothing to commit" no git commit — trata como sucesso, não erro (develop_natan, 2026-08-09)
 - [Merge Conflict Error Handling](merge-conflict-error-handling.md) — Falha de merge no PR publisher exibe modal de erro em vez de prosseguir silenciosamente (develop_natan, 2026-08-11)
 - [Staging Seleção Widget Erro Real](staging-selecao-widget-erro-real.md) — Modal de staging: seleção via dicionário paralelo dessincronizava e erros de git add eram engolidos (develop_natan, 2026-08-13)
+- [i18n Sync Regex e Chaves Mangled](i18n-sync-regex-chaves-mangled.md) — Regex antiga capturava kwargs do call-site dentro da chave; nunca casavam em runtime (develop_natan, 2026-08-15)
+- [CLAUDE.md/GEMINI.md Derivam do Código](claude-md-desatualizado-vs-architecture.md) — Arquivos auto-carregados envelhecem sem ninguém notar; conferir versão e flags contra src/ (corrigido em 2026-08-26) (develop_natan, 2026-08-18)
+- [MCP run_linter Trava](mcp-run-linter-hangs.md) — Hang das tools MCP resolvido com _offload (anyio); se travar, taskkill gitpr-mcp.exe + reiniciar editor (develop_natan, 2026-08-18)
+- [Textual Modal Callback Dead Pump](textual-modal-callback-dead-pump.md) — Push de modal em timer de tela removida liga callback do dismiss à fila morta; usar call_next no app (develop_natan, 2026-08-19)
+- [Langs OTA Stale Race](langs-ota-stale-race.md) — Mudanças em langs/*.json exigem bump de __lang_version__ pós-merge; senão clientes fixam arquivo velho sob marcador novo (develop_natan, 2026-08-19)
+- [Testes i18n Pin Translations](testes-i18n-pin-translations.md) — Testes que afirmam texto de usuário quebram em máquina pt-BR; fixar TRANSLATIONS={} via mock.patch (develop_natan, 2026-08-19)

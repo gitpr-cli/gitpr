@@ -136,5 +136,91 @@ class TestBlameMetrics(unittest.TestCase):
         self.assertIn("error_message", error_calls[0].kwargs)
 
 
+class TestBlameSkillLoading(unittest.TestCase):
+    """Tests that the blame skill is loaded once and passed to the per-commit analysis."""
+
+    def test_skill_loaded_once_and_passed_to_ai(self):
+        """Console mode: get_skill_context('blame') called once; content reaches analyze_commit_with_ai."""
+        from src.blame_engine import run_blame_analysis
+
+        with patch("src.blame_engine.get_skill_context") as mock_skill, \
+             patch("src.blame_engine.execute_git_blame") as mock_blame, \
+             patch("src.blame_engine.log_local_metric"), \
+             patch("src.blame_engine.get_commit_info") as mock_info, \
+             patch("src.blame_engine.analyze_commit_with_ai") as mock_ai, \
+             patch("src.blame_engine.call_ai_model") as mock_summary, \
+             patch("src.blame_engine.get_current_branch") as mock_branch, \
+             patch("builtins.open", unittest.mock.mock_open()):
+
+            mock_skill.return_value = "BLAME SKILL CONTENT"
+            mock_blame.return_value = ["abc12345"]
+            mock_info.return_value = {
+                "author": "Ana",
+                "date": "2026-01-10",
+                "message": "Initial rule.",
+            }
+            mock_ai.return_value = {
+                "status": "ORIGIN",
+                "reason": "New rule introduced.",
+            }
+            mock_summary.return_value = {"resumo": "Summary."}
+            mock_branch.return_value = "main"
+
+            run_blame_analysis("src/app.py", 10, 20, return_data=False)
+
+        mock_skill.assert_called_once_with("blame")
+        for call in mock_ai.call_args_list:
+            self.assertEqual(call.args[2], "BLAME SKILL CONTENT")
+
+    def test_return_data_mode_stays_silent(self):
+        """return_data mode must not call get_skill_context (no console message)."""
+        from src.blame_engine import run_blame_analysis
+
+        with patch("src.blame_engine.get_skill_context") as mock_skill, \
+             patch("src.blame_engine.execute_git_blame") as mock_blame, \
+             patch("src.blame_engine.log_local_metric"), \
+             patch("src.blame_engine.get_commit_info") as mock_info, \
+             patch("src.blame_engine.analyze_commit_with_ai") as mock_ai:
+
+            mock_blame.return_value = ["abc12345"]
+            mock_info.return_value = {
+                "author": "Ana",
+                "date": "2026-01-10",
+                "message": "Initial rule.",
+            }
+            mock_ai.return_value = {
+                "status": "ORIGIN",
+                "reason": "New rule introduced.",
+            }
+
+            run_blame_analysis("src/app.py", 10, 20, return_data=True)
+
+        mock_skill.assert_not_called()
+        mock_ai.assert_called_once()
+        # None → analyze_commit_with_ai falls back to the internal silent load
+        self.assertIsNone(mock_ai.call_args.args[2])
+
+    def test_analyze_silent_fallback_when_no_skill_passed(self):
+        """sys_inst=None: skill file is loaded silently; default persona when missing."""
+        from src.blame_engine import analyze_commit_with_ai
+        from src.i18n import __
+
+        with patch("src.blame_engine.execute_git_show", return_value="some diff"), \
+             patch("src.blame_engine.get_ai_provider", return_value="gemini"), \
+             patch("src.blame_engine.get_api_key", return_value="fake-key"), \
+             patch("src.blame_engine.get_api_model", return_value="gemini-flash"), \
+             patch("src.blame_engine.resolve_skill_path", return_value="/nonexistent/.gitpr.blame.md") as mock_resolve, \
+             patch("src.blame_engine.call_ai_model", return_value={"status": "ORIGIN", "reason": "r"}) as mock_ai:
+
+            analyze_commit_with_ai("abc12345", "src/app.py")
+
+        mock_resolve.assert_called_once_with(".gitpr.blame.md")
+        sys_inst = mock_ai.call_args.args[4]
+        expected = __(
+            'You are a Software Architect. Analyze the diff and determine if it is the ORIGIN of the rule (new logic) or REFACTORING. Respond ONLY with JSON: {"status": "ORIGIN", "reason": "Explain what was introduced"} or {"status": "REFACTORING", "reason": "Explain what was changed"}'
+        )
+        self.assertEqual(sys_inst, expected)
+
+
 if __name__ == "__main__":
     unittest.main()

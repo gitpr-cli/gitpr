@@ -1,14 +1,19 @@
 import subprocess
 import re
-import os
 import time
 import click
 from src.ai_providers import call_ai_model
 from src.cache import get_cached_response, save_cached_response
-from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
+from src.config import get_api_key, get_api_model, get_ai_provider
 from src.ai_providers import call_ai_model
 from src.i18n import __
-from src.core import estimate_token_count, split_diff_into_chunks, get_doc_url
+from src.core import (
+    estimate_token_count,
+    split_diff_into_chunks,
+    get_doc_url,
+    get_skill_context,
+    get_changed_docs_list,
+)
 
 
 def get_github_repo_info():
@@ -56,16 +61,43 @@ def generate_issue_content(context_text, context_type="diff"):
     # Use the advanced model to ensure Issue structure quality
     api_model = get_api_model(provider, task_complexity="advanced")
 
-    skill_path = resolve_skill_path(".gitpr.issue.md")
-    sys_inst = ""
-
-    if os.path.exists(skill_path):
-        with open(skill_path, "r", encoding="utf-8") as f:
-            sys_inst = f.read()
-    else:
+    # Load the issue skill with visual feedback (parity with the PR flow);
+    # the default Software Architect persona remains the fallback.
+    sys_inst = get_skill_context("issue")
+    if not sys_inst:
         sys_inst = __(
             "You are a Software Architect. Follow the What / Why / Where / How format to document the Issue."
         )
+
+    # ── Inject changed documentation file list as metadata (no content) ──
+    # Parity with the PR flow: the diff excludes docs via Smart Excludes
+    # pathspec, so the AI must know which docs were touched without their
+    # full prose/markup content (excluded from the diff).
+    if context_type == "diff":
+        try:
+            changed_docs = get_changed_docs_list()
+            if changed_docs:
+                docs_section = __(
+                    "Changed documentation (content excluded from diff):\n"
+                )
+                for doc in changed_docs:
+                    docs_section += f"- {doc}\n"
+                sys_inst = docs_section + "\n" + sys_inst
+                click.secho(
+                    __(
+                        "📄 {count} documentation file(s) excluded from diff (Smart Excludes).",
+                        count=len(changed_docs),
+                    ),
+                    fg="blue",
+                    dim=True,
+                )
+                click.secho(
+                    f"📚 {__('Learn more:')} {get_doc_url('smart-excludes.md')}",
+                    fg="blue",
+                    underline=True,
+                )
+        except Exception:
+            pass  # Non-critical — never block the main flow for this metadata
 
     # Adaptive Brain (Dynamic Prompt)
     if context_type == "blame":
