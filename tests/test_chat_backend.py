@@ -18,19 +18,20 @@ class TestLoadChatCommands:
         cache.parent.mkdir(parents=True)
         cache.write_text(json.dumps(data))
 
-        with patch("src.ai_providers.urllib.request.urlopen") as mock_open:
+        # Downloads go through the DNS-bounded helper, not urllib directly.
+        with patch("src.ai_providers.bounded_urlopen") as mock_fetch:
             result = load_chat_commands()
-            mock_open.assert_not_called()
+            mock_fetch.assert_not_called()
         assert result == data
 
     def test_download_and_cache(self, tmp_path, monkeypatch):
         monkeypatch.setattr("src.ai_providers.Path.home", lambda: tmp_path)
         monkeypatch.setattr("src.ai_providers.CURRENT_LANG", "pt_br")
         data = {"/explicar": "desc"}
-        mock_resp = MagicMock()
-        mock_resp.read.return_value = json.dumps(data).encode()
-        mock_resp.__enter__.return_value = mock_resp  # context-manager returns itself
-        with patch("src.ai_providers.urllib.request.urlopen", return_value=mock_resp):
+        with patch(
+            "src.ai_providers.bounded_urlopen",
+            return_value=json.dumps(data).encode(),
+        ):
             result = load_chat_commands()
         cached = json.loads(
             (tmp_path / ".gitpr" / "cache" / "chat_commands.pt_br.json").read_text()
@@ -39,13 +40,23 @@ class TestLoadChatCommands:
         assert cached == data
 
     def test_offline_fallback(self, tmp_path, monkeypatch):
+        """bounded_urlopen signals failure (and stalled DNS) by returning None."""
         monkeypatch.setattr("src.ai_providers.Path.home", lambda: tmp_path)
         monkeypatch.setattr("src.ai_providers.CURRENT_LANG", "en")
         (tmp_path / ".gitpr" / "cache").mkdir(parents=True)
-        with patch("src.ai_providers.urllib.request.urlopen", side_effect=Exception):
+        with patch("src.ai_providers.bounded_urlopen", return_value=None):
             result = load_chat_commands()
         assert "/explain" in result
         assert "/clear" in result
+
+    def test_stalled_dns_falls_back_without_hanging(self, tmp_path, monkeypatch):
+        """A stalled resolver must degrade to the offline defaults, not block."""
+        monkeypatch.setattr("src.ai_providers.Path.home", lambda: tmp_path)
+        monkeypatch.setattr("src.ai_providers.CURRENT_LANG", "en")
+        (tmp_path / ".gitpr" / "cache").mkdir(parents=True)
+        with patch("src.ai_providers.bounded_urlopen", return_value=None):
+            result = load_chat_commands()
+        assert result["/clear"].startswith("Clears")
 
 
 # ──────────────────────────────────────────────────────────────

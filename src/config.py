@@ -36,7 +36,13 @@ DEFAULT_CONFIG = {
     "PR_PUBLISH_LOG": "true",
     "GITPR_AUTO_MERGE": "false",
     "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md",
+    "GITPR_AI_TIMEOUT": "600",
+    "GITPR_LINTER_TIMEOUT": "120",
 }
+
+# Fallbacks used when the .env value is missing or not a positive number.
+_DEFAULT_AI_TIMEOUT = 600.0
+_DEFAULT_LINTER_TIMEOUT = 120.0
 
 
 def get_skill_dir():
@@ -91,6 +97,31 @@ def get_ai_provider():
     """Returns the configured default AI provider, or 'gemini' as fallback."""
     load_dotenv(ENV_FILE)
     return os.getenv("DEFAULT_AI_PROVIDER", "gemini").lower()
+
+
+def _positive_float(raw, fallback):
+    """Parses *raw* as a positive float, falling back on junk or non-positive values."""
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return fallback
+    return value if value > 0 else fallback
+
+
+def get_ai_timeout():
+    """Returns the AI SDK request timeout in seconds (GITPR_AI_TIMEOUT, default 600).
+
+    Bounds a single model call so a hung provider can never freeze the CLI
+    indefinitely. Invalid or non-positive values fall back to the default.
+    """
+    load_dotenv(ENV_FILE)
+    return _positive_float(os.getenv("GITPR_AI_TIMEOUT"), _DEFAULT_AI_TIMEOUT)
+
+
+def get_linter_timeout():
+    """Returns the external linter subprocess timeout in seconds (default 120)."""
+    load_dotenv(ENV_FILE)
+    return _positive_float(os.getenv("GITPR_LINTER_TIMEOUT"), _DEFAULT_LINTER_TIMEOUT)
 
 
 def coauthor_enabled():

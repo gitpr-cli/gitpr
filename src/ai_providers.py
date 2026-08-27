@@ -4,11 +4,31 @@ from datetime import datetime
 import click
 from google import genai
 from openai import OpenAI
-import urllib.request
 from pathlib import Path
 
+from src.net import bounded_urlopen
 from src.spinner import Spinner
 from src.i18n import __, CURRENT_LANG
+
+
+def _make_gemini_client(api_key, timeout_s):
+    """Builds a Gemini client with an explicit request timeout.
+
+    google-genai expresses http_options.timeout in MILLISECONDS.
+    """
+    return genai.Client(
+        api_key=api_key, http_options={"timeout": int(timeout_s * 1000)}
+    )
+
+
+def _make_openai_client(api_key, provider, timeout_s):
+    """Builds an OpenAI-compatible client (DeepSeek/Ollama) with a timeout in seconds."""
+    base_url = (
+        "https://api.deepseek.com"
+        if provider == "deepseek"
+        else "http://localhost:11434/v1"
+    )
+    return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout_s)
 
 
 # Hidden --pre-save debug flag: when enabled, every AI payload is dumped
@@ -88,8 +108,11 @@ def call_ai_model(
     Unified engine for AI calls.
     Supports 'gemini' and 'deepseek'.
     """
+    from src.config import get_ai_timeout
+
     max_retries = 3
     retry_delay = 2
+    timeout_s = get_ai_timeout()
 
     if PRE_SAVE_ENABLED:
         saved_file = _save_pre_save_payload(
@@ -112,7 +135,7 @@ def call_ai_model(
             try:
                 meta_raw = {}
                 if provider == "gemini":
-                    client = genai.Client(api_key=api_key)
+                    client = _make_gemini_client(api_key, timeout_s)
                     response = client.models.generate_content(
                         model=api_model,
                         contents=prompt,
@@ -141,12 +164,7 @@ def call_ai_model(
 
                 elif provider in ["deepseek", "ollama"]:
                     # DeepSeek and Ollama are 100% compatible with the OpenAI library.
-                    base_url = (
-                        "https://api.deepseek.com"
-                        if provider == "deepseek"
-                        else "http://localhost:11434/v1"
-                    )
-                    client = OpenAI(api_key=api_key, base_url=base_url)
+                    client = _make_openai_client(api_key, provider, timeout_s)
 
                     response = client.chat.completions.create(
                         model=api_model,
@@ -244,17 +262,22 @@ def load_chat_commands():
         except Exception:
             pass
 
-    # If it is not in the cache, download it from the remote repository
+    # If it is not in the cache, download it from the remote repository.
+    # bounded_urlopen also bounds DNS resolution, which urllib's timeout does not.
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "GitPR-Chat"})
-        with urllib.request.urlopen(req, timeout=5) as response:
-            data = json.loads(response.read().decode())
+        raw = bounded_urlopen(
+            url, timeout=5, headers={"User-Agent": "GitPR-Chat"}
+        )
+        if raw is not None:
+            data = json.loads(raw.decode())
             with open(cache_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return data
     except Exception:
-        # Safety fallback if the user is offline
-        return {
+        pass  # Fall through to the offline defaults below
+
+    # Safety fallback if the user is offline
+    return {
             "/explain": "Explains the diff line by line.",
             "/tests": "Generates unit tests for the changed functions.",
             "/optimize": "Analyzes cyclomatic complexity and performance.",
@@ -295,6 +318,10 @@ def call_ai_chat(
     Dedicated engine for the Interactive Chat.
     Keeps the historical context and returns free Markdown (does not force JSON).
     """
+    from src.config import get_ai_timeout
+
+    timeout_s = get_ai_timeout()
+
     if PRE_SAVE_ENABLED:
         saved_file = _save_pre_save_payload(
             "chat",
@@ -316,7 +343,7 @@ def call_ai_chat(
 
     try:
         if provider == "gemini":
-            client = genai.Client(api_key=api_key)
+            client = _make_gemini_client(api_key, timeout_s)
 
             # Format the history into the Gemini SDK format
             formatted_contents = []
@@ -341,12 +368,7 @@ def call_ai_chat(
             result_text = response.text
 
         elif provider in ["deepseek", "ollama"]:
-            base_url = (
-                "https://api.deepseek.com"
-                if provider == "deepseek"
-                else "http://localhost:11434/v1"
-            )
-            client = OpenAI(api_key=api_key, base_url=base_url)
+            client = _make_openai_client(api_key, provider, timeout_s)
 
             messages = [{"role": "system", "content": system_instruction}]
             for msg in chat_history:

@@ -1,9 +1,10 @@
 import os
 import json
 import locale
-import urllib.request
 from pathlib import Path
 from dotenv import load_dotenv, set_key
+
+from src.net import bounded_urlopen
 
 # Global path to the .env file
 env_path = Path.home() / ".gitpr" / ".env"
@@ -55,18 +56,21 @@ def get_translations(lang_code):
     if not local_file.exists() or needs_update:
         remote_url = f"https://raw.githubusercontent.com/natanfiuza/gitpr/main/langs/{lang_code}.json"
         try:
-            with urllib.request.urlopen(remote_url, timeout=3) as response:
-                content = response.read().decode("utf-8")
+            # bounded_urlopen also bounds DNS resolution, which urllib's
+            # timeout does not — a stalled resolver must never block startup.
+            raw = bounded_urlopen(remote_url, timeout=3)
+            if raw is not None:
+                with open(local_file, "w", encoding="utf-8") as f:
+                    f.write(raw.decode("utf-8"))
 
-            with open(local_file, "w", encoding="utf-8") as f:
-                f.write(content)
-
-            # Update .env with the new version after successful download
-            set_key(env_path, "LANG_VERSION", __lang_version__)
+                # Update .env with the new version after successful download
+                set_key(env_path, "LANG_VERSION", __lang_version__)
         except Exception:
-            # In case of failure (e.g.: offline), if the old file exists, use it
-            if not local_file.exists():
-                return {}
+            pass  # Fall through: the stale local file below is the fallback
+
+        # In case of failure (e.g.: offline), if the old file exists, use it
+        if not local_file.exists():
+            return {}
 
     if local_file.exists():
         try:

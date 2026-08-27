@@ -22,3 +22,8 @@ dist/
 *.txt
 gitpr_cli.egg-info
 
+# Coverage artifacts (pytest-cov)
+.coverage
+.coverage.*
+htmlcov/
+
