@@ -197,6 +197,7 @@ pipenv run twine upload dist/*
   - `fix: handle encoding in non-UTF8 environments`
 
 ### Commit rules
+- NEVER commit or push to git (no `git commit`, no `git push`, no `git add`) — leave all changes in the working tree for the user to review and commit
 - NEVER amend already-pushed commits
 - NEVER skip hooks (`--no-verify`, `--no-gpg-sign`)
 - Commits must be atomic — one logical change per commit

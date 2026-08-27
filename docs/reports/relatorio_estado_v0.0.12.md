@@ -335,22 +335,27 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 
 ## **🚧 Próximos Passos**
 
-* **91 chaves i18n ainda ausentes:** Usadas em código via `__()` mas ausentes dos dicionários (descrições das tools MCP, strings da TUI como "❌ Merge Conflict", mensagens do updater/ai_providers/github_api) — caem no fallback inglês. Prompts de IA devem permanecer em EN por design.
-* **Guard `missing == 0` no test_i18n.py:** Estender os testes com uma asserção que falhe quando novos `__()` sem entrada no dicionário entrarem (hoje só guarda paridade, mangled e chaves identidade).
-* **Merge `develop_natan` → `main`:** Publicar o bump `__lang_version__` v0.0.20 e as correções da TUI para os usuários — os `langs/*.json` corrigidos já estão no `main` via `e2f0fa0`; o marcador é o que dispara o refresh OTA.
-* **Sanity manual do fluxo TUI real:** Um teste end-to-end manual do PR Publisher com diff que quebra o linter (os testes headless mockam git/AI).
-* **Testes para PR Publisher:** Cobertura restante para `pr_publish_app.py` e `github_api.py` (progresso: `test_pr_publish_linter_modal.py` cobre o fluxo do modal de linter).
 * **Provedor Anthropic Claude:** Suporte direto à API do Claude (`claude-sonnet-5`).
 * **Gráficos em ASCII/Textual no Dashboard:** Adicionar histogramas de tempo e gráficos de tendência de tokens na TUI de métricas.
 * **Pipeline de Release no GitHub Actions:** Automação completa do build PyInstaller e envio de assets para o GitHub Releases.
 * **Comando `--init` local:** Seed de `.gitpr/conf/` com templates de configuração local (smart-excludes, linter, etc.).
 * **Mais provedores:** OpenAI direto, provedores locais adicionais.
-* **Hardening de subprocesso e timeouts:** Trocar o `shell=True` f-string de `_run_external_linter` por lista shlex/argv; limitar timeouts da SDK de IA em `ai_providers.py` (~600s default); aplicar o padrão DNS-bounding aos urllib de `i18n.py`/`ai_providers.py`.
-* **Linters externos no modo full-file:** Suporte a `external_linters` no `--input` e filtro por `file` no XML do Checkstyle (hoje o cruzamento usa apenas linha).
-* **Documentar `LINTER_PRESETS_VERSION`:** Marcador de versão dos presets no `.env` (padrão Version Marker).
-* **Referências de docs quebradas no HELP_MAP:** `chat-interativo.md` (arquivo real: `understanding_chat_functionality.md`) e `metricas_analytics_dashboard.md` (real: `metricas-telemetria.md`) — pequeno fix.
-* **CLAUDE.md desatualizado:** Ainda declara versão 0.0.30 (real: 0.0.37) e menciona a flag `--publish` que não existe mais — o ARCHITECTURE.md é a referência mais precisa.
-* **Scripts legacy de i18n:** `scripts/` one-offs (`fix_pt_br.py`, `fix_pt_br_pass2.py`, `final_fix.py`, `_temp_check_i18n.py`, `generate_lang_files.py`) contêm tabelas inertes de chaves mangled — candidatos a remoção/arquivamento.
+* **Extrator de i18n do `sync_i18n.py`:** O regex trunca literais com concatenação implícita (`__("a " "b")`) — rodar o script como está reescreveria 21 chaves pela metade e perderia suas traduções. Migrar para AST (o guard em `test_i18n.py` já usa AST e não depende do script).
+
+### ✅ Concluídos em 2026-08-27
+
+Ver [relatório da tarefa](../claude-code/reports/develop_natan/2026-08-27_specs_backlog_onda1.md).
+
+* ~~**91 chaves i18n ausentes**~~ — resolvido em `9a9affb`; auditoria via AST confirma 638 chaves em código = 638 nos 6 dicionários, 0 ausentes e 0 órfãs.
+* ~~**Guard `missing == 0` no `test_i18n.py`**~~ — `TestNoMissingKeys` (extração via AST) + guard de órfãs.
+* ~~**Sanity manual do fluxo TUI real**~~ — [docs/testing/manual_pr_publisher_e2e.md](../testing/manual_pr_publisher_e2e.md), 5 cenários com PASS/FAIL.
+* ~~**Testes para PR Publisher**~~ — `test_github_api.py` (9% → 100%) e `test_pr_publish_app.py` (51% → 63%).
+* ~~**Hardening de subprocesso e timeouts**~~ — `shell=True` eliminado, `GITPR_AI_TIMEOUT` (600s default), DNS-bounding formalizado em `src/net.py`.
+* ~~**Linters externos no modo full-file**~~ — `--input` roda `external_linters`; XML do Checkstyle cruzado por arquivo + linha.
+* ~~**Documentar `LINTER_PRESETS_VERSION`**~~ — [docs/version-markers.md](../version-markers.md).
+* ~~**Referências quebradas no HELP_MAP**~~ — já corrigidas anteriormente; os 15 destinos foram verificados e todos existem.
+* ~~**CLAUDE.md desatualizado**~~ — já em `0.0.37`; `--publish` ausente do CLAUDE.md, dos 5 READMEs, dos docs ativos e da CLI.
+* ~~**Scripts legacy de i18n**~~ — os 5 one-offs removidos (preservados no histórico do Git).
 
 ---
 

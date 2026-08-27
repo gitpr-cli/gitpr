@@ -6,6 +6,7 @@ parity across the six language files. Pure JSON tests — no network, no
 ~/.gitpr reads; src.i18n is imported lazily inside the smoke test only
 (its module init reads the user .env and may attempt a download).
 """
+import ast
 import importlib.util
 import json
 import re
@@ -20,6 +21,62 @@ LANG_FILES = ["pt_br.json", "pt_pt.json", "es_es.json", "es.json", "fr_fr.json",
 
 # Fragments the old regex captured into keys (call-site kwarg spillover).
 MANGLED_RE = re.compile(r'",\s*\w+=|\),\s*(?:fg|severity|classes)\s*=|,\s*\w+=len\(')
+
+# Sources scanned for live __() calls.
+SCAN_ROOTS = [REPO / "src", REPO / "run.py"]
+
+# Keys that are deliberately identical to their English text because they are
+# AI prompt fragments, not UI: they are concatenated into the model's system
+# instruction / context, where translating them would change model behaviour.
+# Anything NOT matching one of these prefixes is user-facing debt.
+AI_PROMPT_PREFIXES = (
+    "You are a Software Architect.",
+    "You are a Senior Software Engineer",
+    "Analyze the diff of commit {commit_hash}",
+    "Generate ONLY a JSON object in the format {json_format}",
+    "Generate the requested JSON object following the system instructions",
+    "Repository: {repo_name}",
+    # Blame timeline rows, assembled into the issue prompt at main.py:1032-1037
+    # ("Translate the dictionary list into AI-readable text").
+    "[{date}] Commit {hash} by {author}:",
+    "Action: {status}",
+    "AI Reason: {reason}",
+)
+
+
+def _extract_keys_ast(path, keys):
+    """Collects every __("literal") key in *path* using the AST.
+
+    Preferred over the regex in tests/sync_i18n.py for verification because the
+    parser folds implicit concatenation — __("a " "b") and multi-line literals
+    arrive as ONE Constant, matching the string the runtime lookup actually
+    builds. The regex captures only the first fragment, which made 21 real keys
+    look "missing" while their full forms looked like orphans.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except SyntaxError:
+        return
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            continue
+        if node.func.id != "__" or not node.args:
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            keys.add(first.value)
+
+
+def _keys_used_in_code():
+    """Every statically-resolvable __() key across src/ and run.py."""
+    keys = set()
+    for root in SCAN_ROOTS:
+        if root.is_file():
+            _extract_keys_ast(root, keys)
+        elif root.is_dir():
+            for path in root.rglob("*.py"):
+                _extract_keys_ast(path, keys)
+    return keys
 
 
 def _load_repair_script():
@@ -62,8 +119,15 @@ class TestLangFileIntegrity(unittest.TestCase):
             self.assertEqual(hits, [], f"{name}: mangled keys remain")
 
     def test_key_parity_and_count(self):
+        """Every language file must expose the exact same key set.
+
+        Parity is the real invariant. The previous hard-coded total (547) went
+        stale the moment 91 legitimate keys landed in 9a9affb, failing with a
+        number that said nothing about correctness. A floor still catches a
+        truncating write that wipes most of a file.
+        """
         reference = set(self.langs["pt_br.json"])
-        self.assertEqual(len(reference), 547)
+        self.assertGreater(len(reference), 500, "lang files look truncated")
         for name in LANG_FILES:
             self.assertEqual(set(self.langs[name]), reference, f"{name}: key set differs")
 
@@ -107,18 +171,102 @@ class TestLangFileIntegrity(unittest.TestCase):
                 self.assertNotIn(orphan, self.langs[name], f"{name}: orphan {orphan!r} remains")
 
     def test_identity_keys_with_braces_allowlist(self):
-        # Deliberately-identical keys: the blame prompt must stay English for the
-        # AI, and [OK]/[FAIL] are universal status markers from the MCP installer.
+        """Untranslated keys are only tolerated for AI prompts and status markers.
+
+        [OK]/[FAIL] are universal markers from the MCP installer. Everything else
+        must be an AI prompt fragment (see AI_PROMPT_PREFIXES) — those feed the
+        model's instructions, so translating them would change its behaviour.
+        A new identity key that is NOT a prompt is user-facing untranslated debt
+        and fails here by name.
+        """
         status_markers = {"  [OK] {editor}: {message}", "  [FAIL] {editor}: {message}"}
         for name in LANG_FILES:
             identity = {k for k, v in self.langs[name].items() if k == v and "{" in k}
             markers = {k for k in identity if "[OK] {" in k or "[FAIL] {" in k}
             self.assertEqual(markers, status_markers, f"{name}: unexpected status markers")
-            prompts = identity - markers
+
+            unexplained = [
+                key
+                for key in identity - markers
+                if not key.startswith(AI_PROMPT_PREFIXES)
+            ]
             self.assertEqual(
-                len(prompts), 1, f"{name}: unexpected identity keys with braces"
+                unexplained,
+                [],
+                f"{name}: untranslated user-facing key(s) — translate them, or add "
+                f"the prefix to AI_PROMPT_PREFIXES if they are AI prompts: {unexplained}",
             )
-            self.assertTrue(prompts.pop().startswith("You are a Software Architect."))
+
+
+class TestNoMissingKeys(unittest.TestCase):
+    """Guards that every __() call in the source has a dictionary entry.
+
+    This is the `missing == 0` condition: previously the suite only checked
+    parity, mangled keys and identity keys, so a NEW __() call with no entry
+    slipped through silently and fell back to English at runtime.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.langs = _load_langs()
+        cls.code_keys = _keys_used_in_code()
+
+    def test_extraction_found_keys(self):
+        """Sanity: a broken extractor must fail loudly, not vacuously pass."""
+        self.assertGreater(len(self.code_keys), 400, "AST extraction found too few keys")
+
+    def test_no_missing_keys(self):
+        for name in LANG_FILES:
+            data = self.langs[name]
+            missing = sorted(k for k in self.code_keys if k not in data)
+            self.assertEqual(
+                missing,
+                [],
+                f"{name}: {len(missing)} __() key(s) have no entry — "
+                f"run `python tests/sync_i18n.py` and translate them: "
+                f"{[k[:70] for k in missing[:5]]}",
+            )
+
+    def test_no_orphan_keys(self):
+        """Keys no __() call references any more are dead weight — drop them."""
+        for name in LANG_FILES:
+            orphans = sorted(k for k in self.langs[name] if k not in self.code_keys)
+            self.assertEqual(
+                orphans,
+                [],
+                f"{name}: {len(orphans)} orphan key(s) no longer used in code: "
+                f"{[k[:70] for k in orphans[:5]]}",
+            )
+
+    def test_missing_key_is_detected(self):
+        """The guard's comparison must actually fire on an unknown key.
+
+        Kept isolated from the real dictionaries so it asserts the detection
+        logic itself, not the repository's current translation state.
+        """
+        fake = "__GITPR_TEST_KEY_THAT_DOES_NOT_EXIST__ {x}"
+        data = {"known key": "chave conhecida"}
+        code_keys = {"known key", fake}
+
+        missing = sorted(k for k in code_keys if k not in data)
+        self.assertEqual(missing, [fake])
+
+    def test_ast_extractor_joins_implicit_concatenation(self):
+        """Adjacent/multi-line literals must resolve to the full runtime key.
+
+        The regex in tests/sync_i18n.py stops at the first fragment, which is
+        why 21 keys looked missing before this extractor replaced it here.
+        """
+        import tempfile
+
+        source = 'from src.i18n import __\n__("part one " "and part two {n}", n=1)\n'
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp) / "probe.py"
+            probe.write_text(source, encoding="utf-8")
+            keys = set()
+            _extract_keys_ast(probe, keys)
+
+        self.assertEqual(keys, {"part one and part two {n}"})
 
 
 class TestPatternExtraction(unittest.TestCase):

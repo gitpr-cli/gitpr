@@ -1,9 +1,11 @@
 import re
 import fnmatch
+import shlex
+import shutil
 import subprocess
 import os
 import xml.etree.ElementTree as ET
-from src.config import load_linter_rules, load_external_linters
+from src.config import load_linter_rules, load_external_linters, get_linter_timeout
 from src.i18n import __
 from src.metrics import log_local_metric
 
@@ -69,18 +71,44 @@ def _apply_rule(rule, code_line, line_number, current_file, alerts):
         )
 
 
-def _run_external_linter(command, file_path):
-    """Executes an external linter command and returns its stdout (Checkstyle XML)."""
+def _split_command(command):
+    """Splits a configured linter command string into an argv list.
+
+    Uses POSIX quoting rules (so "--report=checkstyle" loses its quotes and
+    quoted paths stay whole) but with backslash escaping DISABLED, otherwise
+    Windows paths like C:\\tools\\lint.exe would be mangled into C:toolslint.exe.
+    """
+    lexer = shlex.shlex(command, posix=True)
+    lexer.whitespace_split = True
+    lexer.escape = ""
+    return list(lexer)
+
+
+def _run_external_linter(command, file_path, timeout=None):
+    """Executes an external linter command and returns its stdout (Checkstyle XML).
+
+    The command runs as an argv list WITHOUT a shell, so metacharacters in the
+    configured command or in the target path are never interpreted (a file named
+    'a; rm -rf ~' is passed as one literal argument).  Because CreateProcess only
+    auto-appends .exe, the executable is resolved through shutil.which() so
+    PATHEXT shims such as npx.cmd keep working on Windows without shell=True.
+    """
     try:
-        # Resolve the command by injecting the target file
-        full_command = f'{command} "{file_path}"'
+        argv = _split_command(command)
+        if not argv:
+            return ""
+
+        resolved = shutil.which(argv[0])
+        if resolved:
+            argv[0] = resolved
+
+        argv.append(file_path)
 
         result = subprocess.run(
-            full_command,
-            shell=True,
+            argv,
             capture_output=True,
             stdin=subprocess.DEVNULL,
-            timeout=120,
+            timeout=timeout if timeout is not None else get_linter_timeout(),
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -92,7 +120,11 @@ def _run_external_linter(command, file_path):
 
 
 def _parse_checkstyle_xml(xml_content):
-    """Extracts errors from Checkstyle XML into a dictionary list."""
+    """Extracts errors from Checkstyle XML into a dictionary list.
+
+    Each entry carries the owning <file name=...> so callers can attribute a
+    violation to its source file instead of matching on line number alone.
+    """
     results = []
     if not xml_content or not xml_content.strip():
         return results
@@ -100,6 +132,7 @@ def _parse_checkstyle_xml(xml_content):
     try:
         root = ET.fromstring(xml_content)
         for file_node in root.findall("file"):
+            source_file = file_node.get("name", "")
             for error_node in file_node.findall("error"):
                 try:
                     line = int(error_node.get("line", 0))
@@ -107,6 +140,7 @@ def _parse_checkstyle_xml(xml_content):
                     continue
                 results.append(
                     {
+                        "file": source_file,
                         "line": line,
                         "severity": error_node.get("severity", "error").lower(),
                         "message": error_node.get("message", ""),
@@ -115,6 +149,61 @@ def _parse_checkstyle_xml(xml_content):
     except ET.ParseError:
         pass
     return results
+
+
+def _checkstyle_file_matches(reported_path, target_path):
+    """True when a Checkstyle <file name=...> refers to *target_path*.
+
+    Checkstyle reports absolute paths while the diff yields repo-relative ones,
+    so the comparison is suffix-based over normalized separators.  A report with
+    no name attribute cannot be discriminated and is accepted, so a linter that
+    omits it never silently loses every violation.
+    """
+    if not reported_path:
+        return True
+
+    reported = os.path.normpath(reported_path).replace("\\", "/").lower()
+    target = os.path.normpath(target_path).replace("\\", "/").lower()
+
+    return (
+        reported == target
+        or reported.endswith("/" + target)
+        or target.endswith("/" + reported)
+    )
+
+
+def _collect_external_alerts(
+    external_linters, file_path, file_extension, alerts, allowed_lines=None
+):
+    """Runs every external linter matching *file_extension* against *file_path*.
+
+    Violations are attributed by file AND line: the file guard drops results a
+    linter reports for OTHER files (project-wide configs, followed imports),
+    which previously leaked in whenever their line number happened to collide
+    with an added line.  When *allowed_lines* is None (full-file mode) every
+    line of the target file counts; otherwise only the diff's added lines do.
+    """
+    for ext_linter in external_linters:
+        if file_extension not in ext_linter.get("extensions", []):
+            continue
+
+        command = ext_linter.get("command")
+        if not command:
+            continue
+
+        xml_output = _run_external_linter(command, file_path)
+
+        for err in _parse_checkstyle_xml(xml_output):
+            if not _checkstyle_file_matches(err["file"], file_path):
+                continue
+            if allowed_lines is not None and err["line"] not in allowed_lines:
+                continue
+
+            msg = f"🚨 [{ext_linter.get('name', 'External linter')}] {err['message']} ({file_path}, Line {err['line']})"
+            if err["severity"] == "warning":
+                alerts["warnings"].append(msg)
+            else:
+                alerts["errors"].append(msg)
 
 
 def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
@@ -152,6 +241,17 @@ def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
                 if not _is_rule_applicable(rule, current_file, file_extension):
                     continue
                 _apply_rule(rule, code_line, i, current_file, alerts)
+
+        # External linters audit the whole file here: with no diff to intersect,
+        # every violation the linter reports for this file is in scope.
+        if external_linters:
+            _collect_external_alerts(
+                external_linters,
+                current_file,
+                file_extension,
+                alerts,
+                allowed_lines=None,
+            )
 
         log_local_metric(
             command="linter",
@@ -204,24 +304,13 @@ def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
         for f_path, modified_lines in modified_files.items():
             f_ext = f_path.split(".")[-1] if "." in f_path else ""
 
-            for ext_linter in external_linters:
-                if f_ext not in ext_linter.get("extensions", []):
-                    continue
-
-                command = ext_linter.get("command")
-                if not command:
-                    continue
-
-                xml_output = _run_external_linter(command, f_path)
-                ext_errors = _parse_checkstyle_xml(xml_output)
-
-                for err in ext_errors:
-                    if err["line"] in modified_lines:
-                        msg = f"🚨 [{ext_linter.get('name', 'External linter')}] {err['message']} ({f_path}, Line {err['line']})"
-                        if err["severity"] == "warning":
-                            alerts["warnings"].append(msg)
-                        else:
-                            alerts["errors"].append(msg)
+            _collect_external_alerts(
+                external_linters,
+                f_path,
+                f_ext,
+                alerts,
+                allowed_lines=set(modified_lines),
+            )
 
     log_local_metric(
         command="linter",

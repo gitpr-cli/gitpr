@@ -123,6 +123,8 @@ The visual interfaces live in `src/ui/` and follow common patterns: state return
 
 Remote resources (translations, thinking words, smart excludes, linter presets, hook scripts) are re-downloaded in bulk when the version markers (`__lang_version__`, `__scripts_version__` in `updater.py`) change. The installed hooks are compared against `SCRIPTS_VERSION` + `SCRIPTS_LANG` in `.env` and **silently auto-synced** on every run (respecting the user's language).
 
+The five markers (`LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`, `LINTER_PRESETS_VERSION`, `SCRIPTS_VERSION`), what each one caches and the correct order for publishing a change are documented in **[version-markers.md](version-markers.md)**.
+
 ### **17. Auto-Update System**
 
 Built with PyInstaller packaging, the `updater.py` module checks the repository's *Releases* on GitHub. If a new version exists, the executable downloads the new binary, replaces itself (*hot-swap*) and relaunches the command seamlessly — with automatic rollback on failure. Daily cached check (`~/.gitpr/update_cache.json`) and connection guard (socket `8.8.8.8:53`) before any network operation.
