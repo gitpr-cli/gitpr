@@ -335,6 +335,34 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - `get_cached_pr_descriptions()` filters by both `repo_name` AND `branch_name`
 - Prevents mixing caches from different projects with same branch names
 
+### MCP Server (IDE/agent integration)
+- `gitpr-mcp` (or `--mcp`) starts the stdio MCP server for IDE/agent integration
+- `gitpr-mcp --list` prints the full registry (tools, resources, prompts) as JSON without starting the server
+- `gitpr-mcp --tool <name>` invokes a single MCP tool directly, without the stdio server (CLI mode)
+- Server stdout is monkey-patched to isolate the JSON-RPC stream from prints
+- Tools run on an `anyio` offload thread (`_offload`) to avoid blocking the event loop; if a tool hangs in the IDE, kill `gitpr-mcp.exe` and restart the editor
+
+**Tools (12):**
+
+| Tool | Action | Parameters |
+|------|--------|------------|
+| `get_git_context` | Current branch, repo name, remote origin URL | — |
+| `analyze_diff` | `git diff HEAD` — staged + unstaged, line-level | — |
+| `list_unstaged_files` | Uncommitted files as new/modified/deleted JSON | — |
+| `analyze_unstaged_diff` | `git diff` (index vs working tree), excludes staged | — |
+| `get_full_diff` | Full diff of branch vs `origin/main` (runs `git fetch`) | — |
+| `generate_commit_message` | Conventional Commits message from current diff | `provider`, `diff_text` |
+| `review_code` | AI review of uncommitted changes (`git diff HEAD`) | `provider`, `diff_text` |
+| `full_review` | AI review of entire branch vs `origin/main` | `provider` |
+| `generate_pr_description` | PR title + body from full diff vs `origin/main` | `provider` |
+| `run_linter` | Static linter (`.gitpr.linter.yml` rules) on current diff | — |
+| `analyze_blame` | AI blame archaeology on a file region | `file_path`, `start_line`, `end_line` |
+| `generate_issue` | Structured issue (What/Why/Where/How) | `context_type`: `diff`/`history`/`blame` |
+
+**Resources (16):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
+
+**Prompts (7):** Review PR, Generate Commit Message, Create PR Description, Run Code Linter, Create Issue from Diff, Trace Code Origin, Explore Project Context
+
 ## Behavior Guidelines
 
 **Tradeoff:** These guidelines favor caution over speed. Use judgment for trivial tasks.
