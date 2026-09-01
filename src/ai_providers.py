@@ -6,7 +6,7 @@ from google import genai
 from openai import OpenAI
 from pathlib import Path
 
-from src.net import bounded_urlopen
+from src.net import bounded_resolve, bounded_urlopen
 from src.spinner import Spinner
 from src.i18n import __, CURRENT_LANG
 
@@ -16,6 +16,7 @@ def _make_gemini_client(api_key, timeout_s):
 
     google-genai expresses http_options.timeout in MILLISECONDS.
     """
+    bounded_resolve("generativelanguage.googleapis.com")
     return genai.Client(
         api_key=api_key, http_options={"timeout": int(timeout_s * 1000)}
     )
@@ -28,6 +29,8 @@ def _make_openai_client(api_key, provider, timeout_s):
         if provider == "deepseek"
         else "http://localhost:11434/v1"
     )
+    if provider == "deepseek":
+        bounded_resolve("api.deepseek.com")
     return OpenAI(api_key=api_key, base_url=base_url, timeout=timeout_s)
 
 

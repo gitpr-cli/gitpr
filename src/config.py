@@ -36,12 +36,12 @@ DEFAULT_CONFIG = {
     "PR_PUBLISH_LOG": "true",
     "GITPR_AUTO_MERGE": "false",
     "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md",
-    "GITPR_AI_TIMEOUT": "600",
+    "GITPR_AI_TIMEOUT": "180",
     "GITPR_LINTER_TIMEOUT": "120",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
-_DEFAULT_AI_TIMEOUT = 600.0
+_DEFAULT_AI_TIMEOUT = 180.0
 _DEFAULT_LINTER_TIMEOUT = 120.0
 
 
