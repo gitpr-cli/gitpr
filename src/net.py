@@ -11,6 +11,7 @@ This module is intentionally dependency-free: ``src.i18n`` imports it, so
 it must never import back into the GitPR package.
 """
 
+import socket
 import threading
 import urllib.request
 
@@ -43,3 +44,31 @@ def bounded_urlopen(url, timeout=3, hard_timeout=DEFAULT_HARD_TIMEOUT, headers=N
     if fetcher.is_alive() or "error" in result:
         return None  # Stalled DNS or failed request — caller uses its fallback
     return result.get("data")
+
+
+def bounded_resolve(host, timeout=DEFAULT_HARD_TIMEOUT):
+    """Resolve *host* within a hard wall-clock bound, DNS stalls included.
+
+    Python socket timeouts do not cover ``getaddrinfo()``: on Windows a
+    stalled resolver can block for minutes, freezing a client before a
+    single byte is sent.  Runs the lookup on a daemon thread and raises
+    ``socket.gaierror`` when it does not answer within *timeout* seconds
+    so AI client factories fail fast instead of hanging the tool call.
+    """
+    result = {}
+
+    def _lookup():
+        try:
+            result["addrs"] = socket.getaddrinfo(host, None)
+        except Exception as exc:
+            result["error"] = exc
+
+    resolver = threading.Thread(target=_lookup, daemon=True)
+    resolver.start()
+    resolver.join(timeout)
+
+    if "error" in result:
+        raise result["error"]
+    if resolver.is_alive() or "addrs" not in result:
+        raise socket.gaierror(f"DNS resolution timed out for {host}")
+    return result["addrs"]

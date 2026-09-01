@@ -13,6 +13,8 @@ import threading
 import unittest
 from unittest.mock import patch, MagicMock
 
+import click
+
 # Import after patching checks — the mcp_server module does not call
 # _patch_output() at import time (only inside main()), so importing is safe.
 from src import mcp_server
@@ -90,6 +92,18 @@ class TestOutputPatching(unittest.TestCase):
         mcp_server._unpatch_output()
         # sys.exit should be the original (would really exit, but we can check identity)
         self.assertIs(sys.exit, mcp_server._original_exit)
+
+    def test_patch_silent_discards_output(self):
+        """Silent mode (CLI --tool) drops stdout writes and click output."""
+        mcp_server._patch_output(silent=True)
+        try:
+            with patch.object(sys.stderr, "write") as mock_stderr:
+                sys.stdout.write("spinner noise")
+                sys.stdout.flush()
+                click.secho("cache hint", fg="green")
+                mock_stderr.assert_not_called()
+        finally:
+            mcp_server._unpatch_output()
 
 
 class TestGitContextTool(unittest.TestCase):

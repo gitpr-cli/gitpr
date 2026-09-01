@@ -62,13 +62,22 @@ class _MCPStdout:
     Exposes the *real* stdout buffer via a .buffer property so the MCP
     stdio_server transport can open its own TextIOWrapper around the
     raw OS-level stdout file descriptor — bypassing this redirect entirely.
+
+    When *silent* is True (CLI ``--tool`` mode) writes are discarded
+    instead of forwarded to stderr: the CLI answer must be a bare JSON
+    payload, free of spinner frames, cache hints and skill notices.
     """
 
+    def __init__(self, silent=False):
+        self._silent = silent
+
     def write(self, text):
-        sys.stderr.write(text)
+        if not self._silent:
+            sys.stderr.write(text)
 
     def flush(self):
-        sys.stderr.flush()
+        if not self._silent:
+            sys.stderr.flush()
 
     @property
     def buffer(self):
@@ -110,20 +119,23 @@ _original_prompt = None
 _original_style = None
 
 
-def _patch_output():
+def _patch_output(silent=False):
     """Apply remaining output patches: click functions, exit, and prompt.
 
     sys.stdout is redirected to _MCPStdout at module level (before any
     src.* imports), but this function re-applies the redirect in case
     _unpatch_output() was called (e.g. during testing).
+
+    When *silent* is True (CLI ``--tool`` mode) the stdout sink and the
+    click helpers become no-ops: the tool call must emit only its JSON.
     """
     global _original_stdout_write, _original_stdout_flush
     global _original_secho, _original_echo, _original_style
     global _original_exit, _original_prompt
 
     # --- Re-apply stdout guard (idempotent — safe if already applied) ---
-    if not isinstance(sys.stdout, _MCPStdout):
-        sys.stdout = _MCPStdout()
+    if not isinstance(sys.stdout, _MCPStdout) or silent:
+        sys.stdout = _MCPStdout(silent=silent)
 
     # --- Save originals ---
     _original_stdout_write = sys.stdout.write
@@ -136,6 +148,8 @@ def _patch_output():
 
     # --- Patch click output functions to write to stderr ---
     def _mcp_secho(message=None, **kwargs):
+        if silent:
+            return
         kwargs.pop("fg", None)
         kwargs.pop("bg", None)
         kwargs.pop("bold", None)
@@ -153,6 +167,8 @@ def _patch_output():
                 print(message, file=sys.stderr)
 
     def _mcp_echo(message=None, **kwargs):
+        if silent:
+            return
         kwargs["err"] = True
         try:
             _original_echo(message, **kwargs)
@@ -1878,7 +1894,8 @@ def _run_tool(tool_name: str, tool_args_json: str = "") -> int:
         return 1
 
     # --- Execute: mirror server mode (patch output → load .env → safe call) ---
-    _patch_output()
+    # Silent: the CLI answer must be a bare JSON payload on stdout.
+    _patch_output(silent=True)
     _init_config()
     try:
         result = _safe_call(entry["func"], **tool_args)
