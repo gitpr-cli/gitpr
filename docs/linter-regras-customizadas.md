@@ -114,6 +114,14 @@ The GitPR CLI does not need to reinvent the wheel. If your project already uses 
 
 For this, the external linter must support report output in `checkstyle` format (universal standard in CI/CD).
 
+### **External Linter Timeout**
+
+Each external linter subprocess is bounded by a **120-second timeout**
+(configurable via `GITPR_LINTER_TIMEOUT` in `~/.gitpr/.env`). If a linter
+exceeds the bound, it is skipped — its violations are not included in the
+report — instead of blocking the whole review. Invalid or non-positive values
+fall back to the 120s default.
+
 ### **Quick Setup (--linter-setup)**
 
 Instead of configuring the YAML manually, you can use our interactive wizard:

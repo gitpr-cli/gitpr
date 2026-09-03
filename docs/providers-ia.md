@@ -75,6 +75,12 @@ Both providers are configured for deterministic output:
 | **Top P** | 0.1 |
 | **Output format** | Structured JSON |
 | **Retry** | 3 attempts, 2s interval |
+| **Timeout** | 180s per call (configurable via `GITPR_AI_TIMEOUT` in `~/.gitpr/.env`) |
 | **Cache** | MD5 (identical responses do not consume quota) |
+
+Each model call is bounded by a **180-second timeout** (configurable via
+`GITPR_AI_TIMEOUT` in `~/.gitpr/.env`), so a hung provider fails fast with a
+visible error instead of freezing the CLI. Invalid or non-positive values fall
+back to the 180s default.
 
 > **Note:** See also the [main documentation (README.md)](../README.md) for initial API key setup instructions.

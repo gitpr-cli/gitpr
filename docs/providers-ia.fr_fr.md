@@ -75,6 +75,13 @@ Les deux fournisseurs sont configurés pour une sortie déterministe :
 | **Top P** | 0.1 |
 | **Format de sortie** | JSON structuré |
 | **Retry** | 3 tentatives, intervalle de 2s |
+| **Timeout** | 180s par appel (configurable via `GITPR_AI_TIMEOUT` dans `~/.gitpr/.env`) |
 | **Cache** | MD5 (les réponses identiques ne consomment pas de quota) |
+
+Chaque appel de modèle est limité par un **délai d'attente (timeout) de
+180 secondes** (configurable via `GITPR_AI_TIMEOUT` dans `~/.gitpr/.env`),
+garantissant qu'un fournisseur bloqué échoue rapidement avec une erreur visible,
+au lieu de figer la CLI. Les valeurs invalides ou non positives reviennent à la
+valeur par défaut de 180s.
 
 > **Note :** Consultez également la [documentation principale (README.md)](../README.md) pour les instructions de configuration initiale des clés d'API.

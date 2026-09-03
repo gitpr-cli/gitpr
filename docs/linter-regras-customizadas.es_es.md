@@ -111,6 +111,14 @@ GitPR CLI no necesita reinventar la rueda. Si tu proyecto ya usa herramientas co
 
 Para ello, el linter externo debe soportar la salida de informes en formato `checkstyle` (estándar universal en CI/CD).
 
+### **Tiempo de Espera (Timeout) del Linter Externo**
+
+Cada subproceso de linter externo está limitado por un **tiempo de espera
+(timeout) de 120 segundos** (configurable mediante `GITPR_LINTER_TIMEOUT` en
+`~/.gitpr/.env`). Si un linter supera el límite, se omite — sus violaciones no
+entran en el informe — en lugar de bloquear toda la revisión. Los valores no
+válidos o no positivos vuelven al valor predeterminado de 120s.
+
 ### **Cómo Configurar Rápidamente (--linter-setup)**
 
 En lugar de configurar el YAML manualmente, puedes usar nuestro asistente interactivo:
