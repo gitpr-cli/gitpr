@@ -65,8 +65,10 @@ gitpr-mcp --tool generate_issue --tool-args '{"context_type":"history"}'
 gitpr-mcp --tool
 ```
 
-A saída JSON vai para stdout; todas as mensagens de diagnóstico (spinners, banners, logs)
-vão para stderr. A configuração do `.env` é carregada automaticamente, então as chaves
+No modo CLI `--tool`, o JSON é a única saída: o stdout carrega apenas o payload —
+todas as mensagens de diagnóstico (spinners, banners, logs) são suprimidas, então
+o stderr permanece vazio. No modo servidor (MCP), as mensagens vão para stderr como
+de costume. A configuração do `.env` é carregada automaticamente, então as chaves
 de API funcionam sem prompts interativos.
 
 > **Nota:** No Windows Command Prompt, use aspas duplas para `--tool-args` e
