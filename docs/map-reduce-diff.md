@@ -26,4 +26,4 @@ AI models have a limited context window. GitPR estimates the size of your diff u
 - **Smart excludes come first:** lock files, minified assets, and other noise are removed from the diff before the size estimate — which often avoids chunking entirely.
 - **Quality trade-off:** the final result is generated from technical summaries instead of the raw diff, so very fine-grained details may be condensed. For giant branches, splitting the work into smaller PRs still gives the AI the best material to work with.
 
-🔗 Repository: [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
+🔗 Repository: [https://github.com/gitpr-cli/gitpr.git](https://github.com/gitpr-cli/gitpr.git)

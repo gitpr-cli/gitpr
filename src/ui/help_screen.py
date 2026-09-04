@@ -25,7 +25,7 @@ class HelpScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         lang_suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
-        help_url = f"https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help{lang_suffix}.md"
+        help_url = f"https://github.com/gitpr-cli/gitpr.git/blob/main/docs/issue-tui-help{lang_suffix}.md"
         with Vertical(id="help_dialog"):
             yield Static(__("💡 GitPR Issue Help"), classes="help_title")
             yield Static(

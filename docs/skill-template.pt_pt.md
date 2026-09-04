@@ -66,7 +66,7 @@ Depois de criar este ficheiro, todas as execuções de `gitpr -c` seguirão esta
 
 Os templates oficiais estão disponíveis em:
 ```
-https://github.com/natanfiuza/gitpr/tree/main/templates/
+https://github.com/gitpr-cli/gitpr.git/tree/main/templates/
 ```
 
 O comando `--skill` faz download da versão mais recente de cada template do repositório oficial.

@@ -175,4 +175,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-For versions prior to 0.0.26, see the [GitHub Releases page](https://github.com/natanfiuza/gitpr/releases).
+For versions prior to 0.0.26, see the [GitHub Releases page](https://github.com/gitpr-cli/gitpr.git/releases).

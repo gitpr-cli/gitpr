@@ -38,7 +38,7 @@ pip install --upgrade gitpr-cli
 
 GitPR uses the **Hot-Swap** technique for standalone binaries:
 
-1. Checks the latest version on [GitHub Releases](https://github.com/natanfiuza/gitpr/releases)
+1. Checks the latest version on [GitHub Releases](https://github.com/gitpr-cli/gitpr.git/releases)
 2. Downloads the new executable
 3. Renames the current `.exe` to `.exe.old`
 4. Moves the new binary into place

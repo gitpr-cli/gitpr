@@ -17,7 +17,7 @@ GitPR uses Git's native **pathspec exclusion** syntax (`:(exclude)*.md`) to filt
 The system has **two layers** of exclusions:
 
 ### 1. Core Exclusions (Noise)
-Controlled by [`templates/gitpr.smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.smart-excludes.json):
+Controlled by [`templates/gitpr.smart-excludes.json`](https://github.com/gitpr-cli/gitpr.git/blob/main/templates/gitpr.smart-excludes.json):
 
 - **Lockfiles:** `package-lock.json`, `yarn.lock`, `Cargo.lock`, `Pipfile.lock`, `uv.lock`, etc.
 - **Minified assets:** `*.min.js`, `*.min.css`, `*.bundle.js`
@@ -25,7 +25,7 @@ Controlled by [`templates/gitpr.smart-excludes.json`](https://github.com/natanfi
 - **OS files:** `.DS_Store`, `Thumbs.db`
 
 ### 2. Documentation Exclusions (Prose)
-Controlled by [`templates/gitpr.docs-smart-excludes.json`](https://github.com/natanfiuza/gitpr/blob/main/templates/gitpr.docs-smart-excludes.json):
+Controlled by [`templates/gitpr.docs-smart-excludes.json`](https://github.com/gitpr-cli/gitpr.git/blob/main/templates/gitpr.docs-smart-excludes.json):
 
 - **Markup/prose:** `.md`, `.txt`, `.rst`, `.adoc`, `.asciidoc`, `.org`, `.textile`, `.wiki`
 - **Academic/tech writing:** `.tex`, `.rtf`, `.pod`, `.rdoc`
@@ -110,7 +110,7 @@ Changed documentation (content excluded from diff):
 
 ### Adding New Extensions
 
-To permanently add new patterns, edit the template files on the [GitPR repository](https://github.com/natanfiuza/gitpr):
+To permanently add new patterns, edit the template files on the [GitPR repository](https://github.com/gitpr-cli/gitpr.git):
 
 1. Edit `templates/gitpr.smart-excludes.json` for non-code noise
 2. Edit `templates/gitpr.docs-smart-excludes.json` for documentation extensions
@@ -174,5 +174,5 @@ The static linter (`.gitpr.linter.yml`) runs on the diff **after** Smart Exclude
 
 ---
 
-📂 **Repository:** [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
+📂 **Repository:** [https://github.com/gitpr-cli/gitpr.git](https://github.com/gitpr-cli/gitpr.git)
 🌐 **Website:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/)

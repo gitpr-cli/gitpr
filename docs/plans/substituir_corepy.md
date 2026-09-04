@@ -4,7 +4,7 @@
 | --- | --- | --- |
 | `get_git_diff` | `click.secho("⚠️ Aviso: O Git detectou novos arquivos que não estão sendo monitorados:", fg="yellow")` | `click.secho(__("⚠️ Warning: Git detected new untracked files:"), fg="yellow")` |
 | `get_git_diff` | `click.secho("💡 Dica: Use 'git add <arquivo>' para que eles sejam incluídos na análise do GitPR.", fg="cyan")` | `click.secho(__("💡 Tip: Use 'git add <file>' to include them in the GitPR analysis."), fg="cyan")` |
-| `get_git_diff` | `click.secho("📚 Entenda o motivo: https://github... \n", fg="blue", underline=True)` | `click.secho(__("📚 Understand why: https://github.com/natanfiuza/gitpr/blob/main/docs/untracked-files.md\n"), fg="blue", underline=True)` |
+| `get_git_diff` | `click.secho("📚 Entenda o motivo: https://github... \n", fg="blue", underline=True)` | `click.secho(__("📚 Understand why: https://github.com/gitpr-cli/gitpr.git/blob/main/docs/untracked-files.md\n"), fg="blue", underline=True)` |
 | `get_git_diff` | `click.secho(f"❌ Erro ao executar o Git: {e.stderr}", fg="red")` | `click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")` |
 | `get_git_diff` | `click.secho("❌ Git não encontrado. Certifique-se de que está instalado e no PATH.", fg="red")` | `click.secho(__("❌ Git not found. Make sure it is installed and in the PATH."), fg="red")` |
 | `get_skill_context` | `click.secho(f"🧠 Arquivo {nome_arquivo} (Skill) encontrado e carregado!", fg="blue")` | `click.secho(__("🧠 File {file_name} (Skill) found and loaded!", file_name=nome_arquivo), fg="blue")` |

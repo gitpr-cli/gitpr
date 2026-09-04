@@ -45,7 +45,7 @@ def _show_auth_instructions(repo_info):
 
     # Dynamic link to the technical documentation with language suffix
     lang_suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
-    doc_url = f"https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration{lang_suffix}.md"
+    doc_url = f"https://github.com/gitpr-cli/gitpr.git/blob/main/docs/github-pat-integration{lang_suffix}.md"
     click.secho(
         __(
             "📚 Understand why we need the Token and how it is protected by encryption:"

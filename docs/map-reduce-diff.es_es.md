@@ -26,4 +26,4 @@ Los modelos de IA tienen una ventana de contexto limitada. GitPR estima el tama�
 - **Los smart excludes van primero:** los lock files, los assets minificados y otros ruidos se eliminan del diff antes de la estimación de tamaño — lo que a menudo evita el chunking por completo.
 - **Compromiso de calidad:** el resultado final se genera a partir de resúmenes técnicos en lugar del diff en bruto, por lo que los detalles muy finos pueden condensarse. Para ramas gigantes, dividir el trabajo en PRs más pequeñas sigue dando a la IA el mejor material.
 
-🔗 Repositorio: [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
+🔗 Repositorio: [https://github.com/gitpr-cli/gitpr.git](https://github.com/gitpr-cli/gitpr.git)

@@ -29,12 +29,16 @@ SCAN_ROOTS = [REPO / "src", REPO / "run.py"]
 # AI prompt fragments, not UI: they are concatenated into the model's system
 # instruction / context, where translating them would change model behaviour.
 # Anything NOT matching one of these prefixes is user-facing debt.
+# NOTE (2026-09): the Issue-flow instruction sentences (e.g. "Generate the
+# requested JSON object following the system instructions to {target_action}")
+# used to be in this list, but are now TRANSLATED per user language — the
+# surrounding persona/template are localized too, so English wrappers produced
+# mixed-language prompts (see docs/claude-code/reports/develop_natan/
+# 2026-09-04_i18n_fluxo_issue_idioma.md). Do not re-add them here.
 AI_PROMPT_PREFIXES = (
     "You are a Software Architect.",
     "You are a Senior Software Engineer",
     "Analyze the diff of commit {commit_hash}",
-    "Generate ONLY a JSON object in the format {json_format}",
-    "Generate the requested JSON object following the system instructions",
     "Repository: {repo_name}",
     # Blame timeline rows, assembled into the issue prompt at main.py:1032-1037
     # ("Translate the dictionary list into AI-readable text").

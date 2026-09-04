@@ -10,9 +10,9 @@ Design an implementation plan for adding contextual help to a Python Click CLI.
 
 ## Requirements
 1. `gitpr -h` alone → shows standard help with ALL options (current behavior)
-2. `gitpr -h --issue` → shows help specific to `--issue` + link to `https://github.com/natanfiuza/gitpr/blob/main/docs/issue-tui-help.md`
-3. `gitpr -h --linter` → shows help specific to `--linter` + link to `https://github.com/natanfiuza/gitpr/blob/main/docs/linter-regras-customizadas.md`
-4. `gitpr -h --installhooks` → shows help specific to `--installhooks` + link to `https://github.com/natanfiuza/gitpr/blob/main/docs/git-hooks-locais.md`
+2. `gitpr -h --issue` → shows help specific to `--issue` + link to `https://github.com/gitpr-cli/gitpr.git/blob/main/docs/issue-tui-help.md`
+3. `gitpr -h --linter` → shows help specific to `--linter` + link to `https://github.com/gitpr-cli/gitpr.git/blob/main/docs/linter-regras-customizadas.md`
+4. `gitpr -h --installhooks` → shows help specific to `--installhooks` + link to `https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-hooks-locais.md`
 5. Same pattern for all other non-hidden options: `--commit`, `--review`, `--fullreview`, `--blame`, `--skill`, `--update`, `--input`, `--provider`, and the default PR mode
 
 ## Docs that already exist

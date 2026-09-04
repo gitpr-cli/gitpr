@@ -21,7 +21,7 @@ Nesta fase, alteraremos o código Python para exibir os links de ajuda exatament
   * **Trecho previsto:**  
     Python  
     click.secho("📚 Entenda por que precisamos do Token e como ele é protegido:", fg="cyan")  
-    click.secho("👉 https://github.com/natanfiuza/gitpr/blob/main/docs/github-pat-integration.md\\n", fg="blue", underline=True)
+    click.secho("👉 https://github.com/gitpr-cli/gitpr.git/blob/main/docs/github-pat-integration.md\\n", fg="blue", underline=True)
 
 * \[ \] **2\. Atualizar o Modal de Ajuda da TUI:**  
   * **Arquivo:** src/ui/help\_screen.py (O modal de ajuda da interface Textual).  
