@@ -543,7 +543,7 @@ def cli(
 
             # Display the main GitPR documentation URL as a footer
             click.secho(
-                __(">> Repository: https://github.com/natanfiuza/gitpr"),
+                __(">> Repository: https://github.com/gitpr-cli/gitpr.git"),
                 fg="bright_black",
             )
             click.echo("")

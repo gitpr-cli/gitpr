@@ -24,7 +24,7 @@ When the Map-Reduce path activates in `generate_pr_content()` ([core.py:318](src
 
 ```text
 📦 Huge diff detected! Processing in 4 batches (Map-Reduce)...
-📚 Understand why: https://github.com/natanfiuza/gitpr/blob/main/docs/map-reduce-diff.md
+📚 Understand why: https://github.com/gitpr-cli/gitpr.git/blob/main/docs/map-reduce-diff.md
 
 ⏳ Analyzing batch 1/4...
 ```

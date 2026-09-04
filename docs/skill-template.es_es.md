@@ -66,7 +66,7 @@ Después de crear este archivo, todas las ejecuciones de `gitpr -c` seguirán es
 
 Las plantillas oficiales están disponibles en:
 ```
-https://github.com/natanfiuza/gitpr/tree/main/templates/
+https://github.com/gitpr-cli/gitpr.git/tree/main/templates/
 ```
 
 El comando `--skill` descarga la versión más reciente de cada plantilla del repositorio oficial.

@@ -90,7 +90,7 @@ class ChatHelpScreen(ModalScreen):
             self.app.pop_screen()
         elif event.button.id == "online_help":
             lang_suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
-            url = f"https://github.com/natanfiuza/gitpr/blob/main/docs/understanding_chat_functionality{lang_suffix}.md"
+            url = f"https://github.com/gitpr-cli/gitpr.git/blob/main/docs/understanding_chat_functionality{lang_suffix}.md"
             webbrowser.open(url)
 
 

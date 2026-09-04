@@ -23,7 +23,7 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 - **Versão dos scripts de hook:** v0.0.1
 - **Publicação:** PyPI (`pip install gitpr-cli`) + GitHub Releases (binário standalone)
 - **Website:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/)
-- **Repositório:** [github.com/natanfiuza/gitpr](https://github.com/natanfiuza/gitpr)
+- **Repositório:** [https://github.com/gitpr-cli/gitpr.git](https://github.com/gitpr-cli/gitpr.git)
 - **Licença:** LGPL-2.1
 - **Idiomas suportados:** en_us, pt_br, pt_pt, es_es, fr_fr (5 idiomas)
 

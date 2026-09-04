@@ -44,7 +44,7 @@ jobs:
 
       - name: ⚙️ Instalación de Dependencias  
         run: |  
-          git clone https://github.com/natanfiuza/gitpr.git /tmp/gitpr  
+          git clone https://github.com/gitpr-cli/gitpr.git.git /tmp/gitpr  
           pip install google-genai python-dotenv click cryptography pyyaml
 
       - name: 🚨 Ejecución del Linter Local  
