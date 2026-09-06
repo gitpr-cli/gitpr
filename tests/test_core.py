@@ -6,7 +6,9 @@ from src.core import (
     get_unstaged_diff, get_uncommitted_summary,
     is_merge_in_progress, stage_files,
     append_coauthor_trailer, COAUTHOR_TRAILER,
+    get_origin_remote_url, describe_repo,
 )
+from src.infrastructure.scm import RepoRef
 
 class TestCore(unittest.TestCase):
 
@@ -360,6 +362,83 @@ class TestCoauthorTrailer(unittest.TestCase):
         )
         self.assertIn("Co-Authored-By: Human <human@example.com>", result)
         self.assertTrue(result.endswith(COAUTHOR_TRAILER))
+
+
+class TestScmContextHelpers(unittest.TestCase):
+    """Tests for get_origin_remote_url() and describe_repo()."""
+
+    @patch('src.core.subprocess.run')
+    def test_get_origin_remote_url_success(self, mock_run):
+        """Verbatim origin remote URL, trailing newline stripped."""
+        mock_process = MagicMock()
+        mock_process.stdout = "https://github.com/owner/repo.git\n"
+        mock_run.return_value = mock_process
+
+        self.assertEqual(
+            get_origin_remote_url(), "https://github.com/owner/repo.git"
+        )
+
+    @patch('src.core.subprocess.run')
+    def test_get_origin_remote_url_strips_whitespace(self, mock_run):
+        """Surrounding whitespace/newlines are trimmed."""
+        mock_process = MagicMock()
+        mock_process.stdout = "  git@gitlab.com:group/sub/proj.git  \n"
+        mock_run.return_value = mock_process
+
+        self.assertEqual(
+            get_origin_remote_url(), "git@gitlab.com:group/sub/proj.git"
+        )
+
+    @patch('src.core.subprocess.run')
+    def test_get_origin_remote_url_empty_output(self, mock_run):
+        """No origin remote configured -> None."""
+        mock_process = MagicMock()
+        mock_process.stdout = ""
+        mock_run.return_value = mock_process
+
+        self.assertIsNone(get_origin_remote_url())
+
+    @patch('src.core.subprocess.run')
+    def test_get_origin_remote_url_git_error(self, mock_run):
+        """git failing (not a repository) -> None, never raises."""
+        mock_run.side_effect = __import__("subprocess").CalledProcessError(1, "git")
+        self.assertIsNone(get_origin_remote_url())
+
+    @patch('src.core.subprocess.run')
+    def test_get_origin_remote_url_file_not_found(self, mock_run):
+        """git binary missing -> None."""
+        mock_run.side_effect = FileNotFoundError("git")
+        self.assertIsNone(get_origin_remote_url())
+
+    def test_describe_repo_workspace_name(self):
+        """owner/repo display for GitHub-style refs."""
+        repo_ref = RepoRef(
+            raw="https://github.com/owner/repo.git",
+            workspace="owner",
+            name="repo",
+            provider="github",
+        )
+        self.assertEqual(describe_repo(repo_ref), "owner/repo")
+
+    def test_describe_repo_subgroup_namespace(self):
+        """Full nested namespace display for GitLab sub-groups."""
+        repo_ref = RepoRef(
+            raw="git@gitlab.com:group/subgroup/proj.git",
+            workspace="group/subgroup",
+            name="proj",
+            provider="gitlab",
+        )
+        self.assertEqual(describe_repo(repo_ref), "group/subgroup/proj")
+
+    def test_describe_repo_azure_org_project(self):
+        """Azure DevOps display-only workspace combines org/project."""
+        repo_ref = RepoRef(
+            raw="https://dev.azure.com/org/project/_git/repo",
+            workspace="org/project",
+            name="repo",
+            provider="azure_devops",
+        )
+        self.assertEqual(describe_repo(repo_ref), "org/project/repo")
 
 
 if __name__ == '__main__':

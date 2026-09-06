@@ -1,31 +1,46 @@
 ---
 name: github-api-shared-module
-description: src/github_api.py como módulo compartilhado de chamadas à API REST do GitHub
+description: src/github_api.py agora é shim deprecado; chamadas de PR/issue vivem nos providers ScmProvider (src/infrastructure/scm/)
 metadata:
   type: reference
-  source: docs/claude-code/reports/develop_natan/2026-08-06_pr_publish_github.md
-  date: 2026-08-06
+  source: docs/plans/ADR-001-scm-abstraction.md
+  date: 2026-09-05
   branch: develop_natan
 ---
 
-O módulo `src/github_api.py` centraliza todas as chamadas à API REST do GitHub usadas pelo GitPR.
-Funções disponíveis:
+Originalmente (2026-08-06) `src/github_api.py` centralizava as chamadas REST do
+GitHub com o padrão de tuplas `(ok, data, status)` que **engole exceções**.
+Desde a abstração Multi-Forge (2026-09-05) ele é um **shim deprecado**: mesmas
+4 assinaturas (`create_pull_request`, `check_existing_pr`,
+`update_pull_request`, `merge_pull_request`), mesmas tuplas e
+`DeprecationWarning` (stacklevel=2), delegando ao `GitHubProvider`.
 
-- `create_pull_request(repo, token, title, body, head, base)` → `POST /repos/{owner}/{repo}/pulls`
-- `update_pull_request(repo, token, pr_number, title, body)` → `PATCH /repos/{owner}/{repo}/pulls/{number}`
-- `merge_pull_request(repo, token, pr_number, method?)` → `PUT /repos/{owner}/{repo}/pulls/{number}/merge`
+O caminho canônico agora é `src/infrastructure/scm/`:
 
-Todas as funções retornam `(ok: bool, data: dict, status_code: int)` e usam `requests` com timeout=30s.
-Headers incluem `Authorization: token {token}` e `Accept: application/vnd.github.v3+json`.
-Erros extraem `response.json().get("message")` com fallback para `response.text`.
+- `base.py` — ABC `ScmProvider` (11 métodos) + dataclasses + `ScmProviderError`
+  (`.provider`, `.http_status` — 0 = rede) e `ScmNotSupportedError`.
+- Um provider por forge (`github_provider.py`, `gitlab_provider.py`,
+  `bitbucket_provider.py`, `azure_devops_provider.py`) — todos **levantam**
+  exceções; nenhum print/click em thread.
+- `factory.py` — `resolve_scm_provider(config)` (chave `GITPR_SCM_PROVIDER`,
+  default `github` com fallback no `GITHUB_TOKEN_ENCRYPTED` legado) e
+  `detect_provider_from_remote(url)`.
+- Consumidores (main.py, TUI, MCP) devem importar apenas o pacote
+  `src.infrastructure.scm` — **nunca** os módulos de provider diretamente.
+  Código novo nunca importa `src.github_api.py`.
 
-**Why:** Antes cada ponto de entrada (TUI, CLI direto) fazia suas próprias chamadas HTTP inline,
-duplicando headers, tratamento de erro e parsing de resposta. Centralizar em `github_api.py` permite
-reuso consistente e facilita adicionar novas operações (ex: `create_issue`, `list_pull_requests`).
+**Why:** o padrão de tuplas apagava o motivo do erro (reauth 401, rede, 4xx)
+e impedia suportar GitLab/Bitbucket/Azure sem duplicar camadas HTTP. A
+conversão de exceção → comportamento de UI (tuplas locais, reauth) mora nos
+call sites; no shim, `ScmProviderError` é convertido de volta para tuplas.
 
-**How to apply:** Sempre que precisar de uma nova chamada à API do GitHub, adicionar a função em
-`github_api.py` seguindo o padrão `(ok, data, status)` — NUNCA fazer chamada HTTP inline em TUI
-ou CLI. Para autenticação, usar `get_github_token()` de `config.py` que já trata Fernet decrypt
-e fallback raw key. Para validação interativa, `validate_or_request_github_token()` em `tui_issue.py`.
+**How to apply:** para adicionar operação de PR/issue, estenda o ABC e todos
+os providers + o contrato de testes (`tests/scm/test_contract.py`); rode
+`python -m pytest tests/` e `python -m unittest discover tests -q` (os dois
+runners são portão). Para token interativo use
+`validate_or_request_scm_token()` em `tui_issue.py` (não a função antiga
+`validate_or_request_github_token`, removida). Config via `gitpr --init` →
+`core.run_scm_init_wizard()` — persiste só no sucesso
+(`GITPR_SCM_TOKEN_ENCRYPTED`, nunca token cru com `set_key`).
 
-Ver também: [[github-token-reauth-flow]]
+Ver também: [[github-token-reauth-flow]], [[claude-md-desatualizado-vs-architecture]]

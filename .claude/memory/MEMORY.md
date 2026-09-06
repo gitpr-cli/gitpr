@@ -33,7 +33,7 @@
 ## Reference
 - [Pre-Save Debug Flag](pre-save-debug-flag.md) — Flag oculta --pre-save que dumps payload completo da IA em JSON (develop_natan, 2026-07-18)
 - [Docs Multilíngue Convenção](docs-multilingue-convencao.md) — Convenção docs/<nome>.<lang>.md com inglês canônico e localizações por sufixo (develop_natan, 2026-08-03)
-- [GitHub API Shared Module](github-api-shared-module.md) — src/github_api.py como módulo centralizado de chamadas à API REST do GitHub (develop_natan, 2026-08-06)
+- [GitHub API Shared Module](github-api-shared-module.md) — src/github_api.py virou shim deprecado; chamadas de PR/issue vivem nos providers ScmProvider (src/infrastructure/scm/) (develop_natan, 2026-09-05)
 
 ## Feedback
 - [Windows UTF-8 Encoding Fix](windows-utf8-encoding-fix.md) — Consoles Windows com cp1252 crasham em emojis; fix com sys.stdout.reconfigure (develop_natan, 2026-08-03)
@@ -42,6 +42,7 @@
 - [Merge Conflict Error Handling](merge-conflict-error-handling.md) — Falha de merge no PR publisher exibe modal de erro em vez de prosseguir silenciosamente (develop_natan, 2026-08-11)
 - [Staging Seleção Widget Erro Real](staging-selecao-widget-erro-real.md) — Modal de staging: seleção via dicionário paralelo dessincronizava e erros de git add eram engolidos (develop_natan, 2026-08-13)
 - [i18n Sync Regex e Chaves Mangled](i18n-sync-regex-chaves-mangled.md) — Regex antiga capturava kwargs do call-site dentro da chave; nunca casavam em runtime (develop_natan, 2026-08-15)
+- [i18n Sync Canônicos Round-Trip](i18n-sync-canonicos-roundtrip.md) — Keys i18n novas via script cirúrgico: canônicos aceitam round-trip json; nunca rodar sync_i18n.py wholesale (develop_natan, 2026-09-05)
 - [CLAUDE.md/GEMINI.md Derivam do Código](claude-md-desatualizado-vs-architecture.md) — Arquivos auto-carregados envelhecem sem ninguém notar; conferir versão e flags contra src/ (corrigido em 2026-08-26) (develop_natan, 2026-08-18)
 - [MCP run_linter Trava](mcp-run-linter-hangs.md) — Hang das tools MCP resolvido com _offload (anyio); se travar, taskkill gitpr-mcp.exe + reiniciar editor (develop_natan, 2026-08-18)
 - [Textual Modal Callback Dead Pump](textual-modal-callback-dead-pump.md) — Push de modal em timer de tela removida liga callback do dismiss à fila morta; usar call_next no app (develop_natan, 2026-08-19)

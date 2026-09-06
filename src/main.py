@@ -30,6 +30,7 @@ from src.core import (
     is_merge_in_progress,
     resolve_output_path,
     run_install_wizard,
+    run_scm_init_wizard,
 )
 from src.i18n import __
 from src.linter_engine import generate_linter_report_content, parse_diff_and_lint
@@ -304,6 +305,13 @@ HELP_PRIORITY: dict[str, int] = {
     ),
 )
 @click.option(
+    "--init",
+    is_flag=True,
+    help=__(
+        "Interactive SCM forge wizard: detects the repository's forge, configures the provider, and stores the access token encrypted."
+    ),
+)
+@click.option(
     "--hook",
     type=click.Path(),
     hidden=True,
@@ -467,6 +475,7 @@ def cli(
     update,
     installhooks,
     install,
+    init,
     hook,
     quiet,
     pre_save,
@@ -822,6 +831,11 @@ def cli(
         log_command_metric(command="install", status="success", provider="git")
         return
 
+    # --init option: SCM forge configuration wizard
+    if init:
+        run_scm_init_wizard()
+        return
+
     # --linter-setup option: External linter wizard
     if linter_setup:
         from src.linter_wizard import run_linter_setup_wizard
@@ -924,8 +938,10 @@ def cli(
 
     # Issue Module (Hybrid)
     if issue:
-        from src.issue_engine import generate_issue_content, get_github_repo_info
-        from src.tui_issue import IssueApp, validate_or_request_github_token
+        from src.issue_engine import generate_issue_content
+        from src.tui_issue import validate_or_request_scm_token
+        from src.ui.issue_app import IssueApp
+        from src.core import describe_repo
 
         setup_environment()
 
@@ -1054,37 +1070,39 @@ def cli(
         if not issue_data:
             return
 
-        # Get repository information
-        repo_info = get_github_repo_info()
+        # Resolve the SCM forge context (provider + repository reference)
+        provider, repo_ref = _resolve_scm_context()
+        if provider is None:
+            return
 
-        # Validate or request PAT Token
-        github_token = validate_or_request_github_token(repo_info)
+        repo_info = describe_repo(repo_ref)
+
+        # Validate or request the forge token
+        github_token, provider = validate_or_request_scm_token(provider, repo_info)
 
         if not github_token:
-            click.secho(
-                __("❌ Access canceled. GitHub Token is mandatory for this action."),
-                fg="red",
-            )
+            click.secho(_scm_access_canceled_message(provider), fg="red")
             return
 
         # Run the Terminal Graphical Interface (with reauth loop for expired tokens)
         while True:
             app = IssueApp(
-                issue_data=issue_data, repo_info=repo_info, github_token=github_token
+                issue_data=issue_data,
+                repo_info=repo_info,
+                github_token=github_token,
+                provider=provider,
+                repo_ref=repo_ref,
             )
             app.run()
 
             # If token expired during the TUI session, re-prompt and relaunch
             if app.final_action == "reauth":
                 click.secho(f"\n{app.final_message}\n", fg="yellow")
-                github_token = validate_or_request_github_token(repo_info)
+                github_token, provider = validate_or_request_scm_token(
+                    provider, repo_info
+                )
                 if not github_token:
-                    click.secho(
-                        __(
-                            "❌ Access canceled. GitHub Token is mandatory for this action."
-                        ),
-                        fg="red",
-                    )
+                    click.secho(_scm_access_canceled_message(provider), fg="red")
                     return
                 # Restart TUI with the same issue data and new token
                 continue
@@ -1409,20 +1427,15 @@ def cli(
         click.secho("\n" + __("❌ Error saving file: {error}", error=str(e)), fg="red")
 
     # ── PR Publisher logic ──
-    from src.core import get_base_branch, get_repo_name
+    from src.core import get_base_branch, describe_repo
 
-    repo_info = get_repo_name()
-    if not repo_info or repo_info == "unknown/repo":
-        click.secho(
-            __(
-                "❌ Remote repository not identified to create the pull request via API."
-            ),
-            fg="red",
-        )
+    provider, repo_ref = _resolve_scm_context()
+    if provider is None:
         if not quiet:
             print_update_notice()
         return
 
+    repo_info = describe_repo(repo_ref)
     head_branch = branch_name
     target_base = base or os.getenv("PR_DEFAULT_BASE") or get_base_branch()
 
@@ -1439,30 +1452,28 @@ def cli(
 
     # ── --no-edit: auto-commit + direct publish ──
     if no_edit:
+        from src.tui_issue import validate_or_request_scm_token
+
         if not _run_auto_commit_cli(active_provider):
             return
 
-        github_token = _get_github_token_for_publish(repo_info)
+        github_token, provider = validate_or_request_scm_token(provider, repo_info)
         if not github_token:
+            click.secho(_scm_access_canceled_message(provider), fg="red")
             return
 
-        _publish_pr_directly(
-            pr_data, repo_info, github_token, target_base, output_filename
-        )
+        _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename)
         if not quiet:
             print_update_notice()
         return
 
     # ── Default: Open TUI ──
-    from src.tui_issue import validate_or_request_github_token
+    from src.tui_issue import validate_or_request_scm_token
     from src.ui.pr_publish_app import PrPublishApp
 
-    github_token = validate_or_request_github_token(repo_info)
+    github_token, provider = validate_or_request_scm_token(provider, repo_info)
     if not github_token:
-        click.secho(
-            __("❌ Access canceled. GitHub Token is mandatory for this action."),
-            fg="red",
-        )
+        click.secho(_scm_access_canceled_message(provider), fg="red")
         if not quiet:
             print_update_notice()
         return
@@ -1473,6 +1484,8 @@ def cli(
             pr_data=pr_data,
             repo_info=repo_info,
             github_token=github_token,
+            provider=provider,
+            repo_ref=repo_ref,
             base_branch=target_base,
             output_filename=output_filename,
         )
@@ -1480,14 +1493,9 @@ def cli(
 
         if app.final_action == "reauth":
             click.secho(f"\n{app.final_message}\n", fg="yellow")
-            github_token = validate_or_request_github_token(repo_info)
+            github_token, provider = validate_or_request_scm_token(provider, repo_info)
             if not github_token:
-                click.secho(
-                    __(
-                        "❌ Access canceled. GitHub Token is mandatory for this action."
-                    ),
-                    fg="red",
-                )
+                click.secho(_scm_access_canceled_message(provider), fg="red")
                 break
             continue
 
@@ -1741,26 +1749,74 @@ def _run_auto_commit_cli(provider):
         return False
 
 
-def _get_github_token_for_publish(repo_info):
-    """Get or request a GitHub token for PR publication. Returns token or None."""
-    from src.tui_issue import validate_or_request_github_token
+def _scm_access_canceled_message(provider):
+    """Error shown when the user cancels or fails to provide a forge token."""
+    from src.infrastructure.scm import provider_display_name, provider_is_github
 
-    token = validate_or_request_github_token(repo_info)
-    if not token:
+    if provider_is_github(provider):
+        return __("❌ Access canceled. GitHub Token is mandatory for this action.")
+    return __(
+        "❌ Access canceled. {provider} token is mandatory for this action.",
+        provider=provider_display_name(provider),
+    )
+
+
+def _resolve_scm_context():
+    """Resolve the SCM forge (provider) + repository reference for the flows.
+
+    Reads the origin remote URL, detects the forge when no GITPR_SCM_PROVIDER
+    is configured, builds the provider through the factory (which falls back
+    to the legacy GitHub token when needed) and parses the repository ref.
+
+    Returns (provider, repo_ref), or (None, None) after printing an error when
+    the remote cannot be identified or parsed.
+    """
+    from src.config import get_scm_settings
+    from src.core import get_origin_remote_url
+    from src.infrastructure.scm import detect_provider_from_remote
+
+    raw_remote = get_origin_remote_url()
+    if not raw_remote:
         click.secho(
-            __("❌ Access canceled. GitHub Token is mandatory for this action."),
+            __(
+                "❌ Remote repository not identified to create the pull request via API."
+            ),
             fg="red",
         )
-    return token
+        return None, None
+
+    settings = get_scm_settings()
+    if not settings.get("provider"):
+        settings["provider"] = detect_provider_from_remote(raw_remote)
+
+    try:
+        from src.infrastructure.scm import ScmProviderError, resolve_scm_provider
+
+        provider = resolve_scm_provider(settings)
+        repo_ref = provider.parse_repo_ref(raw_remote)
+    except (ValueError, ScmProviderError) as e:
+        # ValueError: remote does not parse for the detected forge.
+        # ScmProviderError: provider fail-fast (e.g. Azure DevOps without the
+        # GITPR_SCM_ORGANIZATION/GITPR_SCM_PROJECT extras) — message guides
+        # the user to 'gitpr --init'.
+        click.secho(f"⚠️ {e}", fg="red")
+        return None, None
+
+    return provider, repo_ref
 
 
-def _publish_pr_directly(
-    pr_data, repo_info, github_token, target_base, output_filename
-):
-    """Publish PR directly to GitHub without TUI (for --no-edit mode)."""
+def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename):
+    """Publish PR directly to the forge without TUI (for --no-edit mode)."""
     from src.core import get_current_branch
-    from src.github_api import create_pull_request
+    from src.infrastructure.scm import (
+        PullRequestRequest,
+        ScmProviderError,
+        provider_display_name,
+        provider_is_github,
+    )
 
+    github_flow = provider_is_github(provider)
+    label = provider_display_name(provider)
     commit_msg = pr_data.get("commit_message", "")
     pr_body = pr_data.get("pr_description", "")
 
@@ -1773,46 +1829,91 @@ def _publish_pr_directly(
     )
 
     head_branch = get_current_branch()
-    click.secho("🚀 " + __("Publishing Pull Request to GitHub..."), fg="cyan")
+    if github_flow:
+        click.secho("🚀 " + __("Publishing Pull Request to GitHub..."), fg="cyan")
+    else:
+        click.secho(
+            "🚀 " + __("Publishing Pull Request to {provider}...", provider=label),
+            fg="cyan",
+        )
 
-    ok, data, status = create_pull_request(
-        repo_info, github_token, commit_msg, full_body, head_branch, target_base
-    )
+    try:
+        result = provider.create_pull_request(
+            repo_ref,
+            PullRequestRequest(
+                title=commit_msg,
+                description=full_body,
+                source_branch=head_branch,
+                target_branch=target_base,
+            ),
+        )
+    except ScmProviderError as e:
+        if e.http_status == 401:
+            if github_flow:
+                click.secho(
+                    __(
+                        "🔐 GitHub token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively."
+                    ),
+                    fg="red",
+                )
+            else:
+                click.secho(
+                    __(
+                        "🔐 {provider} token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively.",
+                        provider=label,
+                    ),
+                    fg="red",
+                )
+            return
+        if github_flow:
+            click.secho(
+                __(
+                    "❌ GitHub API Error ({code}): {msg}",
+                    code=e.http_status,
+                    msg=e.message,
+                ),
+                fg="red",
+            )
+        else:
+            click.secho(
+                __(
+                    "❌ {provider} API Error ({code}): {msg}",
+                    provider=label,
+                    code=e.http_status,
+                    msg=e.message,
+                ),
+                fg="red",
+            )
+        return
 
-    if ok:
-        pr_url = data.get("url")
+    pr_url = result.url
+    if github_flow:
         click.secho(
             __("✅ PR successfully created on GitHub:\n👉 {pr_url}", pr_url=pr_url),
             fg="green",
             bold=True,
         )
-        from src.metrics import log_command_metric
-
-        log_command_metric(command="pr:publish", status="success", provider="github")
-        if click.confirm(__("🔗 Open the Pull Request in your browser?")):
-            import webbrowser
-
-            webbrowser.open(pr_url)
-        click.secho(
-            f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}",
-            fg="cyan",
-        )
-    elif status == 401:
-        click.secho(
-            __(
-                "🔐 GitHub token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively."
-            ),
-            fg="red",
-        )
     else:
         click.secho(
             __(
-                "❌ GitHub API Error ({code}): {msg}",
-                code=status,
-                msg=data.get("message", ""),
+                "✅ PR successfully created on {provider}:\n👉 {pr_url}",
+                provider=label,
+                pr_url=pr_url,
             ),
-            fg="red",
+            fg="green",
+            bold=True,
         )
+    from src.metrics import log_command_metric
+
+    log_command_metric(command="pr:publish", status="success", provider=provider.name)
+    if click.confirm(__("🔗 Open the Pull Request in your browser?")):
+        import webbrowser
+
+        webbrowser.open(pr_url)
+    click.secho(
+        f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}",
+        fg="cyan",
+    )
 
 
 if __name__ == "__main__":

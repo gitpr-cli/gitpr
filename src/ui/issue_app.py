@@ -1,4 +1,3 @@
-import requests
 from datetime import datetime
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Input, TextArea, Label
@@ -6,6 +5,15 @@ from textual.containers import Vertical
 from textual.binding import Binding
 
 from src.core import get_current_branch, resolve_output_path
+from src.infrastructure.scm import (
+    IssueRequest,
+    RepoRef,
+    ScmNotSupportedError,
+    ScmProviderError,
+    provider_display_name,
+    provider_is_github,
+    resolve_scm_provider,
+)
 from src.ui.help_screen import HelpScreen
 from src.i18n import __
 
@@ -25,15 +33,31 @@ class IssueApp(App):
     BINDINGS = [
         Binding("f1", "show_help", __("Help")),
         Binding("f2", "save_local", __("Save Local")),
-        Binding("f3", "create_issue", __("Create on GitHub")),
+        Binding("f3", "create_issue", __("Create Issue")),
         Binding("escape", "quit", __("Exit")),
     ]
 
-    def __init__(self, issue_data, repo_info, github_token, **kwargs):
+    def __init__(self, issue_data, repo_info, github_token, provider=None, repo_ref=None, **kwargs):
         super().__init__(**kwargs)
         self.issue_data = issue_data
         self.repo_info = repo_info
         self.github_token = github_token
+        # Multi-forge SCM client (same fallback contract as PrPublishApp).
+        if provider is None:
+            provider = resolve_scm_provider({"token": github_token or ""})
+        if repo_ref is None:
+            if "/" in (repo_info or ""):
+                workspace, _, name = repo_info.partition("/")
+            else:
+                workspace, name = "", repo_info or ""
+            repo_ref = RepoRef(
+                raw=repo_info or "",
+                workspace=workspace,
+                name=name,
+                provider="github",
+            )
+        self.provider = provider
+        self.repo_ref = repo_ref
         self.final_action = None
         self.final_message = ""
         self.needs_new_token = False
@@ -89,7 +113,7 @@ class IssueApp(App):
         self.exit()
 
     def action_create_issue(self):
-        """F3 button action: Sends the issue via REST API to GitHub."""
+        """F3 button action: Sends the issue via the SCM provider API."""
         from src.metrics import log_command_metric
 
         title_input = self.query_one("#issue_title", Input)
@@ -106,51 +130,104 @@ class IssueApp(App):
             self.exit()
             return
 
-        api_url = f"https://api.github.com/repos/{self.repo_info}/issues"
-        headers = {
-            "Authorization": f"token {self.github_token}",
-            "Accept": "application/vnd.github.v3+json",
-        }
-        payload = {"title": title_input.value, "body": body_input.text}
+        github_flow = provider_is_github(self.provider)
+        label = provider_display_name(self.provider)
 
         try:
-            response = requests.post(api_url, json=payload, headers=headers)
-            if response.status_code == 201:
-                issue_url = response.json().get("html_url")
+            result = self.provider.create_issue(
+                self.repo_ref,
+                IssueRequest(title=title_input.value, description=body_input.text),
+            )
+            if github_flow:
                 self.final_message = __(
                     "✅ Issue successfully created on GitHub:\n👉 {issue_url}",
-                    issue_url=issue_url,
+                    issue_url=result.url,
                 )
-                self.final_action = "created"
-                log_command_metric(
-                    command="issue:github_create", status="success", provider="github"
-                )
-            elif response.status_code == 401:
+            else:
                 self.final_message = __(
-                    "🔐 GitHub token expired or invalid. You'll be prompted for a new one."
+                    "✅ Issue successfully created on {provider}:\n👉 {issue_url}",
+                    provider=label,
+                    issue_url=result.url,
                 )
+            self.final_action = "created"
+            log_command_metric(
+                command="issue:github_create", status="success", provider="github"
+            )
+        except ScmNotSupportedError:
+            # Forges without an issue API (Azure DevOps): save locally (F2).
+            self.final_message = __(
+                "{provider} does not support API issue creation. Save it locally (F2) and open it on the website.",
+                provider=label,
+            )
+            self.final_action = "error"
+            log_command_metric(
+                command="issue:github_create", status="error", provider="github"
+            )
+        except ScmProviderError as e:
+            if e.http_status == 401:
+                if github_flow:
+                    self.final_message = __(
+                        "🔐 GitHub token expired or invalid. You'll be prompted for a new one."
+                    )
+                else:
+                    self.final_message = __(
+                        "🔐 {provider} token expired or invalid. You'll be prompted for a new one.",
+                        provider=label,
+                    )
                 self.final_action = "reauth"
                 self.needs_new_token = True
                 log_command_metric(
                     command="issue:github_create", status="reauth", provider="github"
                 )
-            else:
-                self.final_message = __(
-                    "❌ GitHub API Error ({status_code}): {response_text}",
-                    status_code=response.status_code,
-                    response_text=response.text,
-                )
+            elif e.http_status > 0:
+                if github_flow:
+                    self.final_message = __(
+                        "❌ GitHub API Error ({status_code}): {response_text}",
+                        status_code=e.http_status,
+                        response_text=e.message,
+                    )
+                else:
+                    self.final_message = __(
+                        "❌ {provider} API Error ({status_code}): {response_text}",
+                        provider=label,
+                        status_code=e.http_status,
+                        response_text=e.message,
+                    )
                 self.final_action = "error"
                 log_command_metric(
                     command="issue:github_create",
                     status="error",
                     provider="github",
-                    http_status=response.status_code,
+                    http_status=e.http_status,
+                )
+            else:
+                # Network failure — e.message is already localized by the provider.
+                if github_flow:
+                    self.final_message = __(
+                        "❌ Failed to connect to GitHub: {error}", error=e.message
+                    )
+                else:
+                    self.final_message = "❌ " + __(
+                        "Failed to connect to {provider}: {error}",
+                        provider=label,
+                        error=e.message,
+                    )
+                self.final_action = "error"
+                log_command_metric(
+                    command="issue:github_create", status="error", provider="github"
                 )
         except Exception as e:
-            self.final_message = __(
-                "❌ Failed to connect to GitHub: {error}", error=str(e)
-            )
+            # Unexpected bug — degrade like the legacy inline-POST catch-all.
+            if github_flow:
+                self.final_message = __(
+                    "❌ Failed to connect to GitHub: {error}", error=str(e)
+                )
+            else:
+                self.final_message = "❌ " + __(
+                    "Failed to connect to {provider}: {error}",
+                    provider=label,
+                    error=str(e),
+                )
             self.final_action = "error"
             log_command_metric(
                 command="issue:github_create", status="error", provider="github"

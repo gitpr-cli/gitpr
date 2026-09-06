@@ -21,7 +21,14 @@ from textual.screen import ModalScreen
 from textual.binding import Binding
 
 from src.core import get_current_branch, has_uncommitted_changes, execute_git_commit
-from src.github_api import create_pull_request
+from src.infrastructure.scm import (
+    PullRequestRequest,
+    RepoRef,
+    ScmProviderError,
+    provider_display_name,
+    provider_is_github,
+    resolve_scm_provider,
+)
 from src.ui.pr_publish_help import PrPublishHelpScreen
 from src.i18n import __
 
@@ -46,6 +53,20 @@ def _fmt_status(status):
       'del' → 🗑️ Deleted (unstaged)
     """
     return _STATUS_LABELS.get(status, ("❓", status))
+
+
+def _check_existing_pull_request(provider, repo_ref, head_branch):
+    """Probe for an open PR from *head_branch*; failures degrade to None.
+
+    The legacy check_existing_pr swallowed API errors and returned
+    (False, None, None) so a failed probe never blocked the push — this seam
+    keeps that behavior for the commit/push thread. It is module-level on
+    purpose: UI tests patch it to simulate an existing PR.
+    """
+    try:
+        return provider.check_existing_pull_request(repo_ref, head_branch)
+    except ScmProviderError:
+        return None
 
 
 # Capture the real stdout before Textual replaces it.
@@ -609,7 +630,15 @@ class PrPublishApp(App):
     ]
 
     def __init__(
-        self, pr_data, repo_info, github_token, base_branch, output_filename, **kwargs
+        self,
+        pr_data,
+        repo_info,
+        github_token,
+        base_branch,
+        output_filename,
+        provider=None,
+        repo_ref=None,
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.pr_data = pr_data
@@ -617,6 +646,25 @@ class PrPublishApp(App):
         self.github_token = github_token
         self.base_branch = base_branch
         self.output_filename = output_filename
+        # Multi-forge SCM client. main.py hands over the resolved provider and
+        # RepoRef; legacy constructions (existing callers/tests) fall back to a
+        # pure-construction GitHubProvider from the "owner/repo" repo_info
+        # string — no I/O, no network, mirroring the old github_api behavior.
+        if provider is None:
+            provider = resolve_scm_provider({"token": github_token or ""})
+        if repo_ref is None:
+            if "/" in (repo_info or ""):
+                workspace, _, name = repo_info.partition("/")
+            else:
+                workspace, name = "", repo_info or ""
+            repo_ref = RepoRef(
+                raw=repo_info or "",
+                workspace=workspace,
+                name=name,
+                provider="github",
+            )
+        self.provider = provider
+        self.repo_ref = repo_ref
         self.head_branch = get_current_branch()
         self.final_action = None
         self.final_message = ""
@@ -909,23 +957,21 @@ class PrPublishApp(App):
 
                 # ── Check for existing PR BEFORE pushing ──
                 self._log("Checking for existing PR before push...")
-                try:
-                    from src.github_api import check_existing_pr
-
-                    exists, pr_url, pr_num = check_existing_pr(
-                        self.repo_info, self.github_token, self.head_branch
+                existing = _check_existing_pull_request(
+                    self.provider, self.repo_ref, self.head_branch
+                )
+                if existing is not None:
+                    self._log(
+                        f"Existing PR check: exists=True, url={existing.url}"
                     )
-                    self._log(f"Existing PR check: exists={exists}, url={pr_url}")
-                except Exception as e:
-                    self._log(f"Existing PR check exception: {e}")
-                    exists, pr_url, pr_num = False, None, None
-
-                if exists:
                     self.call_from_thread(
-                        self._on_existing_pr_found_before_push, pr_url, pr_num
+                        self._on_existing_pr_found_before_push,
+                        existing.url,
+                        existing.number,
                     )
                     self.call_from_thread(log.mark_finished)
                     return
+                self._log("Existing PR check: no open PR found")
 
                 # ── Push ──
                 self.call_from_thread(log.add_log, __("📤 Pushing to remote..."))
@@ -991,9 +1037,14 @@ class PrPublishApp(App):
                     return
 
                 # ── Create PR ──
-                self.call_from_thread(
-                    log.add_log, __("🚀 Creating pull request on GitHub...")
-                )
+                if provider_is_github(self.provider):
+                    progress_msg = __("🚀 Creating pull request on GitHub...")
+                else:
+                    progress_msg = __(
+                        "🚀 Creating pull request on {provider}...",
+                        provider=provider_display_name(self.provider),
+                    )
+                self.call_from_thread(log.add_log, progress_msg)
                 self.call_from_thread(self._publish_pr_from_progress, log)
                 self.call_from_thread(log.mark_finished)
             finally:
@@ -1097,17 +1148,16 @@ class PrPublishApp(App):
                         f"Push to existing PR succeeded, pr_num={pr_num}, updating description"
                     )
                     if pr_num and pr_body:
-                        from src.github_api import update_pull_request
-
-                        up_ok, up_data, up_status = update_pull_request(
-                            self.repo_info,
-                            self.github_token,
-                            pr_num,
-                            body=pr_body,
-                        )
-                        self._log(
-                            f"Update PR description: ok={up_ok}, status={up_status}"
-                        )
+                        try:
+                            self.provider.update_pull_request(
+                                self.repo_ref, pr_num, description=pr_body
+                            )
+                            self._log("Update PR description: ok=True")
+                        except ScmProviderError as e:
+                            self._log(
+                                "Update PR description: "
+                                f"ok=False, status={e.http_status}"
+                            )
                     self.final_message = __(
                         "✅ PR updated:\n👉 {pr_url}",
                         pr_url=pr_url,
@@ -1186,20 +1236,25 @@ class PrPublishApp(App):
             self.exit()
 
     def _do_merge(self, pr_number, pr_url):
-        """Execute merge via GitHub API in background thread."""
+        """Merge the PR via the SCM provider in a background thread."""
 
         def _merge():
-            from src.github_api import merge_pull_request
-
             self._log(f"Merging PR #{pr_number}...")
-            ok, data, status = merge_pull_request(
-                self.repo_info, self.github_token, pr_number
-            )
-            self._log(f"Merge result: ok={ok}, status={status}, data={data}")
-            if ok:
+            try:
+                self.provider.merge_pull_request(self.repo_ref, pr_number)
+                self._log("Merge result: ok=True")
                 self.call_from_thread(self._on_merge_success, pr_url)
-            else:
-                self.call_from_thread(self._on_merge_failure, pr_url, data, status)
+            except ScmProviderError as e:
+                self._log(
+                    f"Merge result: ok=False, status={e.http_status}, "
+                    f"message={e.message}"
+                )
+                self.call_from_thread(
+                    self._on_merge_failure,
+                    pr_url,
+                    {"message": e.message},
+                    e.http_status,
+                )
 
         import threading
 
@@ -1304,16 +1359,26 @@ class PrPublishApp(App):
         full_body = pr_body
 
         try:
-            ok, data, status = create_pull_request(
-                self.repo_info,
-                self.github_token,
-                pr_title,
-                full_body,
-                self.head_branch,
-                self.base_branch,
+            result = self.provider.create_pull_request(
+                self.repo_ref,
+                PullRequestRequest(
+                    title=pr_title,
+                    description=full_body,
+                    source_branch=self.head_branch,
+                    target_branch=self.base_branch,
+                ),
+            )
+            ok, data, status = (
+                True,
+                {"url": result.url, "number": result.number},
+                201,
             )
             self._log(f"create_pull_request result: ok={ok}, status={status}")
+        except ScmProviderError as e:
+            self._log(f"create_pull_request exception: {e}")
+            ok, data, status = False, {"message": e.message}, e.http_status
         except Exception as e:
+            # Unexpected provider bug — degrade like the legacy tuple contract.
             self._log(f"create_pull_request exception: {e}")
             ok, data, status = False, {"message": str(e)}, 0
 
@@ -1327,10 +1392,18 @@ class PrPublishApp(App):
             )
             self.final_pr_url = pr_url
             self.final_action = "created"
-            self.final_message = __(
-                "✅ PR successfully created on GitHub:\n👉 {pr_url}",
-                pr_url=pr_url,
-            )
+            if provider_is_github(self.provider):
+                success_msg = __(
+                    "✅ PR successfully created on GitHub:\n👉 {pr_url}",
+                    pr_url=pr_url,
+                )
+            else:
+                success_msg = __(
+                    "✅ PR successfully created on {provider}:\n👉 {pr_url}",
+                    provider=provider_display_name(self.provider),
+                    pr_url=pr_url,
+                )
+            self.final_message = success_msg
             if self._log_path:
                 self.final_message += f"\n📋 Log: {self._log_path}"
 
@@ -1349,9 +1422,15 @@ class PrPublishApp(App):
             self.pop_screen()
             self.final_action = "reauth"
             self.needs_new_token = True
-            self.final_message = __(
-                "🔐 GitHub token expired or invalid. You'll be prompted for a new one."
-            )
+            if provider_is_github(self.provider):
+                self.final_message = __(
+                    "🔐 GitHub token expired or invalid. You'll be prompted for a new one."
+                )
+            else:
+                self.final_message = __(
+                    "🔐 {provider} token expired or invalid. You'll be prompted for a new one.",
+                    provider=provider_display_name(self.provider),
+                )
             log_command_metric(command="pr:publish", status="reauth", provider="github")
             self.exit()
         else:
