@@ -26,7 +26,13 @@ src/
 ├── linter_engine.py  # Static analysis with regex (YAML rules)
 ├── blame_engine.py   # Code archaeology with git blame + AI
 ├── issue_engine.py   # AI-powered issue draft creation
-├── tui_issue.py      # GitHub token validation and TUI entry point
+├── infrastructure/scm/  # Multi-forge SCM abstraction (ScmProvider)
+│   ├── __init__.py       # Public re-exports (contract, providers, factory)
+│   ├── base.py           # ScmProvider ABC, dataclasses, ScmProviderError
+│   ├── github_provider.py / gitlab_provider.py / bitbucket_provider.py / azure_devops_provider.py
+│   └── factory.py        # resolve_scm_provider() + detect_provider_from_remote()
+├── github_api.py     # DEPRECATED shim → delegates to github_provider.py
+├── tui_issue.py      # SCM token validation (validate_or_request_scm_token) + TUI entry point
 ├── ui/               # Sub-package: TUI components (Textual)
 │   ├── __init__.py       # Package marker (required for setuptools discovery)
 │   ├── help_screen.py    # Help modal (F1) — shortcuts and instructions
@@ -59,7 +65,8 @@ langs/                # Language translation files
 └── pt_br.json        # Portuguese (Brazil) translations
 
 tests/
-└── test_core.py      # Unit tests (unittest + mock)
+├── test_core.py      # Unit tests (unittest + mock)
+└── scm/              # Multi-forge SCM tests (contract, providers, factory, wizard)
 
 docs/
 ├── ARCHITECTURE.md
@@ -97,11 +104,12 @@ docs/
 | `-i` / `--input`         | File audit             | Entire file → AI (uses `.gitpr.filereview.md`)                            |
 | `-l` / `--linter`        | Static linter          | `git diff` → YAML regex + external linters → console/TUI (no AI)          |
 | `--linter-setup`         | Linter wizard          | Interactive setup of external linters (Checkstyle bridge presets)         |
-| `-is` / `--issue`        | Issue via TUI          | `git diff` → AI (draft) → Textual TUI → save .md or POST to GitHub       |
+| `-is` / `--issue`        | Issue via TUI          | `git diff` → AI (draft) → Textual TUI → save .md or POST to the forge     |
 | `-is -ht` / `--history`  | Epic/Release issue     | `git log` + PR cache → AI → TUI                                           |
 | `-is -b <file:lines>`    | Technical debt issue   | `git blame` timeline → AI → TUI                                           |
 | `-b` / `--blame`         | Code archaeology       | `git blame` → AI classifies commits → timeline + summary                  |
 | `-ch` / `--chat`         | Interactive chat       | `git diff` → Textual TUI (`ChatApp`) → pair programming with auto-patch   |
+| `--init`                 | SCM forge wizard       | Detects the repository's forge, validates the token, configures SCM       |
 | `--install`              | Setup wizard           | Interactive wizard for templates, hooks, MCP, and API keys                |
 | `-s` / `--skill`         | Download templates      | Download `.gitpr.*.md` into `.gitpr/skill/` (never overwrites)            |
 | `-ih` / `--installhooks` | Install hooks           | Download + install hooks in `.git/hooks/`                                  |
@@ -277,7 +285,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
 - Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json` (auto-downloaded, re-fetched when `__lang_version__` changes)
-- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `PR_AUTO_PUBLISH`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `PR_AUTO_PUBLISH`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
 
 ### AI Providers (Multi-Model Architecture)
 - **Gemini:** `gemini-pro-latest` (primary/advanced) / `gemini-flash-lite-latest` (secondary/simple)
@@ -309,12 +317,21 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Output: color-coded terminal (green=origin, yellow=refactoring) + Markdown report
 - Can feed issue context via `--issue -b file:lines`
 
+### Multi-Forge SCM (ScmProvider)
+- `src/infrastructure/scm/` — single abstraction over Git hosting forges: `base.py` (ABC `ScmProvider`, dataclasses, `ScmProviderError`), one concrete provider per forge, `factory.py`
+- Registry: `github`, `gitlab`, `bitbucket`, `azure_devops`; `resolve_scm_provider()` selects by `GITPR_SCM_PROVIDER` (default `github` — zero migration, GitHub legacy token fallback intact)
+- Providers RAISE `ScmProviderError(provider, http_status, message)` — `http_status` 0 = network failure; Azure `create_issue` raises `ScmNotSupportedError` (Work Items depend on the process template)
+- Repo addressed via `parse_repo_ref(remote_url) -> RepoRef(raw, workspace, name, provider)`; workspace = GitHub owner / GitLab namespace (subgroups) / Bitbucket workspace / Azure display-only `"{org}/{project}"`
+- `gitpr --init` → `core.run_scm_init_wizard()`: detects the forge from the origin remote → prompts extras (Azure org/project, Bitbucket username) → validates token (`test_connection`, 3 attempts, 401 re-prompt) → **persists only on success**: `GITPR_SCM_PROVIDER` + `GITPR_SCM_TOKEN_ENCRYPTED` (Fernet) + extras when present
+- Fail-fast providers: Azure DevOps requires `GITPR_SCM_ORGANIZATION`/`GITPR_SCM_PROJECT`; Bitbucket requires `GITPR_SCM_USERNAME` (App Password = HTTP Basic username+token)
+- `src/github_api.py` is a **DEPRECATED shim** — legacy `(ok, data, status)` tuples + `DeprecationWarning`, delegating to `github_provider.py`; no new code may import it
+- Glossário + desvios aprovados: `docs/plans/glossary-scm-multiforge.md` e `docs/plans/ADR-001-scm-abstraction.md`
+
 ### Issues TUI (Textual)
 - Main app: `src/ui/issue_app.py` → class `IssueApp(App)`
 - Help modal: `src/ui/help_screen.py` → class `HelpScreen(ModalScreen)`
-- Bindings: F1 (Help), F2 (Save local .md), F3 (Create via GitHub API), Esc (Exit)
-- GitHub token (PAT) validated in `src/tui_issue.py` → `validate_or_request_github_token()`
-- PAT scope: `repo` (generated via dynamic URL with pre-filled parameters)
+- Bindings: F1 (Help), F2 (Save local .md), F3 (Create issue — `provider.create_issue` on the configured forge), Esc (Exit)
+- SCM token validated in `src/tui_issue.py` → `validate_or_request_scm_token(provider, repo_display)` (401 → reauth loop; GitHub legacy keeps `GITHUB_TOKEN_ENCRYPTED` until `--init` runs)
 - Issue draft follows the pattern: What / Why / Where / How
 - 3 context engines: diff (default), history (`-ht`), blame (`-b`)
 

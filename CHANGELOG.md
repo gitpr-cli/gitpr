@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Multi-Forge SCM abstraction** (`src/infrastructure/scm/`): single `ScmProvider` interface over GitHub, GitLab, Bitbucket Cloud and Azure DevOps — pull requests, issues, diffs, comments, merges and connection checks behind one contract (`base.py`, `factory.py`, one provider module per forge).
+- **`--init` flag**: Interactive SCM forge wizard (`core.run_scm_init_wizard()`) — detects the forge from the origin remote, validates the access token (`test_connection`, up to 3 attempts, 401 re-prompt) and persists configuration **only on success** (`GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED` via Fernet, plus provider extras).
+- **GitLab, Bitbucket Cloud and Azure DevOps providers**: PR create/check/update/merge, diff, comments, issue creation (Bitbucket requires the Issue Tracker enabled; Azure DevOps raises not-supported for issues — Work Items depend on the process template).
+- **SCM configuration keys**: `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN` (CI/raw), `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME` in `DEFAULT_CONFIG`/`setup_environment`.
+
+### Changed
+- Providers now **raise** `ScmProviderError(provider, http_status, message)` instead of swallowing failures (`http_status` 0 = network); the legacy `(ok, data, status)` mapping lives at the UI call sites.
+- Repository addressing goes through `parse_repo_ref()` → `RepoRef` (GitHub owner / GitLab namespace / Bitbucket workspace / Azure display-only `org/project`); the TUI publisher, the issues TUI and the direct publish flow resolve the provider from config.
+- i18n dictionaries expanded to 675 keys per language (6 files).
+
+### Deprecated
+- `src/github_api.py` is now a deprecated shim delegating to `GitHubProvider` (same 4 signatures, same `(ok, data, status)` tuples, `DeprecationWarning`); no internal code imports it anymore.
+
+### Documentation
+- [docs/plans/glossary-scm-multiforge.md](docs/plans/glossary-scm-multiforge.md) — canonical Multi-Forge vocabulary.
+- [docs/plans/ADR-001-scm-abstraction.md](docs/plans/ADR-001-scm-abstraction.md) — decision record with the 10 approved deviations from the spec.
+
+---
+
 ## [0.0.33] — 2026-08-09
 
 ### Added

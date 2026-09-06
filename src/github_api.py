@@ -1,162 +1,112 @@
-import requests
-from src.i18n import __
+"""DEPRECATED thin shim over GitHubProvider (src/infrastructure/scm).
+
+Kept so external integrations (plugins, user scripts) that import github_api
+directly keep working. Every function delegates to GitHubProvider and returns
+the legacy (ok, data, http_status) tuples. New code must use
+factory.resolve_scm_provider() instead of this module.
+"""
+
+import warnings
+
+from src.infrastructure.scm.base import (
+    PullRequestRequest,
+    RepoRef,
+    ScmProviderError,
+)
+from src.infrastructure.scm.github_provider import (
+    GitHubProvider,
+    _extract_error_message,
+)
 
 
-def _extract_error_message(response):
-    """Best-effort extraction of GitHub's error payload (message + errors[])."""
-    try:
-        j = response.json()
-        details = j.get("message", "")
-        for err in j.get("errors", []):
-            field = err.get("field", "")
-            msg = err.get("message", "")
-            if field:
-                details += f" [{field}: {msg}]"
-            elif msg:
-                details += f" {msg}"
-        return details.strip() or response.text
-    except Exception:
-        return response.text
+def _deprecated(function_name):
+    warnings.warn(
+        f"github_api.{function_name} is deprecated, "
+        "use ScmProvider via factory.resolve_scm_provider",
+        DeprecationWarning,
+        stacklevel=3,
+    )
+
+
+def _repo_ref(repo_info):
+    """Legacy code passes the bare "owner/repo" string — rebuild a RepoRef."""
+    if "/" in repo_info:
+        workspace, name = repo_info.split("/", 1)
+    else:
+        workspace, name = "", repo_info
+    return RepoRef(raw=repo_info, workspace=workspace, name=name, provider="github")
 
 
 def create_pull_request(repo_info, github_token, title, body, head, base, timeout=30):
     """
-    Creates a GitHub Pull Request via REST API.
+    Creates a GitHub Pull Request via REST API (DEPRECATED — delegate).
 
-    Returns (ok: bool, data: dict, http_status: int).
-      - ok=True,  data={'url': html_url, 'number': n},  status=201
-      - ok=False, data={'message': user-facing error},  status=401/422/other/0
-    status 0 = network/connection failure (no HTTP response).
+    Returns (ok: bool, data: dict, http_status: int) exactly as the legacy
+    implementation did.
     """
-    api_url = f"https://api.github.com/repos/{repo_info}/pulls"
-    headers = {
-        "Authorization": f"token {github_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    payload = {"title": title, "body": body, "head": head, "base": base}
-
+    _deprecated("create_pull_request")
+    provider = GitHubProvider(token=github_token)
+    req = PullRequestRequest(
+        title=title, description=body, source_branch=head, target_branch=base
+    )
     try:
-        response = requests.post(
-            api_url, json=payload, headers=headers, timeout=timeout
-        )
-        if response.status_code == 201:
-            j = response.json()
-            return True, {"url": j.get("html_url"), "number": j.get("number")}, 201
-
-        return (
-            False,
-            {"message": _extract_error_message(response)},
-            response.status_code,
-        )
-
-    except requests.exceptions.ConnectionError:
-        return (
-            False,
-            {"message": __("No internet connection. Cannot create the pull request.")},
-            0,
-        )
-    except requests.exceptions.Timeout:
-        return (
-            False,
-            {"message": __("GitHub API timeout. Check your connection and try again.")},
-            0,
-        )
-    except Exception as e:
-        return (
-            False,
-            {"message": __("Failed to connect to GitHub: {error}", error=str(e))},
-            0,
-        )
+        result = provider.create_pull_request(_repo_ref(repo_info), req, timeout=timeout)
+        return True, {"url": result.url, "number": result.number}, 201
+    except ScmProviderError as e:
+        return False, {"message": e.message}, e.http_status
 
 
 def check_existing_pr(repo_info, github_token, head_branch, timeout=15):
     """
-    Check if there's already an open PR from *head_branch* to any base.
-
-    Returns (exists: bool, pr_url: str | None, pr_number: int | None).
+    Check if there's already an open PR from *head_branch* to any base
+    (DEPRECATED — delegate). Returns (exists, pr_url, pr_number) exactly as
+    the legacy implementation did, degrading to (False, None, None) on any
+    failure.
     """
-    api_url = f"https://api.github.com/repos/{repo_info}/pulls"
-    headers = {
-        "Authorization": f"token {github_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    params = {"head": f"{repo_info.split('/')[0]}:{head_branch}", "state": "open"}
+    _deprecated("check_existing_pr")
+    provider = GitHubProvider(token=github_token)
     try:
-        response = requests.get(
-            api_url, headers=headers, params=params, timeout=timeout
+        result = provider.check_existing_pull_request(
+            _repo_ref(repo_info), head_branch, timeout=timeout
         )
-        if response.status_code == 200:
-            prs = response.json()
-            if prs:
-                pr = prs[0]
-                return True, pr.get("html_url"), pr.get("number")
+    except ScmProviderError:
         return False, None, None
-    except Exception:
+    if result is None:
         return False, None, None
+    return True, result.url, result.number
 
 
 def update_pull_request(
     repo_info, github_token, pr_number, title=None, body=None, timeout=15
 ):
     """
-    Update a pull request's title and/or body via GitHub REST API.
-
-    Returns (ok: bool, data: dict, http_status: int).
+    Update a pull request's title and/or body via GitHub REST API
+    (DEPRECATED — delegate). Returns (ok, data, http_status) as legacy.
     """
-    api_url = f"https://api.github.com/repos/{repo_info}/pulls/{pr_number}"
-    headers = {
-        "Authorization": f"token {github_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
-    payload = {}
-    if title:
-        payload["title"] = title
-    if body:
-        payload["body"] = body
+    _deprecated("update_pull_request")
+    provider = GitHubProvider(token=github_token)
     try:
-        response = requests.patch(
-            api_url, json=payload, headers=headers, timeout=timeout
+        result = provider.update_pull_request(
+            _repo_ref(repo_info),
+            pr_number,
+            title=title,
+            description=body,
+            timeout=timeout,
         )
-        if response.status_code == 200:
-            j = response.json()
-            return True, {"url": j.get("html_url"), "number": j.get("number")}, 200
-        return (
-            False,
-            {"message": _extract_error_message(response)},
-            response.status_code,
-        )
-    except requests.exceptions.ConnectionError:
-        return False, {"message": __("No internet connection.")}, 0
-    except Exception as e:
-        return False, {"message": str(e)}, 0
+        return True, {"url": result.url, "number": result.number}, 200
+    except ScmProviderError as e:
+        return False, {"message": e.message}, e.http_status
 
 
 def merge_pull_request(repo_info, github_token, pr_number, timeout=15):
     """
-    Merge a pull request via GitHub REST API.
-
-    Returns (ok: bool, data: dict, http_status: int).
+    Merge a pull request via GitHub REST API (DEPRECATED — delegate).
+    Returns (ok, data, http_status) as legacy.
     """
-    api_url = f"https://api.github.com/repos/{repo_info}/pulls/{pr_number}/merge"
-    headers = {
-        "Authorization": f"token {github_token}",
-        "Accept": "application/vnd.github.v3+json",
-    }
+    _deprecated("merge_pull_request")
+    provider = GitHubProvider(token=github_token)
     try:
-        response = requests.put(api_url, json={}, headers=headers, timeout=timeout)
-        if response.status_code == 200:
-            j = response.json()
-            return (
-                True,
-                {"merged": j.get("merged", False), "message": j.get("message", "")},
-                200,
-            )
-        return (
-            False,
-            {"message": _extract_error_message(response)},
-            response.status_code,
-        )
-    except requests.exceptions.ConnectionError:
-        return False, {"message": __("No internet connection.")}, 0
-    except Exception as e:
-        return False, {"message": str(e)}, 0
+        provider.merge_pull_request(_repo_ref(repo_info), pr_number, timeout=timeout)
+        return True, {"merged": True, "message": ""}, 200
+    except ScmProviderError as e:
+        return False, {"message": e.message}, e.http_status

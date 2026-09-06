@@ -14,6 +14,7 @@ import asyncio
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Static
 
+from src.infrastructure.scm import PullRequestResult
 from src.ui.pr_publish_app import (
     CommitConfirmScreen,
     CommitMessageScreen,
@@ -126,8 +127,16 @@ def test_no_verify_flow_skips_linter_and_commits(monkeypatch, tmp_path):
         "src.ui.pr_publish_app.has_uncommitted_changes", lambda: True
     )
     monkeypatch.setattr(
-        "src.github_api.check_existing_pr",
-        lambda *a, **k: (True, "https://example.com/pr/42", 42),
+        "src.ui.pr_publish_app._check_existing_pull_request",
+        lambda *a, **k: PullRequestResult(
+            id=42,
+            url="https://example.com/pr/42",
+            number=42,
+            state="open",
+            source_branch="head",
+            target_branch="main",
+            provider="github",
+        ),
     )
     monkeypatch.setenv("PR_PUBLISH_LOG", "false")
 

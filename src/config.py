@@ -38,6 +38,16 @@ DEFAULT_CONFIG = {
     "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md",
     "GITPR_AI_TIMEOUT": "180",
     "GITPR_LINTER_TIMEOUT": "120",
+    # Multi-forge SCM configuration (GitHub/GitLab/Bitbucket/Azure DevOps).
+    # Empty values mean "not configured" — resolution falls back to github
+    # with the legacy GITHUB_TOKEN_* store (see infrastructure/scm/factory.py).
+    "GITPR_SCM_PROVIDER": "",
+    "GITPR_SCM_TOKEN": "",
+    "GITPR_SCM_TOKEN_ENCRYPTED": "",
+    "GITPR_SCM_BASE_URL": "",
+    "GITPR_SCM_ORGANIZATION": "",
+    "GITPR_SCM_PROJECT": "",
+    "GITPR_SCM_USERNAME": "",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -403,6 +413,50 @@ def get_github_token():
     if encrypted_token:
         return decrypt_data(encrypted_token)
     return None
+
+
+def get_scm_token():
+    """Reads and decrypts the multi-forge SCM token (GitLab/Bitbucket/Azure…).
+
+    Mirrors get_api_key's CI-friendly pattern: the raw GITPR_SCM_TOKEN env
+    takes precedence (CI/CD injection), otherwise the Fernet-encrypted
+    GITPR_SCM_TOKEN_ENCRYPTED is decrypted.
+    """
+    load_dotenv(ENV_FILE)
+
+    raw_token = os.getenv("GITPR_SCM_TOKEN")
+    if raw_token:
+        return raw_token
+
+    encrypted_token = os.getenv("GITPR_SCM_TOKEN_ENCRYPTED")
+    if encrypted_token:
+        return decrypt_data(encrypted_token)
+    return None
+
+
+def get_scm_settings():
+    """Returns the multi-forge SCM configuration as a flat dict.
+
+    Empty values are omitted so resolve_scm_provider applies its defaults
+    (provider "github", legacy GITHUB_TOKEN_* fallback for github without an
+    SCM token — zero-migration path for existing users).
+    """
+    load_dotenv(ENV_FILE)
+    settings = {
+        "provider": os.getenv("GITPR_SCM_PROVIDER") or None,
+        "token": get_scm_token(),
+        "base_url": os.getenv("GITPR_SCM_BASE_URL") or None,
+        "organization": os.getenv("GITPR_SCM_ORGANIZATION") or None,
+        "project": os.getenv("GITPR_SCM_PROJECT") or None,
+        "username": os.getenv("GITPR_SCM_USERNAME") or None,
+    }
+    return {key: value for key, value in settings.items() if value}
+
+
+def get_scm_provider():
+    """Returns the configured SCM provider key, or None when not configured."""
+    load_dotenv(ENV_FILE)
+    return os.getenv("GITPR_SCM_PROVIDER") or None
 
 
 def validate_github_token(token):

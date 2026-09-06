@@ -12,7 +12,7 @@ import urllib.error
 from pathlib import Path
 from google import genai
 from dotenv import load_dotenv, set_key
-from src.security import decrypt_data
+from src.security import decrypt_data, encrypt_data
 from src.cache import (
     get_cached_response,
     save_cached_response,
@@ -614,6 +614,37 @@ def get_repo_name():
         return "unknown/repo"
     except subprocess.CalledProcessError:
         return "unknown/repo"
+
+
+def get_origin_remote_url():
+    """Returns the origin remote URL verbatim ('git remote get-url origin').
+
+    Never prints and never raises: flows that cannot identify the remote
+    handle the None themselves. Encoding is replaced so remotes with non-UTF8
+    characters never crash the CLI.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        return result.stdout.strip() or None
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def describe_repo(repo_ref):
+    """Human-readable repo label for consoles/TUIs (workspace/name).
+
+    For GitHub this matches the legacy get_repo_name() output, so displays
+    keep byte parity when the repo is resolved through the SCM layer.
+    """
+    return repo_ref.display
 
 
 def get_skill_context(action_type="pr"):
@@ -1505,6 +1536,178 @@ def run_install_wizard():
     click.echo(__("For more details, see the full documentation:"))
     click.secho(f"  {get_doc_url('install-wizard.md')}", fg="blue", underline=True)
     click.echo("")
+
+
+# Forge keys offered by 'gitpr --init' when the user declines the detection —
+# must stay in sync with the factory registry (src/infrastructure/scm/factory.py).
+_SCM_INIT_FORGES = ("github", "gitlab", "bitbucket", "azure_devops")
+_SCM_INIT_ATTEMPTS = 3
+
+
+def run_scm_init_wizard():
+    """
+    Interactive SCM forge configuration wizard (gitpr --init).
+
+    Detects the forge from the origin remote URL, lets the user confirm or
+    override the provider, prompts for the provider extras (organization /
+    project for Azure DevOps, username for Bitbucket, optional API base URL),
+    collects the access token and validates it against the forge API (up to
+    _SCM_INIT_ATTEMPTS attempts; 401 re-prompts, network/server failures abort).
+
+    Configuration is persisted to ~/.gitpr/.env ONLY on success:
+    GITPR_SCM_PROVIDER, GITPR_SCM_TOKEN_ENCRYPTED = encrypt_data(raw) and the
+    extra fields when present. Nothing is written when validation fails.
+    """
+    from src.infrastructure.scm import (
+        ScmProviderError,
+        detect_provider_from_remote,
+        provider_display_name,
+        provider_is_github,
+        resolve_scm_provider,
+    )
+    from src.tui_issue import (
+        _error_message,
+        _no_longer_valid_message,
+        _show_auth_instructions,
+    )
+
+    click.secho(
+        __("\n🔧 Starting GitPR SCM Forge Configuration Wizard..."),
+        fg="cyan",
+        bold=True,
+    )
+    click.echo(
+        __(
+            "Configures the forge GitPR uses for pull requests and issues, and stores the access token that authenticates you.\n"
+        )
+    )
+
+    raw_remote = get_origin_remote_url()
+    if not raw_remote:
+        click.secho(
+            __(
+                "❌ No origin remote repository identified. Run 'gitpr --init' inside a repository that has a configured remote."
+            ),
+            fg="red",
+        )
+        return
+
+    click.echo(__("Repository: {remote}", remote=raw_remote))
+
+    detected = detect_provider_from_remote(raw_remote)
+    if click.confirm(
+        __(
+            "Detected forge: {provider}. Configure GitPR to use it for pull requests and issues?",
+            provider=provider_display_name(detected),
+        ),
+        default=True,
+    ):
+        provider_key = detected
+    else:
+        provider_key = ""
+        while provider_key not in _SCM_INIT_FORGES:
+            provider_key = click.prompt(
+                __("Enter the forge key ({providers}):", providers=", ".join(_SCM_INIT_FORGES))
+            ).strip().lower()
+
+    label = provider_display_name(provider_key)
+
+    # Provider extras — required up-front because fail-fast providers
+    # (Azure DevOps organization/project, Bitbucket username) refuse to be
+    # constructed without them.
+    extras = {}
+    if provider_key == "azure_devops":
+        extras["organization"] = click.prompt(__("Organization name:")).strip()
+        extras["project"] = click.prompt(__("Project name:")).strip()
+    elif provider_key == "bitbucket":
+        extras["username"] = click.prompt(__("Username:")).strip()
+
+    provider = resolve_scm_provider(dict(provider=provider_key, **extras))
+
+    # API base URL: the cloud default is pre-filled; only a different value
+    # (self-managed / enterprise instance) is persisted.
+    base_url = None
+    if provider_key != "github":
+        default_base = provider.default_base_url().rstrip("/")
+        chosen = (
+            click.prompt(__("API base URL:"), default=default_base).strip().rstrip("/")
+            or default_base
+        )
+        if chosen != default_base:
+            base_url = chosen
+            provider = resolve_scm_provider(
+                dict(provider=provider_key, base_url=base_url, **extras)
+            )
+
+    # Access token — instructions first, then a hidden prompt. NOT persisted
+    # yet: "persist only on success" means validation must pass first.
+    repo_display = ""
+    try:
+        repo_display = describe_repo(provider.parse_repo_ref(raw_remote))
+    except ValueError:
+        pass  # Instructions fall back to the generic "your-repository" text.
+
+    _show_auth_instructions(provider, repo_display)
+    if provider_is_github(provider):
+        token_prompt = __("Paste your Token (PAT) here")
+    else:
+        token_prompt = __("Paste your {provider} token here", provider=label)
+    raw_token = click.prompt(token_prompt, hide_input=True).strip()
+
+    for attempt in range(1, _SCM_INIT_ATTEMPTS + 1):
+        try:
+            provider.with_token(raw_token).test_connection()
+        except ScmProviderError as exc:
+            if exc.http_status == 401:
+                # Invalid/expired token — warn and re-prompt while attempts last.
+                click.secho(
+                    _no_longer_valid_message(provider, _error_message(exc, provider_is_github(provider), label)),
+                    fg="yellow",
+                )
+                if attempt < _SCM_INIT_ATTEMPTS:
+                    raw_token = click.prompt(token_prompt, hide_input=True).strip()
+                    continue
+                click.secho(
+                    __(
+                        "❌ Could not validate the {provider} token after {attempts} attempts. Run 'gitpr --init' again with a valid token.",
+                        provider=label,
+                        attempts=_SCM_INIT_ATTEMPTS,
+                    ),
+                    fg="red",
+                )
+                return
+            # Network/server-side failures cannot be fixed by re-prompting.
+            click.secho(
+                __(
+                    "❌ {provider} configuration failed: {error}",
+                    provider=label,
+                    error=_error_message(exc, provider_is_github(provider), label),
+                ),
+                fg="red",
+            )
+            return
+        break
+
+    # Persist only on success (validation above passed).
+    set_key(ENV_FILE, "GITPR_SCM_PROVIDER", provider_key)
+    set_key(ENV_FILE, "GITPR_SCM_TOKEN_ENCRYPTED", encrypt_data(raw_token))
+    for env_key, value in (
+        ("GITPR_SCM_BASE_URL", base_url),
+        ("GITPR_SCM_ORGANIZATION", extras.get("organization")),
+        ("GITPR_SCM_PROJECT", extras.get("project")),
+        ("GITPR_SCM_USERNAME", extras.get("username")),
+    ):
+        if value:
+            set_key(ENV_FILE, env_key, value)
+
+    click.secho(
+        __(
+            "✅ SCM forge configured: {provider}! Pull requests and issues will use it from now on.\n",
+            provider=label,
+        ),
+        fg="green",
+        bold=True,
+    )
 
 
 def get_branch_history_text():
