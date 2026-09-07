@@ -44,6 +44,28 @@ def _extract_error_message(response):
         return response.text
 
 
+# GitHub logins: 1-39 chars, alphanumeric plus hyphens, no leading/trailing
+# hyphen. Bot addresses (dependabot[bot]@...) never match this charset.
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+
+
+def _handle_from_noreply(email):
+    """Login from a GitHub noreply address, or None when not one.
+
+    GitHub private emails come as ``{id}+{login}@users.noreply.github.com``;
+    older accounts may emit the bare ``{login}@users.noreply.github.com``
+    form. Anything else (or an invalid login charset) yields None.
+    """
+    email = (email or "").strip()
+    parts = email.rsplit("@", 1)
+    if len(parts) != 2 or parts[1].lower() != "users.noreply.github.com":
+        return None
+    local = parts[0]
+    if "+" in local:
+        local = local.rsplit("+", 1)[1]
+    return local if _USERNAME_RE.match(local) else None
+
+
 class GitHubProvider(ScmProvider):
     """GitHub (github.com SaaS and GitHub Enterprise base_urls)."""
 
@@ -213,6 +235,28 @@ class GitHubProvider(ScmProvider):
             provider=self.name,
         )
 
+    def request_pull_request_reviewers(
+        self,
+        repo: RepoRef,
+        pr_id: str | int,
+        reviewers: list[str],
+        timeout: int = 15,
+    ) -> None:
+        """Request reviewers on an existing pull request (GitHub API).
+
+        GitHub attaches reviewers after creation via
+        POST /repos/{o}/{r}/pulls/{n}/requested_reviewers — there is no
+        reviewer field on the create payload. Invalid handles answer 422,
+        which raises ScmProviderError like any other API failure.
+        """
+        self._request(
+            "post",
+            self._repo_url(repo, "pulls", pr_id, "requested_reviewers"),
+            {201},
+            timeout,
+            json={"reviewers": reviewers},
+        )
+
     def merge_pull_request(
         self, repo: RepoRef, pr_id: str | int, strategy: str = "merge", timeout: int = 15
     ) -> None:
@@ -286,6 +330,35 @@ class GitHubProvider(ScmProvider):
             number=j.get("number"),
             provider=self.name,
         )
+
+    # -- email -> handle mapping ------------------------------------------
+
+    def email_to_handle(self, email: str, timeout: int = 15):
+        """Best-effort GitHub handle for an email; None when unresolvable.
+
+        Never raises. Primary path: GitHub noreply addresses
+        (``{id}+{login}@users.noreply.github.com`` or bare ``{login}@users.
+        noreply.github.com``) parse without any request. Fallback: the user
+        search API (``q={email} in:email``). Bots like
+        ``dependabot[bot]@users.noreply.github.com`` fail the login charset
+        check and return None.
+        """
+        handle = _handle_from_noreply(email)
+        if handle:
+            return handle
+        try:
+            response = self._request(
+                "get",
+                f"{self.base_url}/search/users",
+                {200},
+                timeout,
+                params={"q": f"{(email or '').strip()} in:email"},
+            )
+        except ScmProviderError:
+            return None
+        items = response.json().get("items") or []
+        login = items[0].get("login") if items else None
+        return login or None
 
     # -- connection ------------------------------------------------------
 

@@ -34,6 +34,11 @@ DEFAULT_CONFIG = {
     "GITPR_SHOW_LOGS": "true",
     "GITPR_SKIP_UNSTAGED_CHECK": "false",
     "PR_PUBLISH_LOG": "true",
+    # Reviewer suggestion (default PR flow): default ON, opt-out via --no-suggest-reviewers
+    # or GITPR_SUGGEST_REVIEWERS=false. EXCLUDED is a CSV of names/emails.
+    "GITPR_SUGGEST_REVIEWERS": "true",
+    "GITPR_REVIEWER_SUGGESTION_TOP_N": "3",
+    "GITPR_REVIEWER_SUGGESTION_EXCLUDED": "",
     "GITPR_AUTO_MERGE": "false",
     "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md",
     "GITPR_AI_TIMEOUT": "180",
@@ -148,6 +153,47 @@ def coauthor_enabled():
         "off",
         "n",
     )
+
+
+def suggest_reviewers_enabled():
+    """Returns True when the default PR flow should compute reviewer suggestions.
+
+    Read-only opt-out: set GITPR_SUGGEST_REVIEWERS=false in ~/.gitpr/.env (or
+    pass --no-suggest-reviewers) to disable. Never auto-written to .env.
+    """
+    load_dotenv(ENV_FILE)
+    return os.getenv("GITPR_SUGGEST_REVIEWERS", "true").strip().lower() not in (
+        "false",
+        "0",
+        "no",
+        "off",
+        "n",
+    )
+
+
+def get_reviewer_suggestion_settings():
+    """Returns the reviewer suggestion settings from ~/.gitpr/.env.
+
+    ``top_n`` falls back to 3 when missing, invalid or non-positive;
+    ``excluded`` parses the CSV of extra names/emails into a cleaned tuple.
+    """
+    load_dotenv(ENV_FILE)
+    try:
+        top_n = int((os.getenv("GITPR_REVIEWER_SUGGESTION_TOP_N") or "").strip() or 3)
+        if top_n <= 0:
+            raise ValueError
+    except ValueError:
+        top_n = 3
+    excluded = tuple(
+        item.strip()
+        for item in (os.getenv("GITPR_REVIEWER_SUGGESTION_EXCLUDED") or "").split(",")
+        if item.strip()
+    )
+    return {
+        "enabled": suggest_reviewers_enabled(),
+        "top_n": top_n,
+        "excluded": excluded,
+    }
 
 
 def get_api_key(provider):

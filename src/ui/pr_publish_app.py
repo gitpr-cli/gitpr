@@ -620,6 +620,7 @@ class PrPublishApp(App):
     Input { margin-bottom: 1; }
     TextArea { height: 1fr; }
     Label { margin-top: 1; text-style: bold; color: $accent; }
+    #reviewers_hint { height: auto; text-style: dim; }
     """
 
     BINDINGS = [
@@ -638,6 +639,7 @@ class PrPublishApp(App):
         output_filename,
         provider=None,
         repo_ref=None,
+        reviewer_suggestion=None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -680,6 +682,9 @@ class PrPublishApp(App):
 
         self.pr_title = pr_data.get("commit_message", "")
         self.pr_body = pr_data.get("pr_description", "")
+        # Suggested-reviewers view built by main.py (or None to keep the legacy
+        # layout): {"handles", "lines", "submittable", "note"}.
+        self.reviewer_suggestion = reviewer_suggestion
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -688,6 +693,22 @@ class PrPublishApp(App):
             yield Input(value=self.pr_title, id="pr_title")
             yield Label(__("📝 PR Body"))
             yield TextArea(text=self.pr_body, id="pr_body")
+            view = self.reviewer_suggestion
+            if view:
+                yield Label(__("👥 Suggested Reviewers"))
+                if view["submittable"]:
+                    # Editable: remove a handle by deleting it, add one by
+                    # typing — GitHub-only, so it only exists when submission
+                    # is possible.
+                    yield Input(
+                        value=", ".join(view["handles"]),
+                        id="reviewers_input",
+                        placeholder=__("GitHub usernames, comma separated"),
+                    )
+                hint_lines = list(view["lines"])
+                if view.get("note"):
+                    hint_lines.append(view["note"])
+                yield Static("\n".join(hint_lines), id="reviewers_hint")
         yield Footer()
 
     def action_show_help(self):
@@ -719,6 +740,56 @@ class PrPublishApp(App):
     def _log(self, message):
         """Write a debug log entry for this session."""
         _log_event(self._log_path, message)
+
+    # ── Suggested Reviewers (GitHub attach) ──
+
+    def _parsed_reviewers(self):
+        """Comma-separated handles typed in the reviewers input, deduplicated.
+
+        The input only exists on a submittable suggestion view, so any other
+        state (no view, local-only forge, screen torn down) yields no handles.
+        """
+        view = self.reviewer_suggestion
+        if not view or not view.get("submittable"):
+            return []
+        try:
+            raw = self.query_one("#reviewers_input", Input).value
+        except Exception:
+            return []
+        seen = set()
+        reviewers = []
+        for part in raw.split(","):
+            handle = part.strip()
+            if handle and handle not in seen:
+                seen.add(handle)
+                reviewers.append(handle)
+        return reviewers
+
+    def _attach_reviewers(self, pr_number, reviewers):
+        """Request reviewers on a published PR (GitHub only, non-fatal).
+
+        Runs after the PR already exists, so a failure never blocks the
+        publish: the outcome degrades to a warning on the final message.
+        """
+        try:
+            self.provider.request_pull_request_reviewers(
+                self.repo_ref, pr_number, reviewers
+            )
+            self._log(f"Reviewers requested on PR #{pr_number}: {reviewers}")
+        except ScmProviderError as e:
+            error = e.message
+            self._log(f"Reviewer request failed on PR #{pr_number}: {e}")
+            self.final_message += "\n" + __(
+                "⚠️ PR published, but the reviewers could not be requested: {error}",
+                error=error,
+            )
+        except Exception as e:
+            # Unexpected provider bug — still non-fatal, the PR is published.
+            self._log(f"Reviewer request failed on PR #{pr_number}: {e}")
+            self.final_message += "\n" + __(
+                "⚠️ PR published, but the reviewers could not be requested: {error}",
+                error=str(e),
+            )
 
     # ── Auto-Commit Flow (F3) ──
 
@@ -1109,6 +1180,9 @@ class PrPublishApp(App):
         """Push to remote and update PR description in background, then show result."""
         body_input = self.query_one("#pr_body", TextArea)
         pr_body = body_input.text.strip()
+        # Read the reviewers on the app thread — the DOM is not queryable from
+        # the push worker spawned below.
+        pending_reviewers = self._parsed_reviewers()
 
         def _do_push():
             old = sys.stdout
@@ -1162,6 +1236,10 @@ class PrPublishApp(App):
                         "✅ PR updated:\n👉 {pr_url}",
                         pr_url=pr_url,
                     )
+                    # Update path of the reviewers attach (see create path in
+                    # _publish_pr_from_progress): GitHub-only, non-fatal.
+                    if pr_num and provider_is_github(self.provider) and pending_reviewers:
+                        self._attach_reviewers(pr_num, pending_reviewers)
                     if pr_num:
                         auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in (
                             "true",
@@ -1406,6 +1484,13 @@ class PrPublishApp(App):
             self.final_message = success_msg
             if self._log_path:
                 self.final_message += f"\n📋 Log: {self._log_path}"
+
+            # Attach the reviewers the author accepted/edited (GitHub-only —
+            # other forges display suggestions locally and never submit them).
+            if pr_number and provider_is_github(self.provider):
+                reviewers = self._parsed_reviewers()
+                if reviewers:
+                    self._attach_reviewers(pr_number, reviewers)
 
             auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in (
                 "true",

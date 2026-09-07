@@ -14,6 +14,7 @@ from src.infrastructure.scm.base import (
     IssueRequest,
     PullRequestRequest,
     RepoRef,
+    ScmNotSupportedError,
     ScmProviderError,
 )
 from src.infrastructure.scm.gitlab_provider import GitLabProvider, _extract_error_message
@@ -488,6 +489,17 @@ class TestNoNetworkOrCredentials(unittest.TestCase):
             self.assertEqual(
                 ctx.exception.http_status, 0, f"{verb} should report status 0"
             )
+
+
+class TestReviewerAttachNotSupported(unittest.TestCase):
+    """GitLab has no GitHub-style requested_reviewers: the base default raise
+    applies (reviewer suggestions stay local-only on this forge)."""
+
+    def test_requesting_reviewers_raises_not_supported(self):
+        with self.assertRaises(ScmNotSupportedError) as ctx:
+            _provider().request_pull_request_reviewers(_repo(), 7, ["ana"])
+        self.assertEqual(ctx.exception.provider, "gitlab")
+        self.assertEqual(ctx.exception.http_status, 0)
 
 
 if __name__ == "__main__":

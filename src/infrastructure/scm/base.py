@@ -203,6 +203,21 @@ class ScmProvider(ABC):
         (Azure DevOps).
         """
 
+    def request_pull_request_reviewers(
+        self, repo: RepoRef, pr_id: str | int, reviewers: list[str]
+    ) -> None:
+        """Request reviewers on an existing pull request.
+
+        Deliberately NOT abstract: only forges with a reviewer API support it
+        (GitHub's requested_reviewers). The default raises
+        ScmNotSupportedError so the four concrete providers keep compiling and
+        the contract tests stay untouched.
+        """
+        raise ScmNotSupportedError(
+            self.name,
+            "This forge has no API to request pull request reviewers.",
+        )
+
     def with_token(self, token: str) -> "ScmProvider":
         """Return a new provider instance with a fresh token (reauth loops)."""
         return type(self)(token=token, base_url=self.base_url, **self.extra)

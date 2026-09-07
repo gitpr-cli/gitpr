@@ -2,12 +2,13 @@ import subprocess
 import click
 import re
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from src.core import get_current_branch, get_skill_context, resolve_output_path
 from src.config import get_api_key, get_api_model, get_ai_provider, resolve_skill_path
 from src.ai_providers import call_ai_model
 from src.i18n import __
 from src.metrics import log_local_metric
+from src.reviewer_suggestion import BlameHit
 
 
 def execute_git_blame(file_path, start_line, end_line, commit_hash=None):
@@ -38,6 +39,115 @@ def execute_git_blame(file_path, start_line, end_line, commit_hash=None):
     except subprocess.CalledProcessError as e:
         # If it fails (e.g.: file didn't exist in that old commit), silently return empty
         return []
+
+
+def get_blame_for_range(file_path, start_line, end_line, repo_path=None):
+    """Run ``git blame --line-porcelain`` on one line range and return one
+    BlameHit per blamed line (newest revision per line, working tree).
+
+    Returns [] (never raises) when the file has no history, is binary,
+    untracked, or git fails — matching the error contract of
+    execute_git_blame. repo_path is the repository root (used as subprocess
+    cwd by callers outside the process cwd); None inherits the process cwd.
+    """
+    cmd = [
+        "git",
+        "blame",
+        "--line-porcelain",
+        "-L",
+        f"{start_line},{end_line}",
+        "--",
+        file_path,
+    ]
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=repo_path,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError, ValueError):
+        return []
+    return _parse_blame_porcelain(result.stdout, file_path)
+
+
+def _parse_blame_porcelain(stdout, file_path):
+    """Parse ``git blame --line-porcelain`` output into per-line BlameHit items.
+
+    Each record starts with a commit line ("<sha> <orig> <final> <count>",
+    boundary commits prefix the sha with '^'), carries ``author``,
+    ``author-mail`` and ``author-time`` headers, and ends at the tab-prefixed
+    content line. Records whose commit is all zeros ("Not Committed Yet",
+    i.e. the author's own uncommitted work) are skipped.
+    """
+    hits = []
+    record = None
+    for raw_line in stdout.split("\n"):
+        if raw_line.startswith("\t"):
+            if record is not None:
+                hit = _record_to_hit(record, file_path)
+                if hit is not None:
+                    hits.append(hit)
+                record = None
+            continue
+        line = raw_line.strip()
+        if not line:
+            continue
+        commit_match = re.match(r"^[\^]?([a-fA-F0-9]{40})\s+\d+\s+(\d+)", line)
+        if commit_match:
+            record = {
+                "commit": commit_match.group(1),
+                "line": commit_match.group(2),
+                "name": "",
+                "email": "",
+                "time": None,
+            }
+            continue
+        if record is None:
+            continue
+        if line.startswith("author ") and not line.startswith("author-"):
+            record["name"] = line[len("author "):].strip()
+        elif line.startswith("author-mail "):
+            record["email"] = line[len("author-mail "):].strip().strip("<>")
+        elif line.startswith("author-time "):
+            try:
+                record["time"] = int(line[len("author-time "):].strip())
+            except ValueError:
+                record["time"] = None
+    if record is not None:
+        hit = _record_to_hit(record, file_path)
+        if hit is not None:
+            hits.append(hit)
+    return hits
+
+
+def _record_to_hit(record, file_path):
+    """Build a BlameHit from a parsed porcelain record, or None when the
+    line belongs to uncommitted work (commit hash of forty zeros)."""
+    if not record["commit"].startswith("0" * 40):
+        try:
+            commit_date = (
+                datetime.fromtimestamp(record["time"], tz=timezone.utc)
+                .date()
+                .isoformat()
+                if record["time"] is not None
+                else ""
+            )
+        except (ValueError, OverflowError, OSError):
+            commit_date = ""
+        return BlameHit(
+            file_path=file_path,
+            line_number=int(record["line"]),
+            author_name=record["name"],
+            author_email=record["email"],
+            commit_hash=record["commit"],
+            commit_date=commit_date,
+        )
+    return None
 
 
 def execute_git_show(commit_hash, file_path):
