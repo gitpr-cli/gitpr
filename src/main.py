@@ -15,7 +15,13 @@ if hasattr(sys.stdout, "reconfigure"):
 import subprocess
 
 from src.chat_memory import ChatMemoryManager
-from src.config import check_internet_connection, get_ai_provider, setup_environment
+from src.config import (
+    check_internet_connection,
+    get_ai_provider,
+    get_reviewer_suggestion_settings,
+    setup_environment,
+    suggest_reviewers_enabled,
+)
 from src.core import (
     append_coauthor_trailer,
     check_and_update_hooks_scripts,
@@ -212,6 +218,13 @@ HELP_MAP: dict[str, dict[str, str]] = {
             "Skips the unstaged-files verification that runs before PR, commit, review, full review and issue generation. Equivalent to GITPR_SKIP_UNSTAGED_CHECK=true for one run."
         ),
     },
+    "no-suggest-reviewers": {
+        "url": get_doc_url("suggested-reviewers.md"),
+        "title": __("Skip Suggested Reviewers (--no-suggest-reviewers)"),
+        "description": __(
+            "Disables the reviewer suggestion computation (git blame over the added lines) before the interactive publisher opens. Suggestions stay ON by default; set GITPR_SUGGEST_REVIEWERS=false in ~/.gitpr/.env to disable globally. On GitHub the accepted list is requested on the created PR."
+        ),
+    },
     "linter-setup": {
         "url": get_doc_url("linter-regras-customizadas.md"),
         "title": __("External Linter Wizard (--linter-setup)"),
@@ -244,7 +257,8 @@ HELP_PRIORITY: dict[str, int] = {
     "plugins": 18,
     "status": 19,
     "no-unstaged-check": 20,
-    "linter-setup": 21,
+    "no-suggest-reviewers": 21,
+    "linter-setup": 22,
 }
 
 
@@ -453,6 +467,13 @@ HELP_PRIORITY: dict[str, int] = {
     help=__("Skips the unstaged files verification before AI processing."),
 )
 @click.option(
+    "--no-suggest-reviewers",
+    is_flag=True,
+    help=__(
+        "Disables the suggested reviewers computation in the interactive publisher (default ON)."
+    ),
+)
+@click.option(
     "--linter-setup",
     is_flag=True,
     help=__("Interactive wizard to configure external linters (ESLint, PHPCS, etc)."),
@@ -499,6 +520,7 @@ def cli(
     plugins,
     status,
     no_unstaged_check,
+    no_suggest_reviewers,
     linter_setup,
 ):
     """
@@ -1478,6 +1500,40 @@ def cli(
             print_update_notice()
         return
 
+    # ── Suggested reviewers (default TUI flow only, never blocking) ──
+    # Blame of the diff's added lines against the working tree. Any failure
+    # (missing identity, shallow repo, git error) degrades to a yellow note
+    # and the publisher opens without suggestions.
+    reviewer_suggestion = None
+    if not no_suggest_reviewers and suggest_reviewers_enabled():
+        from src.cache import get_git_user_info
+        from src.suggest_reviewers import compute_reviewer_suggestions
+
+        click.secho(__("🔍 Searching for suggested reviewers..."), fg="cyan", dim=True)
+        try:
+            settings = get_reviewer_suggestion_settings()
+            user_name, user_email = get_git_user_info()
+            suggestion_result = compute_reviewer_suggestions(
+                diff_text,
+                pr_author_email=user_email,
+                pr_author_name=user_name,
+                top_n=settings["top_n"],
+                excluded_authors=settings["excluded"],
+            )
+        except Exception as e:
+            suggestion_result = None
+            click.secho(
+                __("⚠️ Could not compute reviewer suggestions: {error}", error=str(e)),
+                fg="yellow",
+                dim=True,
+            )
+        if suggestion_result:
+            for warning in suggestion_result.warnings:
+                click.secho(f"  ⚠️ {warning}", fg="yellow", dim=True)
+            reviewer_suggestion = _reviewer_suggestion_view(
+                suggestion_result, provider
+            )
+
     # Interactive TUI with reauth loop
     while True:
         app = PrPublishApp(
@@ -1488,6 +1544,7 @@ def cli(
             repo_ref=repo_ref,
             base_branch=target_base,
             output_filename=output_filename,
+            reviewer_suggestion=reviewer_suggestion,
         )
         app.run()
 
@@ -1747,6 +1804,53 @@ def _run_auto_commit_cli(provider):
     else:
         click.secho(__("❌ Commit failed: {output}", output=output), fg="red")
         return False
+
+
+def _reviewer_suggestion_view(result, provider):
+    """Map a ReviewerSuggestionResult to the dict consumed by PrPublishApp.
+
+    Resolves GitHub handles best-effort (noreply-address parse first, then
+    the user search API); candidates whose email cannot be mapped are still
+    shown in the hint lines under their author name. Non-GitHub forges get a
+    local-only view — suggestions are displayed, never submitted, because
+    those forges have no reviewer-request API (see ADR-002). Returns None
+    when there is nothing to show.
+    """
+    from src.infrastructure.scm import (
+        provider_display_name,
+        provider_is_github,
+    )
+    from src.suggest_reviewers import format_suggestion_lines
+
+    if result is None or not result.candidates:
+        return None
+
+    submittable = provider_is_github(provider)
+    handles = []
+    who_map = {}
+    if submittable:
+        email_to_handle = getattr(provider, "email_to_handle", None)
+        for candidate in result.candidates:
+            try:
+                handle = email_to_handle(candidate.author_email) if email_to_handle else None
+            except Exception:
+                handle = None
+            if handle:
+                handles.append(handle)
+                who_map[candidate.author_email] = f"@{handle}"
+    lines = format_suggestion_lines(result, who_map=who_map)
+    note = None
+    if not submittable:
+        note = __(
+            "Reviewer suggestions are displayed locally only — {provider} cannot attach reviewers to pull requests.",
+            provider=provider_display_name(provider),
+        )
+    return {
+        "handles": handles,
+        "lines": lines,
+        "submittable": submittable,
+        "note": note,
+    }
 
 
 def _scm_access_canceled_message(provider):

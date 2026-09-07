@@ -24,6 +24,7 @@ from src.infrastructure.scm.base import (
 from src.infrastructure.scm.github_provider import (
     GitHubProvider,
     _extract_error_message,
+    _handle_from_noreply,
 )
 
 REPO = "natanfiuza/gitpr"
@@ -589,6 +590,97 @@ class TestListAndCommentAndDiff(unittest.TestCase):
             mock_get.call_args.kwargs["headers"]["Accept"],
             "application/vnd.github.v3.diff",
         )
+
+
+class TestRequestPullRequestReviewers(unittest.TestCase):
+    """Reviewers attach after creation via requested_reviewers (no payload
+    field exists on POST /pulls)."""
+
+    @patch("src.infrastructure.scm.github_provider.requests.post")
+    def test_success_posts_requested_reviewers(self, mock_post):
+        mock_post.return_value = _response(201, {"reviewers": ["ana"]})
+
+        _provider().request_pull_request_reviewers(_repo(), 7, ["ana", "bob"])
+
+        args, kwargs = mock_post.call_args
+        self.assertEqual(
+            args[0],
+            f"https://api.github.com/repos/{REPO}/pulls/7/requested_reviewers",
+        )
+        self.assertEqual(kwargs["json"], {"reviewers": ["ana", "bob"]})
+        self.assertEqual(kwargs["timeout"], 15)
+
+    @patch("src.infrastructure.scm.github_provider.requests.post")
+    def test_invalid_handle_422_is_reported(self, mock_post):
+        mock_post.return_value = _response(422, {"message": "Validation Failed"})
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().request_pull_request_reviewers(_repo(), 7, ["no-such-user"])
+
+        self.assertEqual(ctx.exception.http_status, 422)
+
+    @patch("src.infrastructure.scm.github_provider.requests.post")
+    def test_network_failure_has_status_zero(self, mock_post):
+        mock_post.side_effect = requests.exceptions.ConnectionError("boom")
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().request_pull_request_reviewers(_repo(), 7, ["ana"])
+
+        self.assertEqual(ctx.exception.http_status, 0)
+
+
+class TestEmailToHandle(unittest.TestCase):
+    """Best-effort email -> login mapping (never raises, no request when the
+    noreply address parses)."""
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_noreply_id_plus_login_needs_no_request(self, mock_get):
+        handle = _provider().email_to_handle("1234567+ana@users.noreply.github.com")
+        self.assertEqual(handle, "ana")
+        mock_get.assert_not_called()
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_bare_noreply_login(self, mock_get):
+        handle = _provider().email_to_handle("bob-lima@users.noreply.github.com")
+        self.assertEqual(handle, "bob-lima")
+        mock_get.assert_not_called()
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_noreply_domain_is_case_insensitive(self, mock_get):
+        handle = _provider().email_to_handle("7+Ana@Users.Noreply.GitHub.Com")
+        self.assertEqual(handle, "Ana")
+        mock_get.assert_not_called()
+
+    def test_bot_and_invalid_local_parts_return_none(self):
+        # Dependabot's address has a '[bot]' local part: never a real login.
+        self.assertIsNone(_handle_from_noreply("dependabot[bot]@users.noreply.github.com"))
+        # Login charset violations (leading hyphen, too long).
+        self.assertIsNone(_handle_from_noreply("-ana@users.noreply.github.com"))
+        self.assertIsNone(_handle_from_noreply("a" * 40 + "@users.noreply.github.com"))
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_plain_email_falls_back_to_user_search(self, mock_get):
+        mock_get.return_value = _response(
+            200, {"total_count": 1, "items": [{"login": "ana"}]}
+        )
+
+        handle = _provider().email_to_handle("ana@example.com")
+
+        self.assertEqual(handle, "ana")
+        args, kwargs = mock_get.call_args
+        self.assertEqual(args[0], "https://api.github.com/search/users")
+        self.assertEqual(kwargs["params"], {"q": "ana@example.com in:email"})
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_search_returns_none_when_empty_or_error(self, mock_get):
+        mock_get.return_value = _response(200, {"total_count": 0, "items": []})
+        self.assertIsNone(_provider().email_to_handle("ghost@example.com"))
+
+        mock_get.return_value = _response(403, {"message": "rate limit"})
+        self.assertIsNone(_provider().email_to_handle("ghost@example.com"))
+
+        mock_get.side_effect = requests.exceptions.ConnectionError("boom")
+        self.assertIsNone(_provider().email_to_handle("ghost@example.com"))
 
 
 if __name__ == "__main__":

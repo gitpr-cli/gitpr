@@ -8,12 +8,15 @@ TRANSLATIONS is pinned to {} wherever a test asserts on user-facing English,
 so results do not depend on the machine's OS locale.
 """
 import asyncio
+import threading
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Input, SelectionList, Static, TextArea
 
+from src.infrastructure.scm import ScmProviderError
 from src.ui.pr_publish_app import (
     CommitConfirmScreen,
     CommitMessageScreen,
@@ -526,3 +529,255 @@ class TestPublishStateTransitions:
             app._on_commit_message_result("cancel")
 
         publish.assert_not_called()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Suggested Reviewers — editable section + GitHub-only attach
+# ═══════════════════════════════════════════════════════════════════
+
+_HINT_LINE = (
+    "Suggested @ana: 3 added line(s) in 1 file(s), last touched 2026-09-01."
+)
+
+
+def _suggestion_view(**overrides):
+    """The dict main.py hands over (_reviewer_suggestion_view)."""
+    view = {
+        "handles": ["ana", "bob"],
+        "lines": [_HINT_LINE],
+        "submittable": True,
+        "note": None,
+    }
+    view.update(overrides)
+    return view
+
+
+class _Recorder:
+    """Fake provider recording create/update/attach calls in call order."""
+
+    def __init__(self, name="github", attach_raises=None):
+        self.name = name
+        self.calls = []
+        self.attach_raises = attach_raises
+
+    def create_pull_request(self, repo, req):
+        self.calls.append(("create",))
+        return SimpleNamespace(url="https://example.com/repo/pull/9", number=9)
+
+    def update_pull_request(self, repo, pr_id, **kwargs):
+        self.calls.append(("update", pr_id))
+        return SimpleNamespace(
+            url=f"https://example.com/repo/pull/{pr_id}", number=pr_id
+        )
+
+    def request_pull_request_reviewers(self, repo, pr_id, reviewers):
+        if self.attach_raises:
+            raise self.attach_raises
+        self.calls.append(("attach", pr_id, list(reviewers)))
+
+
+class TestReviewersSection:
+    def test_no_view_keeps_legacy_layout(self, tmp_path):
+        """Regression: without suggestions the compose must not render the section."""
+
+        async def run():
+            with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+                app = _make_app(tmp_path / "out.md")
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    assert not app.query("#reviewers_input")
+                    assert not app.query("#reviewers_hint")
+                    assert app._parsed_reviewers() == []
+
+        _run(run)
+
+    def test_github_view_prefills_editable_input_and_hint(self, tmp_path):
+        async def run():
+            with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+                app = _make_app(
+                    tmp_path / "out.md", reviewer_suggestion=_suggestion_view()
+                )
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    inp = app.query_one("#reviewers_input", Input)
+                    assert inp.value == "ana, bob"
+                    hint = app.query_one("#reviewers_hint", Static)
+                    assert _HINT_LINE in str(hint.render())
+                    # Editing reflects on publish: remove ana, add carla, junk
+                    # whitespace and a duplicate must not leak through.
+                    inp.value = " bob , carla ,bob"
+                    await pilot.pause()
+                    assert app._parsed_reviewers() == ["bob", "carla"]
+
+        _run(run)
+
+    def test_local_only_view_has_no_input_but_note(self, tmp_path):
+        async def run():
+            with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+                app = _make_app(
+                    tmp_path / "out.md",
+                    reviewer_suggestion=_suggestion_view(
+                        handles=[], submittable=False, note="GitLab: local only"
+                    ),
+                )
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    assert not app.query("#reviewers_input")
+                    hint = app.query_one("#reviewers_hint", Static)
+                    text = str(hint.render())
+                    assert _HINT_LINE in text
+                    assert "local only" in text
+                    assert app._parsed_reviewers() == []
+
+        _run(run)
+
+    def test_parsed_reviewers_survives_missing_input(self, tmp_path):
+        """Screen torn down / never mounted must degrade to [], never raise."""
+        with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+            app = _make_app(
+                tmp_path / "out.md", reviewer_suggestion=_suggestion_view()
+            )
+        assert app._parsed_reviewers() == []
+
+
+class TestReviewerAttach:
+    def test_publish_without_view_never_attaches(self, tmp_path):
+        recorder = _Recorder()
+
+        async def run():
+            with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+                app = _make_app(tmp_path / "out.md", provider=recorder)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    with patch.object(app, "pop_screen"), patch.object(
+                        app, "_prompt_merge"
+                    ), patch("src.metrics.log_command_metric"):
+                        app._publish_pr_from_progress(None)
+                    await pilot.pause()
+            assert app.final_action == "created"
+            assert recorder.calls == [("create",)]
+
+        _run(run)
+
+    def test_github_publish_attaches_edited_reviewers_after_create(self, tmp_path):
+        recorder = _Recorder()
+
+        async def run():
+            with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+                app = _make_app(
+                    tmp_path / "out.md",
+                    provider=recorder,
+                    reviewer_suggestion=_suggestion_view(),
+                )
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app.query_one("#reviewers_input", Input).value = "bob, carla"
+                    await pilot.pause()
+                    with patch.object(app, "pop_screen"), patch.object(
+                        app, "_prompt_merge"
+                    ), patch("src.metrics.log_command_metric"):
+                        app._publish_pr_from_progress(None)
+                    await pilot.pause()
+            # Attach must run strictly after the create call, on the new PR.
+            assert app.final_action == "created"
+            assert recorder.calls == [("create",), ("attach", 9, ["bob", "carla"])]
+
+        _run(run)
+
+    def test_attach_failure_keeps_pr_created_with_warning(self, tmp_path):
+        recorder = _Recorder(
+            attach_raises=ScmProviderError(
+                "github", 422, "Review cannot be requested for pull request."
+            )
+        )
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}):
+                with patch(
+                    "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+                ):
+                    app = _make_app(
+                        tmp_path / "out.md",
+                        provider=recorder,
+                        reviewer_suggestion=_suggestion_view(),
+                    )
+                    async with app.run_test(size=(100, 30)) as pilot:
+                        await pilot.pause()
+                        with patch.object(app, "pop_screen"), patch.object(
+                            app, "_prompt_merge"
+                        ), patch("src.metrics.log_command_metric"):
+                            app._publish_pr_from_progress(None)
+                        await pilot.pause()
+            assert app.final_action == "created", "attach failure must not fail the PR"
+            assert recorder.calls == [("create",)]
+            assert "could not be requested" in app.final_message
+            assert "Review cannot be requested" in app.final_message
+
+        _run(run)
+
+    def test_non_github_publish_never_attaches(self, tmp_path):
+        recorder = _Recorder(name="gitlab")
+
+        async def run():
+            with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+                app = _make_app(
+                    tmp_path / "out.md",
+                    provider=recorder,
+                    reviewer_suggestion=_suggestion_view(
+                        handles=[], submittable=False
+                    ),
+                )
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    with patch.object(app, "pop_screen"), patch.object(
+                        app, "_prompt_merge"
+                    ), patch("src.metrics.log_command_metric"):
+                        app._publish_pr_from_progress(None)
+                    await pilot.pause()
+            assert app.final_action == "created"
+            assert recorder.calls == [("create",)]
+
+        _run(run)
+
+    def test_update_path_attaches_reviewers_after_update(self, tmp_path):
+        recorder = _Recorder()
+        attached = threading.Event()
+        original_attach = recorder.request_pull_request_reviewers
+
+        def _attach(repo, pr_id, reviewers):
+            original_attach(repo, pr_id, reviewers)
+            attached.set()
+
+        recorder.request_pull_request_reviewers = _attach
+
+        async def run():
+            with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+                app = _make_app(
+                    tmp_path / "out.md",
+                    provider=recorder,
+                    reviewer_suggestion=_suggestion_view(),
+                )
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app.query_one("#reviewers_input", Input).value = "bob, carla, bob"
+                    await pilot.pause()
+                    with patch(
+                        "src.ui.pr_publish_app.subprocess.run",
+                        return_value=SimpleNamespace(
+                            returncode=0, stderr="", stdout=""
+                        ),
+                    ), patch.object(app, "_prompt_merge"), patch.object(
+                        app, "_do_merge"
+                    ):
+                        app._push_and_exit("https://example.com/repo/pull/3", 3)
+                        for _ in range(300):
+                            if attached.is_set():
+                                break
+                            await pilot.pause()
+                    await pilot.pause()
+            assert app.final_action == "created"
+            update_index = recorder.calls.index(("update", 3))
+            attach_index = recorder.calls.index(("attach", 3, ["bob", "carla"]))
+            assert update_index < attach_index
+
+        _run(run)
