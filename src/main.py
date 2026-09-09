@@ -25,6 +25,7 @@ from src.config import (
 from src.core import (
     append_coauthor_trailer,
     check_and_update_hooks_scripts,
+    ensure_release_skill_template,
     generate_pr_content,
     generate_skill_template,
     get_branch_history_text,
@@ -262,8 +263,10 @@ HELP_PRIORITY: dict[str, int] = {
 }
 
 
-# Native Click configuration to accept -h in addition to --help
-@click.command()
+# Native Click configuration to accept -h in addition to --help. The root is a
+# group so `gitpr release` (ADR-002) exists as a subcommand: without one, the
+# callback below routes to the legacy ~29-flag dispatch unchanged.
+@click.group(invoke_without_command=True)
 @click.version_option(
     version=__version__, prog_name="gitpr", message="%(prog)s v%(version)s"
 )
@@ -487,7 +490,9 @@ HELP_PRIORITY: dict[str, int] = {
         "Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."
     ),
 )
+@click.pass_context
 def cli(
+    ctx,
     commit,
     review,
     fullreview,
@@ -529,6 +534,12 @@ def cli(
     DEFAULT BEHAVIOR (No options):
     Fetches, compares with the remote main branch, generates a Markdown (.md) file, and opens an interactive TUI to review, edit, and publish the Pull Request directly to GitHub.
     """
+
+    # Subcommand dispatch (gitpr release …): Click invokes this group callback
+    # first, so everything below runs only when NO subcommand was requested —
+    # the legacy flag surface stays byte-for-byte intact (ADR-002).
+    if ctx.invoked_subcommand is not None:
+        return
 
     # ============================================================
     # CONTEXTUAL HELP HANDLER
@@ -1578,6 +1589,270 @@ def cli(
 
     if not quiet:
         print_update_notice()
+
+
+# ============================================================
+# gitpr release — changelog / release notes (first subcommand, ADR-002)
+# ============================================================
+def _preview_release(result, max_lines=40):
+    """Prints a terminal preview of the generated changelog section (grill Q4/Q5)."""
+    lines = result.markdown.rstrip("\n").splitlines()
+    if len(lines) > max_lines:
+        click.echo("\n".join(lines[:max_lines]))
+        click.echo(__("… and {more} more lines", more=len(lines) - max_lines))
+    else:
+        click.echo(result.markdown.rstrip("\n"))
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("release-notes.md"),
+)
+@click.option(
+    "--since",
+    "since_tag",
+    metavar="<tag>",
+    help=__(
+        "Range origin: tag or reference from where commits are collected (default: the latest reachable tag, or the first commit when no tag exists)."
+    ),
+)
+@click.option(
+    "--version",
+    "target_version",
+    metavar="<x.y.z>",
+    help=__(
+        "Target version of the release (default: automatic semantic bump suggestion)."
+    ),
+)
+@click.option(
+    "--publish",
+    is_flag=True,
+    help=__(
+        "After generating, publish the release on the configured forge (asks for confirmation)."
+    ),
+)
+@click.option(
+    "--draft",
+    is_flag=True,
+    help=__(
+        "Create the release as a draft on the forge (GitHub). Only applies together with --publish; GitLab has no draft concept."
+    ),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["markdown", "json"], case_sensitive=False),
+    default="markdown",
+    show_default=True,
+    help=__(
+        "json prints the full result to stdout without touching files or publishing."
+    ),
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help=__(
+        "Regenerate the version section when it already exists in the changelog (idempotency override)."
+    ),
+)
+def release(since_tag, target_version, publish, draft, output_format, force):
+    """Generates the changelog / release notes of the current repository.
+
+    Scans the commits between --since (default: the latest reachable tag) and
+    HEAD, classifies them by Conventional Commits, suggests a semantic version
+    bump, optionally adds an AI executive summary and prepends the new section
+    to CHANGELOG.md.
+
+    Local generation is the default — nothing is published and no local tags or
+    version files are touched. With --publish the release is created on the
+    forge after an explicit confirmation; GitHub auto-creates the tag on its
+    default branch, GitLab requires the tag to already exist there.
+
+    On the first run the ``.gitpr.release.md`` skill template is downloaded
+    (language-aware, never overwriting) and used as the system instruction of
+    the AI executive summary — edit it locally to customize the summary.
+    """
+    import json
+
+    from src.config import get_release_settings, get_scm_settings
+    from src.infrastructure.scm.base import ScmNotSupportedError, ScmProviderError
+    from src.infrastructure.scm.factory import resolve_scm_provider
+    from src.release_engine import (
+        ReleaseNotesError,
+        generate_release_notes,
+        get_repo_root,
+        publish_release,
+        result_to_json,
+        upsert_changelog,
+    )
+
+    settings = get_release_settings()
+    json_mode = output_format.lower() == "json"
+
+    if json_mode and publish:
+        click.secho(
+            __("⚠️ --format json is stdout-only: --publish is ignored."),
+            fg="yellow",
+        )
+    if draft and not publish:
+        click.secho(
+            __(
+                "⚠️ --draft only applies together with --publish: generating the changelog locally."
+            ),
+            fg="yellow",
+        )
+
+    # R4: first-use auto-download of the .gitpr.release.md skill template.
+    # CLI layer only (never the engine), skipped on --format json because that
+    # mode is stdout-only and must not touch the filesystem.
+    if not json_mode:
+        ensure_release_skill_template()
+
+    try:
+        result = generate_release_notes(
+            repo_path=".",
+            since_tag=since_tag,
+            target_version=target_version,
+            ai_summary=settings["ai_summary"],
+            auto_bump=settings["auto_bump"],
+            quiet=json_mode,
+            ask_version=not json_mode,
+        )
+    except ReleaseNotesError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    # Warnings live inside the JSON result too — never pollute the stdout stream.
+    if not json_mode:
+        for warning in result.warnings:
+            click.secho(f"  ⚠️ {warning}", fg="yellow", dim=True)
+
+    if json_mode:
+        click.echo(json.dumps(result_to_json(result), indent=2, ensure_ascii=False))
+        return
+
+    repo_root = get_repo_root(".")
+    changelog_path = settings["changelog_path"]
+    if not os.path.isabs(changelog_path):
+        changelog_path = os.path.join(repo_root, changelog_path)
+
+    try:
+        status = upsert_changelog(
+            changelog_path, result.version, result.markdown, force=force
+        )
+    except ReleaseNotesError as exc:
+        click.secho(str(exc), fg="red")
+        raise click.exceptions.Exit(1) from exc
+
+    if status == "replaced":
+        click.secho(
+            __("🔄 Existing section for version {version} regenerated.",
+               version=result.version),
+            fg="cyan",
+        )
+    else:
+        click.secho(
+            __("✅ Changelog updated: {path}", path=changelog_path),
+            fg="green",
+            bold=True,
+        )
+
+    # R5: per-run artifact under .gitpr/reports/release/ (best-effort — a
+    # failure here warns but never fails the command; the changelog upsert
+    # above already ruled the release generation).
+    try:
+        branch = get_current_branch()
+        safe_branch = branch.replace("/", "-").replace("\\", "-")
+        artifact_path = resolve_output_path(
+            "OUTPUT_FILE_NAME_RELEASE",
+            "{branch}_{datetime}_RELEASE.md",
+            safe_branch,
+            datetime.now().strftime("%Y%m%d%H%M%S"),
+        )
+        with open(artifact_path, "w", encoding="utf-8", errors="replace") as f:
+            f.write(result.markdown)
+        click.secho(
+            __("📄 Release notes artifact saved to: {path}", path=artifact_path),
+            fg="blue",
+            dim=True,
+        )
+    except Exception as exc:
+        click.secho(
+            __(
+                "⚠️ Warning: Could not save the release notes artifact: {error}",
+                error=str(exc),
+            ),
+            fg="yellow",
+        )
+
+    click.echo("")
+    _preview_release(result)
+
+    if not publish:
+        click.secho(
+            __("ℹ️ To publish this release on the forge, run again with --publish."),
+            fg="cyan",
+            dim=True,
+        )
+        return
+
+    effective_draft = draft or settings["publish_draft_by_default"]
+    scm_provider = resolve_scm_provider(get_scm_settings())
+    from src.core import get_origin_remote_url
+
+    remote_url = get_origin_remote_url()
+    if not remote_url:
+        click.secho(
+            __("❌ No git remote 'origin' found. Cannot publish the release."),
+            fg="red",
+        )
+        raise click.exceptions.Exit(1)
+    try:
+        repo_ref = scm_provider.parse_repo_ref(remote_url)
+    except ValueError as exc:
+        click.secho(str(exc), fg="red")
+        raise click.exceptions.Exit(1) from exc
+
+    if not click.confirm(
+        __(
+            "❓ Publish release {version} on {provider}?",
+            version=result.version,
+            provider=scm_provider.name,
+        ),
+        default=False,
+    ):
+        click.secho(
+            __("⏭️ Publication skipped — the changelog was generated locally."),
+            fg="yellow",
+        )
+        return
+
+    try:
+        url = publish_release(
+            result, scm_provider, repo_ref, draft=effective_draft
+        )
+    except ScmNotSupportedError as exc:
+        click.secho(
+            __(
+                "⚠️ Release publishing is not supported on {provider}. The changelog was generated locally — publish it manually.",
+                provider=exc.provider,
+            ),
+            fg="yellow",
+        )
+        return
+    except ScmProviderError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    click.secho(
+        __("✅ Release {version} published: {url}",
+           version=result.version, url=url),
+        fg="green",
+        bold=True,
+    )
 
 
 def _env_flag(name, default="false"):

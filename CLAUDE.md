@@ -58,6 +58,11 @@ templates/            # Remote templates served from GitHub (--skill)
 ├── gitpr.pr.pt_br.md           # PT-BR: PR description rules
 ├── gitpr.review.md             # EN: code review rules
 ├── gitpr.review.pt_br.md       # PT-BR: code review rules
+├── gitpr.release.md            # EN: release notes rules
+├── gitpr.release.pt_br.md      # PT-BR: release notes rules
+├── gitpr.release.pt_pt.md      # PT-PT: release notes rules
+├── gitpr.release.es_es.md      # ES-ES: release notes rules
+├── gitpr.release.fr_fr.md      # FR-FR: release notes rules
 ├── gitpr.smart-excludes.json   # Smart diff pathspec exclusions (language-independent)
 └── gitpr.thinking-words.md     # Spinner thinking words list
 
@@ -271,11 +276,12 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 
 ### Skills System (Prompt Engineering)
 - Local `.gitpr.<type>.md` files at the user's project root act as AI *System Instructions*
-- Types: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `linter.yml`
+- Types: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `release`, `linter.yml`
 - Remote templates at `https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/`
 - `--skill` downloads templates, but **never overwrites** existing local files
 - Language-aware: EN downloads `gitpr.issue.md`, PT-BR downloads `gitpr.issue.pt_br.md`
-- `get_skill_context()` in `core.py` manages fallbacks (tries `.gitpr.<type>.md`, then legacy `.gitpr.md`)
+- `release` is auto-downloaded on the **first** `gitpr release` run (CLI layer, skipped on `--format json`; language variants limited to EN/pt_br/pt_pt/es_es/fr_fr) — via `ensure_release_skill_template()` in `core.py`, never overwriting
+- `get_skill_context(action_type, quiet=False)` in `core.py` manages fallbacks (tries `.gitpr.<type>.md`, then legacy `.gitpr.md`); `quiet=True` suppresses the "found and loaded" terminal message (mandatory for stdout-only modes)
 
 ### User configuration
 - Global directory: `~/.gitpr/`
@@ -285,7 +291,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
 - Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json` (auto-downloaded, re-fetched when `__lang_version__` changes)
-- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `PR_AUTO_PUBLISH`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `OUTPUT_FILE_NAME_RELEASE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `PR_AUTO_PUBLISH`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
 
 ### AI Providers (Multi-Model Architecture)
 - **Gemini:** `gemini-pro-latest` (primary/advanced) / `gemini-flash-lite-latest` (secondary/simple)
@@ -376,7 +382,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 | `analyze_blame` | AI blame archaeology on a file region | `file_path`, `start_line`, `end_line` |
 | `generate_issue` | Structured issue (What/Why/Where/How) | `context_type`: `diff`/`history`/`blame` |
 
-**Resources (16):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
+**Resources (17):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame,release}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
 
 **Prompts (7):** Review PR, Generate Commit Message, Create PR Description, Run Code Linter, Create Issue from Diff, Trace Code Origin, Explore Project Context
 

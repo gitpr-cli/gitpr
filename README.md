@@ -433,6 +433,7 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 * [**Issue Generation and TUI Interface**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/issue-tui-help.md) — How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
 * [**Code Archaeologist (Git Blame)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/blame-arqueologo.md) — How to trace the origin of business rules with `git blame` and AI.
 * [**Skills and Templates System**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/skill-template.md) — How to customize AI behavior with `.gitpr.*.md` files.
+* [**Release Notes & Changelog (gitpr release)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/release-notes.md) — How the `gitpr release` subcommand generates the changelog / release notes of a repository, suggests the next semantic version and publishes releases on the forge.
 
 ### Configuration & Infrastructure
 

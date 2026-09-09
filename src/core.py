@@ -417,6 +417,7 @@ _OUTPUT_FOLDER_MAP = {
     "OUTPUT_FILE_NAME_BLAME": "blame",
     "OUTPUT_FILE_NAME_ISSUE": "issue",
     "OUTPUT_FILE_NAME_LINTER": "linter",
+    "OUTPUT_FILE_NAME_RELEASE": "release",
 }
 
 
@@ -647,8 +648,12 @@ def describe_repo(repo_ref):
     return repo_ref.display
 
 
-def get_skill_context(action_type="pr"):
-    """Reads the correct context file based on the action (PR/Commit/Review/Issue/Blame)."""
+def get_skill_context(action_type="pr", quiet=False):
+    """Reads the correct context file based on the action (PR/Commit/Review/Issue/Blame/Release).
+
+    ``quiet`` suppresses the terminal messages so flows that must keep stdout
+    pure (e.g. ``--format json``) can still load the skill content.
+    """
 
     # Define which file to look for
     if action_type == "commit":
@@ -661,6 +666,8 @@ def get_skill_context(action_type="pr"):
         target_file = ".gitpr.issue.md"
     elif action_type == "blame":
         target_file = ".gitpr.blame.md"
+    elif action_type == "release":
+        target_file = ".gitpr.release.md"
     else:  # review or fullreview
         target_file = ".gitpr.review.md"
 
@@ -681,23 +688,25 @@ def get_skill_context(action_type="pr"):
         try:
             with open(file_to_load, "r", encoding="utf-8") as f:
                 conteudo = f.read()
-                click.secho(
-                    __(
-                        "🧠 File {file_name} (Skill) found and loaded!",
-                        file_name=nome_arquivo,
-                    ),
-                    fg="blue",
-                )
+                if not quiet:
+                    click.secho(
+                        __(
+                            "🧠 File {file_name} (Skill) found and loaded!",
+                            file_name=nome_arquivo,
+                        ),
+                        fg="blue",
+                    )
                 return conteudo
         except Exception as e:
-            click.secho(
-                __(
-                    "⚠️ Warning: Failed to read file {file_name} ({error})",
-                    file_name=nome_arquivo,
-                    error=str(e),
-                ),
-                fg="yellow",
-            )
+            if not quiet:
+                click.secho(
+                    __(
+                        "⚠️ Warning: Failed to read file {file_name} ({error})",
+                        file_name=nome_arquivo,
+                        error=str(e),
+                    ),
+                    fg="yellow",
+                )
 
     # Return empty if it does not exist
     return ""
@@ -1083,6 +1092,92 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     return None
 
 
+_SKILL_BASE_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/"
+
+# Template languages that actually ship a gitpr.release.* variant (English has
+# no suffix). Other CURRENT_LANG values must not attempt a download.
+_RELEASE_SKILL_LANG_SUFFIXES = ("", ".pt_br", ".pt_pt", ".es_es", ".fr_fr")
+
+
+def download_skill_file(local_name, remote_name, timeout=5, warn_on_exists=True, quiet=False):
+    """Downloads one skill template file into .gitpr/skill/ (never overwrites).
+
+    Shared by the ``gitpr --skill`` loop and the release flow first-use
+    auto-download. Resolves the destination through ``resolve_skill_path``
+    (migrating a legacy root copy), skips existing files and never raises:
+    failures are reported through the same localized messages and return
+    False.
+
+    Returns:
+        True when a fresh download was written, False otherwise.
+    """
+    file_path = resolve_skill_path(local_name)
+
+    if os.path.exists(file_path):
+        if warn_on_exists and not quiet:
+            click.secho(
+                __(
+                    "⚠️ File {local_name} already exists in this directory. It will not be overwritten.",
+                    local_name=local_name,
+                ),
+                fg="yellow",
+            )
+        return False
+
+    if not quiet:
+        click.echo(__("Downloading {local_name}...", local_name=local_name))
+    try:
+        with urllib.request.urlopen(_SKILL_BASE_URL + remote_name, timeout=timeout) as response:
+            content = response.read().decode("utf-8")
+
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8", errors="replace") as f:
+            f.write(content)
+        return True
+    except urllib.error.URLError as e:
+        if not quiet:
+            click.secho(
+                __(
+                    "❌ Network error while downloading {local_name}: {error}",
+                    local_name=local_name,
+                    error=e.reason,
+                ),
+                fg="red",
+            )
+    except Exception as e:
+        if not quiet:
+            click.secho(
+                __(
+                    "❌ Failed to process {local_name}: {error}",
+                    local_name=local_name,
+                    error=str(e),
+                ),
+                fg="red",
+            )
+    return False
+
+
+def ensure_release_skill_template(quiet=False):
+    """Downloads the release skill template on the first ``gitpr release`` run.
+
+    Resolves the remote language variant exactly like ``gitpr --skill``
+    (English -> gitpr.release.md, otherwise gitpr.release.<lang>.md), but only
+    for languages that ship a template. Never overwrites an existing local
+    file and never raises: any failure leaves the release flow on its
+    built-in persona. No-op for languages without a remote variant.
+    """
+    lang_suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
+    if lang_suffix not in _RELEASE_SKILL_LANG_SUFFIXES:
+        return
+    download_skill_file(
+        ".gitpr.release.md",
+        f"gitpr.release{lang_suffix}.md",
+        timeout=3,
+        warn_on_exists=False,
+        quiet=quiet,
+    )
+
+
 def generate_skill_template():
     """
     Downloads templates directly from the official repository.
@@ -1091,8 +1186,6 @@ def generate_skill_template():
     click.secho(
         __("\n📥 Starting GitPR templates configuration..."), fg="cyan", bold=True
     )
-
-    base_url = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/"
 
     # Language logic:
     # - English (en) = original file without suffix (e.g.: gitpr.issue.md)
@@ -1111,57 +1204,16 @@ def generate_skill_template():
         ".gitpr.filereview.md": f"gitpr.filereview{lang_suffix}.md",
         ".gitpr.blame.md": f"gitpr.blame{lang_suffix}.md",
         ".gitpr.issue.md": f"gitpr.issue{lang_suffix}.md",
+        ".gitpr.release.md": f"gitpr.release{lang_suffix}.md",
     }
 
     success_count = 0
 
-    # Templates now live inside the project's .gitpr/skill/ folder
-    skill_dir = get_skill_dir()
-    os.makedirs(skill_dir, exist_ok=True)
-
     for local_name, remote_name in files_to_download.items():
-        # Migrate any legacy root file into .gitpr/skill/ and resolve final path
-        file_path = resolve_skill_path(local_name)
-        url = base_url + remote_name
-
-        if os.path.exists(file_path):
-            click.secho(
-                __(
-                    "⚠️ File {local_name} already exists in this directory. It will not be overwritten.",
-                    local_name=local_name,
-                ),
-                fg="yellow",
-            )
-            continue
-
-        try:
-            click.echo(__("Downloading {local_name}...", local_name=local_name))
-            with urllib.request.urlopen(url, timeout=5) as response:
-                content = response.read().decode("utf-8")
-
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
-
+        # Skip existing files and count only fresh downloads (download_skill_file
+        # also migrates any legacy root copy into .gitpr/skill/).
+        if download_skill_file(local_name, remote_name, timeout=5):
             success_count += 1
-
-        except urllib.error.URLError as e:
-            click.secho(
-                __(
-                    "❌ Network error while downloading {local_name}: {error}",
-                    local_name=local_name,
-                    error=e.reason,
-                ),
-                fg="red",
-            )
-        except Exception as e:
-            click.secho(
-                __(
-                    "❌ Failed to process {local_name}: {error}",
-                    local_name=local_name,
-                    error=str(e),
-                ),
-                fg="red",
-            )
 
     if success_count > 0:
         click.secho(

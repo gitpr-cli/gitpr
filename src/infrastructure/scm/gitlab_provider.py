@@ -289,6 +289,43 @@ class GitLabProvider(ScmProvider):
             provider=self.name,
         )
 
+    # -- releases --------------------------------------------------------
+
+    def create_release(
+        self,
+        repo: RepoRef,
+        tag: str,
+        title: str,
+        body: str,
+        draft: bool = False,
+        timeout: int = 30,
+    ) -> str:
+        """Create a GitLab release and return its URL.
+
+        GitLab has no native draft concept (the CLI warns and publishes
+        directly) and the tag must already exist on the forge — a missing tag
+        answers 404, which surfaces as ScmProviderError. ``draft`` is accepted
+        for interface parity only.
+        """
+        response = self._request(
+            "post",
+            self._project_url(repo, "releases"),
+            {201},
+            timeout,
+            json={"tag_name": tag, "name": title, "description": body},
+        )
+        links = (response.json() or {}).get("_links") or {}
+        if links.get("self"):
+            return links["self"]
+        # Fallback: derive the HTML page from the API base URL
+        # (https://gitlab.com/api/v4 -> https://gitlab.com).
+        host = (
+            self.base_url.rsplit("/api", 1)[0]
+            if "/api" in self.base_url
+            else self.base_url
+        )
+        return f"{host}/{repo.workspace}/{repo.name}/-/releases/{quote(tag, safe='')}"
+
     # -- connection ------------------------------------------------------
 
     def test_connection(self, timeout: int = 10) -> bool:

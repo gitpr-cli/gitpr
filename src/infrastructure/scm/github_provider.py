@@ -331,6 +331,37 @@ class GitHubProvider(ScmProvider):
             provider=self.name,
         )
 
+    # -- releases ---------------------------------------------------------
+
+    def create_release(
+        self,
+        repo: RepoRef,
+        tag: str,
+        title: str,
+        body: str,
+        draft: bool = False,
+        timeout: int = 30,
+    ) -> str:
+        """Create a GitHub release and return its html_url.
+
+        When the tag does not exist yet, the GitHub API creates it pointing to
+        the repository's default branch (never to the local HEAD) — documented
+        behavior of ``gitpr release --publish``.
+        """
+        response = self._request(
+            "post",
+            self._repo_url(repo, "releases"),
+            {201},
+            timeout,
+            json={
+                "tag_name": tag,
+                "name": title,
+                "body": body,
+                "draft": bool(draft),
+            },
+        )
+        return response.json().get("html_url", "")
+
     # -- email -> handle mapping ------------------------------------------
 
     def email_to_handle(self, email: str, timeout: int = 15):
