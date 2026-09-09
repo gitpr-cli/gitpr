@@ -22,6 +22,7 @@ This command creates the following files at the root of your project:
 | `.gitpr.filereview.md` | Cohesion rules for full file auditing |
 | `.gitpr.issue.md` | Structure and detail for Issue generation |
 | `.gitpr.blame.md` | Focus of archaeological code analysis |
+| `.gitpr.release.md` | Rules for the AI executive summary of `gitpr release` |
 | `.gitpr.linter.yml` | Regex rules for static validation |
 
 > **Important:** The `--skill` command **never overwrites** existing local files. If a `.gitpr.*.md` already exists, it is preserved.
@@ -40,9 +41,12 @@ Each GitPR command automatically looks for the corresponding skill file:
 | `gitpr -r -i file` | `.gitpr.filereview.md` |
 | `gitpr -is` | `.gitpr.issue.md` |
 | `gitpr -b file` | `.gitpr.blame.md` |
+| `gitpr release` | `.gitpr.release.md` |
 | `gitpr -l` / `gitpr -r` | `.gitpr.linter.yml` |
 
 If the skill file does not exist, GitPR uses a default internal template.
+
+**Release skill auto-download:** unlike the other skills (downloaded only via `gitpr -s`), `.gitpr.release.md` is also downloaded automatically on the **first** `gitpr release` run, respecting the interface language (EN + `pt_br`, `pt_pt`, `es_es`, `fr_fr` variants). It is never downloaded in `--format json` mode (stdout-only contract), never overwrites an existing file, and a network failure is non-fatal (the built-in persona is used instead). The file acts as the *system instruction* of the AI executive summary — edit it to customize the summary wording.
 
 ---
 

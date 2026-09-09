@@ -41,6 +41,7 @@ DEFAULT_CONFIG = {
     "GITPR_REVIEWER_SUGGESTION_EXCLUDED": "",
     "GITPR_AUTO_MERGE": "false",
     "OUTPUT_FILE_NAME_LINTER": "{branch}_{datetime}_LINTER.md",
+    "OUTPUT_FILE_NAME_RELEASE": "{branch}_{datetime}_RELEASE.md",
     "GITPR_AI_TIMEOUT": "180",
     "GITPR_LINTER_TIMEOUT": "120",
     # Multi-forge SCM configuration (GitHub/GitLab/Bitbucket/Azure DevOps).
@@ -53,6 +54,12 @@ DEFAULT_CONFIG = {
     "GITPR_SCM_ORGANIZATION": "",
     "GITPR_SCM_PROJECT": "",
     "GITPR_SCM_USERNAME": "",
+    # Release/changelog feature (gitpr release). The changelog path is resolved
+    # against the repository root when relative.
+    "GITPR_RELEASE_CHANGELOG_PATH": "CHANGELOG.md",
+    "GITPR_RELEASE_AI_SUMMARY": "true",
+    "GITPR_RELEASE_AUTO_BUMP": "true",
+    "GITPR_RELEASE_PUBLISH_DRAFT_BY_DEFAULT": "true",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -503,6 +510,36 @@ def get_scm_provider():
     """Returns the configured SCM provider key, or None when not configured."""
     load_dotenv(ENV_FILE)
     return os.getenv("GITPR_SCM_PROVIDER") or None
+
+
+def _env_bool_default_true(key):
+    """Parses a GITPR_* boolean that defaults to True when unset or invalid."""
+    load_dotenv(ENV_FILE)
+    return os.getenv(key, "true").strip().lower() not in (
+        "false",
+        "0",
+        "no",
+        "off",
+        "n",
+    )
+
+
+def get_release_settings():
+    """Returns the gitpr release configuration as a flat dict.
+
+    ``changelog_path`` may be relative (resolved against the repository root
+    by the release engine) or absolute; the booleans follow the project's
+    "false disables" convention (any other value means True).
+    """
+    load_dotenv(ENV_FILE)
+    return {
+        "changelog_path": os.getenv("GITPR_RELEASE_CHANGELOG_PATH", "CHANGELOG.md"),
+        "ai_summary": _env_bool_default_true("GITPR_RELEASE_AI_SUMMARY"),
+        "auto_bump": _env_bool_default_true("GITPR_RELEASE_AUTO_BUMP"),
+        "publish_draft_by_default": _env_bool_default_true(
+            "GITPR_RELEASE_PUBLISH_DRAFT_BY_DEFAULT"
+        ),
+    }
 
 
 def validate_github_token(token):

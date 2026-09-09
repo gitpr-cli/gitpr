@@ -248,3 +248,39 @@ Cada etapa deve ser um commit/PR isolado e revisável. Não implementar classifi
 ## 10. Encaixe estratégico (contexto de monetização)
 
 Classificada como Tier 1 (alto impacto, baixo esforço) porque reaproveita o motor de histórico de branch (`-ht`) já existente e a infraestrutura de IA já madura (BYOK/Ollama), sem exigir backend novo. Fica no tier **Free/Community**: é uma feature de produtividade individual/de repositório que qualquer usuário sente o valor imediatamente ("ninguém resiste a changelog automático", como apontado nas análises originais), e serve como demonstração pública do produto — um `CHANGELOG.md` bem formatado, gerado por IA, é conteúdo visível em qualquer repositório público que vira vitrine passiva do GitPR. A publicação para múltiplos repositórios de uma mesma organização, agregada em um dashboard de releases, é o gancho natural para o futuro tier **Team**.
+
+---
+
+## Decisões do grill (2026-09-07)
+
+> Sessão `/grill-with-docs` executada sobre esta spec (3 rodadas, Q1–Q13). Esta seção **prevalece sobre o corpo acima onde houver conflito**; o corpo foi preservado como histórico. Fatos completos: `docs/survey/20260907_gitpr_release_notes_surveyfacts.md`. Decisões arquiteturais: `docs/plans/ADR-002-gitpr-release-subcommand.md`, `docs/plans/ADR-003-gitpr-release-flat-modules.md`; vocabulário: `docs/plans/glossary-release-notes.md`.
+
+## Decisões (todas confirmadas "recomendado")
+
+| Q | Tema | Decisão |
+| --- | --- | --- |
+| Q1 | Idioma do artefato | Segue o idioma da interface (`GITPR_LANG`): cabeçalhos localizados via `__()`, resumo IA no mesmo idioma. Corrigir o exemplo misto EN/PT do §4. |
+| Q2 | Idempotência | Seção da versão já existe → abortar com mensagem clara; regenerar só com confirmação explícita ou `--force`. Nunca duplicar. |
+| Q3 | Escopo read-only v1 | Não edita arquivos de versão, não cria tag local. GitHub `--publish` auto-cria a tag (default branch). GitLab exige tag pré-existente. Bitbucket/Azure não publicam. |
+| Q4 | Flags | Default = gera + salva CHANGELOG + prévia, não publica. `--publish` = publica após `click.confirm`. `--draft` = rascunho **na forge** (GitHub), só com `--publish`. |
+| Q5 | TUI | Fora desta fase: prévia em terminal + confirmação. |
+| Q6 | Sem chave/falha de IA | Degrada com warning p/ changelog só-classificado; nunca bloqueia. |
+| Q7 | Forma do comando | `click.group` com `invoke_without_command=True`; sem subcomando → dispatch legado intacto; `gitpr release` = subcomando (ADR-002). |
+| Q8 | Local do CHANGELOG | `CHANGELOG.md` na raiz do repo (exceção deliberada à convenção `.gitpr/reports/`). Override `GITPR_RELEASE_CHANGELOG_PATH`. |
+| Q9 | Fonte da versão | Última tag semver do range (prefixo `v` preservado). Sem tag semver → sem sugestão; `--version` obrigatório p/ `--publish`. Sem sniff de arquivos. |
+| Q10 | Módulos | Flat em `src/` (ADR-003): `commit_classifier.py`, `version_bump.py`, `changelog_builder.py`, `release_engine.py`; testes flat. |
+| Q11 | `create_release` | **Não-abstrato**, default `ScmNotSupportedError` (não `NotImplementedError`). GitHub: draft honrado. GitLab: sem draft (warning), tag pré-existente. Bitbucket/Azure: herdam raise. |
+| Q12 | Config + JSON | Env vars `GITPR_RELEASE_*` em `DEFAULT_CONFIG` (não YAML). `--format json` = stdout-only, sem tocar arquivos nem publicar. |
+| Q13 | Range | Sempre `--since` → `HEAD`. Entre duas tags antigas: fora de escopo v1. |
+
+## Sobreposições por seção
+
+- **§0.1 e §4 passos 1–2 (reuso do `-ht`):** o motor `-ht` (`get_branch_history_text()`, core.py:1713) devolve texto formatado para prompt (range por merge-base de branch) — **não reutilizar** como fonte de commits; a extração estruturada tag→HEAD é código novo no `release_engine`.
+- **§1 (flags):** `--draft` = rascunho da forge (só com `--publish`), não "não publicar" — o modo local é o default; novo flag `--force` para a idempotência.
+- **§2 (árvore):** substituída por módulos flat — ver ADR-003.
+- **§4 passo 6 (resumo IA):** idioma = idioma da interface; degrada com warning sem chave/falha (Q1/Q6).
+- **§5 (`create_release`):** não-abstrato com default `ScmNotSupportedError`; GitLab sem draft e com tag pré-existente obrigatória; GitHub auto-cria a tag apontando para a branch default (documentar no help); Bitbucket/Azure herdam o raise — ver ADR-001/glossário para o precedente.
+- **§6 (config YAML):** o projeto não tem YAML de config — usar `GITPR_RELEASE_CHANGELOG_PATH`, `GITPR_RELEASE_AI_SUMMARY`, `GITPR_RELEASE_AUTO_BUMP`, `GITPR_RELEASE_PUBLISH_DRAFT_BY_DEFAULT` em `DEFAULT_CONFIG`.
+- **§7 (CLI):** registrar como subcomando `gitpr release` (ADR-002); `--format json` = stdout-only; prévia em terminal + `click.confirm` (sem TUI nesta fase).
+- **§8:** testes mantidos; idempotência testada como "aborta na 2ª execução; `--force` regera a seção".
+- **Formato do markdown (§4):** estrutura/emojis mantidos; cabeçalhos localizados via `__()` (exemplo misto EN/PT do §4 corrigido).

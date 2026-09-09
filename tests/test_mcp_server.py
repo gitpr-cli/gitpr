@@ -463,6 +463,7 @@ class TestResources(unittest.TestCase):
         self.assertIn("skill://filereview", result["skills"])
         self.assertIn("skill://issue", result["skills"])
         self.assertIn("skill://blame", result["skills"])
+        self.assertIn("skill://release", result["skills"])
         self.assertIn("linter", result)
         self.assertEqual(result["linter"], "linter://config")
 
@@ -475,10 +476,32 @@ class TestResources(unittest.TestCase):
             mcp_server.get_skill_filereview,
             mcp_server.get_skill_issue,
             mcp_server.get_skill_blame,
+            mcp_server.get_skill_release,
             mcp_server.get_linter_config,
         ]
         for fn in funcs:
             self.assertTrue(callable(fn), f"{fn} should be callable")
+
+
+class TestReleaseResource(unittest.TestCase):
+    """Tests for the skill://release resource handler."""
+
+    def test_returns_file_content(self):
+        """get_skill_release returns the .gitpr.release.md content."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, ".gitpr.release.md")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("# Release persona")
+            with patch("src.config.resolve_skill_path", return_value=path):
+                self.assertEqual(mcp_server.get_skill_release(), "# Release persona")
+
+    def test_missing_file_returns_not_found_json(self):
+        """Missing .gitpr.release.md degrades to the shared not_found JSON."""
+        with patch("src.config.resolve_skill_path", return_value="C:/nope/.gitpr.release.md"):
+            result = json.loads(mcp_server.get_skill_release())
+        self.assertEqual(result["status"], "not_found")
 
 
 class TestResolveProvider(unittest.TestCase):

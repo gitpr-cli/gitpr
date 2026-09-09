@@ -917,6 +917,7 @@ SKILL_FILES = {
     "filereview": ".gitpr.filereview.md",
     "issue": ".gitpr.issue.md",
     "blame": ".gitpr.blame.md",
+    "release": ".gitpr.release.md",
 }
 
 # Prompt template files (message templates for common MCP flows).
@@ -1088,6 +1089,16 @@ def get_skill_issue() -> str:
 )
 def get_skill_blame() -> str:
     return _read_resource_file(".gitpr.blame.md")
+
+
+@mcp.resource(
+    uri="skill://release",
+    name=__("Release Notes Template"),
+    description=__("Custom AI instructions for the gitpr release executive summary."),
+    mime_type="text/markdown",
+)
+def get_skill_release() -> str:
+    return _read_resource_file(".gitpr.release.md")
 
 
 @mcp.resource(
@@ -1569,6 +1580,12 @@ def _build_tools_catalog() -> dict:
                 "uri": "skill://blame",
                 "name": "Blame Analysis Template",
                 "description": "Custom AI instructions for code archaeology (blame).",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "skill://release",
+                "name": "Release Notes Template",
+                "description": "Custom AI instructions for the gitpr release executive summary.",
                 "mimeType": "text/markdown",
             },
             {

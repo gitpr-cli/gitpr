@@ -119,7 +119,7 @@ class ScmNotSupportedError(ScmProviderError):
 
 
 class ScmProvider(ABC):
-    """Unified interface over Git hosting forges (PRs + issues).
+    """Unified interface over Git hosting forges (PRs, issues, releases).
 
     Subclasses are stateless-per-request HTTP clients: construction performs no
     network I/O (UI/TUI flows construct providers freely), and every public
@@ -202,6 +202,21 @@ class ScmProvider(ABC):
         Raises ScmNotSupportedError when the forge has no issue resource
         (Azure DevOps).
         """
+
+    def create_release(
+        self, repo: RepoRef, tag: str, title: str, body: str, draft: bool = False
+    ) -> str:
+        """Create a release on the forge and return its URL.
+
+        Deliberately NOT abstract: only forges with a native release resource
+        support it (GitHub Releases, GitLab Releases). The default raises
+        ScmNotSupportedError so Bitbucket/Azure keep compiling and the local
+        changelog flow keeps working untouched (gitpr release grill, Q11).
+        """
+        raise ScmNotSupportedError(
+            self.name,
+            "This forge has no API to create releases.",
+        )
 
     def request_pull_request_reviewers(
         self, repo: RepoRef, pr_id: str | int, reviewers: list[str]
