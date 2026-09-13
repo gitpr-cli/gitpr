@@ -227,7 +227,7 @@ AI chat:
 
 ## Prerequisites
 
-1. **GitPR installed:** `pip install gitpr-cli` or the standalone binary
+1. **GitPR installed:** `pip install gitpr-cli`
 2. **API keys configured:** Run `gitpr` once interactively to set up API keys,
    or create `~/.gitpr/.env` manually with your encrypted keys
 3. **An MCP-compatible editor:** VS Code, Cursor, Zed, Claude Desktop, etc.

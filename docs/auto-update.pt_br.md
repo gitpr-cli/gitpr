@@ -1,10 +1,10 @@
 # Documentação Técnica: Auto-Updater (--update)
 
-O GitPR possui um sistema de atualização automática (**Auto-Updater**) que mantém a ferramenta sempre na versão mais recente, com verificação diária e atualização via *hot-swap*.
+O GitPR é distribuído exclusivamente pelo PyPI. O **Auto-Updater** verifica diariamente se uma nova versão foi publicada e mantém a ferramenta sempre na release mais recente.
 
 ---
 
-## 1. Atualização Manual
+## 1. Verificação Manual
 
 ```bash
 gitpr -u
@@ -12,38 +12,45 @@ gitpr -u
 gitpr --update
 ```
 
-O comando força a verificação e instalação imediata da versão mais recente.
+O comando força uma verificação imediata no PyPI e exibe o comando de atualização. Ele **não** instala nada — a atualização em si é sempre feita pelo seu gerenciador de pacotes.
 
 ---
 
-## 2. Verificação Automática Diária
+## 2. Bloqueio Obrigatório de Atualização
 
-Em cada execução do GitPR (exceto modos `--quiet` e `--hook`), a ferramenta verifica silenciosamente se há uma nova versão disponível. O resultado é cacheado por **24 horas** no arquivo `~/.gitpr/update_cache.json` para evitar chamadas repetidas à API.
+A cada execução do GitPR (exceto nos modos `--quiet`, `--hook` e `--mcp`), a ferramenta verifica se uma versão mais nova foi publicada. O resultado fica em cache por **24 horas** no arquivo `~/.gitpr/update_cache.json` para evitar chamadas repetidas à API.
 
-Se houver uma nova versão, uma notificação é exibida no final da execução.
+Quando a versão publicada é mais nova que a local, o GitPR **bloqueia a execução**: exibe as duas versões, mostra o comando `pip install --upgrade gitpr-cli` e encerra com status diferente de zero, sem executar nenhum trabalho.
+
+Não existe flag, fallback ou modo de compatibilidade que mantenha uma versão desatualizada rodando — atualizar é a única forma de continuar.
+
+### Exceções
+
+O bloqueio nunca dispara para:
+
+| Contexto | Motivo |
+| --- | --- |
+| `--quiet` | Scripts e automações que descartam a saída |
+| `--hook` | Git hooks (`prepare-commit-msg`, métricas) — nunca podem quebrar um commit |
+| `--mcp` / `gitpr-mcp` | Servidor MCP consumido por IDEs e agentes |
+| `-u` / `--update` | É justamente o comando que explica como atualizar |
+| `-h --<flag>` | Ajuda contextual |
+
+`--help` e `--version` também não são afetados: o Click os resolve antes do corpo do comando rodar.
+
+### Comportamento Offline
+
+Quando não é possível determinar a versão publicada — sem internet e sem cache do dia atual — o GitPR executa normalmente. Um usuário offline nunca pode ficar preso a um comando que não consegue rodar.
 
 ---
 
-## 3. Métodos de Atualização
-
-O Auto-Updater deteta automaticamente o método de instalação:
-
-### 3.1 Instalação via pip
+## 3. Aplicando a Atualização
 
 ```bash
 pip install --upgrade gitpr-cli
 ```
 
-### 3.2 Instalação via Binário (PyInstaller)
-
-O GitPR usa a técnica de **Hot-Swap** para binários standalone:
-
-1. Verifica a versão mais recente na [GitHub Releases](https://github.com/gitpr-cli/gitpr.git/releases)
-2. Baixa o novo executável
-3. Renomeia o `.exe` atual para `.exe.old`
-4. Move o novo binário para o lugar
-5. Em caso de falha, reverte para o `.exe.old` (rollback automático)
-6. Na próxima execução, remove o `.old` automaticamente (limpeza)
+Usuários de `pipx`, `uv` ou `poetry` devem atualizar pela própria ferramenta (`pipx upgrade gitpr-cli`, `uv tool upgrade gitpr-cli`, …).
 
 ---
 
@@ -53,12 +60,11 @@ Antes de qualquer operação de rede, o GitPR verifica a conectividade via socke
 
 ---
 
-## 5. Fontes de Versão
+## 5. Fonte de Versão
 
 | Fonte | Uso |
 | --- | --- |
-| **PyPI** | Versão para instalações pip (`pip install gitpr-cli`) |
-| **GitHub Releases** | Versão para binários standalone (`.exe`) |
+| **PyPI** (`pypi.org/pypi/gitpr-cli/json`) | Fonte única da versão publicada |
 
 A versão local é definida em `src/updater.py` (`__version__`) e incrementada a cada release.
 

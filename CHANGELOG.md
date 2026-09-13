@@ -142,9 +142,16 @@ This version brings a wide range of new features focused on internationalization
 - Providers now **raise** `ScmProviderError(provider, http_status, message)` instead of swallowing failures (`http_status` 0 = network); the legacy `(ok, data, status)` mapping lives at the UI call sites.
 - Repository addressing goes through `parse_repo_ref()` → `RepoRef` (GitHub owner / GitLab namespace / Bitbucket workspace / Azure display-only `org/project`); the TUI publisher, the issues TUI and the direct publish flow resolve the provider from config.
 - i18n dictionaries expanded to 675 keys per language (6 files).
+- **Updates are now mandatory**: when a version newer than `__version__` is published on PyPI, the startup gate in `cli()` blocks the run, prints the `pip install --upgrade gitpr-cli` command and exits non-zero. `-u`/`--update` checks PyPI and prints the upgrade command **without installing anything**. The gate never fires in `--quiet`, `--hook` or `--mcp` mode, for `-u`/`--update`, for contextual help, or when the published version cannot be determined (offline).
 
 ### Deprecated
 - `src/github_api.py` is now a deprecated shim delegating to `GitHubProvider` (same 4 signatures, same `(ok, data, status)` tuples, `DeprecationWarning`); no internal code imports it anymore.
+
+### Removed
+- **Standalone binary distribution**: the PyInstaller pipeline and its `gitpr.exe` release asset are gone. GitPR is distributed exclusively through PyPI (`pip install gitpr-cli`).
+- **Hot-swap auto-updater**: `_perform_hot_swap()` in `src/updater.py`, the `is_compiled` branch, the `GITHUB_API_URL` release lookup and the `.old` cleanup block in `src/main.py` were deleted. The download had no timeout or checksum and the next run removed the `.old` backup unconditionally, making a truncated download unrecoverable. No fallback, flag or compatibility mode keeps the binary available.
+- **Build tooling**: `gitpr.spec` and `icon.ico` deleted, `pyinstaller` dropped from the `Pipfile` dev-packages.
+- **Documentation**: every reference to `gitpr.exe` as an install method or release artifact removed from the five README variants and `docs/` (ARCHITECTURE, auto-update, mcp-integration, version-markers, testar_sem_usar_pypi).
 
 ### Documentation
 - [docs/plans/glossary-scm-multiforge.md](docs/plans/glossary-scm-multiforge.md) — canonical Multi-Forge vocabulary.

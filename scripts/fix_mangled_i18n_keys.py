@@ -179,8 +179,6 @@ PT_BR = {
         "❌ Erro: Chave de API não configurada para o provedor '{provider}' no ambiente CI/CD.",
     "❌ Error: Could not determine model for provider '{provider}'.":
         "❌ Erro: Não foi possível determinar o modelo para o provedor '{provider}'.",
-    "❌ Failed to apply update: {error}":
-        "❌ Falha ao aplicar a atualização: {error}",
     "❌ Failed to process {local_name}: {error}":
         "❌ Falha ao processar {local_name}: {error}",
     "❌ Model configuration not found for provider {provider}.":
@@ -282,8 +280,6 @@ PT_PT = {
         "❌ Erro: Chave de API não configurada para o fornecedor '{provider}' no ambiente CI/CD.",
     "❌ Error: Could not determine model for provider '{provider}'.":
         "❌ Erro: Não foi possível determinar o modelo para o fornecedor '{provider}'.",
-    "❌ Failed to apply update: {error}":
-        "❌ Falha ao aplicar a actualização: {error}",
     "❌ Failed to process {local_name}: {error}":
         "❌ Falha ao processar {local_name}: {error}",
     "❌ Model configuration not found for provider {provider}.":

@@ -1,8 +1,6 @@
 import urllib.request
 import json
 import os
-import sys
-import shutil
 import click
 from datetime import datetime
 
@@ -17,8 +15,11 @@ __scripts_version__ = (
 
 from src.i18n import __
 
-GITHUB_API_URL = "https://api.github.com/repos/natanfiuza/gitpr/releases/latest"
 PYPI_API_URL = "https://pypi.org/pypi/gitpr-cli/json"
+
+# Environment switch used to mute the mandatory update check (test harness and
+# offline automation). Read as a plain flag: any non-empty value disables it.
+SKIP_UPDATE_CHECK_ENV = "GITPR_SKIP_UPDATE_CHECK"
 
 
 def get_gitpr_dir():
@@ -40,126 +41,93 @@ def parse_version(version_str):
         return (0, 0, 0)
 
 
-def get_latest_remote_version(is_compiled):
-    """Fetches the latest version from the correct API (PyPI or GitHub) with daily cache."""
+def is_update_check_disabled():
+    """Returns True when the update check must be muted for this execution."""
+    return bool(os.environ.get(SKIP_UPDATE_CHECK_ENV, "").strip())
+
+
+def get_latest_remote_version():
+    """Fetches the latest version published on PyPI, with a daily cache."""
     cache_file = get_update_cache_file()
     today = datetime.now().strftime("%Y-%m-%d")
 
     # Try to read from cache to avoid slowing down the user's terminal
     if os.path.exists(cache_file):
         try:
-            with open(cache_file, "r") as f:
+            with open(cache_file, "r", encoding="utf-8", errors="replace") as f:
                 cache_data = json.load(f)
             if cache_data.get("date") == today:
-                return cache_data.get("version"), cache_data.get("download_url")
+                return cache_data.get("version", "")
         except Exception:
             pass
 
     # Fetch from Web if cache expired
     latest_version = ""
-    download_url = ""
 
     try:
-        if is_compiled:
-            # Fetch from GitHub (For standalone executable)
-            req = urllib.request.Request(
-                GITHUB_API_URL, headers={"User-Agent": "GitPR-Updater"}
-            )
-            with urllib.request.urlopen(req, timeout=3) as response:
-                data = json.loads(response.read().decode())
-            latest_version = data.get("tag_name", "").replace("v", "")
+        req = urllib.request.Request(PYPI_API_URL, headers={"User-Agent": "GitPR-Updater"})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            data = json.loads(response.read().decode())
+        latest_version = data.get("info", {}).get("version", "")
 
-            assets = data.get("assets", [])
-            exe_asset = next((a for a in assets if a.get("name") == "gitpr.exe"), None)
-            if exe_asset:
-                download_url = exe_asset.get("browser_download_url")
-        else:
-            # Fetch from PyPI (For PIP installation)
-            req = urllib.request.Request(
-                PYPI_API_URL, headers={"User-Agent": "GitPR-Updater"}
-            )
-            with urllib.request.urlopen(req, timeout=3) as response:
-                data = json.loads(response.read().decode())
-            latest_version = data.get("info", {}).get("version", "")
-
-        # 3. Save to cache
         if latest_version:
             os.makedirs(get_gitpr_dir(), exist_ok=True)
-            with open(cache_file, "w") as f:
-                json.dump(
-                    {
-                        "date": today,
-                        "version": latest_version,
-                        "download_url": download_url,
-                    },
-                    f,
-                )
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump({"date": today, "version": latest_version}, f)
 
     except Exception:
         pass  # Silent failure in case of no internet
 
-    return latest_version, download_url
+    return latest_version
 
 
-def print_update_notice():
-    """Prints the PIP-style update notice block at the end of execution."""
-    is_compiled = getattr(sys, "frozen", False)
-    latest_version, _ = get_latest_remote_version(is_compiled)
+def enforce_update_required():
+    """Blocks execution while a newer GitPR version is published on PyPI.
+
+    Prints the upgrade instructions and returns True when the caller must stop.
+    Returns False when the local version is current, when the remote version is
+    unknown (offline, so the user could not upgrade anyway) or when the check is
+    disabled via GITPR_SKIP_UPDATE_CHECK.
+    """
+    if is_update_check_disabled():
+        return False
+
+    latest_version = get_latest_remote_version()
 
     if not latest_version:
-        return
+        return False
 
-    current_v = parse_version(__version__)
-    latest_v = parse_version(latest_version)
+    if parse_version(latest_version) <= parse_version(__version__):
+        return False
 
-    if latest_v > current_v:
-        click.echo("")
-        click.secho(
-            __(
-                "[notice] A new release of gitpr is available: {current_version} -> {latest_version}",
-                current_version=__version__,
-                latest_version=latest_version,
-            ),
-            fg="yellow",
-            dim=True,
-        )
-        if is_compiled:
-            click.secho(
-                __("[notice] To update, run: gitpr --update"), fg="yellow", dim=True
-            )
-        else:
-            click.secho(
-                __("[notice] To update, run: pip install --upgrade gitpr-cli"),
-                fg="yellow",
-                dim=True,
-            )
-        click.echo("")
+    click.echo("")
+    click.secho(
+        __(
+            "⚠️ A new version of GitPR is available: {current_version} -> {latest_version}",
+            current_version=__version__,
+            latest_version=latest_version,
+        ),
+        fg="yellow",
+        bold=True,
+    )
+    click.secho(
+        __("GitPR must be updated before it can run: pip install --upgrade gitpr-cli"),
+        fg="cyan",
+        bold=True,
+    )
+    click.echo("")
+    return True
 
 
 def check_and_update():
     """Function triggered only when the user forces the --update flag."""
-    is_compiled = getattr(sys, "frozen", False)
+    latest_version = get_latest_remote_version()
 
-    if not is_compiled:
-        click.secho(
-            __(
-                "💡 Since you installed via PIP, update by running: pip install --upgrade gitpr-cli"
-            ),
-            fg="cyan",
-            bold=True,
-        )
-        return
-
-    latest_version, download_url = get_latest_remote_version(is_compiled=True)
-
-    if not latest_version or not download_url:
+    if not latest_version:
         click.secho(__("❌ Could not check for updates at this moment."), fg="red")
         return
 
-    current_v = parse_version(__version__)
-    latest_v = parse_version(latest_version)
-
-    if latest_v > current_v:
+    if parse_version(latest_version) > parse_version(__version__):
         click.secho(
             __(
                 "\n🚀 New GitPR version found (v{latest_version})!",
@@ -168,33 +136,10 @@ def check_and_update():
             fg="green",
             bold=True,
         )
-        click.secho(__("Downloading update in background..."), fg="cyan")
-        _perform_hot_swap(download_url)
+        click.secho(
+            __("Run to update: pip install --upgrade gitpr-cli"), fg="cyan", bold=True
+        )
     else:
         click.secho(
             __("✅ You are already using the latest version of GitPR."), fg="green"
         )
-
-
-def _perform_hot_swap(download_url):
-    """Downloads and replaces the current executable (Hot-Swap)."""
-    current_exe = sys.executable
-    old_exe = current_exe + ".old"
-
-    try:
-        if os.path.exists(old_exe):
-            os.remove(old_exe)
-        os.rename(current_exe, old_exe)
-        urllib.request.urlretrieve(download_url, current_exe)
-
-        click.secho(
-            __(
-                "✅ Update successfully completed! You will use the new version on the next run.\n"
-            ),
-            fg="green",
-            bold=True,
-        )
-    except Exception as e:
-        click.secho(__("❌ Failed to apply update: {error}", error=str(e)), fg="red")
-        if os.path.exists(old_exe) and not os.path.exists(current_exe):
-            os.rename(old_exe, current_exe)

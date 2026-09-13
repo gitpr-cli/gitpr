@@ -1,10 +1,10 @@
 # Documentación Técnica: Auto-Updater (--update)
 
-GitPR dispone de un sistema de actualización automática (**Auto-Updater**) que mantiene la herramienta siempre en la versión más reciente, con verificación diaria y actualización mediante *hot-swap*.
+GitPR se distribuye exclusivamente a través de PyPI. El **Auto-Updater** comprueba diariamente si se ha publicado una nueva versión y mantiene la herramienta siempre en la release más reciente.
 
 ---
 
-## 1. Actualización Manual
+## 1. Verificación Manual
 
 ```bash
 gitpr -u
@@ -12,54 +12,60 @@ gitpr -u
 gitpr --update
 ```
 
-El comando fuerza la verificación e instalación inmediata de la versión más reciente.
+El comando fuerza una verificación inmediata en PyPI y muestra el comando de actualización. **No** instala nada — la actualización en sí siempre la realiza tu gestor de paquetes.
 
 ---
 
-## 2. Verificación Automática Diaria
+## 2. Bloqueo Obligatorio de Actualización
 
-En cada ejecución de GitPR (excepto los modos `--quiet` y `--hook`), la herramienta verifica silenciosamente si hay una nueva versión disponible. El resultado se almacena en caché durante **24 horas** en el archivo `~/.gitpr/update_cache.json` para evitar llamadas repetidas a la API.
+En cada ejecución de GitPR (excepto en los modos `--quiet`, `--hook` y `--mcp`), la herramienta comprueba si se ha publicado una versión más nueva. El resultado se guarda en caché durante **24 horas** en el archivo `~/.gitpr/update_cache.json` para evitar llamadas repetidas a la API.
 
-Si hay una nueva versión, se muestra una notificación al final de la ejecución.
+Cuando la versión publicada es más nueva que la local, GitPR **bloquea la ejecución**: muestra ambas versiones, indica el comando `pip install --upgrade gitpr-cli` y termina con un estado distinto de cero, sin realizar ningún trabajo.
+
+No existe ninguna flag, fallback ni modo de compatibilidad que mantenga en ejecución una versión desactualizada — actualizar es la única forma de continuar.
+
+### Excepciones
+
+El bloqueo nunca se activa para:
+
+| Contexto | Motivo |
+| --- | --- |
+| `--quiet` | Scripts y automatizaciones que descartan la salida |
+| `--hook` | Git hooks (`prepare-commit-msg`, métricas) — nunca pueden romper un commit |
+| `--mcp` / `gitpr-mcp` | Servidor MCP consumido por IDEs y agentes |
+| `-u` / `--update` | Es precisamente el comando que explica cómo actualizar |
+| `-h --<flag>` | Ayuda contextual |
+
+`--help` y `--version` tampoco se ven afectados: Click los resuelve antes de que se ejecute el cuerpo del comando.
+
+### Comportamiento Offline
+
+Cuando no es posible determinar la versión publicada — sin internet y sin caché del día actual — GitPR se ejecuta con normalidad. Un usuario offline nunca debe quedar atrapado en un comando que no puede ejecutar.
 
 ---
 
-## 3. Métodos de Actualización
-
-El Auto-Updater detecta automáticamente el método de instalación:
-
-### 3.1 Instalación mediante pip
+## 3. Aplicar la Actualización
 
 ```bash
 pip install --upgrade gitpr-cli
 ```
 
-### 3.2 Instalación mediante Binario (PyInstaller)
-
-GitPR usa la técnica de **Hot-Swap** para binarios standalone:
-
-1. Verifica la versión más reciente en [GitHub Releases](https://github.com/gitpr-cli/gitpr.git/releases)
-2. Descarga el nuevo ejecutable
-3. Renombra el `.exe` actual a `.exe.old`
-4. Mueve el nuevo binario a su lugar
-5. En caso de fallo, revierte al `.exe.old` (rollback automático)
-6. En la próxima ejecución, elimina el `.old` automáticamente (limpieza)
+Los usuarios de `pipx`, `uv` o `poetry` deben actualizar con su propia herramienta (`pipx upgrade gitpr-cli`, `uv tool upgrade gitpr-cli`, …).
 
 ---
 
 ## 4. Guardián de Conexión
 
-Antes de cualquier operación de red, GitPR verifica la conectividad mediante el socket `8.8.8.8:53`. Si no hay internet, la herramienta opera normalmente en modo offline — sin bloquearse ni mostrar errores de conexión.
+Antes de cualquier operación de red, GitPR verifica la conectividad mediante el socket `8.8.8.8:53`. Si no hay internet, la herramienta opera con normalidad en modo offline — sin bloquearse ni mostrar errores de conexión.
 
 ---
 
-## 5. Fuentes de Versión
+## 5. Fuente de Versión
 
 | Fuente | Uso |
 | --- | --- |
-| **PyPI** | Versión para instalaciones pip (`pip install gitpr-cli`) |
-| **GitHub Releases** | Versión para binarios standalone (`.exe`) |
+| **PyPI** (`pypi.org/pypi/gitpr-cli/json`) | Fuente única de la versión publicada |
 
-La versión local se define en `src/updater.py` (`__version__`) y se incrementa en cada release.
+La versión local se define en `src/updater.py` (`__version__`) y se incrementa con cada release.
 
-> **Nota:** Consulta también la [documentación principal (README.md)](../README.md) para información sobre la instalación y configuración inicial.
+> **Nota:** Consulta también la [documentación principal (README.md)](../README.md) para información sobre instalación y configuración inicial.

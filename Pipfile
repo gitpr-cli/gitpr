@@ -15,7 +15,6 @@ requests = "*"
 mcp = "*"
 
 [dev-packages]
-pyinstaller = "*"
 pytest = "*"
 pytest-cov = "*"
 build = "*"

@@ -227,7 +227,7 @@ do seu editor:
 
 ## Pré-requisitos
 
-1. **GitPR instalado:** `pip install gitpr-cli` ou o binário standalone
+1. **GitPR instalado:** `pip install gitpr-cli`
 2. **Chaves de API configuradas:** Execute `gitpr` uma vez interativamente para
    configurar as chaves de API, ou crie `~/.gitpr/.env` manualmente com as suas chaves encriptadas
 3. **Um editor compatível com MCP:** VS Code, Cursor, Zed, Claude Desktop, etc.

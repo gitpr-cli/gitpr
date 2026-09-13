@@ -33,7 +33,7 @@ L'objectif principal de GitPR est d'éliminer le travail répétitif et de garan
 * **🔄 Multi-Model (Agnostique de l'IA):** Permet de choisir entre **Google Gemini**, **DeepSeek** ou **Ollama** (local, sans réseau) comme moteur de raisonnement, en basculant dynamiquement via le .env ou le flag `--provider`, avec bascule automatique entre les fournisseurs.  
 * **🌐 Internationalisation (`--lang`):** Interface en 5 langues avec détection automatique du système d'exploitation, repli vers l'anglais et override temporaire par flag.  
 * **🗜️ Optimisation des Tokens (Map-Reduce + Smart Excludes):** Les diffs au-dessus de ~90k tokens sont découpés en chunks par fichier et résumés (Map) avant la consolidation finale (Reduce). Les lockfiles, fichiers minifiés et la documentation sont exclus du diff automatiquement (listes distantes + configuration locale par projet).  
-* **🔄 Auto-Update (`-u` / `--update`):** Consulte les Releases de GitHub (binaire) ou PyPI (pip) et remplace son propre exécutable (*hot-swap*) avec rollback en cas d'échec.  
+* **🔄 Auto-Update (`-u` / `--update`):** Interroge PyPI pour une version plus récente et bloque l'exécution jusqu'à ce que l'outil soit mis à jour avec `pip install --upgrade gitpr-cli`.  
 
 ---
 
@@ -125,7 +125,9 @@ Les ressources distantes (traductions, thinking words, smart excludes, presets d
 
 ### **17. Système d'Auto-Update**
 
-Construit avec l'empaquetage PyInstaller, le module `updater.py` consulte les *Releases* du dépôt sur GitHub. Si une nouvelle version existe, l'exécutable télécharge le nouveau binaire, se remplace lui-même (*hot-swap*) et relance la commande sans interruption — avec rollback automatique en cas d'échec. Vérification quotidienne en cache (`~/.gitpr/update_cache.json`) et garde de connexion (socket `8.8.8.8:53`) avant toute opération réseau.
+GitPR est distribué exclusivement via PyPI, et le module `updater.py` interroge l'API JSON de PyPI (`pypi.org/pypi/gitpr-cli/json`) comme source unique de la version publiée. La vérification est mise en cache quotidiennement (`~/.gitpr/update_cache.json`) et protégée par un contrôle de connexion (socket `8.8.8.8:53`) avant toute opération réseau.
+
+Lorsque la version publiée est plus récente que `__version__`, la porte de démarrage **bloque l'exécution**, affiche la commande de mise à jour et se termine avec un statut non nul — aucun fallback ne maintient une version obsolète en fonctionnement. La porte est ignorée en modes `--quiet`, `--hook` et `--mcp`, pour `-u`/`--update` (la commande qui explique comment mettre à jour) et pour l'aide contextuelle ; lorsque la version publiée ne peut pas être déterminée (hors ligne), l'outil s'exécute normalement.
 
 ### **18. Spinner Adaptatif**
 
@@ -148,7 +150,7 @@ Pendant les appels à l'IA, le `spinner.py` s'exécute sur un thread d'arrière-
 | Chiffrement | `cryptography.fernet` (symétrique) |
 | Linter | `pyyaml` (règles) + regex |
 | Tests | pytest + unittest.mock |
-| Empaquetage | PyInstaller (exécutable standalone) |
+| Empaquetage | Paquet PyPI (wheel + sdist, `build`/`twine`) |
 
 ---
 
@@ -173,7 +175,7 @@ src/
 ├── metrics.py        # Télémétrie hors ligne (fire-and-forget, enrichissement via cache)
 ├── github_api.py     # Appels centralisés à l'API REST de GitHub (PRs)
 ├── mcp_server.py     # Serveur MCP (stdio) + tools/resources/prompts + mode --tool
-├── updater.py        # Vérification de version (PyPI + GitHub), hot-swap et version markers
+├── updater.py        # Vérification de version (PyPI), blocage obligatoire et version markers
 └── ui/               # Sous-package : composants TUI (Textual)
     ├── __init__.py       # Marqueur de package (découverte setuptools)
     ├── issue_app.py      # TUI d'édition et de publication d'Issues
@@ -222,7 +224,7 @@ Chaque fonctionnalité dispose d'un guide dédié dans `docs/` (anglais canoniqu
 * [github-pat-integration.md](github-pat-integration.md) — Sécurité du GitHub PAT  
 * [git-status.md](git-status.md) — Liste du statut des fichiers non commités  
 * [untracked-files.md](untracked-files.md) — Explication des fichiers untracked  
-* [auto-update.md](auto-update.md) — Auto-updateur (hot-swap)  
+* [auto-update.md](auto-update.md) — Auto-updateur et blocage obligatoire de mise à jour  
 * [providers-ia.md](providers-ia.md) — Fournisseurs d'IA (Gemini, DeepSeek, Ollama)  
 * [skill-template.md](skill-template.md) — Système de skills et modèles  
 
