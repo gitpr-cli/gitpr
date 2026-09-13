@@ -50,3 +50,34 @@ class TestLoadThinkingWords:
             words = _load_thinking_words()
 
         assert words == ["Stale", "List"]
+
+    def test_force_redownloads_even_when_version_matches(self, tmp_path, monkeypatch):
+        """force=True skips the version gate — the download button needs that."""
+        monkeypatch.setattr("src.spinner.Path.home", lambda: tmp_path)
+        monkeypatch.setenv("SPINNER_THINKING_WORDS", "Old|Words")
+        monkeypatch.setenv("THINKING_WORDS_VERSION", __lang_version__)
+        (tmp_path / ".gitpr").mkdir(parents=True)
+
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = "Fresh\nWords\n".encode()
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("src.spinner.urllib.request.urlopen", return_value=mock_resp) as mock_open:
+            words = _load_thinking_words(force=True)
+
+        assert mock_open.called
+        assert words == ["Fresh", "Words"]
+        env_text = (tmp_path / ".gitpr" / ".env").read_text(encoding="utf-8")
+        assert "Fresh|Words" in env_text
+        assert "THINKING_WORDS_VERSION" in env_text
+
+    def test_force_keeps_the_stale_words_when_the_download_fails(self, tmp_path, monkeypatch):
+        """A forced download that fails must not lose the previous list."""
+        monkeypatch.setattr("src.spinner.Path.home", lambda: tmp_path)
+        monkeypatch.setenv("SPINNER_THINKING_WORDS", "Stale|List")
+        monkeypatch.setenv("THINKING_WORDS_VERSION", __lang_version__)
+
+        with patch("src.spinner.urllib.request.urlopen", side_effect=Exception("offline")):
+            words = _load_thinking_words(force=True)
+
+        assert words == ["Stale", "List"]

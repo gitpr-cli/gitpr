@@ -8,6 +8,16 @@ from src.net import bounded_urlopen
 
 # Global path to the .env file
 env_path = Path.home() / ".gitpr" / ".env"
+
+# Keys that were really in the process environment *before* the .env was
+# loaded. load_dotenv(override=False) merges the file into os.environ, so
+# afterwards os.environ can no longer tell a variable the user exported in
+# the shell from one that merely came from the file — every key the file
+# declares would look exported. The configuration screen needs that
+# distinction to flag a field the shell is overriding, so the snapshot is
+# taken here, the one place where load_dotenv runs at import time.
+AMBIENT_ENV_KEYS = frozenset(os.environ)
+
 load_dotenv(env_path)
 
 
@@ -37,8 +47,13 @@ def get_system_language():
     return lang
 
 
-def get_translations(lang_code):
-    """Loads the translation JSON. If outdated or missing, downloads remotely (OTA)."""
+def get_translations(lang_code, force=False):
+    """Loads the translation JSON. If outdated or missing, downloads remotely (OTA).
+
+    force=True re-downloads even when the LANG_VERSION marker already matches,
+    which is what the configuration screen's download button needs. It is the
+    only caller that passes it; every other path keeps the version gate.
+    """
     if lang_code.startswith("en"):
         return {}
 
@@ -51,7 +66,7 @@ def get_translations(lang_code):
 
     # Version Control Logic (Forces update if the code version is newer)
     current_env_version = os.getenv("LANG_VERSION")
-    needs_update = current_env_version != __lang_version__
+    needs_update = force or current_env_version != __lang_version__
 
     if not local_file.exists() or needs_update:
         remote_url = f"https://raw.githubusercontent.com/natanfiuza/gitpr/main/langs/{lang_code}.json"

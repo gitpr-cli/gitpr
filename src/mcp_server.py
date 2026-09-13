@@ -2230,6 +2230,13 @@ def main():
     When called with --tool, invokes a single MCP tool directly (CLI mode).
     Otherwise, starts the MCP server on stdio transport.
     """
+    # This entry point bypasses main.py entirely (the gitpr-mcp console
+    # script), so it needs its own usage log call. log_usage never prints,
+    # which matters here: stdout carries the JSON-RPC stream.
+    from src.usage_log import log_usage
+
+    log_usage()
+
     # --- Parse CLI args before starting the server ---
     parser = argparse.ArgumentParser(
         prog="gitpr-mcp",

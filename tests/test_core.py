@@ -1,4 +1,8 @@
+import io
+import os
+import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch, MagicMock
 from src.core import (
     get_current_branch, get_git_diff,
@@ -9,6 +13,9 @@ from src.core import (
     get_origin_remote_url, describe_repo,
 )
 from src.infrastructure.scm import RepoRef
+from src.updater import __scripts_version__
+from src import core
+from src import i18n
 
 class TestCore(unittest.TestCase):
 
@@ -439,6 +446,137 @@ class TestScmContextHelpers(unittest.TestCase):
             provider="azure_devops",
         )
         self.assertEqual(describe_repo(repo_ref), "org/project/repo")
+
+
+class _FakeHookResponse:
+    """Minimal urlopen() result: read() plus the context manager protocol."""
+
+    def read(self):
+        return b"#!/bin/sh\necho hook\n"
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TestHooksLanguage(unittest.TestCase):
+    """SCRIPTS_LANG is the language the user asked for.
+
+    SCRIPTS_INSTALLED_LANG is the language that ended up on disk. Keeping them
+    apart is what lets the auto-sync notice a language change: comparing the
+    request against itself never could.
+    """
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        os.makedirs(os.path.join(self._tmpdir.name, ".git", "hooks"), exist_ok=True)
+        previous_cwd = os.getcwd()
+        os.chdir(self._tmpdir.name)
+        self.addCleanup(os.chdir, previous_cwd)
+
+    def install(self, env, current_lang="pt_br"):
+        """Runs the installer against a fake .env and captures what it fetched."""
+        urls, stamps = [], []
+
+        def fake_urlopen(url, *args, **kwargs):
+            urls.append(url)
+            return _FakeHookResponse()
+
+        with patch("src.core.read_env_file_values", return_value=env), patch(
+            "src.i18n.CURRENT_LANG", current_lang
+        ), patch("src.core.urllib.request.urlopen", side_effect=fake_urlopen), patch(
+            "src.core.set_key",
+            side_effect=lambda path, key, value: stamps.append((key, value)),
+        ), redirect_stdout(
+            io.StringIO()
+        ):
+            from src.core import install_git_hooks
+
+            installed = install_git_hooks()
+        return installed, urls, stamps
+
+    def gate(self, env_version, installed_lang, wanted_lang, current_lang="pt_br"):
+        """Runs the auto-sync gate; the returned list is one entry per install."""
+        installs = []
+        environ = {
+            "SCRIPTS_VERSION": env_version,
+            "SCRIPTS_INSTALLED_LANG": installed_lang,
+        }
+        with patch(
+            "src.core.read_env_file_values", return_value={"SCRIPTS_LANG": wanted_lang}
+        ), patch("src.i18n.CURRENT_LANG", current_lang), patch.dict(
+            os.environ, environ
+        ), patch(
+            "src.core.load_dotenv"
+        ), patch(
+            "src.core.install_git_hooks",
+            side_effect=lambda: installs.append(1) or True,
+        ), redirect_stdout(
+            io.StringIO()
+        ):
+            from src.core import check_and_update_hooks_scripts
+
+            check_and_update_hooks_scripts()
+        return installs
+
+    def test_scripts_lang_wins_over_the_interface_language(self):
+        installed, urls, stamps = self.install({"SCRIPTS_LANG": "fr_fr"}, "pt_br")
+        self.assertTrue(installed)
+        self.assertTrue(any("pre-commit-template.fr.sh" in url for url in urls))
+        # What is on disk is recorded; the request is left for the user to own.
+        self.assertIn(("SCRIPTS_INSTALLED_LANG", "fr_fr"), stamps)
+        self.assertNotIn("SCRIPTS_LANG", [key for key, _ in stamps])
+
+    def test_the_es_es_code_is_fetched_as_the_es_file(self):
+        # The regression this guards: the interface code is es_es while the
+        # published script is named .es, so comparing the two directly never
+        # matched and Spanish users were served the English hooks forever.
+        _, urls, stamps = self.install({"SCRIPTS_LANG": "es_es"})
+        self.assertTrue(any("pre-commit-template.es.sh" in url for url in urls))
+        self.assertIn(("SCRIPTS_INSTALLED_LANG", "es_es"), stamps)
+
+    def test_an_empty_choice_follows_the_interface_language(self):
+        _, urls, stamps = self.install({"SCRIPTS_LANG": ""}, "pt_pt")
+        self.assertTrue(any("pre-commit-template.pt_pt.sh" in url for url in urls))
+        self.assertIn(("SCRIPTS_INSTALLED_LANG", "pt_pt"), stamps)
+
+    def test_the_language_chosen_with_the_lang_flag_is_honoured(self):
+        # i18n.set_lang() rebinds CURRENT_LANG instead of mutating it, and this
+        # module keeps a frozen copy — the "automatic" option would otherwise
+        # install in whatever language the process started in.
+        self.assertEqual(i18n.CURRENT_LANG, "pt_br")
+        with patch("src.core.read_env_file_values", return_value={"SCRIPTS_LANG": ""}):
+            i18n.set_lang("fr_fr")
+            try:
+                self.assertEqual(core.effective_hook_lang(), "fr_fr")
+            finally:
+                i18n.set_lang("pt_br")
+
+    def test_english_installs_the_base_script_and_says_so(self):
+        _, urls, stamps = self.install({"SCRIPTS_LANG": "en_us"})
+        self.assertFalse(any(".en_us.sh" in url for url in urls))
+        self.assertIn(("SCRIPTS_INSTALLED_LANG", "en_us"), stamps)
+
+    def test_a_language_without_a_translation_installs_the_base_script(self):
+        _, urls, _ = self.install({"SCRIPTS_LANG": "de_de"})
+        self.assertFalse(any(".de_de.sh" in url for url in urls))
+
+    def test_the_gate_reinstalls_when_disk_differs_from_the_choice(self):
+        self.assertEqual(len(self.gate(__scripts_version__, "pt_br", "fr_fr")), 1)
+
+    def test_the_gate_stays_quiet_when_disk_matches_the_choice(self):
+        self.assertEqual(self.gate(__scripts_version__, "fr_fr", "fr_fr"), [])
+
+    def test_the_gate_repairs_a_missing_installed_marker_once(self):
+        # Every install made before SCRIPTS_INSTALLED_LANG existed has no
+        # marker: the next run reinstalls once and then takes the fast path.
+        self.assertEqual(len(self.gate(__scripts_version__, "", "pt_br")), 1)
+
+    def test_the_gate_reinstalls_on_a_version_bump(self):
+        self.assertEqual(len(self.gate("v0.0.1", "pt_br", "pt_br")), 1)
 
 
 if __name__ == '__main__':

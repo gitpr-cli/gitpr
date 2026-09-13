@@ -7,6 +7,7 @@ keeps terminal messages off stdout (mandatory for ``--format json``).
 
 import pytest
 
+from src.config import SKILL_FILES_BY_TYPE, SKILL_TYPES, skill_file_for
 from src.core import get_skill_context
 from src.i18n import CURRENT_LANG, set_lang
 
@@ -60,6 +61,38 @@ class TestGetSkillContext:
         self._write_skill(tmp_path, ".gitpr.release.md", "Persona")
         get_skill_context("release")
         assert "found and loaded" in capsys.readouterr().out
+
+
+class TestRegistryMatchesTheLoader:
+    """The registry in config.py is the one source for both the loader and the
+    configuration screen. If the two ever drift, the screen would offer to edit
+    a file that no command reads — or hide one that every command does."""
+
+    @pytest.fixture(autouse=True)
+    def _tmp_cwd(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("src.core.os.getcwd", lambda: str(tmp_path))
+        monkeypatch.setattr("src.config.os.getcwd", lambda: str(tmp_path))
+
+    def _write_skill(self, tmp_path, filename, content):
+        skill_dir = tmp_path / ".gitpr" / "skill"
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / filename).write_text(content, encoding="utf-8")
+
+    @pytest.mark.parametrize("skill_type", SKILL_TYPES)
+    def test_every_type_loads_the_file_the_registry_declares(
+        self, tmp_path, skill_type
+    ):
+        # Every supported file is seeded with its own content, so the returned
+        # text proves WHICH file was read, not merely that one was.
+        for other_type, filename in SKILL_FILES_BY_TYPE.items():
+            self._write_skill(tmp_path, filename, f"content of {other_type}")
+        assert get_skill_context(skill_type, quiet=True) == f"content of {skill_type}"
+
+    def test_the_registry_covers_the_review_fallback(self):
+        # Anything the registry does not know is answered with the review file,
+        # so the fallback cannot point at a type that is not in the registry.
+        assert skill_file_for("fullreview") == SKILL_FILES_BY_TYPE["review"]
+        assert skill_file_for("not_a_command") == SKILL_FILES_BY_TYPE["review"]
 
 
 if __name__ == "__main__":

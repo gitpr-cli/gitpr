@@ -483,6 +483,23 @@ class TestResources(unittest.TestCase):
             self.assertTrue(callable(fn), f"{fn} should be callable")
 
 
+class TestSkillRegistryAgreement(unittest.TestCase):
+    """The MCP server keeps its own copy of the skill list.
+
+    It is not config.SKILL_FILES_BY_TYPE — unifying the two is a separate
+    change — so this is what keeps them from drifting: a type added to one list
+    and not the other would leave the resource list and the commands disagreeing
+    about which skills exist.
+    """
+
+    def test_the_two_skill_registries_agree(self):
+        from src.config import SKILL_FILES_BY_TYPE
+
+        self.assertEqual(set(mcp_server.SKILL_FILES), set(SKILL_FILES_BY_TYPE))
+        for skill_type, filename in SKILL_FILES_BY_TYPE.items():
+            self.assertEqual(mcp_server.SKILL_FILES[skill_type], filename)
+
+
 class TestReleaseResource(unittest.TestCase):
     """Tests for the skill://release resource handler."""
 

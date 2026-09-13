@@ -77,6 +77,43 @@ class TestLoadSmartExcludes:
 
         assert result == [f":(exclude){p}" for p in _FALLBACK_SMART_EXCLUDES]
 
+    def test_force_redownloads_even_when_version_matches(self, tmp_path, monkeypatch):
+        """force=True skips the version gate — the download button needs that."""
+        monkeypatch.setattr("src.core.Path.home", lambda: tmp_path)
+        monkeypatch.setenv("SMART_EXCLUDES_VERSION", __lang_version__)
+        conf = tmp_path / ".gitpr" / "conf"
+        conf.mkdir(parents=True)
+        local_file = conf / "gitpr.smart-excludes.json"
+        local_file.write_text(json.dumps({"excludes": ["*.old"]}), encoding="utf-8")
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"excludes": ["*.fresh"]}).encode()
+        mock_resp.__enter__.return_value = mock_resp
+
+        with patch("src.core.urllib.request.urlopen", return_value=mock_resp) as mock_open:
+            result = _load_smart_excludes(force=True)
+
+        assert mock_open.called
+        assert result == [":(exclude)*.fresh"]
+        assert json.loads(local_file.read_text(encoding="utf-8")) == {"excludes": ["*.fresh"]}
+        env_text = (tmp_path / ".gitpr" / ".env").read_text(encoding="utf-8")
+        assert "SMART_EXCLUDES_VERSION" in env_text
+        assert __lang_version__ in env_text
+
+    def test_force_keeps_the_stale_copy_when_the_download_fails(self, tmp_path, monkeypatch):
+        """A forced download that fails must not lose the previous copy."""
+        monkeypatch.setattr("src.core.Path.home", lambda: tmp_path)
+        monkeypatch.setenv("SMART_EXCLUDES_VERSION", __lang_version__)
+        conf = tmp_path / ".gitpr" / "conf"
+        conf.mkdir(parents=True)
+        local_file = conf / "gitpr.smart-excludes.json"
+        local_file.write_text(json.dumps({"excludes": ["*.old"]}), encoding="utf-8")
+
+        with patch("src.core.urllib.request.urlopen", side_effect=Exception("offline")):
+            result = _load_smart_excludes(force=True)
+
+        assert result == [":(exclude)*.old"]
+        assert json.loads(local_file.read_text(encoding="utf-8")) == {"excludes": ["*.old"]}
+
 
 # ──────────────────────────────────────────────────────────────
 # _load_docs_smart_excludes

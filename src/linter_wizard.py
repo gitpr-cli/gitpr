@@ -36,7 +36,7 @@ _LINTER_PRESETS = [
 ]
 
 
-def load_linter_presets():
+def load_linter_presets(force=False):
     """
     Loads the external linter presets used by the setup wizard.
 
@@ -48,13 +48,17 @@ def load_linter_presets():
     4. Built-in _LINTER_PRESETS as last resort.
 
     Silent on failure — the wizard must never break because of this list.
+
+    force=True skips the version gate and re-downloads, which is what the
+    configuration screen's button needs — this list is otherwise only ever
+    fetched by `gitpr --linter-setup`, which many users never run.
     """
     env_file = Path.home() / ".gitpr" / ".env"
     load_dotenv(env_file)
 
     conf_dir = Path.home() / ".gitpr" / "conf"
     local_file = conf_dir / "gitpr.linter-presets.json"
-    needs_update = os.getenv("LINTER_PRESETS_VERSION") != __lang_version__
+    needs_update = force or os.getenv("LINTER_PRESETS_VERSION") != __lang_version__
 
     def _extract(data):
         presets = data.get("linters", [])
