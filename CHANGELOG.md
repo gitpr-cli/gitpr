@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.1.0] - 2026-09-13
+
+### Summary
+
+This release significantly expands the GitPR assistant, adding editor integration, template‑based prompts, an interactive configuration and installation wizard, and terminal chat support with multiple providers, including Ollama. The pull‑request workflow has been reinforced with publishing, push, handling of existing PRs, merging and suggested reviewers, while standardized issue generation and code archaeology have gained new screens and features. A global plugin system, map‑reduce processing for large diffs, smart filters and local/remote exclusions to reduce token usage, as well as metrics and telemetry with export and dashboard, have also been introduced. Multilingual experience has been expanded and fixed, with i18n key internationalization, translations for several languages, and consistency adjustments. Finally, security and reliability improvements include shell‑injection prevention, network and DNS limits, better handling of commits and errors, and the distribution now requires updates via PyPI, dropping binary releases.
+
+### ✨ Features
+- enforce mandatory update via PyPI and drop binary release (f108c4c)
+- add interactive config TUI, usage log and i18n keys (bf9f1b9) — config
+
+
 ## [1.0.0] - 2026-09-10
 
 ### Summary
