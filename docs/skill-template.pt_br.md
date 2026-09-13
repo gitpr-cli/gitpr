@@ -12,7 +12,7 @@ gitpr -s
 gitpr --skill
 ```
 
-Este comando cria os seguintes arquivos na raiz do seu projeto:
+Este comando cria os seguintes arquivos na pasta `.gitpr/skill/` do projeto:
 
 | Arquivo | Função |
 | --- | --- |
@@ -72,3 +72,16 @@ https://github.com/gitpr-cli/gitpr.git/tree/main/templates/
 O comando `--skill` faz download da versão mais recente de cada template do repositório oficial.
 
 > **Nota:** Os arquivos de skill podem ser commitados no repositório da sua equipa para partilhar as regras com todos os developers.
+
+---
+
+## 5. Editar pela tela `gitpr config`
+
+A tela `gitpr config` tem uma seção **Skills** que lista estes mesmos arquivos e abre cada um num editor, para ajustar uma regra sem sair do terminal ([Tela de Configuração Interativa](config-tui.pt_br.md), §1.7).
+
+- Uma entrada por skill suportada pelo GitPR — os sete arquivos `.gitpr.*.md` da seção 1 acima.
+- Uma skill que o projeto ainda não tem é listada como **não está neste projeto**, com um botão **📥 Baixar o template** que busca o template publicado para o seu idioma de interface.
+- O `F2` grava as skills editadas junto com as configurações do `.env`; o `Ctrl+R` dentro do painel descarta a edição e devolve o texto do disco.
+- Cada arquivo mantém o fim de linha que já tinha, então gravar nunca transforma uma linha intocada em alteração.
+
+Duas coisas ficam de fora dessa lista de propósito: o `.gitpr.linter.yml`, que nenhum comando carrega por esse mecanismo ([Regras Customizadas do Linter](linter-regras-customizadas.pt_br.md)), e qualquer outro arquivo que você guarde em `.gitpr/skill/` — a tela oferece as skills que os comandos leem, não tudo o que a pasta contém.

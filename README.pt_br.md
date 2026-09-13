@@ -255,8 +255,8 @@ Para forçar um idioma específico, defina `GITPR_LANG=pt_br` ou `GITPR_LANG=en`
 O GitPR inclui um sistema automático de versionamento para scripts de Git hooks (`pre-commit`, `prepare-commit-msg`, `pre-push`, `post-checkout`, `post-merge`). Toda vez que você executa `gitpr`, o sistema verifica silenciosamente se seus hooks instalados correspondem à versão mais recente e os atualiza automaticamente se necessário — tudo respeitando sua preferência de idioma.
 
 **Como funciona:**
-1. Lê `SCRIPTS_VERSION` e `SCRIPTS_LANG` do `~/.gitpr/.env`
-2. Compara com a versão mais recente (`__scripts_version__`) enviada com sua release do GitPR
+1. Lê `SCRIPTS_VERSION` e `SCRIPTS_INSTALLED_LANG` do `~/.gitpr/.env`
+2. Compara com a versão mais recente (`__scripts_version__`) enviada com sua release do GitPR, e com o idioma que você pediu (`SCRIPTS_LANG`, vazio = seguir o idioma da interface)
 3. Se as versões ou o idioma diferirem → baixa e atualiza os hooks automaticamente
 4. Se tudo corresponder → ignora completamente (leitura única do `.env`, zero I/O de rede)
 

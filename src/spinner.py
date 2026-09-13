@@ -67,8 +67,13 @@ def _parse_env_words(raw):
     return [w.strip() for w in raw.split(sep) if w.strip()]
 
 
-def _load_thinking_words():
-    """Loads the word list from .env or downloads from the remote template."""
+def _load_thinking_words(force=False):
+    """Loads the word list from .env or downloads from the remote template.
+
+    force=True re-downloads even when the marker already matches — the
+    configuration screen's download button needs that. Returns the list it
+    settled on, so a caller can show what was fetched.
+    """
     env_file = str(Path.home() / ".gitpr" / ".env")
 
     # Ensure .env has been loaded
@@ -79,7 +84,7 @@ def _load_thinking_words():
     # Version gate: when __lang_version__ changes, force a re-download so the
     # words stay in sync with the published template (same pattern as
     # LANG_VERSION in i18n.py and SMART_EXCLUDES_VERSION in core.py).
-    needs_update = os.getenv("THINKING_WORDS_VERSION") != __lang_version__
+    needs_update = force or os.getenv("THINKING_WORDS_VERSION") != __lang_version__
 
     if raw and not needs_update:
         # .env already has up-to-date words: supports | or ; separator
@@ -118,11 +123,15 @@ def _load_thinking_words():
     return list(_FALLBACK_WORDS)
 
 
-def reload_thinking_words(lang: str) -> None:
+def reload_thinking_words(lang: str, force: bool = False) -> list:
     """
     Recompute module-level spinner constants for the given language.
     Called by cli() after set_lang() when --lang is provided.
     Must be called before any Spinner instance is created.
+
+    Returns the word list it settled on. With force=True the download is
+    redone regardless of the version marker — the configuration screen's
+    button uses that to refresh the list on demand.
     """
     global _LANG_SUFFIX, THINKING_WORDS_URL, THINKING_WORDS
     _LANG_SUFFIX = "" if lang.startswith("en") else f".{lang}"
@@ -130,7 +139,8 @@ def reload_thinking_words(lang: str) -> None:
         "https://raw.githubusercontent.com/natanfiuza/gitpr/"
         f"refs/heads/main/templates/gitpr.thinking-words{_LANG_SUFFIX}.md"
     )
-    THINKING_WORDS = _load_thinking_words()
+    THINKING_WORDS = _load_thinking_words(force=force)
+    return THINKING_WORDS
 
 
 # Words representing AI "thinking" (loaded from .env or remote template)

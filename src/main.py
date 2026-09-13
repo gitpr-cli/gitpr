@@ -43,6 +43,7 @@ from src.i18n import __
 from src.linter_engine import generate_linter_report_content, parse_diff_and_lint
 from src.ui.chat_app import ChatApp
 from src.updater import __version__, check_and_update, print_update_notice
+from src.usage_log import log_usage
 
 
 def print_banner():
@@ -534,6 +535,11 @@ def cli(
     DEFAULT BEHAVIOR (No options):
     Fetches, compares with the remote main branch, generates a Markdown (.md) file, and opens an interactive TUI to review, edit, and publish the Pull Request directly to GitHub.
     """
+
+    # Record the invocation first: this is the one point every flag, every
+    # subcommand and every -h path reaches. Silent and best-effort, so it
+    # cannot disturb anything below.
+    log_usage()
 
     # Subcommand dispatch (gitpr release …): Click invokes this group callback
     # first, so everything below runs only when NO subcommand was requested —
@@ -1853,6 +1859,37 @@ def release(since_tag, target_version, publish, draft, output_format, force):
         fg="green",
         bold=True,
     )
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("config-tui.md"),
+)
+def config():
+    """Opens the interactive configuration screen for ~/.gitpr/.env.
+
+    Master-detail interface: the categories on the left, the settings of the
+    selected one on the right, edited in place. F2 validates and saves, Ctrl+R
+    removes the line so the built-in default applies again, and / searches a
+    variable or a label across every category.
+
+    Changes are written only when you save, and secrets are stored encrypted.
+    The screen shows the value from the file; when an environment variable
+    shadows it the field is flagged, because the environment wins at runtime.
+
+    Works on a clean machine — with no file yet the screen opens on the
+    built-in defaults.
+    """
+    # setup_environment() is deliberately NOT called: it prompts for a missing
+    # API key on stdin, which would fight the screen for the terminal. Nothing
+    # else in the startup path is needed, and the root callback already returns
+    # early for subcommands, so no banner is printed either.
+    from src.ui.config_app import launch_config_app
+
+    launch_config_app()
 
 
 def _env_flag(name, default="false"):

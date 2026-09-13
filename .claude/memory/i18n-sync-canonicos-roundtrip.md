@@ -44,5 +44,27 @@ drift legado ou manglando chaves — quebra o gate em runtime silenciosamente.
 **How to apply:** ao tocar strings de usuário, rodar `python -m pytest
 tests/test_i18n.py -q` (gate de 20 testes) depois de qualquer sync manual.
 
+**RECORRÊNCIA (2026-09-13, tela de config):** rodado de novo wholesale e o
+estrago se repetiu — 23 chaves completas viraram fragmentos, todas com valor
+EN. Assinatura do dano, para reconhecer em 5 segundos: `test_no_orphan_keys`
+acusa ~24 órfãos que são **prefixos truncados** de chaves reais, e um `'...'`
+fantasma que veio do regex casando `__("...")` **dentro de um docstring**
+(o extrator AST ignora; o regex não). `test_no_missing_keys` acusa as mesmas
+23 na forma completa. `test_identity_keys_with_braces_allowlist` passou a
+falhar porque a chave `{pr_url}` do conflito de merge perdeu a tradução.
+
+**Reparo, se acontecer:** o conjunto-alvo exato é
+`tests/test_i18n.py::_keys_used_in_code()` (AST, dobra concatenação
+implícita). Das 23, **21 já estavam traduzidas no HEAD** — `git show
+HEAD:langs/<lang>.json` devolve os valores. As 2 nascidas na working tree
+(não commitadas) não têm fonte e precisam ser traduzidas à mão. Script
+cirúrgico: dropa `key not in code_keys`, repõe as ausentes do HEAD, regrava
+`json.dump(sorted(...), indent=2, ensure_ascii=False)` — resultado 931 chaves
+por arquivo (932 menos o `'...'` fantasma), `test_i18n.py` verde.
+
+**Nota:** a mensagem de falha de `test_no_missing_keys` manda rodar o sync
+("run `python tests/sync_i18n.py`") — é uma armadilha. O script nunca foi
+migrado para o extrator AST que o próprio `test_i18n.py` já usa.
+
 Ver também: [[i18n-auditoria-ast-categorias]], [[testes-i18n-pin-translations]],
 [[langs-ota-stale-race]].

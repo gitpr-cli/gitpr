@@ -122,7 +122,7 @@ The visual interfaces live in `src/ui/` and follow common patterns: state return
 
 ### **16. Version Markers (OTA Resources)**
 
-Remote resources (translations, thinking words, smart excludes, linter presets, hook scripts) are re-downloaded in bulk when the version markers (`__lang_version__`, `__scripts_version__` in `updater.py`) change. The installed hooks are compared against `SCRIPTS_VERSION` + `SCRIPTS_LANG` in `.env` and **silently auto-synced** on every run (respecting the user's language).
+Remote resources (translations, thinking words, smart excludes, linter presets, hook scripts) are re-downloaded in bulk when the version markers (`__lang_version__`, `__scripts_version__` in `updater.py`) change. The installed hooks are compared against `SCRIPTS_VERSION` + `SCRIPTS_INSTALLED_LANG` in `.env` and **silently auto-synced** on every run (respecting `SCRIPTS_LANG`, the language the user chose, or the interface language when it is empty).
 
 The five markers (`LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`, `LINTER_PRESETS_VERSION`, `SCRIPTS_VERSION`), what each one caches and the correct order for publishing a change are documented in **[version-markers.md](version-markers.md)**.
 

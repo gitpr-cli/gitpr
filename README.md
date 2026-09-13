@@ -256,8 +256,8 @@ To force a specific language, set `GITPR_LANG=pt_br` or `GITPR_LANG=en` in `~/.g
 GitPR includes an automatic versioning system for Git hook scripts (`pre-commit`, `prepare-commit-msg`, `pre-push`, `post-checkout`, `post-merge`). Every time you run `gitpr`, the system silently checks whether your installed hooks match the latest version and automatically updates them if needed — all while respecting your language preference.
 
 **How it works:**
-1. Reads `SCRIPTS_VERSION` and `SCRIPTS_LANG` from `~/.gitpr/.env`
-2. Compares with the latest version (`__scripts_version__`) shipped with your GitPR release
+1. Reads `SCRIPTS_VERSION` and `SCRIPTS_INSTALLED_LANG` from `~/.gitpr/.env`
+2. Compares with the latest version (`__scripts_version__`) shipped with your GitPR release, and with the language you asked for (`SCRIPTS_LANG`, empty = follow the interface language)
 3. If versions or language differ → automatically downloads and updates hooks
 4. If everything matches → skips entirely (single `.env` read, zero network I/O)
 

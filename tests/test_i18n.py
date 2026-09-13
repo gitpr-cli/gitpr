@@ -183,10 +183,21 @@ class TestLangFileIntegrity(unittest.TestCase):
         A new identity key that is NOT a prompt is user-facing untranslated debt
         and fails here by name.
         """
-        status_markers = {"  [OK] {editor}: {message}", "  [FAIL] {editor}: {message}"}
+        # [OK]/[FAIL] come from the MCP installer; "✔ {version}" is the config
+        # screen's download status — a check mark plus the version the file
+        # already carries, so there is no prose in it to translate.
+        status_markers = {
+            "  [OK] {editor}: {message}",
+            "  [FAIL] {editor}: {message}",
+            "✔ {version}",
+        }
         for name in LANG_FILES:
             identity = {k for k, v in self.langs[name].items() if k == v and "{" in k}
-            markers = {k for k in identity if "[OK] {" in k or "[FAIL] {" in k}
+            markers = {
+                k
+                for k in identity
+                if "[OK] {" in k or "[FAIL] {" in k or k == "✔ {version}"
+            }
             self.assertEqual(markers, status_markers, f"{name}: unexpected status markers")
 
             unexplained = [

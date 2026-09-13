@@ -2,10 +2,11 @@ import os
 import sys
 import socket
 import shutil
+import tempfile
 import click
 import yaml
 from pathlib import Path
-from dotenv import load_dotenv, set_key
+from dotenv import dotenv_values, load_dotenv, set_key, unset_key
 from src.security import encrypt_data, decrypt_data, get_or_create_key
 from src.i18n import __
 
@@ -113,6 +114,143 @@ def resolve_skill_path(filename):
             return legacy_path
 
     return target_path
+
+
+# The skills GitPR loads, mapped to the file each one is read from inside
+# .gitpr/skill/. This is the fixed set the whole tool agrees on: the commands
+# load them through get_skill_context(), and the configuration screen lists and
+# edits exactly these. A file in the folder that is not listed here is not a
+# skill and is never offered for editing — .gitpr.linter.yml is the standing
+# example (it is a rule catalogue, not an AI persona). The order is the order
+# the screen shows.
+SKILL_FILES_BY_TYPE = {
+    "commit": ".gitpr.commit.md",
+    "pr": ".gitpr.pr.md",
+    "review": ".gitpr.review.md",
+    "filereview": ".gitpr.filereview.md",
+    "issue": ".gitpr.issue.md",
+    "blame": ".gitpr.blame.md",
+    "release": ".gitpr.release.md",
+}
+SKILL_TYPES = tuple(SKILL_FILES_BY_TYPE)
+
+# get_skill_context() answers any other action with the review skill, so
+# "fullreview" and an unknown type both read .gitpr.review.md.
+DEFAULT_SKILL_TYPE = "review"
+
+
+def skill_file_for(action_type):
+    """The skill file an action reads, falling back to the review skill."""
+    return SKILL_FILES_BY_TYPE.get(
+        action_type, SKILL_FILES_BY_TYPE[DEFAULT_SKILL_TYPE]
+    )
+
+
+def skill_file_path(skill_type):
+    """Absolute path of a skill file inside .gitpr/skill/.
+
+    Deliberately not resolve_skill_path(): that one MOVES a legacy root file
+    into the folder and prints about it, and a screen that lists the folder must
+    not move files behind the user's back while drawing itself.
+    """
+    return os.path.join(get_skill_dir(), SKILL_FILES_BY_TYPE[skill_type])
+
+
+def skill_template_remote_name(local_name):
+    """The published template name of *local_name* for the session language.
+
+    English ships without a suffix; every other language is a variant of the
+    same base name (gitpr.pr.md -> gitpr.pr.pt_br.md). A language with no
+    published edition keeps the suffixed name and simply is not there — the same
+    outcome as ``gitpr --skill`` in that language.
+    """
+    # Read lazily: i18n.set_language() rebinds the module global, so a top-level
+    # import would freeze the language the process started with.
+    from src.i18n import CURRENT_LANG
+
+    suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
+    base, extension = os.path.splitext(local_name)
+    return f"gitpr{base[len('.gitpr'):]}{suffix}{extension}"
+
+
+def skill_file_status(skill_type):
+    """Says whether a skill file can be edited, and why not when it cannot.
+
+    Returns ``(state, detail)``, where *state* is "editable", "missing" (the
+    project has no such file yet), "readonly" (the file is there but cannot be
+    written) or "unreadable". *detail* carries the path or the reason for the
+    screen to show, and is "" when there is nothing to report.
+
+    This is what decides what the screen offers. It is not proof that a write
+    will succeed — only the write is — so the caller still guards it.
+    """
+    path = skill_file_path(skill_type)
+    if not os.path.exists(path):
+        folder = get_skill_dir()
+        if os.path.isdir(folder) and not os.access(folder, os.W_OK):
+            # Not even a download could be written there; name the folder.
+            return "missing", folder
+        return "missing", ""
+    if not os.access(path, os.R_OK):
+        return "unreadable", path
+    if not os.access(path, os.W_OK):
+        return "readonly", path
+    return "editable", ""
+
+
+def read_skill_file(path):
+    """Reads a skill file as text.
+
+    Text mode turns CRLF into LF, which is what a text editor wants; the
+    separator is recovered on write so the file is not rewritten wholesale.
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        return handle.read()
+
+
+def _skill_line_ending(path):
+    """The separator the file on disk already uses ("\\r\\n" or "\\n")."""
+    try:
+        with open(path, "rb") as handle:
+            return "\r\n" if b"\r\n" in handle.read(8192) else "\n"
+    except OSError:
+        return "\n"
+
+
+def write_skill_file(path, text):
+    """Writes *text* back to a skill file, keeping its line endings.
+
+    Two details that matter more than they look. The separator is read from the
+    file BEFORE it is replaced: the skill files in the wild are a mix of CRLF
+    and LF, and letting the platform decide would rewrite every line of half of
+    them. And the write is atomic (a temp file in the same folder, then
+    os.replace), the same guarantee save_config_values() gives the .env — a
+    crash halfway through would otherwise leave a truncated persona behind,
+    failing silently in every later command.
+    """
+    newline = _skill_line_ending(path)
+    folder = os.path.dirname(path)
+    os.makedirs(folder, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        errors="replace",
+        newline=newline,
+        dir=folder,
+        prefix=".gitpr-skill-",
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        with handle:
+            handle.write(text)
+        os.replace(handle.name, path)
+    except Exception:
+        try:
+            os.unlink(handle.name)
+        except OSError:
+            pass
+        raise
 
 
 def get_ai_provider():
@@ -573,3 +711,148 @@ def validate_github_token(token):
         return False, __("GitHub API timeout. Check your connection and try again.")
     except Exception as e:
         return False, __("Failed to validate token: {error}", error=str(e))
+
+
+# ============================================================
+# Configuration screen support (gitpr config)
+# ============================================================
+#
+# Everything below backs src/ui/config_app.py. It is deliberately additive:
+# the pre-existing writers (setup_environment, run_scm_init_wizard, the
+# downloaders) keep calling set_key directly and are not migrated here.
+
+# Failure kinds returned by validate_ai_key(). Only an authentication failure
+# blocks the save; a network failure must not, otherwise a correct key typed
+# behind a corporate proxy could never be stored.
+VALIDATION_OK = ""
+VALIDATION_AUTH = "auth"
+VALIDATION_NETWORK = "network"
+
+# A credential probe is a round trip, not a generation — do not reuse
+# GITPR_AI_TIMEOUT (180s by default), which would freeze the screen.
+_AI_KEY_VALIDATION_TIMEOUT = 10.0
+
+_AUTH_STATUS_CODES = (401, 403)
+
+
+def read_env_file_values():
+    """Returns the raw contents of ~/.gitpr/.env as a dict.
+
+    Unlike os.getenv(), this reads ONLY the file: load_dotenv() runs with
+    override=False all over the project, so a process environment variable
+    silently wins over the file. The configuration screen needs both views to
+    tell the user when the environment is shadowing what they just edited.
+    """
+    if not os.path.exists(ENV_FILE):
+        return {}
+    return {
+        key: value if value is not None else ""
+        for key, value in dotenv_values(ENV_FILE, encoding="utf-8").items()
+    }
+
+
+def save_config_values(values):
+    """Writes *values* into ~/.gitpr/.env, one key at a time.
+
+    Secrets must already be encrypted by the caller (security.encrypt_data).
+    dotenv.set_key preserves comments and the original key order, appends new
+    keys at the end and swaps the file atomically (temp file + os.replace), so
+    a crash mid-save cannot leave a truncated .env behind.
+    """
+    if not values:
+        return
+    os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
+    for key, value in values.items():
+        set_key(ENV_FILE, key, value, encoding="utf-8")
+
+
+def remove_config_value(key):
+    """Deletes *key* from ~/.gitpr/.env so the code fallback takes over again.
+
+    Restoring a default means removing the line, not writing the default value
+    back: an absent key and a key holding its default are indistinguishable to
+    every getter, but only the absent one survives a change of default.
+
+    Returns True when a line was actually removed.
+    """
+    if key not in read_env_file_values():
+        return False
+    removed, _ = unset_key(ENV_FILE, key, encoding="utf-8")
+    return bool(removed)
+
+
+def _exception_status_code(exc):
+    """Best-effort HTTP status carried by a provider SDK exception."""
+    for attribute in ("status_code", "code", "http_status"):
+        value = getattr(exc, attribute, None)
+        if isinstance(value, int):
+            return value
+    response = getattr(exc, "response", None)
+    value = getattr(response, "status_code", None)
+    return value if isinstance(value, int) else None
+
+
+def _is_auth_failure(exc):
+    """True only when the provider clearly rejected the credential itself.
+
+    Being wrong here is asymmetric: a false positive blocks a valid key, so an
+    unrecognised error is reported as a network problem and the caller allows
+    the save.
+    """
+    status = _exception_status_code(exc)
+    text = str(exc).lower()
+    if status in _AUTH_STATUS_CODES:
+        return True
+    if "unauthorized" in text or "invalid api key" in text:
+        return True
+    # Gemini answers HTTP 400 "API key not valid" for a malformed key.
+    return status == 400 and "api key" in text
+
+
+def validate_ai_key(provider, api_key):
+    """Probes *api_key* against *provider* without generating any content.
+
+    Returns (is_valid, failure_kind, error_message) where failure_kind is one
+    of VALIDATION_OK / VALIDATION_AUTH / VALIDATION_NETWORK.
+
+    The provider SDKs are called directly instead of going through
+    call_ai_model(): that helper swallows every exception, retries three times
+    with a two second pause and returns None, so an invalid key and a dead
+    network would be indistinguishable ~6 seconds later.
+    """
+    provider = (provider or "").lower()
+
+    # Ollama runs locally and needs no credential (config.get_api_key returns
+    # the literal "ollama-local" for it).
+    if provider == "ollama":
+        return True, VALIDATION_OK, ""
+
+    if not api_key:
+        return False, VALIDATION_AUTH, __("No API key configured.")
+
+    try:
+        from src.ai_providers import _make_gemini_client, _make_openai_client
+
+        if provider == "gemini":
+            client = _make_gemini_client(api_key, _AI_KEY_VALIDATION_TIMEOUT)
+            # Cheap listing call: no tokens are billed and a bad key fails here.
+            for _ in client.models.list():
+                break
+        elif provider == "deepseek":
+            client = _make_openai_client(
+                api_key, provider, _AI_KEY_VALIDATION_TIMEOUT
+            )
+            client.models.list()
+        else:
+            # Unknown provider: nothing meaningful to probe.
+            return True, VALIDATION_OK, ""
+    except Exception as exc:
+        if _is_auth_failure(exc):
+            return False, VALIDATION_AUTH, __(
+                "{provider} rejected the API key.", provider=provider
+            )
+        return False, VALIDATION_NETWORK, __(
+            "Could not reach {provider}: {error}", provider=provider, error=str(exc)
+        )
+
+    return True, VALIDATION_OK, ""

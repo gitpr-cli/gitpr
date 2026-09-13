@@ -1,11 +1,12 @@
 # Changelog
 
-## [v0.1.0] - 2026-09-07
+## [1.0.0] - 2026-09-10
 
 ### Summary
-Esta versão traz grandes melhorias de usabilidade e integração: o fluxo de Pull Requests agora conta com sugestão de revisores, publicação e merge diretamente pela ferramenta. Também foram adicionados provedores de SCM multi-forge, suporte a plugins globais e locais, integração com linters externos (com assistente de configuração) e um sistema de métricas/telemetria com painel e exportação CSV. A internacionalização foi ampliada para vários idiomas, com correção de chaves de tradução e garantia de paridade. No desempenho, grandes diffs agora são processados com estratégia map-reduce. A segurança foi reforçada com prevenção de injeção de shell e limites de tempo em resoluções DNS. Também há suporte a servidor MCP para editores, integração com Ollama, nova interface de chat e diversas melhorias de documentação.
+This version brings a wide range of new features focused on internationalization, supporting various version control providers and significant improvements to the user experience. Users can now take advantage of a global plugin system, integration with editors, a metrics and telemetry dashboard with data export, and automated workflows for publishing and merging pull requests. Large difference processing has been optimized with map reduction, and security has been strengthened with shell injection prevention and network time limits. The command-line interface has also been enhanced with interactive configuration wizards, multi-language support, and improvements in issue generation and commit messages.
 
-### ✨ Features
+### Features
+- add gitpr release subcommand for changelog (b0e5d92)
 - add suggested reviewers to PR flow (c7148ed)
 - add multi-forge SCM providers, migrate tests, expand translations (dd2ecef)
 - add i18n translations and enhance issue/blame skill loading (9a9affb)
@@ -61,7 +62,7 @@ Esta versão traz grandes melhorias de usabilidade e integração: o fluxo de Pu
 - adiciona suporte multi-modelo e auditoria de arquivos completos (dc1fba1)
 - adiciona modo de revisão de arquivo completo via --input (4a4f53b)
 
-### 🐛 Fixes
+### Fixes
 - silence CLI tool output and bound DNS resolution (681a7fa)
 - prevent shell injection in linters and bound network timeouts (7324ff2)
 - resume commit flow after linter --no-verify (3d2a63a)
@@ -74,10 +75,11 @@ Esta versão traz grandes melhorias de usabilidade e integração: o fluxo de Pu
 - skip AI commit message on git-generated sources (merge, squash, amend) (827b77c)
 - change thinking words delimiter to semicolon and sync translations (9db4a29)
 
-### ⚡ Performance
+### Performance
 - adiciona filtro smart para reduzir tokens da IA (f7ce5c0)
 
-### 📚 Docs
+### Docs
+- update technical documentation (61226b3)
 - update technical documentation: Suggested Reviewers (a645def)
 - update technical documentation (ddc8fff)
 - update technical documentation (1b090f2)
@@ -96,7 +98,7 @@ Esta versão traz grandes melhorias de usabilidade e integração: o fluxo de Pu
 - finaliza traduções multilingues e adiciona plano de chat (f8f54a2)
 - reestrutura documentação e destaca ajuda contextual (aaf7330)
 
-### ♻️ Refactoring
+### Refactoring
 - hide coauthor trailer from TUI (d65c175)
 - format codebase for consistency (c67ab6a)
 - remove unused FileStageScreen and update translations (4570646)
@@ -104,7 +106,7 @@ Esta versão traz grandes melhorias de usabilidade e integração: o fluxo de Pu
 - extract MCP prompts to template files (2c3fb5b)
 - remove fallback pipenv e adiciona errors='replace' (aa675a7)
 
-### 🔧 Chores
+### Chores
 - update repo URL and localize issue prompts (fa4bac1)
 - bump versions to 0.0.32 and v0.0.10 (4c0d05e)
 - derive version from updater and update pt_PT (25e3103)
@@ -113,7 +115,7 @@ Esta versão traz grandes melhorias de usabilidade e integração: o fluxo de Pu
 - atualiza versão para 0.0.23 (1e2e752)
 - atualiza versão para 0.0.18 e corrige empacotamento (d77132a)
 
-### 📦 Other Changes
+### Other Changes
 - guard against mangled keys and enforce language parity (9ca8146) — i18n
 - Create other lenguages to plugins-system doc (52229a9)
 - Add tokenizer.json (1560d4f)
@@ -125,11 +127,6 @@ Esta versão traz grandes melhorias de usabilidade e integração: o fluxo de Pu
 - Remove arquivos desnecessários (b55df27)
 
 **Contributors:** Nataniel Fiuza
-
-All notable changes to GitPR CLI will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 

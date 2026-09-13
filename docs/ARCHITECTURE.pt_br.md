@@ -121,7 +121,7 @@ As interfaces visuais vivem em `src/ui/` e seguem padrões comuns: retorno de es
 
 ### **16. Version Markers (Recursos OTA)**
 
-Recursos remotos (traduções, thinking words, smart excludes, presets de linter, scripts de hooks) são re-baixados em bloco quando os marcadores de versão (`__lang_version__`, `__scripts_version__` no `updater.py`) mudam. Os hooks instalados são comparados com `SCRIPTS_VERSION` + `SCRIPTS_LANG` no `.env` e **auto-sincronizados silenciosamente** a cada execução (respeitando o idioma do usuário).
+Recursos remotos (traduções, thinking words, smart excludes, presets de linter, scripts de hooks) são re-baixados em bloco quando os marcadores de versão (`__lang_version__`, `__scripts_version__` no `updater.py`) mudam. Os hooks instalados são comparados com `SCRIPTS_VERSION` + `SCRIPTS_INSTALLED_LANG` no `.env` e **auto-sincronizados silenciosamente** a cada execução (respeitando `SCRIPTS_LANG`, o idioma que o usuário escolheu, ou o idioma da interface quando ele estiver vazio).
 
 ### **17. Sistema de Auto-Update**
 

@@ -23,12 +23,15 @@ from src.config import (
     get_api_model,
     get_skill_dir,
     resolve_skill_path,
+    skill_file_for,
     get_ai_provider,
     setup_environment,
     coauthor_enabled,
+    read_env_file_values,
     ENV_FILE,
 )
 from src.ai_providers import call_ai_model
+from src.doc_links import doc_url
 from src.i18n import __, CURRENT_LANG
 from src.updater import __lang_version__, __scripts_version__
 # Metrics are imported lazily inside generate_pr_content() to avoid circular imports
@@ -85,9 +88,18 @@ _FALLBACK_DOCS_SMART_EXCLUDES = [
 
 DOCS_SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.docs-smart-excludes.json"
 
-# Hook scripts: language suffixes with shipped translations.
-# English is the default (no suffix) — fallback for any language not listed here.
-_SCRIPT_LANG_SUFFIXES = {"pt_br", "pt_pt", "fr", "es"}
+# Hook scripts: language code (as GITPR_LANG and SCRIPTS_LANG store it) -> the
+# suffix its published translation carries in scripts/. A code outside this map
+# installs the base script, which is English. The two sides spell the same
+# language differently — the interface uses "es_es"/"fr_fr", the files are named
+# ".es"/".fr" — and comparing one against the other is what silently kept those
+# two languages on the English scripts no matter what was published.
+HOOK_SCRIPT_SUFFIXES = {
+    "pt_br": "pt_br",
+    "pt_pt": "pt_pt",
+    "es_es": "es",
+    "fr_fr": "fr",
+}
 SCRIPTS_BASE_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/scripts/"
 
 
@@ -147,7 +159,7 @@ def _download_smart_excludes(url: str, hard_timeout: float = 10.0):
     return result["data"]
 
 
-def _load_smart_excludes():
+def _load_smart_excludes(force=False):
     """
     Load the smart-exclude patterns and return them as git pathspec exclusions.
 
@@ -161,6 +173,9 @@ def _load_smart_excludes():
 
     The global and project-local lists are merged (union) at the end.
     Silent on failure — diff generation must never break because of this list.
+
+    force=True skips the version gate and re-downloads, which is what the
+    configuration screen's button needs. Every other caller keeps the gate.
 
     Env vars:
       GITPR_SKIP_SMART_EXCLUDES  — set to "1"/"true" to disable all smart excludes
@@ -183,7 +198,7 @@ def _load_smart_excludes():
         conf_dir = Path.home() / ".gitpr" / "conf"
         global_file = conf_dir / "gitpr.smart-excludes.json"
 
-    needs_update = os.getenv("SMART_EXCLUDES_VERSION") != __lang_version__
+    needs_update = force or os.getenv("SMART_EXCLUDES_VERSION") != __lang_version__
 
     def _to_pathspecs(data):
         return [f":(exclude){pattern}" for pattern in data.get("excludes", [])]
@@ -455,18 +470,10 @@ def resolve_output_path(env_var, default_pattern, safe_branch_name, current_time
 def get_doc_url(filename):
     """Returns the complete URL for the official GitPR documentation website.
 
-    Transforms a docs/ filename like 'commit-message-ia.md' into a clean website
-    URL with language query parameter. English is the site default (no ?lang=).
-
-    Examples:
-        get_doc_url("untracked-files.md")  -> "https://gitpr.natanfiuza.dev.br/docs/untracked-files"
-        get_doc_url("untracked-files.md")  -> "https://gitpr.natanfiuza.dev.br/docs/untracked-files?lang=pt_br"  (when CURRENT_LANG is pt_br)
+    Delegates to src.doc_links so the configuration screen can build the same
+    URLs without importing this module. See doc_url() for the examples.
     """
-    base, _ = filename.rsplit(".", 1)
-    url = f"https://gitpr.natanfiuza.dev.br/docs/{base}"
-    if not CURRENT_LANG.startswith("en"):
-        url += f"?lang={CURRENT_LANG}"
-    return url
+    return doc_url(filename)
 
 
 def get_git_diff(quiet=False):
@@ -655,21 +662,9 @@ def get_skill_context(action_type="pr", quiet=False):
     pure (e.g. ``--format json``) can still load the skill content.
     """
 
-    # Define which file to look for
-    if action_type == "commit":
-        target_file = ".gitpr.commit.md"
-    elif action_type == "pr":
-        target_file = ".gitpr.pr.md"
-    elif action_type == "filereview":  # NEW!
-        target_file = ".gitpr.filereview.md"
-    elif action_type == "issue":
-        target_file = ".gitpr.issue.md"
-    elif action_type == "blame":
-        target_file = ".gitpr.blame.md"
-    elif action_type == "release":
-        target_file = ".gitpr.release.md"
-    else:  # review or fullreview
-        target_file = ".gitpr.review.md"
+    # Define which file to look for (the registry is also what the
+    # configuration screen lists, so both can never drift apart)
+    target_file = skill_file_for(action_type)
 
     skill_file = resolve_skill_path(target_file)
 
@@ -1308,15 +1303,44 @@ def get_git_full_diff():
         return None
 
 
+def effective_hook_lang():
+    """The language the hooks should be installed in.
+
+    SCRIPTS_LANG is the user's choice, set on the configuration screen; empty
+    means "follow the interface language". It is read from the FILE rather than
+    os.getenv() because load_dotenv(override=False) lets a variable exported in
+    the shell beat the value the user just edited.
+    """
+    chosen = (read_env_file_values().get("SCRIPTS_LANG") or "").strip().lower()
+    return chosen or _interface_lang()
+
+
+def _interface_lang():
+    """The interface language as it is right now.
+
+    This module holds a frozen copy from `from src.i18n import CURRENT_LANG`,
+    and i18n.set_lang() — the one --lang calls — rebinds the original instead
+    of mutating it, so the copy never sees the override. "Follow the interface
+    language" has to mean the language the user is looking at, so read it at
+    call time.
+    """
+    from src.i18n import CURRENT_LANG
+
+    return (CURRENT_LANG or "").lower()
+
+
 def install_git_hooks():
     """Downloads and installs Git hook scripts with i18n support.
 
-    Detects the current language (CURRENT_LANG) and tries to download
-    language-specific scripts first (e.g. pre-commit-template.pt_br.sh).
-    Falls back to the English base version when a translation is unavailable.
+    Installs the hooks in the effective language — SCRIPTS_LANG when the user
+    chose one, the interface language otherwise — trying the language-specific
+    scripts first (e.g. pre-commit-template.pt_br.sh) and falling back to the
+    English base version when a translation is unavailable.
 
-    After a successful install, stamps SCRIPTS_VERSION and SCRIPTS_LANG
-    in ~/.gitpr/.env so the auto-sync check can skip network calls.
+    After a successful install, stamps SCRIPTS_VERSION and
+    SCRIPTS_INSTALLED_LANG in ~/.gitpr/.env so the auto-sync check can skip
+    network calls. SCRIPTS_LANG is NOT written here: it is the user's choice,
+    and comparing a choice against itself could never detect a language change.
     """
     hooks_dir = os.path.join(os.getcwd(), ".git", "hooks")
 
@@ -1326,10 +1350,12 @@ def install_git_hooks():
         )
         return False
 
+    hook_lang = effective_hook_lang()
+
     # Build language suffix (e.g. ".pt_br", ".fr") — English = no suffix
     lang_suffix = ""
-    if CURRENT_LANG in _SCRIPT_LANG_SUFFIXES:
-        lang_suffix = f".{CURRENT_LANG}"
+    if HOOK_SCRIPT_SUFFIXES.get(hook_lang):
+        lang_suffix = f".{HOOK_SCRIPT_SUFFIXES[hook_lang]}"
 
     # Mapping: Hook Name in Git -> Template Name on GitHub
     hooks_to_install = {
@@ -1404,7 +1430,10 @@ def install_git_hooks():
         try:
             os.makedirs(os.path.dirname(ENV_FILE), exist_ok=True)
             set_key(ENV_FILE, "SCRIPTS_VERSION", __scripts_version__)
-            set_key(ENV_FILE, "SCRIPTS_LANG", lang_suffix.lstrip("."))
+            # What is ON DISK. SCRIPTS_LANG — what the user asked for — is left
+            # alone: the two are compared by the auto-sync gate, and they are
+            # only ever equal by accident right after an install.
+            set_key(ENV_FILE, "SCRIPTS_INSTALLED_LANG", hook_lang)
         except Exception:
             pass  # non-fatal — will retry next run
 
@@ -1421,23 +1450,29 @@ def install_git_hooks():
 def check_and_update_hooks_scripts():
     """Silent auto-sync of installed Git hooks (version + language gated).
 
-    Called on every gitpr execution.  Compares SCRIPPS_VERSION and
-    SCRIPPS_LANG in ~/.gitpr/.env against the shipped constants.  When
-    they match the check is a single .env read with no network I/O.
+    Called on every gitpr execution.  Compares SCRIPTS_VERSION and
+    SCRIPTS_INSTALLED_LANG in ~/.gitpr/.env against the shipped version and the
+    language the hooks should be in.  When they match the check is a single
+    .env read with no network I/O.
+
+    The language comparison is between what is ON DISK and what is WANTED, two
+    independent sources: switching SCRIPTS_LANG on the configuration screen
+    reinstalls once, and the next run goes back to the fast path. Comparing the
+    wanted language against itself — which is what the marker meant before —
+    could never notice a change.
 
     When they differ (or are missing) and the current project has a
-    .git/hooks directory, hooks are re-downloaded in the current language.
+    .git/hooks directory, hooks are re-downloaded in the wanted language.
     On success the markers are stamped so future runs skip the network.
     """
     # Fast path: version + language already match (pure .env read, no network)
     load_dotenv(ENV_FILE)
     env_version = os.getenv("SCRIPTS_VERSION")
-    env_lang = os.getenv("SCRIPTS_LANG", "")
+    installed_lang = os.getenv("SCRIPTS_INSTALLED_LANG", "")
 
-    # Compute expected language suffix (empty for English / unsupported langs)
-    expected_lang = CURRENT_LANG if CURRENT_LANG in _SCRIPT_LANG_SUFFIXES else ""
+    wanted_lang = effective_hook_lang()
 
-    if env_version == __scripts_version__ and env_lang == expected_lang:
+    if env_version == __scripts_version__ and installed_lang == wanted_lang:
         return  # up to date — nothing to do
 
     # Only sync projects that actually have hooks installed (or could have them)
@@ -1461,9 +1496,9 @@ def check_and_update_hooks_scripts():
         __("📦 Updating scripts to {version}...", version=__scripts_version__),
         fg="cyan",
     )
-    if expected_lang:
+    if wanted_lang:
         click.secho(
-            __("   Detected language: {lang}", lang=expected_lang), fg="white", dim=True
+            __("   Hooks language: {lang}", lang=wanted_lang), fg="white", dim=True
         )
 
     install_git_hooks()
