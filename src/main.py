@@ -42,7 +42,7 @@ from src.core import (
 from src.i18n import __
 from src.linter_engine import generate_linter_report_content, parse_diff_and_lint
 from src.ui.chat_app import ChatApp
-from src.updater import __version__, check_and_update, print_update_notice
+from src.updater import __version__, check_and_update, enforce_update_required
 from src.usage_log import log_usage
 
 
@@ -121,7 +121,7 @@ HELP_MAP: dict[str, dict[str, str]] = {
         "url": get_doc_url("auto-update.md"),
         "title": __("GitPR Auto-Update"),
         "description": __(
-            "Checks and automatically installs the latest version of GitPR. Supports update via pip (PyPI) and standalone binary (GitHub Releases) with hot-swap and automatic rollback in case of failure."
+            "Checks PyPI for a newer version of GitPR and displays the command to upgrade via pip. GitPR always requires the latest published version to run."
         ),
     },
     "installhooks": {
@@ -307,7 +307,7 @@ HELP_PRIORITY: dict[str, int] = {
     "-u",
     "--update",
     is_flag=True,
-    help=__("Checks and installs the latest version of GitPR."),
+    help=__("Checks for a newer version of GitPR and shows how to update it."),
 )
 @click.option(
     "-ih",
@@ -612,6 +612,15 @@ def cli(
         set_lang(lang)
         reload_thinking_words(lang)
 
+    # Mandatory update gate: GitPR is distributed exclusively through PyPI, so a
+    # published newer version blocks the run and the user is told to upgrade.
+    # Skipped for internal invocations (--quiet, --hook, --mcp), for the --update
+    # flag itself (it is the command that explains how to upgrade) and for the
+    # contextual help path, so automation, hooks and help never get locked out.
+    if not quiet and not hook and not mcp and not update and not help_flag:
+        if enforce_update_required():
+            sys.exit(1)
+
     # Auto-sync Git hooks (version + language gated — silent when up to date).
     # Skipped for internal invocations (--quiet, --hook, --mcp) so hooks
     # never update themselves mid-flight and MCP startup stays fast.
@@ -736,18 +745,6 @@ def cli(
     # Silencia o banner se estiver no modo quiet ou via hook
     if not quiet and not hook:
         print_banner()
-
-    # Detects if the tool is running as a binary (PyInstaller) or via PIP
-    is_compiled = getattr(sys, "frozen", False)
-
-    # Hot-Swap cleanup (Binary mode only)
-    if is_compiled:
-        old_exe = sys.executable + ".old"
-        if os.path.exists(old_exe):
-            try:
-                os.remove(old_exe)
-            except OSError:
-                pass
 
     # Enable AI payload dump for inspection (hidden debug flag)
     if pre_save:
@@ -1470,8 +1467,6 @@ def cli(
 
     provider, repo_ref = _resolve_scm_context()
     if provider is None:
-        if not quiet:
-            print_update_notice()
         return
 
     repo_info = describe_repo(repo_ref)
@@ -1485,8 +1480,6 @@ def cli(
 
     # ── --no-publish: save locally and exit ──
     if no_publish:
-        if not quiet:
-            print_update_notice()
         return
 
     # ── --no-edit: auto-commit + direct publish ──
@@ -1502,8 +1495,6 @@ def cli(
             return
 
         _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename)
-        if not quiet:
-            print_update_notice()
         return
 
     # ── Default: Open TUI ──
@@ -1513,8 +1504,6 @@ def cli(
     github_token, provider = validate_or_request_scm_token(provider, repo_info)
     if not github_token:
         click.secho(_scm_access_canceled_message(provider), fg="red")
-        if not quiet:
-            print_update_notice()
         return
 
     # ── Suggested reviewers (default TUI flow only, never blocking) ──
@@ -1592,9 +1581,6 @@ def cli(
             fg="cyan",
         )
         break
-
-    if not quiet:
-        print_update_notice()
 
 
 # ============================================================

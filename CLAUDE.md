@@ -2,7 +2,7 @@
 
 ## About the project
 
-**GitPR** is a Python CLI for automating Pull Requests, commits, code review, and issue creation using AI (Google Gemini and DeepSeek). Distributed via PyPI (`pip install gitpr-cli`) and as a standalone executable (PyInstaller).
+**GitPR** is a Python CLI for automating Pull Requests, commits, code review, and issue creation using AI (Google Gemini and DeepSeek). Distributed exclusively via PyPI (`pip install gitpr-cli`) — there is no standalone binary.
 
 - **Author:** Natan Fiuza (contato@natanfiuza.dev.br)
 - **Current version:** 0.0.37
@@ -37,7 +37,7 @@ src/
 │   ├── __init__.py       # Package marker (required for setuptools discovery)
 │   ├── help_screen.py    # Help modal (F1) — shortcuts and instructions
 │   └── issue_app.py      # Main TUI app — issue editing and submission
-└── updater.py        # Version check (PyPI + GitHub) and hot-swap
+└── updater.py        # Version check (PyPI), mandatory update block, version markers
 
 scripts/
 ├── pre-commit-template.sh          # Pre-commit hook for local linting
@@ -122,7 +122,7 @@ docs/
 | `--status`               | Environment status      | Report provider, keys, versions, and local configuration state            |
 | `--plugins`              | Plugin management       | List and manage global plugins (linter rules + MCP prompts)              |
 | `--mcp` / `gitpr-mcp`    | MCP server              | Starts the stdio Model Context Protocol server for IDE/agent integration  |
-| `-u` / `--update`        | Update                  | Check PyPI/GitHub Releases → hot-swap binary                              |
+| `-u` / `--update`        | Update                  | Check PyPI → print the `pip install --upgrade gitpr-cli` command          |
 | `-h` / `--help`          | Contextual help         | Alone: all options. With flag: feature-specific help + docs link          |
 | `--provider`             | Force AI provider       | `gemini`, `deepseek`, or `ollama` (overrides default config)              |
 | `--lang <lang>`          | Override language       | Forces interface language (`en_us`, `pt_br`, `pt_pt`, `es_es`, `fr_fr`)   |
@@ -141,7 +141,7 @@ docs/
 | Encryption       | `cryptography.fernet` (symmetric)      |
 | Linter           | `pyyaml` (rules) + regex               |
 | Testing          | `pytest` + `unittest.mock`             |
-| Packaging        | PyInstaller (`run.py` as entry point)  |
+| Packaging        | PyPI package (wheel + sdist)           |
 | Virtual env      | Pipenv (Pipfile)                       |
 
 ## Commands
@@ -161,9 +161,6 @@ pipenv run pytest -v
 # or
 python -m pytest tests/ -v
 python -m unittest discover tests -v
-
-# Build with PyInstaller
-pipenv run pyinstaller --noconfirm --onefile --icon=icon.ico --name gitpr run.py
 
 # Publish to PyPI
 pipenv run python -m build
@@ -341,11 +338,14 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Issue draft follows the pattern: What / Why / Where / How
 - 3 context engines: diff (default), history (`-ht`), blame (`-b`)
 
-### Auto-Updater (Hot-Swap)
-- Daily cached check against GitHub Releases (binary) or PyPI (pip)
-- `--update` forces immediate check and installation
-- Hot-swap: renames current `.exe` to `.old`, downloads new one, rollback on failure
+### Auto-Updater (Mandatory Update Block)
+- PyPI (`pypi.org/pypi/gitpr-cli/json`) is the single source of truth; daily cached check in `~/.gitpr/update_cache.json`
+- `enforce_update_required()` in `updater.py` — when a newer version is published, the startup gate in `cli()` prints the upgrade command and exits non-zero. No fallback keeps an old version running
+- `--update` forces an immediate check: it prints the `pip install --upgrade gitpr-cli` command and never installs anything
+- Never blocks `--quiet`, `--hook`, `--mcp`, `-u`/`--update` or contextual help; an unknown remote version (offline) also lets the run proceed
+- `GITPR_SKIP_UPDATE_CHECK` mutes the check (used by the test suite — not an advertised escape hatch)
 - Connection verified via socket `8.8.8.8:53` before any network operation
+- The block only fires when a release newer than `__version__` is on PyPI, so it must be re-validated after every release cut
 
 ### Contextual help (`-h --flag`)
 - `gitpr -h` alone: standard Click help with all options

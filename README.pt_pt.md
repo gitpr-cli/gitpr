@@ -48,27 +48,6 @@ Este projeto foi desenvolvido em Python e utiliza as seguintes bibliotecas princ
 
 ----
 
-## 📦 Como Compilar o Executável Localmente
-
-Se deseja gerar o seu próprio binário a partir do código fonte, utilizamos o **PyInstaller**. Certifique-se de que está no diretório raiz do projeto com o ambiente virtual configurado.
-
-1. Instale as dependências de desenvolvimento (se ainda não o fez):
-   ```bash
-   pipenv install --dev
-   ```
-
-2. Execute o comando de build apontando para o nosso ponto de entrada (`run.py`):
-   ```bash
-   pipenv run pyinstaller --noconfirm --onefile --icon=icon.ico --name gitpr run.py
-   ```
-> **Nota técnica:** A flag `--onefile` garante que todo o Python, bibliotecas e dependências sejam comprimidos num único binário. 🛠️
-
-Após executar este comando, o PyInstaller criará algumas pastas (`build` e `dist`).
-O seu ficheiro final pronto para uso estará dentro da pasta **`dist/`** com o nome `gitpr` (ou `gitpr.exe` no Windows).
-
-
-----
-
 ## 🧪 Executando Testes
 
 Para garantir que a lógica de captura do Git e a integração com a IA estão a funcionar corretamente, utilizamos testes unitários.
@@ -87,11 +66,13 @@ O Pytest detetará automaticamente os ficheiros dentro da pasta `tests/` e exibi
 ----
 ## **⚙️ Instalação e Configuração**
 
-### **Usando o Executável (Recomendado)**
+### **Instalando pelo PyPI (Recomendado)**
 
-1. Descarregue o executável do GitPR no separador "Releases" do GitHub.
-2. Mova o executável para uma pasta que esteja no seu PATH (ex.: /usr/local/bin no Linux/Mac ou a sua pasta de utilizador no Windows).
-3. Na primeira execução, o assistente irá guiá-lo:
+1. Instale o pacote com o pip:
+   ```bash
+   pip install gitpr-cli
+   ```
+2. Na primeira execução, o assistente irá guiá-lo:
    ```bash
    $ gitpr
    ```
@@ -105,6 +86,8 @@ O Pytest detetará automaticamente os ficheiros dentro da pasta `tests/` e exibi
 📄 Default output filename pattern [{branch}_{datetime}_PR_DESC.md]:
 ```
 *Nota: A sua configuração será guardada com segurança no ficheiro `~/.gitpr/.env`.*
+
+*Nota (atualizações): O GitPR é distribuído exclusivamente pelo PyPI. A cada execução verifica se foi publicada uma versão mais recente e, quando existe, **bloqueia a execução** e pede para executar `pip install --upgrade gitpr-cli`. Veja [auto-update.md](docs/auto-update.md).*
 
 > **🔒 Nota de Segurança:** O GitPR CLI usa encriptação simétrica (Fernet). A sua chave de API é armazenada como um hash no ficheiro `.env`, e a chave mestra para desencriptação é gerada automaticamente em `~/.gitpr/secret.key`. **Nunca partilhe o seu ficheiro secret.key.**
 
@@ -156,7 +139,7 @@ Pode passar as seguintes *flags* para ações específicas:
   * **Issue de Dívida Técnica/Arqueológica (`gitpr -is -b ficheiro:linhas`):** Lê a linha do tempo de uma regra de negócio específica. **Porquê usar:** Ideal para documentar dívida técnica, explicando como um bloco de código legado evoluiu e porque precisa de ser refatorado.
 * **Publicador de PR (predefinido):** Executar `gitpr` gera a descrição do PR com IA, guarda o ficheiro `.md` em `.gitpr/reports/pr_desc/` e abre uma interface interativa no terminal (TUI) para rever, editar e publicar o Pull Request diretamente no GitHub via REST API. Antes da geração, verifica se existem ficheiros não preparados (*unstaged*) e oferece um modal para os gerir. Use `--no-publish` para guardar apenas o ficheiro do PR localmente sem abrir o publicador, ou `--no-edit` para fazer commit automático das alterações pendentes (com validação de lint), fazer *push* automático e publicar imediatamente — tratando da atualização de PRs existentes, de *auto-merge* opcional e de feedback claro de erro quando ocorrem conflitos de merge. Use `--base <branch>` para alterar o ramo de destino. 📖 [Documentação completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.pt_pt.md)
 * `-h` ou `--help`: Mostra a ajuda geral com todas as opções. Use juntamente com outra flag para **ajuda contextual** (ex.: `gitpr -h --issue`, `gitpr -h --linter`) com um link direto para a documentação detalhada de cada funcionalidade.
-* `-u` ou `--update`: Verifica e instala a versão mais recente do GitPR (Auto-Updater).
+* `-u` ou `--update`: Verifica no PyPI a versão mais recente do GitPR e mostra como atualizá-la (Auto-Updater).
 
 > **⚙️ Nota Técnica (--hook):** O GitPR possui uma flag oculta `--hook <ficheiro>` que é acionada exclusivamente pelo sistema de Git Hooks em segundo plano. Permite que a IA injete a mensagem sugerida diretamente no ficheiro temporário do Git, sem poluir o seu terminal.
 >
@@ -439,7 +422,7 @@ Se deseja implementar o GitPR como uma barreira de qualidade automatizada na sua
 
 * [**Assistente de Instalação**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/install-wizard.md) — Configuração guiada passo a passo para configurar o GitPR num novo projeto.
 * [**Provedores de IA**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/providers-ia.md) — Configuração e seleção entre Google Gemini, DeepSeek e Ollama.
-* [**Auto-Updater**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/auto-update.md) — Como funciona a atualização automática (hot-swap) do GitPR.
+* [**Auto-Updater**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/auto-update.md) — Como funcionam a atualização automática e o bloqueio obrigatório de atualização do GitPR.
 * [**Arquitetura**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/ARCHITECTURE.md) — Arquitetura do projeto, padrões de design e visão geral da stack técnica.
 * [**Token GitHub (PAT) — Integração e Segurança**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/github-pat-integration.md) — Entenda como o GitPR cria issues diretamente no repositório com autenticação.
 * [**Internacionalização (i18n)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/i18n_explanation.md) — Arquitetura, padrões de uso e como adicionar novos idiomas.
@@ -457,9 +440,10 @@ Se executar o mesmo comando novamente sem alterar o código, o GitPR interceta o
 
 Nunca mais se preocupe em descarregar novas versões manualmente. O GitPR possui um Guardião de Conexão e um atualizador integrado:
 * Verifica a disponibilidade de rede antes de iniciar para não bloquear o seu fluxo de trabalho offline.
-* A cada execução, verifica silenciosamente se há uma nova release oficial na API do GitHub.
-* Pode forçar a verificação e instalação executando `gitpr --update` ou `gitpr -u`.
-* A ferramenta usa a técnica de *Hot-Swap*, descarregando o novo `.exe` e substituindo a versão antiga de forma transparente.
+* A cada execução, verifica no PyPI se foi publicada uma versão mais recente (com cache de 24 horas).
+* Quando existe uma versão mais recente, **bloqueia a execução** e pede para executar `pip install --upgrade gitpr-cli`.
+* Pode forçar a verificação a qualquer momento com `gitpr --update` ou `gitpr -u` — mostra o comando de atualização sem instalar nada.
+* Scripts, Git hooks, o servidor MCP e a ajuda contextual nunca são bloqueados.
 
 ## Publicação no PyPI
 

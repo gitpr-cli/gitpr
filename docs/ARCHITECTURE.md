@@ -34,7 +34,7 @@ The main goal of GitPR is to eliminate repetitive work and guarantee a high qual
 * **🔄 Multi-Model (AI-Agnostic):** Choose between **Google Gemini**, **DeepSeek** or **Ollama** (local, no network) as the reasoning engine, switching dynamically via .env or the `--provider` flag, with automatic fallback between providers.  
 * **🌐 Internationalization (`--lang`):** Interface in 5 languages with automatic OS detection, English fallback and temporary per-flag override.  
 * **🗜️ Token Optimization (Map-Reduce + Smart Excludes):** Diffs above ~90k tokens are split into per-file chunks and summarized (Map) before the final consolidation (Reduce). Lockfiles, minified files and documentation are excluded from the diff automatically (remote lists + per-project local configuration).  
-* **🔄 Auto-Update (`-u` / `--update`):** Checks the GitHub Releases (binary) or PyPI (pip) and replaces its own executable (*hot-swap*) with rollback on failure.  
+* **🔄 Auto-Update (`-u` / `--update`):** Checks PyPI for a newer version and blocks the execution until the tool is updated with `pip install --upgrade gitpr-cli`.  
 
 ---
 
@@ -128,7 +128,9 @@ The five markers (`LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERS
 
 ### **17. Auto-Update System**
 
-Built with PyInstaller packaging, the `updater.py` module checks the repository's *Releases* on GitHub. If a new version exists, the executable downloads the new binary, replaces itself (*hot-swap*) and relaunches the command seamlessly — with automatic rollback on failure. Daily cached check (`~/.gitpr/update_cache.json`) and connection guard (socket `8.8.8.8:53`) before any network operation.
+GitPR is distributed exclusively through PyPI, and the `updater.py` module queries the PyPI JSON API (`pypi.org/pypi/gitpr-cli/json`) as the single source of truth for the published version. The check is cached daily (`~/.gitpr/update_cache.json`) and guarded by a connection check (socket `8.8.8.8:53`) before any network operation.
+
+When the published version is newer than `__version__`, the startup gate **blocks the execution**, prints the upgrade command and exits non-zero — there is no fallback that keeps an outdated version running. The gate is skipped in `--quiet`, `--hook` and `--mcp` modes, for `-u`/`--update` (the command that explains how to upgrade) and for contextual help; when the published version cannot be determined (offline), the tool runs normally.
 
 ### **18. Adaptive Spinner**
 
@@ -161,7 +163,7 @@ PR and issue publication is no longer GitHub-only (in development after v0.0.37)
 | Encryption | `cryptography.fernet` (symmetric) |
 | Linter | `pyyaml` (rules) + regex |
 | Tests | pytest + unittest.mock |
-| Packaging | PyInstaller (standalone executable) |
+| Packaging | PyPI package (wheel + sdist, `build`/`twine`) |
 
 ---
 
@@ -189,7 +191,7 @@ src/
 │                     # github/gitlab/bitbucket/azure_devops providers + factory.py
 ├── github_api.py     # DEPRECATED shim → src/infrastructure/scm/github_provider.py
 ├── mcp_server.py     # MCP server (stdio) + tools/resources/prompts + --tool mode
-├── updater.py        # Version check (PyPI + GitHub), hot-swap and version markers
+├── updater.py        # Version check (PyPI), mandatory update block and version markers
 └── ui/               # Sub-package: TUI components (Textual)
     ├── __init__.py       # Package marker (setuptools discovery)
     ├── issue_app.py      # Issue editing and publishing TUI
@@ -238,7 +240,7 @@ Each feature has a dedicated guide in `docs/` (English canonical + `.pt_br` / `.
 * [github-pat-integration.md](github-pat-integration.md) — GitHub PAT security  
 * [git-status.md](git-status.md) — Uncommitted file status listing  
 * [untracked-files.md](untracked-files.md) — Untracked files explanation  
-* [auto-update.md](auto-update.md) — Auto-updater (hot-swap)  
+* [auto-update.md](auto-update.md) — Auto-updater and mandatory update block  
 * [providers-ia.md](providers-ia.md) — AI providers (Gemini, DeepSeek, Ollama)  
 * [skill-template.md](skill-template.md) — Skills and templates system  
 

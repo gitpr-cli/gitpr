@@ -228,7 +228,7 @@ le chat IA de votre éditeur :
 
 ## Prérequis
 
-1. **GitPR installé :** `pip install gitpr-cli` ou le binaire standalone
+1. **GitPR installé :** `pip install gitpr-cli`
 2. **Clés API configurées :** Exécutez `gitpr` une fois en mode interactif pour
    configurer les clés API, ou créez `~/.gitpr/.env` manuellement avec vos clés chiffrées
 3. **Un éditeur compatible MCP :** VS Code, Cursor, Zed, Claude Desktop, etc.

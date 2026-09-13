@@ -1,6 +1,6 @@
 # Version Markers (OTA Resources)
 
-GitPR ships several resources **outside** the released binary — translations, spinner
+GitPR ships several resources **outside** the published package — translations, spinner
 words, smart-exclude lists, linter presets and Git hook scripts. They live on GitHub
 and are fetched over the air (OTA) so they can be corrected without cutting a release.
 

@@ -136,7 +136,7 @@ class TestLangFileIntegrity(unittest.TestCase):
             self.assertEqual(set(self.langs[name]), reference, f"{name}: key set differs")
 
     def test_clean_keys_present_and_translated(self):
-        self.assertEqual(len(CLEAN_KEYS), 50)
+        self.assertEqual(len(CLEAN_KEYS), 49)
         for name in LANG_FILES:
             data = self.langs[name]
             self.assertTrue(CLEAN_KEYS.issubset(data), f"{name}: clean keys missing")

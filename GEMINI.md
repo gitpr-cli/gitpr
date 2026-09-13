@@ -2,7 +2,7 @@
 
 ## About the project
 
-**GitPR** is a Python CLI for automating Pull Requests, commits, code review, interactive pair-programming chat, issue creation, and telemetry using AI (Google Gemini, DeepSeek, and Ollama). It also operates as a Model Context Protocol (MCP) server for IDE integration. Distributed via PyPI (`pip install gitpr-cli`) and as a standalone executable (PyInstaller).
+**GitPR** is a Python CLI for automating Pull Requests, commits, code review, interactive pair-programming chat, issue creation, and telemetry using AI (Google Gemini, DeepSeek, and Ollama). It also operates as a Model Context Protocol (MCP) server for IDE integration. Distributed exclusively via PyPI (`pip install gitpr-cli`) — there is no standalone binary.
 
 - **Author:** Natan Fiuza (contato@natanfiuza.dev.br)
 - **Current version:** 0.0.37
@@ -36,7 +36,7 @@ src/
 │   ├── help_screen.py    # Help modal (F1) — shortcuts and instructions
 │   ├── issue_app.py      # Main issue TUI app — draft editing and submission
 │   └── metrics_app.py    # Interactive metrics analytics dashboard TUI
-└── updater.py        # Version check (PyPI + GitHub) and hot-swap
+└── updater.py        # Version check (PyPI), mandatory update block, version markers
 
 scripts/
 ├── pre-commit-template.sh          # Pre-commit hook for local linting
@@ -121,7 +121,7 @@ docs/
 | `--install`               | Setup Wizard            | Interactive CLI wizard for templates, hooks, MCP, and API keys           |
 | `-s` / `--skill`          | Download templates      | Download `.gitpr.*.md` into `.gitpr/skill/` (never overwrites)           |
 | `-ih` / `--installhooks`  | Install hooks            | Download + install hooks in `.git/hooks/`                                  |
-| `-u` / `--update`         | Update                  | Check PyPI/GitHub Releases → hot-swap binary                              |
+| `-u` / `--update`         | Update                  | Check PyPI → print the `pip install --upgrade gitpr-cli` command          |
 | `--metrics` / `--dashboard` | Telemetry & Analytics | View summary, `--export` CSV/JSON, `--purge` data, or `--dashboard` TUI  |
 | `--lang <lang>`           | Override language       | Forces interface language (`en_us`, `pt_br`, `pt_pt`, `es_es`, `fr_fr`)   |
 | `--provider`              | Force AI provider       | `gemini`, `deepseek`, or `ollama`                                         |
@@ -144,7 +144,7 @@ docs/
 | Encryption       | `cryptography.fernet` (symmetric)      |
 | Linter           | `pyyaml` (rules) + regex               |
 | Testing          | `pytest` + `unittest.mock`             |
-| Packaging        | PyInstaller (`run.py` as entry point)  |
+| Packaging        | PyPI package (wheel + sdist)           |
 | Virtual env      | Pipenv (Pipfile)                       |
 
 ## Commands
@@ -168,9 +168,6 @@ gitpr-mcp
 pipenv run pytest -v
 # or
 python -m pytest tests/ -v
-
-# Build standalone executable with PyInstaller
-pipenv run pyinstaller --noconfirm --onefile --icon=icon.ico --name gitpr run.py
 
 # Publish package to PyPI
 pipenv run python -m build
@@ -371,11 +368,14 @@ It must be placed in `docs/gemini/reports/{branch}/{current_date}_{taskname}.md`
 - Issue draft follows the pattern: What / Why / Where / How
 - 3 context engines: diff (default), history (`-ht`), blame (`-b`)
 
-### Auto-Updater (Hot-Swap)
-- Daily cached check against GitHub Releases (binary) or PyPI (pip)
-- `--update` forces immediate check and installation
-- Hot-swap: renames current `.exe` to `.old`, downloads new one, rollback on failure
+### Auto-Updater (Mandatory Update Block)
+- PyPI (`pypi.org/pypi/gitpr-cli/json`) is the single source of truth; daily cached check in `~/.gitpr/update_cache.json`
+- `enforce_update_required()` in `updater.py` — when a newer version is published, the startup gate in `cli()` prints the upgrade command and exits non-zero. No fallback keeps an old version running
+- `--update` forces an immediate check: it prints the `pip install --upgrade gitpr-cli` command and never installs anything
+- Never blocks `--quiet`, `--hook`, `--mcp`, `-u`/`--update` or contextual help; an unknown remote version (offline) also lets the run proceed
+- `GITPR_SKIP_UPDATE_CHECK` mutes the check (used by the test suite — not an advertised escape hatch)
 - Connection verified via socket `8.8.8.8:53` before any network operation
+- The block only fires when a release newer than `__version__` is on PyPI, so it must be re-validated after every release cut
 
 ### Contextual help (`-h --flag`)
 - `gitpr -h` alone: standard Click help with all options

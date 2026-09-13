@@ -31,4 +31,4 @@ pipenv run python -m build
 pipenv run twine upload dist/*
 
 ```
-> Verifique se na pasta /dist não existe mais nenhuma outro arquivo, como o gitpr.exe isso causa um erro.
+> Verifique se na pasta /dist não sobrou nenhum artefato de uma build anterior (wheel ou sdist de outra versão) — isso causa erro no upload.
