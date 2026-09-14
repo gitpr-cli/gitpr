@@ -55,7 +55,7 @@ A flag `--hook` (interna/oculta) faz com que a mensagem sugerida seja injetada d
 
 ## 4. Customização via Skill
 
-O comportamento da IA pode ser customizado através do arquivo `.gitpr.commit.md` na raiz do projeto:
+O comportamento da IA pode ser customizado através do arquivo `.gitpr.commit.md` em `.gitpr/skill/`:
 
 ```bash
 gitpr -s          # Baixa o template .gitpr.commit.md

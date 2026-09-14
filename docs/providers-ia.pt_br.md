@@ -1,6 +1,6 @@
 # Documentação Técnica: Provedores de IA (--provider)
 
-O GitPR é **agnóstico de IA** e suporta atualmente dois provedores: **Google Gemini** e **DeepSeek**. Pode alternar entre eles dinamicamente via linha de comando ou configuração persistente.
+O GitPR é **agnóstico de IA** e suporta atualmente três provedores: **Google Gemini**, **DeepSeek** e **Ollama**. Pode alternar entre eles dinamicamente via linha de comando ou configuração persistente.
 
 ---
 

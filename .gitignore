@@ -27,3 +27,7 @@ gitpr_cli.egg-info
 .coverage.*
 htmlcov/
 
+pypa/
+pypa
+pip/
+pip

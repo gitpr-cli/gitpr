@@ -82,7 +82,7 @@ L'IA de GitPR est instruite de générer le brouillon de l'issue en suivant un s
 | **Où (Where)** | Spécification des routes, modules, pages ou ressources affectés |
 | **Comment (How)** | Détail technique divisé en Backend/Moteur, Base de données/Données et Frontend/CLI/Interface |
 
-> **Personnalisation :** Vous pouvez personnaliser le template utilisé par l'IA via le fichier `.gitpr.issue.md` à la racine du projet (téléchargez-le avec `gitpr -s`).
+> **Personnalisation :** Vous pouvez personnaliser le template utilisé par l'IA via le fichier `.gitpr.issue.md` dans `.gitpr/skill/` (téléchargez-le avec `gitpr -s`).
 
 ---
 

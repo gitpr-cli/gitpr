@@ -15,7 +15,7 @@ Vous pouvez déclencher le linter de trois manières :
 
 ## **2. Structure du fichier .gitpr.linter.yml**
 
-Les règles du Linter résident dans le fichier .gitpr.linter.yml à la racine de votre projet. Le fichier est lu à chaque exécution et possède la structure YAML suivante :
+Les règles du Linter résident dans le fichier .gitpr.linter.yml dans `.gitpr/skill/`. Le fichier est lu à chaque exécution et possède la structure YAML suivante :
 
 ```YAML
 

@@ -82,7 +82,7 @@ A IA do GitPR é instruída a gerar o rascunho da issue seguindo um padrão rigo
 | **Onde (Where)** | Especificação das rotas, módulos, páginas ou recursos afetados |
 | **Como (How)** | Detalhamento técnico dividido em Backend/Motor, Base de Dados/Dados e Frontend/CLI/Interface |
 
-> **Personalização:** Pode personalizar o template usado pela IA através do ficheiro `.gitpr.issue.md` na raiz do projeto (descarregue com `gitpr -s`).
+> **Personalização:** Pode personalizar o template usado pela IA através do ficheiro `.gitpr.issue.md` em `.gitpr/skill/` (descarregue com `gitpr -s`).
 
 ---
 

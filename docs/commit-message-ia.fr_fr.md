@@ -55,7 +55,7 @@ Le flag `--hook` (interne/caché) fait que le message suggéré est injecté dir
 
 ## 4. Personnalisation via Skill
 
-Le comportement de l'IA peut être personnalisé à travers le fichier `.gitpr.commit.md` à la racine du projet :
+Le comportement de l'IA peut être personnalisé à travers le fichier `.gitpr.commit.md` dans `.gitpr/skill/` :
 
 ```bash
 gitpr -s          # Télécharge le template .gitpr.commit.md
