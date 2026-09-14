@@ -32,6 +32,7 @@
         "*.pyc",
         "*.pyo",
         ".DS_Store",
-        "Thumbs.db"
+        "Thumbs.db",
+        ".gitpr/fix_history.json"
     ]
 }

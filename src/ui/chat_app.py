@@ -1,4 +1,3 @@
-import re
 import random
 import string
 import webbrowser
@@ -17,6 +16,7 @@ from textual.widgets import (
 from textual.containers import VerticalScroll, Vertical
 from textual.binding import Binding
 from textual import work
+from src.fix.patch_extractor import extract_code_blocks
 from src.core import get_git_diff
 from src.i18n import __, CURRENT_LANG
 from src.ai_providers import call_ai_chat, process_chat_command, load_chat_commands
@@ -405,19 +405,7 @@ class ChatApp(App):
                 severity="warning",
             )
             return
-        content = self._focused_msg_content
-        code_blocks = re.findall(r"`{3}\s*(?:\w+)?\s*\n(.*?)`{3}", content, re.DOTALL)
-        if not code_blocks:
-            parts = content.split("```")
-            for i in range(1, len(parts), 2):
-                block = parts[i].strip()
-                if block:
-                    first_line_end = block.find("\n")
-                    if first_line_end > 0 and first_line_end < 20:
-                        first_line = block[:first_line_end].strip()
-                        if first_line and " " not in first_line:
-                            block = block[first_line_end + 1 :]
-                    code_blocks.append(block.strip())
+        code_blocks = extract_code_blocks(self._focused_msg_content)
         if code_blocks:
             extracted_code = "\n\n".join(code_blocks)
             key = (
@@ -610,24 +598,8 @@ class ChatApp(App):
             )
             return
 
-        last_msg = ai_messages[-1]["content"]
-
         # Match triple-backtick code blocks: ```python, ``` python, ```, etc.
-        code_blocks = re.findall(r"`{3}\s*(?:\w+)?\s*\n(.*?)`{3}", last_msg, re.DOTALL)
-
-        # Fallback: split by triple backticks and take odd-indexed parts
-        if not code_blocks:
-            parts = last_msg.split("```")
-            for i in range(1, len(parts), 2):
-                block = parts[i].strip()
-                if block:
-                    # Strip language identifier from first line if present
-                    first_line_end = block.find("\n")
-                    if first_line_end > 0 and first_line_end < 20:
-                        first_line = block[:first_line_end].strip()
-                        if first_line and not " " in first_line:
-                            block = block[first_line_end + 1 :]
-                    code_blocks.append(block.strip())
+        code_blocks = extract_code_blocks(ai_messages[-1]["content"])
 
         if code_blocks:
             extracted_code = "\n\n".join(code_blocks)

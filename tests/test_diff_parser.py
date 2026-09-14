@@ -1,7 +1,7 @@
-"""Unit tests for the pure unified-diff parser (parse_added_lines)."""
+"""Unit tests for the pure unified-diff parser (parse_added_lines, summarize_patch)."""
 import unittest
 
-from src.diff_parser import parse_added_lines
+from src.diff_parser import parse_added_lines, summarize_patch
 
 
 class TestSimpleHunk(unittest.TestCase):
@@ -198,6 +198,161 @@ diff --git a/b.py b/b.py
         result = parse_added_lines(diff)
         self.assertEqual(result["a.py"], [2])
         self.assertEqual(result["b.py"], [2])
+
+
+class TestSummarizePatch(unittest.TestCase):
+    def test_counts_files_hunks_and_lines(self):
+        diff = """diff --git a/src/a.py b/src/a.py
+--- a/src/a.py
++++ b/src/a.py
+@@ -1,4 +1,5 @@
+ def hello():
+-    return 1
++    # new comment
++    return 2
+     extra
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual(summary.files, ("src/a.py",))
+        self.assertEqual(summary.hunks, 1)
+        self.assertEqual(summary.added, 2)
+        self.assertEqual(summary.removed, 1)
+        # The removed text is kept verbatim (sans the '-' marker) so a caller
+        # can tell a deleted function call from a deleted blank line.
+        self.assertEqual(summary.removed_lines, ("    return 1",))
+
+    def test_headers_are_not_counted_as_changes(self):
+        # '--- a/x' looks like a removal and '+++ b/x' like an addition; both
+        # sit outside a hunk and must stay out of the counts.
+        diff = """diff --git a/x b/x
+--- a/x
++++ b/x
+@@ -1,1 +1,1 @@
+-old
++new
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual((summary.added, summary.removed), (1, 1))
+
+    def test_multiple_hunks_and_files_keep_order(self):
+        diff = """diff --git a/a.py b/a.py
+--- a/a.py
++++ b/a.py
+@@ -1,2 +1,2 @@
+-aa
++a
+@@ -10,1 +10,2 @@
+ bb
++b
+diff --git a/b.py b/b.py
+--- a/b.py
++++ b/b.py
+@@ -1,1 +1,1 @@
+-c
++d
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual(summary.files, ("a.py", "b.py"))
+        self.assertEqual(summary.hunks, 3)
+        self.assertEqual(summary.added, 3)
+        self.assertEqual(summary.removed, 2)
+
+    def test_no_newline_marker_is_ignored(self):
+        diff = """diff --git a/x b/x
+--- a/x
++++ b/x
+@@ -1,1 +1,1 @@
+-old
++new
+\\ No newline at end of file
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual((summary.added, summary.removed), (1, 1))
+        self.assertEqual(summary.removed_lines, ("old",))
+
+    def test_deletion_keeps_the_file_name(self):
+        # A full deletion prints '+++ /dev/null', so the only place its name
+        # appears is the 'diff --git' line.
+        diff = """diff --git a/gone.py b/gone.py
+deleted file mode 100644
+--- a/gone.py
++++ /dev/null
+@@ -1,2 +0,0 @@
+-a
+-b
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual(summary.files, ("gone.py",))
+        self.assertEqual((summary.added, summary.removed), (0, 2))
+
+    def test_ai_style_diff_without_git_header(self):
+        # An AI commonly returns hunks with no 'diff --git' line at all.
+        diff = """--- a/mod.py
++++ b/mod.py
+@@ -1,1 +1,2 @@
+ keep
++added
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual(summary.files, ("mod.py",))
+        self.assertEqual(summary.hunks, 1)
+        self.assertEqual(summary.added, 1)
+
+    def test_quoted_path_with_space_is_decoded(self):
+        diff = """diff --git "a/my file.txt" "b/my file.txt"
+--- "a/my file.txt"
++++ "b/my file.txt"
+@@ -1,1 +1,2 @@
+ hello
++world
+"""
+        self.assertEqual(summarize_patch(diff).files, ("my file.txt",))
+
+
+class TestSummarizePatchRobustness(unittest.TestCase):
+    def test_text_without_a_diff_is_empty(self):
+        for text in ("", "  \n", "just prose, no diff here", "```python\nx = 1\n```"):
+            with self.subTest(text=text):
+                summary = summarize_patch(text)
+                self.assertEqual(summary.files, ())
+                self.assertEqual(summary.hunks, 0)
+                self.assertEqual((summary.added, summary.removed), (0, 0))
+                self.assertEqual(summary.removed_lines, ())
+
+    def test_mode_only_change_has_no_hunks(self):
+        diff = """diff --git a/script.sh b/script.sh
+old mode 100644
+new mode 100755
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual(summary.files, ("script.sh",))
+        self.assertEqual(summary.hunks, 0)
+
+    def test_malformed_hunk_header_is_not_counted(self):
+        # A hunk whose header does not parse leaves the reader outside any
+        # hunk, so the '+not counted' line is skipped rather than miscounted.
+        diff = """diff --git a/x b/x
+--- a/x
++++ b/x
+@@ broken @@
++not counted
+"""
+        summary = summarize_patch(diff)
+        self.assertEqual(summary.hunks, 0)
+        self.assertEqual(summary.added, 0)
+
+    def test_a_file_is_listed_once(self):
+        diff = """diff --git a/x b/x
+--- a/x
++++ b/x
+@@ -1,1 +1,1 @@
+-a
++b
+@@ -9,1 +9,1 @@
+-c
++d
+"""
+        self.assertEqual(summarize_patch(diff).files, ("x",))
 
 
 if __name__ == "__main__":

@@ -1200,6 +1200,7 @@ def generate_skill_template():
         ".gitpr.blame.md": f"gitpr.blame{lang_suffix}.md",
         ".gitpr.issue.md": f"gitpr.issue{lang_suffix}.md",
         ".gitpr.release.md": f"gitpr.release{lang_suffix}.md",
+        ".gitpr.fix.md": f"gitpr.fix{lang_suffix}.md",
     }
 
     success_count = 0

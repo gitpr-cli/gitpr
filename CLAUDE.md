@@ -26,6 +26,15 @@ src/
 ├── linter_engine.py  # Static analysis with regex (YAML rules)
 ├── blame_engine.py   # Code archaeology with git blame + AI
 ├── issue_engine.py   # AI-powered issue draft creation
+├── fix/              # Sub-package: review findings as reviewable patches (ADR-004)
+│   ├── __init__.py       # Package marker (required for setuptools discovery)
+│   ├── patch_provenance.py       # Data contract (safety classes, candidates, results)
+│   ├── patch_extractor.py        # Fenced code blocks → validated unified diffs
+│   ├── patch_safety_classifier.py # SAFE / REVIEW_REQUIRED / EXPERIMENTAL (pure, no I/O)
+│   ├── patch_applier.py          # git apply --check/apply/--reverse, branch, status
+│   ├── fix_history.py            # .gitpr/fix_history.json (what --rollback reads)
+│   ├── apply_fix.py              # review → AI findings → classify → dry-run/apply
+│   └── rollback_fix.py           # history → git apply --reverse
 ├── infrastructure/scm/  # Multi-forge SCM abstraction (ScmProvider)
 │   ├── __init__.py       # Public re-exports (contract, providers, factory)
 │   ├── base.py           # ScmProvider ABC, dataclasses, ScmProviderError
@@ -50,6 +59,8 @@ templates/            # Remote templates served from GitHub (--skill)
 ├── gitpr.commit.pt_br.md       # PT-BR: commit message rules
 ├── gitpr.filereview.md         # EN: full file review rules
 ├── gitpr.filereview.pt_br.md   # PT-BR: full file review rules
+├── gitpr.fix.md                # EN: review findings → patch persona
+├── gitpr.fix.pt_br.md          # PT-BR: review findings → patch persona
 ├── gitpr.issue.md              # EN: issue generation rules
 ├── gitpr.issue.pt_br.md        # PT-BR: issue generation rules
 ├── gitpr.linter.yml            # EN: linter rules
@@ -71,6 +82,7 @@ langs/                # Language translation files
 
 tests/
 ├── test_core.py      # Unit tests (unittest + mock)
+├── fix/              # gitpr fix tests (real git repos via fix/git_fixture.py)
 └── scm/              # Multi-forge SCM tests (contract, providers, factory, wizard)
 
 docs/
@@ -79,6 +91,7 @@ docs/
 ├── blame-arqueologo.md         # Code Archaeologist documentation
 ├── code-review-ia.md           # AI Code Review documentation
 ├── commit-message-ia.md        # AI Commit Message documentation
+├── fix-command.md              # gitpr fix (review findings as patches) documentation
 ├── git-hooks-locais.md         # Local Git Hooks documentation
 ├── github-pat-integration.md   # GitHub Token (PAT + Fernet) security
 ├── issue-tui-help.md           # TUI Issue interface guide
@@ -106,6 +119,7 @@ docs/
 | `-c` / `--commit`        | Commit message         | `git diff HEAD` → AI → console (Conventional Commits)                     |
 | `-r` / `--review`        | Local code review      | `git diff HEAD` → AI + Linter → `.txt`                                    |
 | `-f` / `--fullreview`    | Full code review       | `git fetch` → diff against remote base → AI + Linter → `.txt`             |
+| `fix` (subcommand)       | Apply review findings   | last cached review → AI findings → `git apply --check` → classify → dry run (or `--apply`) |
 | `-i` / `--input`         | File audit             | Entire file → AI (uses `.gitpr.filereview.md`)                            |
 | `-l` / `--linter`        | Static linter          | `git diff` → YAML regex + external linters → console/TUI (no AI)          |
 | `--linter-setup`         | Linter wizard          | Interactive setup of external linters (Checkstyle bridge presets)         |
@@ -273,7 +287,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 
 ### Skills System (Prompt Engineering)
 - Local `.gitpr.<type>.md` files at the user's project root act as AI *System Instructions*
-- Types: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `release`, `linter.yml`
+- Types: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `release`, `fix`, `linter.yml`
 - Remote templates at `https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/`
 - `--skill` downloads templates, but **never overwrites** existing local files
 - Language-aware: EN downloads `gitpr.issue.md`, PT-BR downloads `gitpr.issue.pt_br.md`
@@ -288,7 +302,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
 - Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json` (auto-downloaded, re-fetched when `__lang_version__` changes)
-- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `OUTPUT_FILE_NAME_RELEASE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `OUTPUT_FILE_NAME_RELEASE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `GITPR_FIX_SAFE_MAX_LINES_CHANGED`, `GITPR_FIX_SAFE_EXCLUDED_PATHS`, `GITPR_FIX_REQUIRE_CONFIRMATION`, `GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE`, `GITPR_FIX_BRANCH_NAME_TEMPLATE`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
 
 ### AI Providers (Multi-Model Architecture)
 - **Gemini:** `gemini-pro-latest` (primary/advanced) / `gemini-flash-lite-latest` (secondary/simple)
@@ -365,7 +379,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Server stdout is monkey-patched to isolate the JSON-RPC stream from prints
 - Tools run on an `anyio` offload thread (`_offload`) to avoid blocking the event loop; if a tool hangs in the IDE, kill `gitpr-mcp.exe` and restart the editor
 
-**Tools (12):**
+**Tools (13):**
 
 | Tool | Action | Parameters |
 |------|--------|------------|
@@ -381,8 +395,9 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 | `run_linter` | Static linter (`.gitpr.linter.yml` rules) on current diff | — |
 | `analyze_blame` | AI blame archaeology on a file region | `file_path`, `start_line`, `end_line` |
 | `generate_issue` | Structured issue (What/Why/Where/How) | `context_type`: `diff`/`history`/`blame` |
+| `list_fix_candidates` | Fix candidates of the last review: patch, classification, id (read-only) | `finding_id` |
 
-**Resources (17):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame,release}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
+**Resources (18):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame,release,fix}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
 
 **Prompts (7):** Review PR, Generate Commit Message, Create PR Description, Run Code Linter, Create Issue from Diff, Trace Code Origin, Explore Project Context
 

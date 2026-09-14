@@ -181,6 +181,12 @@ CATEGORIES = (
         doc="release-notes.md",
     ),
     Category(
+        "fix",
+        __("Fix"),
+        __("Review findings turned into patches, and the safety rules of a batch."),
+        doc="fix-command.md",
+    ),
+    Category(
         "scm",
         __("SCM / Forge"),
         __("GitHub, GitLab, Bitbucket and Azure DevOps connection."),
@@ -221,6 +227,7 @@ SKILL_LABELS = {
     "issue": __("Issue"),
     "blame": __("Blame"),
     "release": __("Release"),
+    "fix": __("Fix"),
 }
 
 # Sub-headers shown inside a category. Generic words go through __(); forge and
@@ -613,6 +620,59 @@ FIELDS = (
         category="release",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_RELEASE.md",
+    ),
+    # --------------------------------------------------------------------- Fix
+    ConfigField(
+        key="GITPR_FIX_SAFE_MAX_LINES_CHANGED",
+        label=__("Safe Patch Size"),
+        description=__(
+            "Maximum number of added plus removed lines a patch may have and still be classified as safe."
+        ),
+        category="fix",
+        kind=KIND_INT,
+        default="5",
+    ),
+    ConfigField(
+        key="GITPR_FIX_SAFE_EXCLUDED_PATHS",
+        label=__("Sensitive Paths"),
+        description=__(
+            "Semicolon separated glob patterns a patch may not touch and still be safe (migrations, workflows, containers, infrastructure)."
+        ),
+        category="fix",
+        kind=KIND_STR,
+        default=(
+            "database/migrations/**;**/*.ci.yml;docker/**;terraform/**;.github/workflows/**"
+        ),
+    ),
+    ConfigField(
+        key="GITPR_FIX_REQUIRE_CONFIRMATION",
+        label=__("Ask Before Applying"),
+        description=__(
+            "Shows the diff and asks for confirmation before a patch is written to the working tree."
+        ),
+        category="fix",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE",
+        label=__("Branch for a Batch"),
+        description=__(
+            "Creates a new branch when the safe patches are applied in a batch, so the current branch stays untouched."
+        ),
+        category="fix",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_FIX_BRANCH_NAME_TEMPLATE",
+        label=__("Branch Name"),
+        description=__(
+            "Name of the branch created for a batch. Placeholders: branch and datetime."
+        ),
+        category="fix",
+        kind=KIND_TEMPLATE,
+        default="fix/gitpr-{datetime}",
     ),
     # --------------------------------------------------------------- SCM/Forge
     # The common settings stay ungrouped and always visible; the fields that

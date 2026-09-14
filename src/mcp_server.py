@@ -907,6 +907,94 @@ def generate_issue(context_type: str = "diff") -> str:
 
 
 # =============================================================================
+# Tools — Review Findings (Fix)
+# =============================================================================
+
+
+def _fix_candidate_json(candidate) -> dict:
+    """One fix candidate as a JSON-ready dict, patch included.
+
+    Read-only by construction: the tool below reports what ``gitpr fix`` could
+    apply and returns the diff as text. Applying it is the CLI's job, where a
+    human sees the diff before it reaches the tree.
+    """
+    return {
+        "finding_id": candidate.finding.id,
+        "patch_id": candidate.patch_id,
+        "file_path": candidate.finding.file_path,
+        "line_start": candidate.finding.line_start,
+        "line_end": candidate.finding.line_end,
+        "severity": candidate.finding.severity,
+        "category": candidate.finding.category,
+        "message": candidate.finding.message,
+        "safety": candidate.safety.value,
+        "safety_reason": candidate.safety_reason,
+        "confidence": candidate.confidence,
+        "suggested_test": candidate.suggested_test,
+        "diff": candidate.diff_unified,
+    }
+
+
+@mcp.tool(
+    description=__(
+        "List the fix candidates of the last code review: every finding with "
+        "the patch that fixes it, its safety classification and its id. "
+        "Read-only — no patch is ever applied to the working tree."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True
+    ),
+)
+@_offload
+def list_fix_candidates(finding_id: str = "") -> str:
+    """List the patches ``gitpr fix`` would offer for the last cached review.
+
+    Args:
+        finding_id: Optional finding id (e.g. "FIX-001"). Empty lists every finding.
+    """
+    from src.config import get_fix_settings
+    from src.fix.apply_fix import (
+        FixError,
+        collect_candidates,
+        find_candidate,
+        resolve_review,
+    )
+
+    settings = _safe_call(get_fix_settings) or {}
+    try:
+        candidates = collect_candidates(
+            resolve_review(),
+            quiet=True,
+            max_lines_changed=settings.get("safe_max_lines_changed", 5),
+            excluded_paths=settings.get("safe_excluded_paths", ()),
+        )
+        if finding_id.strip():
+            candidates = (find_candidate(candidates, finding_id),)
+    except FixError as error:
+        return json.dumps(
+            {"status": "error", "message": str(error)}, ensure_ascii=False
+        )
+
+    if not candidates:
+        return json.dumps(
+            {
+                "status": "no_data",
+                "message": __("The last review raised no finding that gitpr could turn into a patch."),
+            },
+            ensure_ascii=False,
+        )
+
+    return json.dumps(
+        {
+            "status": "success",
+            "finding_count": len(candidates),
+            "candidates": [_fix_candidate_json(c) for c in candidates],
+        },
+        ensure_ascii=False,
+    )
+
+
+# =============================================================================
 # Resources — Skill Templates & Linter Config
 # =============================================================================
 
@@ -918,6 +1006,7 @@ SKILL_FILES = {
     "issue": ".gitpr.issue.md",
     "blame": ".gitpr.blame.md",
     "release": ".gitpr.release.md",
+    "fix": ".gitpr.fix.md",
 }
 
 # Prompt template files (message templates for common MCP flows).
@@ -1099,6 +1188,16 @@ def get_skill_blame() -> str:
 )
 def get_skill_release() -> str:
     return _read_resource_file(".gitpr.release.md")
+
+
+@mcp.resource(
+    uri="skill://fix",
+    name=__("Fix Patch Template"),
+    description=__("Custom AI instructions for turning review findings into patches."),
+    mime_type="text/markdown",
+)
+def get_skill_fix() -> str:
+    return _read_resource_file(".gitpr.fix.md")
 
 
 @mcp.resource(
@@ -1538,6 +1637,22 @@ def _build_tools_catalog() -> dict:
                     "idempotentHint": False,
                 },
             },
+            {
+                "name": "list_fix_candidates",
+                "description": "List the fix candidates of the last code review: every finding with the patch that fixes it, its safety classification and its id. Read-only — no patch is ever applied to the working tree.",
+                "parameters": {
+                    "finding_id": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Optional finding id (e.g. 'FIX-001'). Empty lists every finding.",
+                    },
+                },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                },
+            },
         ],
         "resources": [
             {
@@ -1586,6 +1701,12 @@ def _build_tools_catalog() -> dict:
                 "uri": "skill://release",
                 "name": "Release Notes Template",
                 "description": "Custom AI instructions for the gitpr release executive summary.",
+                "mimeType": "text/markdown",
+            },
+            {
+                "uri": "skill://fix",
+                "name": "Fix Patch Template",
+                "description": "Custom AI instructions for turning review findings into patches.",
                 "mimeType": "text/markdown",
             },
             {
@@ -1750,6 +1871,7 @@ _TOOL_FUNCS = {
     "run_linter": run_linter.__wrapped__,
     "analyze_blame": analyze_blame.__wrapped__,
     "generate_issue": generate_issue.__wrapped__,
+    "list_fix_candidates": list_fix_candidates.__wrapped__,
 }
 
 

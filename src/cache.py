@@ -83,6 +83,51 @@ def save_cached_response(
         pass  # Silent cache failure to avoid crashing the tool
 
 
+# Review action types whose prompt is a branch diff. `filereview` is left out
+# on purpose: it audits a single file and has no diff to re-derive.
+REVIEW_ACTION_TYPES = ("review", "fullreview")
+
+
+def resolve_last_review(repo_name, branch_name):
+    """The most recent cached review for *repo_name* and *branch_name*, or None.
+
+    All three review modes write into the same ``review/`` folder (see
+    ``core.generate_pr_content``), so ``action_type`` is what tells them apart —
+    without that filter a file audit would be mistaken for a branch review.
+
+    Returns the cache record itself: the caller reads
+    ``record["response"]["review"]`` for the text and ``record["action_type"]``
+    to know which diff produced it, so the patch can be re-derived against
+    today's tree rather than the tree of the day the review ran.
+    """
+    review_folder = get_cache_base_dir() / "review"
+    if not review_folder.exists():
+        return None
+
+    newest = None
+    for cache_file in review_folder.glob("*.json"):
+        try:
+            with open(cache_file, "r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            continue
+
+        if not isinstance(data, dict):
+            continue
+        if data.get("repo") != repo_name or data.get("branch") != branch_name:
+            continue
+        if data.get("action_type") not in REVIEW_ACTION_TYPES:
+            continue
+        if not (data.get("response") or {}).get("review"):
+            continue
+
+        # Timestamps are '%Y-%m-%d %H:%M:%S', so string order is date order.
+        if newest is None or data.get("datetime", "") > newest.get("datetime", ""):
+            newest = data
+
+    return newest
+
+
 def get_cached_pr_descriptions(repo_name, branch_name):
     """Searches the cache for all historically generated PRs for this repository and branch."""
     from src.i18n import __

@@ -417,6 +417,7 @@ Si deseas implementar GitPR como una barrera de calidad automatizada en tu equip
 * [**Arqueólogo de Código (Git Blame)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/blame-arqueologo.md) — Cómo rastrear el origen de reglas de negocio con `git blame` e IA.
 * [**Sistema de Skills y Plantillas**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/skill-template.md) — Cómo personalizar el comportamiento de la IA con archivos `.gitpr.*.md`.
 * [**Notas de la Versión y Changelog (gitpr release)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/release-notes.md) — Cómo el subcomando `gitpr release` genera el changelog / las notas de la versión de un repositorio, sugiere la próxima versión semántica y publica releases en la forge.
+* [**Comando Fix (gitpr fix)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/fix-command.md) — Cómo el subcomando `gitpr fix` convierte los hallazgos de la última revisión en parches que lees antes de que toquen tu árbol, clasifica cada uno por seguridad y deshace un parche aplicado cuando lo pidas.
 
 ### Configuración e Infraestructura
 
