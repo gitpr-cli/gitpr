@@ -18,6 +18,13 @@ import click
 # Import after patching checks — the mcp_server module does not call
 # _patch_output() at import time (only inside main()), so importing is safe.
 from src import mcp_server
+from src.fix.apply_fix import FixError
+from src.fix.patch_provenance import (
+    FindingRef,
+    PatchCandidate,
+    PatchProvenance,
+    PatchSafety,
+)
 
 
 def _call_tool(fn, *args, **kwargs):
@@ -449,6 +456,105 @@ class TestIssueTool(unittest.TestCase):
         self.assertEqual(result["status"], "no_changes")
 
 
+class TestFixCandidatesTool(unittest.TestCase):
+    """Tests for the list_fix_candidates MCP tool — the read-only half of fix."""
+
+    @staticmethod
+    def _candidate(finding_id="FIX-001", safety=None, reason="safe"):
+        """A real PatchCandidate, so patch_id and the payload are real too."""
+        return PatchCandidate(
+            finding=FindingRef(
+                id=finding_id,
+                file_path="src/app.py",
+                line_start=2,
+                line_end=2,
+                severity="minor",
+                category="style",
+                message="greet() ignores its argument",
+            ),
+            diff_unified="--- a/src/app.py\n+++ b/src/app.py\n@@ -1 +1 @@\n-a\n+b\n",
+            suggested_test="assert greet('x') == 'Hello, x'",
+            confidence="high",
+            safety=safety or PatchSafety.SAFE,
+            safety_reason=reason,
+            provenance=PatchProvenance(
+                finding_id=finding_id,
+                ai_provider="gemini",
+                ai_model="gemini-pro-latest",
+                prompt_version="1",
+                generated_at="2026-09-13 12:00:00",
+                gitpr_version="1.1.0",
+            ),
+        )
+
+    def _invoke(self, candidates=(), finding_id="", settings=None):
+        with patch("src.fix.apply_fix.resolve_review", return_value={"action_type": "review"}), \
+             patch("src.fix.apply_fix.collect_candidates", return_value=tuple(candidates)) as collect, \
+             patch("src.fix.apply_fix.apply_candidates") as apply, \
+             patch("src.config.get_fix_settings", return_value=settings or {}):
+            result = json.loads(_call_tool(mcp_server.list_fix_candidates, finding_id=finding_id))
+        return result, collect, apply
+
+    def test_lists_the_candidates_with_their_patch(self):
+        """Every finding arrives with its diff, classification and id."""
+        result, _collect, apply = self._invoke([self._candidate()])
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["finding_count"], 1)
+        candidate = result["candidates"][0]
+        self.assertEqual(candidate["finding_id"], "FIX-001")
+        self.assertEqual(candidate["safety"], "safe")
+        self.assertEqual(candidate["file_path"], "src/app.py")
+        self.assertIn("+++ b/src/app.py", candidate["diff"])
+        self.assertTrue(candidate["patch_id"].startswith("FIX-001-"))
+        # The whole point of the tool: it reports, it never writes.
+        apply.assert_not_called()
+
+    def test_the_pipeline_runs_quiet(self):
+        """stdout is the JSON-RPC stream — nothing may print into it."""
+        _result, collect, _apply = self._invoke([self._candidate()])
+
+        self.assertTrue(collect.call_args.kwargs["quiet"])
+
+    def test_the_classification_settings_reach_the_pipeline(self):
+        _result, collect, _apply = self._invoke(
+            [self._candidate()],
+            settings={"safe_max_lines_changed": 9, "safe_excluded_paths": ("docker/**",)},
+        )
+
+        self.assertEqual(collect.call_args.kwargs["max_lines_changed"], 9)
+        self.assertEqual(collect.call_args.kwargs["excluded_paths"], ("docker/**",))
+
+    def test_a_finding_id_narrows_the_answer(self):
+        candidates = [self._candidate(), self._candidate("FIX-002")]
+        result, _collect, _apply = self._invoke(candidates, finding_id="FIX-002")
+
+        self.assertEqual(result["finding_count"], 1)
+        self.assertEqual(result["candidates"][0]["finding_id"], "FIX-002")
+
+    def test_an_unknown_finding_id_is_an_error(self):
+        result, _collect, _apply = self._invoke([self._candidate()], finding_id="FIX-999")
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("FIX-999", result["message"])
+
+    def test_a_missing_review_is_reported_as_an_error(self):
+        with patch(
+            "src.fix.apply_fix.resolve_review",
+            side_effect=FixError("❌ No review found for acme/app on branch 'main'."),
+        ):
+            result = json.loads(_call_tool(mcp_server.list_fix_candidates))
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("No review found", result["message"])
+
+    def test_a_review_without_findings_says_so(self):
+        result, _collect, _apply = self._invoke([])
+
+        self.assertEqual(result["status"], "no_data")
+        self.assertIn("no finding", result["message"])
+
+
 class TestResources(unittest.TestCase):
     """Tests for MCP resources (skill templates)."""
 
@@ -464,6 +570,7 @@ class TestResources(unittest.TestCase):
         self.assertIn("skill://issue", result["skills"])
         self.assertIn("skill://blame", result["skills"])
         self.assertIn("skill://release", result["skills"])
+        self.assertIn("skill://fix", result["skills"])
         self.assertIn("linter", result)
         self.assertEqual(result["linter"], "linter://config")
 
@@ -477,6 +584,7 @@ class TestResources(unittest.TestCase):
             mcp_server.get_skill_issue,
             mcp_server.get_skill_blame,
             mcp_server.get_skill_release,
+            mcp_server.get_skill_fix,
             mcp_server.get_linter_config,
         ]
         for fn in funcs:
@@ -579,7 +687,7 @@ class TestToolsCatalog(unittest.TestCase):
             self.assertTrue(tool["description"], f"Tool '{tool['name']}' has empty description")
 
     def test_catalog_has_all_expected_tools(self):
-        """Catalog includes all 12 registered tools."""
+        """Catalog includes all 13 registered tools."""
         catalog = mcp_server._build_tools_catalog()
         tool_names = {t["name"] for t in catalog["tools"]}
         expected = {
@@ -595,6 +703,7 @@ class TestToolsCatalog(unittest.TestCase):
             "run_linter",
             "analyze_blame",
             "generate_issue",
+            "list_fix_candidates",
         }
         missing = expected - tool_names
         extra = tool_names - expected
@@ -731,10 +840,10 @@ class TestWriteRealStdout(unittest.TestCase):
 class TestToolRegistry(unittest.TestCase):
     """Tests for _get_tool_registry and _TOOL_FUNCS."""
 
-    def test_registry_has_all_12_tools(self):
-        """_get_tool_registry returns all 12 tools."""
+    def test_registry_has_all_13_tools(self):
+        """_get_tool_registry returns all 13 tools."""
         registry = mcp_server._get_tool_registry()
-        self.assertEqual(len(registry), 12)
+        self.assertEqual(len(registry), 13)
 
     def test_every_tool_has_func(self):
         """Every tool in the registry has a callable 'func'."""

@@ -1878,6 +1878,370 @@ def config():
     launch_config_app()
 
 
+# ============================================================
+# gitpr fix — review findings applied as reviewable diffs (ADR-004)
+# ============================================================
+_FIX_SAFETY_COLORS = {"safe": "green", "review_required": "yellow", "experimental": "red"}
+
+
+def _fix_reason(reason_code):
+    """The translated reason behind a classification code.
+
+    The classifier reports a code and never a sentence, so the wording lives
+    here — and the MCP tool keeps reporting the code, because its callers match
+    on a stable string instead of reading prose.
+
+    One literal __() per code rather than a table of sentences: the i18n test
+    scans the source for __() literals, so a sentence reached through a variable
+    would be looked up by nothing and silently stay English.
+    """
+    if reason_code == "apply_check_failed":
+        return __("it does not apply to the current tree")
+    if reason_code == "multi_file":
+        return __("it changes more than one file")
+    if reason_code == "low_confidence":
+        return __("the AI declared low confidence in it")
+    if reason_code == "excluded_path":
+        return __("it touches a configured sensitive path")
+    if reason_code == "multiple_hunks":
+        return __("it spans more than one hunk")
+    if reason_code == "too_many_lines":
+        return __("it changes more lines than the configured limit")
+    if reason_code == "removes_call":
+        return __("it deletes a line that looks like a call")
+    return reason_code
+
+
+def _fix_location(finding):
+    """``path:line`` for a finding, or just the path when it carries no line."""
+    if finding.line_start:
+        return f"{finding.file_path}:{finding.line_start}"
+    return finding.file_path
+
+
+def _print_fix_candidate(candidate):
+    """One candidate as a terminal block: class, location, finding, patch id."""
+    finding = candidate.finding
+    click.secho(f"  {finding.id}", fg="cyan", bold=True, nl=False)
+    click.secho(
+        f"  [{candidate.safety.value}]",
+        fg=_FIX_SAFETY_COLORS.get(candidate.safety.value, "white"),
+        nl=False,
+    )
+    click.secho(f"  {_fix_location(finding)}")
+    if finding.message:
+        click.echo(f"     {finding.message}")
+    line = f"     ↳ {candidate.patch_id}"
+    if candidate.safety.value != "safe":
+        line += f" — {_fix_reason(candidate.safety_reason)}"
+    click.secho(line, fg="white", dim=True)
+
+
+def _print_fix_diff(diff_text):
+    """A unified diff in the terminal colours the rest of the project uses."""
+    for line in diff_text.rstrip("\n").splitlines():
+        if line.startswith(("+++", "---")):
+            click.secho(f"   {line}", fg="cyan")
+        elif line.startswith("@@"):
+            click.secho(f"   {line}", fg="magenta")
+        elif line.startswith("+"):
+            click.secho(f"   {line}", fg="green")
+        elif line.startswith("-"):
+            click.secho(f"   {line}", fg="red")
+        else:
+            click.echo(f"   {line}")
+
+
+def _print_fix_left_out(candidates, selected):
+    """The candidates a batch did not take, with the id that brings them back."""
+    for candidate in candidates:
+        if candidate not in selected:
+            click.secho(
+                __(
+                    "⏭️ {finding_id} not applied — {safety}: {reason}",
+                    finding_id=candidate.finding.id,
+                    safety=candidate.safety.value,
+                    reason=_fix_reason(candidate.safety_reason),
+                ),
+                fg="white",
+                dim=True,
+            )
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("fix-command.md"),
+)
+@click.argument("finding_id", required=False, metavar="[<finding-id>]")
+@click.option(
+    "--list",
+    "list_only",
+    is_flag=True,
+    help=__("Lists the fix candidates of the last review — what the command does with no arguments."),
+)
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    help=__("Writes the patch into the working tree. Without it the run is a dry run that touches nothing."),
+)
+@click.option(
+    "--all-safe",
+    "all_safe",
+    is_flag=True,
+    help=__("Selects every patch classified as safe. Writing them still requires --apply."),
+)
+@click.option(
+    "--create-branch",
+    "branch_name",
+    metavar="<name>",
+    help=__("Creates and switches to this branch before applying the patches."),
+)
+@click.option(
+    "--no-branch",
+    is_flag=True,
+    help=__("Applies on the current branch even when the configuration would create one."),
+)
+@click.option(
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help=__("Skips the confirmation prompt. It never bypasses --force."),
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help=__("Applies a patch that is not safe, after a typed confirmation phrase."),
+)
+@click.option(
+    "--rollback",
+    "rollback_id",
+    metavar="<patch-id>",
+    help=__("Undoes a patch applied earlier, reading its diff from the local history."),
+)
+def fix(
+    finding_id,
+    list_only,
+    apply_changes,
+    all_safe,
+    branch_name,
+    no_branch,
+    assume_yes,
+    force,
+    rollback_id,
+):
+    """Turns the last code review into patches you read before they touch your tree.
+
+    Reads the most recent review of this repository and branch (``gitpr -r``),
+    asks the AI for the smallest unified diff that fixes each problem the review
+    raised, and classifies every patch by how much it can be trusted.
+
+    Nothing is written by default: with no arguments the candidates are listed,
+    and a dry run prints the diff. Writing requires --apply, and a patch that is
+    not classified as safe additionally requires --force with a typed phrase.
+
+    The diff is re-derived with the same function that produced the review, so
+    the patch is written against the tree in front of you now. Every applied
+    patch is recorded in ``.gitpr/fix_history.json`` and can be undone with
+    --rollback, which needs no commit because the whole diff is stored.
+    """
+    from src.config import get_fix_settings
+    from src.fix.apply_fix import (
+        FixError,
+        apply_candidates,
+        collect_candidates,
+        find_candidate,
+        resolve_review,
+        select_safe,
+    )
+    from src.fix.rollback_fix import rollback_fix as undo_patch
+
+    settings = get_fix_settings()
+
+    if rollback_id:
+        if finding_id or apply_changes or all_safe:
+            click.secho(
+                __("❌ --rollback takes no finding id and cannot be combined with --apply or --all-safe."),
+                fg="red",
+            )
+            raise click.exceptions.Exit(1)
+        try:
+            entry = undo_patch(rollback_id)
+        except FixError as exc:
+            click.secho(str(exc), fg="red", err=True)
+            raise click.exceptions.Exit(1) from exc
+        click.secho(
+            __(
+                "ℹ️ Undone patch {patch_id}: {files} restored.",
+                patch_id=entry.get("patch_id"),
+                files=", ".join(entry.get("files_changed") or []),
+            ),
+            fg="green",
+        )
+        return
+
+    if force and all_safe:
+        click.secho(
+            __("⚠️ --force has no effect with --all-safe: only safe patches are selected."),
+            fg="yellow",
+        )
+
+    if not finding_id and not all_safe:
+        if apply_changes:
+            click.secho(
+                __("⚠️ Nothing was selected: name a finding id or add --all-safe."),
+                fg="yellow",
+            )
+        list_only = True
+
+    try:
+        candidates = collect_candidates(
+            resolve_review(),
+            max_lines_changed=settings["safe_max_lines_changed"],
+            excluded_paths=settings["safe_excluded_paths"],
+        )
+        if all_safe:
+            selected = select_safe(candidates)
+        elif finding_id:
+            selected = (find_candidate(candidates, finding_id),)
+        else:
+            selected = ()
+    except FixError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    if not candidates:
+        click.secho(__("ℹ️ The review raised no fixable findings."), fg="yellow")
+        return
+
+    if all_safe and not selected:
+        click.secho(
+            __("ℹ️ None of the candidates is safe. Apply one by id with 'gitpr fix <id> --apply'."),
+            fg="yellow",
+        )
+        return
+
+    if list_only:
+        click.secho(__("🔎 Fix candidates from the last review:"), fg="cyan", bold=True)
+        for candidate in candidates:
+            _print_fix_candidate(candidate)
+        click.secho(
+            __(
+                "ℹ️ Apply one with 'gitpr fix <id> --apply'; the safe ones can be batched with '--all-safe --apply'."
+            ),
+            fg="cyan",
+            dim=True,
+        )
+        return
+
+    branch = None
+    if branch_name:
+        branch = branch_name
+    elif all_safe and not no_branch and settings["create_branch_on_all_safe"]:
+        branch = settings["branch_name_template"].format(
+            branch=get_current_branch() or "",
+            datetime=datetime.now().strftime("%Y%m%d%H%M%S"),
+        )
+
+    if not apply_changes:
+        # Dry run: the diff and the classification are the whole point, and
+        # apply_candidates(dry_run=True) is the one path that writes nothing.
+        results = apply_candidates(selected, dry_run=True)
+        for candidate, result in zip(selected, results):
+            _print_fix_candidate(candidate)
+            _print_fix_diff(result.dry_run_diff)
+            for warning in result.warnings:
+                click.secho(f"   {warning}", fg="yellow")
+        if branch:
+            click.secho(
+                __(
+                    "ℹ️ Branch '{branch}' would be created before the patches are applied.",
+                    branch=branch,
+                ),
+                fg="cyan",
+                dim=True,
+            )
+        if all_safe:
+            _print_fix_left_out(candidates, selected)
+        click.secho(
+            __("ℹ️ Dry run — nothing was written. Add --apply to write it."),
+            fg="cyan",
+            dim=True,
+        )
+        return
+
+    # A patch that is not safe is never written by a plain --apply: --force is
+    # the only door, and it opens on a typed phrase rather than a y/n.
+    unsafe = [candidate for candidate in selected if candidate.safety.value != "safe"]
+    if unsafe and not force:
+        for candidate in unsafe:
+            click.secho(
+                __(
+                    "❌ {finding_id} is {safety} ({reason}) — re-run with --force to apply it anyway.",
+                    finding_id=candidate.finding.id,
+                    safety=candidate.safety.value,
+                    reason=_fix_reason(candidate.safety_reason),
+                ),
+                fg="red",
+            )
+        raise click.exceptions.Exit(1)
+
+    if unsafe:
+        phrase = f"apply {unsafe[0].finding.id}"
+        typed = click.prompt(
+            __(
+                "❗ {safety} patch: {reason}. Type '{phrase}' to confirm",
+                safety=unsafe[0].safety.value,
+                reason=_fix_reason(unsafe[0].safety_reason),
+                phrase=phrase,
+            )
+        )
+        if typed.strip().lower() != phrase.lower():
+            click.secho(
+                __("❌ The confirmation phrase does not match. Nothing was applied."),
+                fg="red",
+            )
+            raise click.exceptions.Exit(1)
+    elif settings["require_confirmation"] and not assume_yes:
+        question = (
+            __("❓ Apply {finding_id} to the working tree?", finding_id=finding_id)
+            if finding_id
+            else __("❓ Apply the selected patches to the working tree?")
+        )
+        if not click.confirm(question, default=False):
+            click.secho(__("❌ Operation cancelled by user."), fg="yellow")
+            return
+
+    try:
+        results = apply_candidates(selected, dry_run=False, branch=branch)
+    except FixError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    if branch:
+        click.secho(
+            __("✅ Branch '{branch}' created for the batch.", branch=branch), fg="green"
+        )
+    for candidate, result in zip(selected, results):
+        if result.applied:
+            click.secho(
+                __(
+                    "✅ Patch applied: {patch_id} ({files})",
+                    patch_id=result.patch_id,
+                    files=", ".join(result.files_changed) or _fix_location(candidate.finding),
+                ),
+                fg="green",
+                bold=True,
+            )
+        for warning in result.warnings:
+            click.secho(f"   {warning}", fg="yellow")
+    if all_safe:
+        _print_fix_left_out(candidates, selected)
+
+
 def _env_flag(name, default="false"):
     """Reads a boolean environment variable (true/1/yes/y)."""
     return os.getenv(name, default).lower() in ("true", "1", "yes", "y")

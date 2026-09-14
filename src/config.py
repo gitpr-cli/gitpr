@@ -61,6 +61,16 @@ DEFAULT_CONFIG = {
     "GITPR_RELEASE_AI_SUMMARY": "true",
     "GITPR_RELEASE_AUTO_BUMP": "true",
     "GITPR_RELEASE_PUBLISH_DRAFT_BY_DEFAULT": "true",
+    # Fix feature (gitpr fix). The excluded paths are glob patterns a patch may
+    # not touch and still count as safe; they are about *risk*, not diff noise,
+    # which is why they are not shared with the smart-excludes list.
+    "GITPR_FIX_SAFE_MAX_LINES_CHANGED": "5",
+    "GITPR_FIX_SAFE_EXCLUDED_PATHS": (
+        "database/migrations/**;**/*.ci.yml;docker/**;terraform/**;.github/workflows/**"
+    ),
+    "GITPR_FIX_REQUIRE_CONFIRMATION": "true",
+    "GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE": "true",
+    "GITPR_FIX_BRANCH_NAME_TEMPLATE": "fix/gitpr-{datetime}",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -131,6 +141,7 @@ SKILL_FILES_BY_TYPE = {
     "issue": ".gitpr.issue.md",
     "blame": ".gitpr.blame.md",
     "release": ".gitpr.release.md",
+    "fix": ".gitpr.fix.md",
 }
 SKILL_TYPES = tuple(SKILL_FILES_BY_TYPE)
 
@@ -677,6 +688,47 @@ def get_release_settings():
         "publish_draft_by_default": _env_bool_default_true(
             "GITPR_RELEASE_PUBLISH_DRAFT_BY_DEFAULT"
         ),
+    }
+
+
+def get_fix_settings():
+    """Returns the gitpr fix configuration as a flat dict.
+
+    ``safe_excluded_paths`` is the ; separated list of glob patterns a patch may
+    not touch and still be classified safe; an empty value falls back to the
+    built-in list, because clearing the field by accident must not silently drop
+    the protection. ``branch_name_template`` names the branch of a batch with
+    the vocabulary the output filenames already use ({branch} and {datetime}),
+    so there is one placeholder syntax to learn.
+    """
+    load_dotenv(ENV_FILE)
+    try:
+        max_lines = int(
+            (os.getenv("GITPR_FIX_SAFE_MAX_LINES_CHANGED") or "").strip() or 5
+        )
+        if max_lines <= 0:
+            raise ValueError
+    except ValueError:
+        max_lines = 5
+
+    # The fallback is spelled out, like every other getter here, instead of
+    # looked up in DEFAULT_CONFIG.
+    raw_paths = os.getenv("GITPR_FIX_SAFE_EXCLUDED_PATHS") or (
+        "database/migrations/**;**/*.ci.yml;docker/**;terraform/**;.github/workflows/**"
+    )
+    excluded_paths = tuple(
+        item.strip() for item in raw_paths.split(";") if item.strip()
+    )
+
+    template = (os.getenv("GITPR_FIX_BRANCH_NAME_TEMPLATE") or "").strip()
+    return {
+        "safe_max_lines_changed": max_lines,
+        "safe_excluded_paths": excluded_paths,
+        "require_confirmation": _env_bool_default_true("GITPR_FIX_REQUIRE_CONFIRMATION"),
+        "create_branch_on_all_safe": _env_bool_default_true(
+            "GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE"
+        ),
+        "branch_name_template": template or "fix/gitpr-{datetime}",
     }
 
 

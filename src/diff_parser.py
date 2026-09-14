@@ -5,8 +5,14 @@ The PR flows diff with ``git diff -U1 -w -M -B <ancestor> -- <excludes>``
 numbers of the added ('+') lines, per file — the numbers used to blame the
 working tree. It never runs git and never re-applies excludes: it only
 interprets the diff text it is given.
+
+``summarize_patch()`` reads the same text a second way — as a patch a whole:
+which files it touches, how many hunks, how many lines it adds and removes.
+That is what the ``gitpr fix`` safety classifier scores, and it accepts the
+looser shape an AI returns (no ``diff --git`` line, just ``---``/``+++``).
 """
 import re
+from dataclasses import dataclass
 
 _HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
 
@@ -157,3 +163,78 @@ def parse_added_lines(diff_text):
     for lines in added_by_file.values():
         lines.sort()
     return added_by_file
+
+
+@dataclass(frozen=True)
+class PatchSummary:
+    """What a unified diff touches, as the safety classifier needs to see it.
+
+    ``files`` holds each file the patch mentions, in order of appearance, taken
+    from the new side — the 'diff --git' line when there is one (a deletion
+    keeps its name there, since its '+++ /dev/null' carries none), otherwise the
+    '+++ b/path' header. ``hunks`` counts well-formed '@@' headers, and
+    ``added``/``removed`` count content lines inside those hunks, so headers and
+    the '\\ No newline' marker never count. ``removed_lines`` keeps the text of
+    each removed line — what lets a caller spot a deleted function call.
+    """
+    files: tuple[str, ...]
+    hunks: int
+    added: int
+    removed: int
+    removed_lines: tuple[str, ...]
+
+
+def summarize_patch(diff_text):
+    """Return a PatchSummary for *diff_text* (see the dataclass docstring).
+
+    Pure like parse_added_lines: it interprets the text it is given and never
+    runs git. Text with no recognizable diff section yields an empty summary
+    rather than an error — the caller decides whether that means "no patch".
+    """
+    files = []
+    hunks = 0
+    added = 0
+    removed = 0
+    removed_lines = []
+    in_hunk = False
+
+    for raw_line in diff_text.split("\n"):
+        line = raw_line.rstrip("\r")
+
+        if line.startswith("diff --git "):
+            _remember_file(files, _strip_diff_prefix(_header_path(line)))
+            in_hunk = False
+            continue
+        if line.startswith("+++ ") and not in_hunk:
+            path = _strip_diff_prefix(_header_path(line, marker="+++ "))
+            if path and path != "/dev/null":
+                _remember_file(files, path)
+            in_hunk = False
+            continue
+        if line.startswith("@@"):
+            if _HUNK_HEADER_RE.match(line):
+                hunks += 1
+                in_hunk = True
+            continue
+
+        if not in_hunk or line.startswith("\\ No newline"):
+            continue
+        if line.startswith("+"):
+            added += 1
+        elif line.startswith("-"):
+            removed += 1
+            removed_lines.append(line[1:])
+
+    return PatchSummary(
+        files=tuple(files),
+        hunks=hunks,
+        added=added,
+        removed=removed,
+        removed_lines=tuple(removed_lines),
+    )
+
+
+def _remember_file(files, path):
+    """Append *path* to *files* once, preserving appearance order."""
+    if path and path not in files:
+        files.append(path)
