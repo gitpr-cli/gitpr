@@ -1,0 +1,87 @@
+# 🚨 Relatório do Linter GitPR
+
+## ⚠️ Avisos
+
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/build_env.py (Line 302).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/cache.py (Line 280).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/cli/base_command.py (Line 209).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/index/collector.py (Line 339).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/locations/_sysconfig.py (Line 174) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/locations/_sysconfig.py (Line 175) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/locations/base.py (Line 60).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/metadata/base.py (Line 32).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/metadata/base.py (Line 162).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/metadata/base.py (Line 172).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/models/installation_report.py (Line 51).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/models/selection_prefs.py (Line 6).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/network/lazy_wheel.py (Line 177).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/operations/install/wheel.py (Line 279) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/operations/prepare.py (Line 562).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/operations/prepare.py (Line 636).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/req/constructors.py (Line 287).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/req/req_file.py (Line 104).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/req/req_file.py (Line 256).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/req/req_file.py (Line 523).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/req/req_install.py (Line 374).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/req/req_uninstall.py (Line 483).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/resolution/resolvelib/candidates.py (Line 365).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/resolution/resolvelib/factory.py (Line 194).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/resolution/resolvelib/factory.py (Line 613).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/utils/unpacking.py (Line 328).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/utils/unpacking.py (Line 329).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_internal/vcs/subversion.py (Line 60).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/cachecontrol/controller.py (Line 227).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/cachecontrol/filewrapper.py (Line 67).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/distlib/resources.py (Line 191).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/distlib/util.py (Line 1134).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/__init__.py (Line 2) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/_structures.py (Line 2) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/markers.py (Line 2) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/metadata.py (Line 204).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/requirements.py (Line 2) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/requirements.py (Line 29).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/requirements.py (Line 32).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/specifiers.py (Line 2) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/tags.py (Line 2) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/tags.py (Line 378).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/tags.py (Line 503) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/utils.py (Line 2) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/packaging/version.py (Line 2) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pkg_resources/__init__.py (Line 1).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pkg_resources/__init__.py (Line 2031).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pkg_resources/__init__.py (Line 3201).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pkg_resources/__init__.py (Line 3308).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pkg_resources/__init__.py (Line 3598).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pygments/lexer.py (Line 570) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pygments/lexer.py (Line 571) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pygments/lexer.py (Line 863).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/pygments/lexers/python.py (Line 715).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/requests/adapters.py (Line 686).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/requests/hooks.py (Line 19).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/rich/text.py (Line 562).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/tomli/_parser.py (Line 161) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/tomli/_parser.py (Line 164) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/tomli/_parser.py (Line 196) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/tomli/_parser.py (Line 199) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/truststore/_macos.py (Line 558).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/connection.py (Line 199).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/connectionpool.py (Line 522).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 103) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 105) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 659).
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 682) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 684) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 685) - Check if intentional or AI-generated
+- 🚨 Index comment found in file pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 687) - Check if intentional or AI-generated
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 819).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/contrib/securetransport.py (Line 829).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/response.py (Line 441).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/response.py (Line 446).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/response.py (Line 798).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/util/response.py (Line 103).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/util/retry.py (Line 31).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/util/retry.py (Line 261).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/util/retry.py (Line 323).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/util/retry.py (Line 454).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/util/retry.py (Line 608).
+- ⚠️ Warning: There is a pending TODO or FIXME annotation in pypa/virtualenv/wheel/3.13/image/1/CopyPipInstall/pip-25.2-py3-none-any/pip/_vendor/urllib3/util/url.py (Line 402).

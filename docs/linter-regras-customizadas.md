@@ -14,7 +14,7 @@ You can trigger the linter in three ways:
 
 ## **2. .gitpr.linter.yml File Structure**
 
-The Linter rules live in the .gitpr.linter.yml file at the root of your project. The file is read on each execution and has the following YAML structure:
+The Linter rules live in the .gitpr.linter.yml file inside `.gitpr/skill/`. The file is read on each execution and has the following YAML structure:
 
 ```YAML
 

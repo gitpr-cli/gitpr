@@ -15,7 +15,7 @@ Puedes activar el linter de tres formas:
 
 ## **2. Estructura del Archivo .gitpr.linter.yml**
 
-Las reglas del Linter residen en el archivo .gitpr.linter.yml en la raíz de tu proyecto. El archivo se lee en cada ejecución y posee la siguiente estructura YAML:
+Las reglas del Linter residen en el archivo .gitpr.linter.yml en `.gitpr/skill/`. El archivo se lee en cada ejecución y posee la siguiente estructura YAML:
 
 ```YAML
 

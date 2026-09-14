@@ -132,7 +132,7 @@ Vous pouvez passer les *flags* suivants pour des actions spécifiques :
 * `--plugins` : Liste tous les **plugins installés globalement** — packs de linter personnalisés de `~/.gitpr/plugins/linter/` et modèles de prompt MCP de `~/.gitpr/plugins/prompts/`. Ces plugins s'appliquent à tous vos projets sans duplication. 📖 [Documentation complète](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/plugins-system.md)
 * `--install` : **Assistant de Configuration Interactif.** Exécute une configuration guidée en 4 étapes : télécharge les skill templates, installe les Git Hooks, configure MCP pour les éditeurs détectés et vérifie/demande votre clé API du fournisseur d'IA. Chaque étape demande confirmation avant de continuer.
 * `-ih` ou `--installhooks` : Installe automatiquement les **Git Hooks locaux** (`pre-commit` et `prepare-commit-msg`) dans votre dépôt.
-* `-s` ou `--skill` : Crée les fichiers de template de contexte IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) et le Linter (`.gitpr.linter.yml`) à la racine du projet.
+* `-s` ou `--skill` : Crée les fichiers de template de contexte IA (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) et le Linter (`.gitpr.linter.yml`) dans `.gitpr/skill/`.
 * `-is` ou `--issue` : Génère automatiquement un brouillon d'une **Issue standardisée** et ouvre une interface interactive (TUI) pour l'édition ou l'envoi direct via l'API REST. Cette fonctionnalité dispose de **3 moteurs de contexte** selon la combinaison de commandes :
   * **Issue de Nouveau Code (`gitpr -is`) :** Lit le `git diff` actuel. **Pourquoi utiliser :** Idéal pour documenter rapidement la tâche que vous venez de programmer, avant de commiter.
   * **Issue d'Épique/Release (`gitpr -is -ht`) :** Lit l'historique complet de la branche actuelle (Git Log + Cache PR). **Pourquoi utiliser :** Idéal pour générer une documentation consolidée d'une release entière ou d'une *feature* importante qui a pris plusieurs jours/commits à terminer.
@@ -209,7 +209,7 @@ Vous pouvez changer dynamiquement de modèles en configurant les variables `GEMI
 
 ## 🎯 Système de "Skills" Personnalisables (Prompt Engineering)
 
-Au lieu de cacher les instructions d'IA dans le code source, GitPR utilise des fichiers Markdown locaux qui agissent comme des *System Instructions*. En exécutant `gitpr -s`, les fichiers suivants sont générés à la racine de votre projet pour personnaliser la "persona" de l'IA selon les règles métier de votre entreprise :
+Au lieu de cacher les instructions d'IA dans le code source, GitPR utilise des fichiers Markdown locaux qui agissent comme des *System Instructions*. En exécutant `gitpr -s`, les fichiers suivants sont générés dans `.gitpr/skill/` pour personnaliser la "persona" de l'IA selon les règles métier de votre entreprise :
 
 * `.gitpr.commit.md` : Règles pour générer des messages de commit courts.
 * `.gitpr.pr.md` : Structure de rubriques obligatoire pour la description du Pull Request.

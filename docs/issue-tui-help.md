@@ -82,7 +82,7 @@ The GitPR AI is instructed to generate the issue draft following a rigorous soft
 | **Where** | Specification of affected routes, modules, pages, or resources |
 | **How** | Technical breakdown divided into Backend/Engine, Database/Data, and Frontend/CLI/Interface |
 
-> **Customization:** You can customize the template used by the AI through the `.gitpr.issue.md` file at the project root (download with `gitpr -s`).
+> **Customization:** You can customize the template used by the AI through the `.gitpr.issue.md` file inside `.gitpr/skill/` (download with `gitpr -s`).
 
 ---
 

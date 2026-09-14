@@ -55,7 +55,7 @@ The `--hook` flag (internal/hidden) causes the suggested message to be injected 
 
 ## 4. Customization via Skill
 
-The AI behavior can be customized through the `.gitpr.commit.md` file at the project root:
+The AI behavior can be customized through the `.gitpr.commit.md` file inside `.gitpr/skill/`:
 
 ```bash
 gitpr -s          # Downloads the .gitpr.commit.md template
