@@ -1537,7 +1537,7 @@ def cli(
             for warning in suggestion_result.warnings:
                 click.secho(f"  ⚠️ {warning}", fg="yellow", dim=True)
             reviewer_suggestion = _reviewer_suggestion_view(
-                suggestion_result, provider
+                suggestion_result, provider, repo_ref
             )
 
     # Interactive TUI with reauth loop
@@ -2468,20 +2468,22 @@ def _run_auto_commit_cli(provider):
         return False
 
 
-def _reviewer_suggestion_view(result, provider):
+def _reviewer_suggestion_view(result, provider, repo=None):
     """Map a ReviewerSuggestionResult to the dict consumed by PrPublishApp.
 
-    Resolves GitHub handles best-effort (noreply-address parse first, then
-    the user search API); candidates whose email cannot be mapped are still
-    shown in the hint lines under their author name. Non-GitHub forges get a
+    Resolves each candidate to a forge login (commit author first, then the
+    noreply-address parse and the user search API); the resolved handles
+    prefill the reviewer field and the people left without a login are flagged
+    in the hint lines, under their author name. Non-GitHub forges get a
     local-only view — suggestions are displayed, never submitted, because
-    those forges have no reviewer-request API (see ADR-002). Returns None
-    when there is nothing to show.
+    those forges have no reviewer-request API (see ADR-002). Returns None when
+    there is nothing to show.
     """
     from src.infrastructure.scm import (
         provider_display_name,
         provider_is_github,
     )
+    from src.reviewer_resolution import resolve_candidates
     from src.suggest_reviewers import format_suggestion_lines
 
     if result is None or not result.candidates:
@@ -2490,17 +2492,18 @@ def _reviewer_suggestion_view(result, provider):
     submittable = provider_is_github(provider)
     handles = []
     who_map = {}
+    no_login = []
+    resolutions = []
     if submittable:
-        email_to_handle = getattr(provider, "email_to_handle", None)
-        for candidate in result.candidates:
-            try:
-                handle = email_to_handle(candidate.author_email) if email_to_handle else None
-            except Exception:
-                handle = None
-            if handle:
-                handles.append(handle)
-                who_map[candidate.author_email] = f"@{handle}"
-    lines = format_suggestion_lines(result, who_map=who_map)
+        resolutions = resolve_candidates(result.candidates, provider, repo)
+        for resolution in resolutions:
+            if not resolution.login:
+                no_login.append(resolution.key)
+                continue
+            who_map[resolution.key] = f"@{resolution.login}"
+            if resolution.login not in handles:
+                handles.append(resolution.login)
+    lines = format_suggestion_lines(result, who_map=who_map, no_login=no_login)
     note = None
     if not submittable:
         note = __(
@@ -2512,6 +2515,7 @@ def _reviewer_suggestion_view(result, provider):
         "lines": lines,
         "submittable": submittable,
         "note": note,
+        "resolutions": resolutions,
     }
 
 

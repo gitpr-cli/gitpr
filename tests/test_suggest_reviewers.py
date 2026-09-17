@@ -210,7 +210,7 @@ class TestFormatHelpers(unittest.TestCase):
         self.assertIn(__("Unknown"), line)
         self.assertTrue(line.endswith("."))
 
-    def test_suggestion_lines_use_who_map_by_normalized_email(self):
+    def test_suggestion_lines_use_who_map_by_identity_key(self):
         result = ReviewerSuggestionResult(
             candidates=[
                 _candidate("Ana Silva", "Ana@Example.com", lines=4, files=2),
@@ -224,6 +224,37 @@ class TestFormatHelpers(unittest.TestCase):
         self.assertTrue(lines[0].startswith("Suggested @ana:"))
         # Missing map entry falls back to the author name.
         self.assertTrue(lines[1].startswith("Suggested Bob Lima:"))
+
+    def test_candidate_line_flags_the_missing_login(self):
+        candidate = _candidate("Ana Silva", "ana@example.com")
+        line = format_candidate_line(candidate, who=None, no_login=True)
+        self.assertTrue(line.startswith("Suggested Ana Silva:"))
+        self.assertIn("No GitHub login found", line)
+        # The flag is what adds it — the default line stays as it was.
+        self.assertNotIn("No GitHub login found", format_candidate_line(candidate))
+
+    def test_suggestion_lines_flag_people_without_a_login(self):
+        result = ReviewerSuggestionResult(
+            candidates=[
+                _candidate("Ana Silva", "ana@example.com", lines=4, files=2),
+                _candidate("Carla Reis", "carla@corp.com", lines=1, files=1),
+            ]
+        )
+        lines = format_suggestion_lines(
+            result,
+            who_map={"ana@example.com": "@ana"},
+            no_login=("carla@corp.com",),
+        )
+        self.assertNotIn("No GitHub login found", lines[0])
+        self.assertIn("No GitHub login found", lines[1])
+
+    def test_suggestion_lines_flag_by_name_when_email_is_unknown(self):
+        """Candidates with no usable email key on their folded name."""
+        result = ReviewerSuggestionResult(
+            candidates=[_candidate("Carla Reis", "unknown", lines=1, files=1)]
+        )
+        lines = format_suggestion_lines(result, no_login=("name:carla reis",))
+        self.assertIn("No GitHub login found", lines[0])
 
 
 @unittest.skipUnless(_GIT_AVAILABLE, "git binary not available")

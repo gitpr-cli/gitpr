@@ -47,6 +47,7 @@ class ReviewerCandidate:
     touched_lines: int = 0  # diff lines this author "owns" via blame
     touched_files: int = 0  # distinct files of the diff where they appear
     last_touch_date: str = ""  # most recent touch, ISO 8601 date
+    last_commit_hash: str = ""  # commit of the most recent touch (for login lookup)
     score: float = 0.0  # final normalized score (0.0 to 1.0)
 
 
@@ -82,7 +83,17 @@ def is_bot(author_name, author_email):
     return email in DEFAULT_BOT_EMAILS
 
 
-def _identity_key(author_name, author_email):
+def normalize_identity(value):
+    """Normalize a free-form identity (name, email or login) for comparison.
+
+    Used to match what the user typed in the reviewer field against the
+    suggested candidates: exact match after stripping and case-folding, no
+    fuzzy matching.
+    """
+    return (value or "").strip().casefold()
+
+
+def identity_key(author_name, author_email):
     """Grouping key: normalized email, falling back to the folded name."""
     email = normalize_email(author_email)
     if email and email != _UNKNOWN_IDENTITY:
@@ -94,11 +105,13 @@ def aggregate_hits(hits):
     """Group BlameHit items per author identity (email is the primary key).
 
     Returns the aggregated list (not yet scored or filtered). When one
-    identity appears with several names, the most recent hit's name wins.
+    identity appears with several names, the most recent hit's name wins —
+    and its commit hash comes along, since that is the commit whose author
+    the forge can map back to an account.
     """
     aggregates = {}
     for hit in hits:
-        key = _identity_key(hit.author_name, hit.author_email)
+        key = identity_key(hit.author_name, hit.author_email)
         if not key:
             continue
         agg = aggregates.get(key)
@@ -109,6 +122,7 @@ def aggregate_hits(hits):
                 "files": set(),
                 "lines": 0,
                 "last": "",
+                "commit": "",
             }
             aggregates[key] = agg
         agg["files"].add(hit.file_path)
@@ -117,6 +131,7 @@ def aggregate_hits(hits):
             agg["last"] = hit.commit_date
             agg["name"] = hit.author_name
             agg["email"] = (hit.author_email or "").strip()
+            agg["commit"] = hit.commit_hash or ""
     candidates = []
     for agg in aggregates.values():
         candidates.append(
@@ -126,6 +141,7 @@ def aggregate_hits(hits):
                 touched_lines=agg["lines"],
                 touched_files=len(agg["files"]),
                 last_touch_date=agg["last"],
+                last_commit_hash=agg["commit"],
             )
         )
     return candidates

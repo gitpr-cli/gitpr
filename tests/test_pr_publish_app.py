@@ -8,6 +8,7 @@ TRANSLATIONS is pinned to {} wherever a test asserts on user-facing English,
 so results do not depend on the machine's OS locale.
 """
 import asyncio
+import re
 import threading
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -17,10 +18,12 @@ from textual.app import App, ComposeResult
 from textual.widgets import Button, Input, SelectionList, Static, TextArea
 
 from src.infrastructure.scm import ScmProviderError
+from src.reviewer_resolution import ResolvedReviewer
 from src.ui.pr_publish_app import (
     CommitConfirmScreen,
     CommitMessageScreen,
     ErrorScreen,
+    NoticeScreen,
     PrPublishApp,
     StageFilesApp,
     StageFilesScreen,
@@ -547,18 +550,36 @@ def _suggestion_view(**overrides):
         "lines": [_HINT_LINE],
         "submittable": True,
         "note": None,
+        "resolutions": [
+            ResolvedReviewer(name="Ana Lima", email="ana@example.com", login="ana"),
+            ResolvedReviewer(name="Bob Souza", email="bob@example.com", login="bob"),
+        ],
     }
     view.update(overrides)
     return view
 
 
 class _Recorder:
-    """Fake provider recording create/update/attach calls in call order."""
+    """Fake provider recording create/update/attach calls in call order.
 
-    def __init__(self, name="github", attach_raises=None):
+    ``request_pull_request_reviewers`` returns the read-back list (everything
+    it was asked for, unless ``attach_silently_ignores`` names a login GitHub
+    would accept with 201 without attaching), and ``get_user_login`` mirrors
+    the real charset rule: a value that cannot be a login does not exist.
+    """
+
+    def __init__(
+        self,
+        name="github",
+        attach_raises=None,
+        attach_raises_for=(),
+        attach_silently_ignores=(),
+    ):
         self.name = name
         self.calls = []
         self.attach_raises = attach_raises
+        self.attach_raises_for = set(attach_raises_for)
+        self.attach_silently_ignores = set(attach_silently_ignores)
 
     def create_pull_request(self, repo, req):
         self.calls.append(("create",))
@@ -570,10 +591,20 @@ class _Recorder:
             url=f"https://example.com/repo/pull/{pr_id}", number=pr_id
         )
 
+    def get_user_login(self, login, timeout=10):
+        if re.match(r"^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$", login or ""):
+            return login
+        return None
+
     def request_pull_request_reviewers(self, repo, pr_id, reviewers):
         if self.attach_raises:
             raise self.attach_raises
+        if self.attach_raises_for & set(reviewers):
+            raise ScmProviderError("github", 422, "Review cannot be requested.")
         self.calls.append(("attach", pr_id, list(reviewers)))
+        return [
+            login for login in reviewers if login not in self.attach_silently_ignores
+        ]
 
 
 class TestReviewersSection:
@@ -687,7 +718,7 @@ class TestReviewerAttach:
     def test_attach_failure_keeps_pr_created_with_warning(self, tmp_path):
         recorder = _Recorder(
             attach_raises=ScmProviderError(
-                "github", 422, "Review cannot be requested for pull request."
+                "github", 500, "Server Error"
             )
         )
 
@@ -711,7 +742,7 @@ class TestReviewerAttach:
             assert app.final_action == "created", "attach failure must not fail the PR"
             assert recorder.calls == [("create",)]
             assert "could not be requested" in app.final_message
-            assert "Review cannot be requested" in app.final_message
+            assert "Server Error" in app.final_message
 
         _run(run)
 
@@ -779,5 +810,115 @@ class TestReviewerAttach:
             update_index = recorder.calls.index(("update", 3))
             attach_index = recorder.calls.index(("attach", 3, ["bob", "carla"]))
             assert update_index < attach_index
+
+        _run(run)
+
+    # ── the reported bug: a typed name that is not a login ──
+
+    def test_typed_display_name_is_never_submitted_as_a_reviewer(self, tmp_path):
+        """Regression: GitHub answers 201 to a nonexistent login and attaches nobody.
+
+        The hint shows the author NAME when no handle resolves, so typing what
+        the screen showed used to POST that name verbatim and fail silently.
+        """
+        recorder = _Recorder()
+        view = _suggestion_view(
+            handles=[],
+            resolutions=[
+                ResolvedReviewer(
+                    name="Eduarda Leal", email="eduardaleal@corp.com.br", login=""
+                )
+            ],
+        )
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}):
+                with patch(
+                    "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+                ):
+                    app = _make_app(
+                        tmp_path / "out.md",
+                        provider=recorder,
+                        reviewer_suggestion=view,
+                    )
+                    async with app.run_test(size=(100, 30)) as pilot:
+                        await pilot.pause()
+                        app.query_one("#reviewers_input", Input).value = "Eduarda Leal"
+                        await pilot.pause()
+                        with patch.object(app, "pop_screen"), patch.object(
+                            app, "_prompt_merge"
+                        ) as prompt_merge, patch("src.metrics.log_command_metric"):
+                            app._publish_pr_from_progress(None)
+                        await pilot.pause()
+                        assert isinstance(app.screen, NoticeScreen)
+                        assert prompt_merge.call_count == 0
+            assert app.final_action == "created"
+            assert recorder.calls == [("create",)], "a name must never be attached"
+            assert "no GitHub account found" in app.final_message
+            assert "Eduarda Leal" in app.final_message
+
+        _run(run)
+
+    def test_login_accepted_without_being_attached_warns_and_blocks_merge(self, tmp_path):
+        """201 with an empty read-back is the silent failure this fix targets."""
+        recorder = _Recorder(attach_silently_ignores={"ghost"})
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}):
+                with patch(
+                    "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+                ):
+                    app = _make_app(
+                        tmp_path / "out.md",
+                        provider=recorder,
+                        reviewer_suggestion=_suggestion_view(),
+                    )
+                    async with app.run_test(size=(100, 30)) as pilot:
+                        await pilot.pause()
+                        app.query_one("#reviewers_input", Input).value = "ghost"
+                        await pilot.pause()
+                        with patch.object(app, "pop_screen"), patch.object(
+                            app, "_prompt_merge"
+                        ) as prompt_merge, patch("src.metrics.log_command_metric"):
+                            app._publish_pr_from_progress(None)
+                            await pilot.pause()
+                            assert isinstance(app.screen, NoticeScreen)
+                            assert prompt_merge.call_count == 0, (
+                                "the merge prompt must wait for the notice to be read"
+                            )
+                            await pilot.press("escape")
+                            await pilot.pause()
+                            assert prompt_merge.call_count == 1
+            assert recorder.calls == [("create",), ("attach", 9, ["ghost"])]
+            assert "did not attach this reviewer" in app.final_message
+
+        _run(run)
+
+    def test_rejected_batch_is_retried_one_by_one(self, tmp_path):
+        """GitHub 422s the whole batch when one login is ineligible."""
+        recorder = _Recorder(attach_raises_for={"ana"})
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}):
+                with patch(
+                    "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+                ):
+                    app = _make_app(
+                        tmp_path / "out.md",
+                        provider=recorder,
+                        reviewer_suggestion=_suggestion_view(),
+                    )
+                    async with app.run_test(size=(100, 30)) as pilot:
+                        await pilot.pause()
+                        with patch.object(app, "pop_screen"), patch.object(
+                            app, "_prompt_merge"
+                        ), patch("src.metrics.log_command_metric"):
+                            app._publish_pr_from_progress(None)
+                        await pilot.pause()
+            # The batch was rejected, so only the individual calls are recorded
+            # — and the good reviewer went through.
+            assert recorder.calls == [("create",), ("attach", 9, ["bob"])]
+            assert "GitHub rejected this reviewer" in app.final_message
+            assert "Review cannot be requested" in app.final_message
 
         _run(run)

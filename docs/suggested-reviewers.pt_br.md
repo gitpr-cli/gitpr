@@ -63,13 +63,24 @@ As chaves são lidas de `~/.gitpr/.env` e nunca são gravadas automaticamente. `
 
 No fluxo interativo padrão, o GitPR exibe a linha `🔍 Procurando revisores sugeridos...` enquanto a análise roda, antes de o Publicador de PR abrir. Quando ele abre, uma seção editável **👥 Revisores Sugeridos** é exibida:
 
-- Um campo de entrada pré-preenchido com os nomes de usuário sugeridos do GitHub, separados por vírgula. Remova um revisor limpando o campo; adicione um digitando.
-- Uma dica somente leitura abaixo do campo explicando cada sugestão (linhas e arquivos tocados, última atividade).
+- Um campo de entrada pré-preenchido com os handles que o GitPR resolveu para as pessoas sugeridas, separados por vírgula. Ele aceita um login do GitHub, um nome ou um e-mail — o que você digitar é resolvido para um login antes de ser enviado (§4). Remova um revisor limpando o campo; adicione um digitando.
+- Uma dica somente leitura abaixo do campo explicando cada sugestão (linhas e arquivos tocados, última atividade). Uma sugestão exibida apenas com o nome, sem `@handle`, traz a observação `Nenhum login do GitHub encontrado para esta pessoa — informe um abaixo.` — não há conta para pré-preencher, então informe o login você mesmo se souber.
 - Deixar o campo vazio não submete revisor nenhum.
 
 ### 3.2 Publicação
 
-Depois de confirmar com F3, o GitPR cria o pull request e então solicita os revisores aceitos no GitHub pelo endpoint `requested_reviewers` (`POST .../pulls/{number}/requested_reviewers`). O attach acontece no caminho de criação e no de atualização e **nunca é fatal**: se o GitHub rejeitar a solicitação — por exemplo, um handle inválido digitado à mão, respondido com HTTP 422 — o PR permanece publicado e a TUI mostra um aviso (`⚠️ PR publicado, mas não foi possível solicitar os revisores: {error}`).
+Depois de confirmar com F3, o GitPR cria o pull request e então solicita os revisores aceitos no GitHub pelo endpoint `requested_reviewers` (`POST .../pulls/{number}/requested_reviewers`). O attach acontece no caminho de criação e no de atualização e **nunca é fatal**: o PR permanece publicado aconteça o que acontecer com os revisores.
+
+Todo valor do campo é resolvido para um login real antes de ser enviado; um valor que não resolve para nada **não é enviado** e sim reportado. Depois do envio, o GitPR relê os revisores que o GitHub realmente anexou: o forge responde `201` para um login que não conhece e não anexa ninguém, então o corpo da resposta é a única prova de que a solicitação chegou. Um lote recusado com HTTP 422 — um login conhecido que não é elegível, como o autor do PR — é reenviado um login por vez, para que um handle ruim não derrube os bons junto.
+
+O que não terminou no pull request — um nome sem conta, um login que o forge ignorou, uma recusa com o seu motivo — é listado em um modal que precisa ser fechado antes de o fluxo chegar ao prompt de merge, e a mesma lista é acrescentada à mensagem final:
+
+```text
+⚠️ Revisores não solicitados
+O pull request foi publicado, mas estes revisores não foram solicitados:
+⚠️ Eduarda Leal: nenhuma conta no GitHub encontrada.
+⚠️ ghost: o GitHub não anexou este revisor.
+```
 
 ### 3.3 Ajuda Contextual
 
@@ -90,7 +101,15 @@ gitpr -h --no-suggest-reviewers
 | Bitbucket Cloud | Exibida apenas localmente | Não — sem endpoint equivalente |
 | Azure DevOps | Exibida apenas localmente | Não — sem endpoint equivalente |
 
-Nos forges que não são GitHub, o campo de entrada não é exibido; a seção mostra os candidatos com uma nota de que a sugestão é apenas local. Para transformar e-mails do GitHub em nomes de usuário, o GitPR resolve cada candidato com best-effort e nunca bloqueia nisso: e-mails do domínio `users.noreply.github.com` são convertidos diretamente em handle e qualquer outro e-mail cai no fallback `/search/users in:email` do GitHub. Candidatos cujo e-mail o GitHub não reconhece aparecem com nome e e-mail e simplesmente não são pré-preenchidos — você ainda pode digitar o handle deles.
+Nos forges que não são GitHub, o campo de entrada não é exibido; a seção mostra os candidatos com uma nota de que a sugestão é apenas local.
+
+No GitHub, cada pessoa sugerida é resolvida para um login antes de a TUI abrir — com best-effort, sem nunca bloquear:
+
+1. O commit do hit de blame: `GET /repos/{owner}/{repo}/commits/{sha}` devolve a conta ligada ao e-mail do autor do commit. É o caminho confiável e o único que também enxerga endereços corporativos.
+2. O parse de `users.noreply.github.com`, que não custa requisição.
+3. O fallback `GET /search/users?q={email} in:email`, que só encontra e-mails **públicos**.
+
+Uma pessoa que não resolve para nada continua sendo exibida, com nome e e-mail, com a dica de que nenhum login foi encontrado — e nunca é enviada como digitada: um nome não é um login, e o forge responde `201` para um login que não conhece sem anexar ninguém. Digitar o nome de uma pessoa que **foi** resolvida (exibida como `Sugerido @handle:`) anexa aquele handle.
 
 Menos sugestões que `top_n` é normal: arquivos sem histórico, arquivos binários, um diff sem linhas adicionadas ou um repositório recém-criado geram resultados vazios ou parciais com um aviso — nunca um erro. A análise nunca roda nos fluxos `--no-edit`/`--no-publish`, então pipelines automatizados não são afetados.
 
@@ -98,9 +117,9 @@ Menos sugestões que `top_n` é normal: arquivos sem histórico, arquivos binár
 
 ## 5. Para Desenvolvedores e Plugins
 
-O use case vive em quatro módulos planos em `src/`: `reviewer_suggestion.py` guarda o domínio puro (dataclasses, pesos, lista de bots, `rank_reviewers()` — sem git, sem rede), `diff_parser.py` implementa `parse_added_lines()` sobre o texto do diff, `blame_engine.py` ganhou a fina `get_blame_for_range()` (o fluxo da arqueologia não foi refatorado) e `suggest_reviewers.py` orquestra tudo com `compute_reviewer_suggestions()`, que **nunca levanta exceção**. As três chaves `GITPR_*` acima são declaradas no `DEFAULT_CONFIG` em `src/config.py`, com `suggest_reviewers_enabled()` e `get_reviewer_suggestion_settings()`.
+O use case vive em cinco módulos planos em `src/`: `reviewer_suggestion.py` guarda o domínio puro (dataclasses, pesos, lista de bots, `rank_reviewers()`, `identity_key()`/`normalize_identity()` — sem git, sem rede), `diff_parser.py` implementa `parse_added_lines()` sobre o texto do diff, `blame_engine.py` ganhou a fina `get_blame_for_range()` (o fluxo da arqueologia não foi refatorado), `suggest_reviewers.py` orquestra tudo com `compute_reviewer_suggestions()`, que **nunca levanta exceção**, e `reviewer_resolution.py` transforma identidades em logins — `resolve_candidates()` antes da TUI, `resolve_typed_reviewers()` na hora do attach; nada ali levanta exceção também, e o que não resolve volta como uma entrada em `dropped` com o seu motivo. As três chaves `GITPR_*` acima são declaradas no `DEFAULT_CONFIG` em `src/config.py`, com `suggest_reviewers_enabled()` e `get_reviewer_suggestion_settings()`.
 
-No lado do SCM, o contrato base `ScmProvider` ganhou um método **não abstrato** `request_pull_request_reviewers(repo, pr_id, reviewers)` cujo padrão levanta `ScmNotSupportedError`; apenas o `github_provider.py` o implementa, junto com o `email_to_handle()`, exclusivo do GitHub. O `main.py` restringe o cálculo ao fluxo TUI padrão e entrega ao app um dict de view `{"handles", "lines", "submittable", "note"}`. Todo texto visível passa por chaves i18n `__()`, então os 5 pacotes de idioma precisam ficar sincronizados quando mensagens mudam.
+No lado do SCM, o contrato base `ScmProvider` ganhou um método **não abstrato** `request_pull_request_reviewers(repo, pr_id, reviewers)` cujo padrão levanta `ScmNotSupportedError`; apenas o `github_provider.py` o implementa, junto com o `email_to_handle()`, o `get_commit_author_login()` e o `get_user_login()`, exclusivos do GitHub. O método devolve os logins que o forge **realmente anexou**, relidos do corpo do `201` — uma lista vazia é como o chamador detecta uma solicitação aceita e silenciosamente ignorada. O `main.py` restringe o cálculo ao fluxo TUI padrão e entrega ao app um dict de view `{"handles", "lines", "submittable", "note", "resolutions"}`. Todo texto visível passa por chaves i18n `__()`, então os 5 pacotes de idioma precisam ficar sincronizados quando mensagens mudam.
 
 Registro de decisão de arquitetura e vocabulário canônico: [ADR-002 Sugestão de Revisores](plans/ADR-002-reviewer-suggestion.md) e [Glossário de Sugestão de Revisores](plans/glossary-reviewer-suggestion.md).
 

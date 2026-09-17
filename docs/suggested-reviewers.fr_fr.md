@@ -63,13 +63,24 @@ Les clés sont lues dans `~/.gitpr/.env` et ne sont jamais écrites automatiquem
 
 Dans le flux interactif par défaut, GitPR affiche la ligne `🔍 Recherche de relecteurs suggérés...` pendant que l'analyse s'exécute, avant l'ouverture de l'Éditeur de PR. Lorsqu'il s'ouvre, une section modifiable **👥 Relecteurs Suggérés** est affichée :
 
-- Un champ de saisie pré-rempli avec les utilisateurs GitHub suggérés, séparés par des virgules. Supprimez un relecteur en vidant le champ ; ajoutez-en un en saisissant.
-- Une indication en lecture seule sous le champ, expliquant chaque suggestion (lignes et fichiers touchés, dernière activité).
+- Un champ de saisie pré-rempli avec les handles que GitPR a résolus pour les personnes suggérées, séparés par des virgules. Il accepte un identifiant GitHub, un nom ou un e-mail — ce que vous saisissez est résolu en identifiant avant d'être envoyé (§4). Supprimez un relecteur en vidant le champ ; ajoutez-en un en saisissant.
+- Une indication en lecture seule sous le champ, expliquant chaque suggestion (lignes et fichiers touchés, dernière activité). Une suggestion affichée sous un simple nom, sans `@handle`, porte la note `Aucun identifiant GitHub trouvé pour cette personne — saisissez-en un ci-dessous.` — il n'y a aucun compte à pré-remplir, saisissez donc l'identifiant vous-même si vous le connaissez.
 - Laisser le champ vide ne soumet aucun relecteur.
 
 ### 3.2 Publication
 
-Après confirmation avec F3, GitPR crée la pull request puis demande les relecteurs acceptés sur GitHub via le point d'accès `requested_reviewers` (`POST .../pulls/{number}/requested_reviewers`). L'attache se produit à la fois lors de la création et lors de la mise à jour, et elle **n'est jamais fatale** : si GitHub rejette la demande — par exemple un handle invalide saisi à la main, répondant avec HTTP 422 — la PR reste publiée et la TUI affiche un avertissement (`⚠️ PR publiée, mais les relecteurs n'ont pas pu être demandés : {error}`).
+Après confirmation avec F3, GitPR crée la pull request puis demande les relecteurs acceptés sur GitHub via le point d'accès `requested_reviewers` (`POST .../pulls/{number}/requested_reviewers`). L'attache se produit à la fois lors de la création et lors de la mise à jour, et elle **n'est jamais fatale** : la PR reste publiée quoi qu'il arrive aux relecteurs.
+
+Chaque valeur du champ est résolue en un identifiant réel avant d'être envoyée ; une valeur qui ne résout rien **n'est pas envoyée** mais signalée. Après l'envoi, GitPR relit les relecteurs que GitHub a réellement assignés : le forge répond `201` à un identifiant qu'il ne connaît pas et n'assigne personne, le corps de la réponse est donc la seule preuve que la demande est arrivée. Un lot refusé avec HTTP 422 — un identifiant connu mais non éligible, comme l'auteur de la PR — est renvoyé un identifiant à la fois, pour qu'un mauvais handle n'entraîne pas les bons avec lui.
+
+Ce qui n'a pas abouti sur la pull request — un nom sans compte, un identifiant ignoré par le forge, un refus avec son motif — est listé dans une fenêtre modale qui doit être fermée avant que le flux n'atteigne l'invite de merge, et la même liste est ajoutée au message final :
+
+```text
+⚠️ Relecteurs non demandés
+La pull request a été publiée, mais ces relecteurs n'ont pas été demandés :
+⚠️ Eduarda Leal: aucun compte GitHub trouvé.
+⚠️ ghost: GitHub n'a pas assigné ce relecteur.
+```
 
 ### 3.3 Aide Contextuelle
 
@@ -90,7 +101,15 @@ gitpr -h --no-suggest-reviewers
 | Bitbucket Cloud | Affichée localement uniquement | Non — aucun point d'accès équivalent |
 | Azure DevOps | Affichée localement uniquement | Non — aucun point d'accès équivalent |
 
-Sur les forges autres que GitHub, le champ de saisie n'est pas affiché ; la section présente les candidats avec une note indiquant que la suggestion est uniquement locale. Pour transformer les e-mails GitHub en noms d'utilisateur, GitPR résout chaque candidat au mieux et ne bloque jamais : les e-mails du domaine `users.noreply.github.com` sont directement convertis en handle et tout autre e-mail retombe sur `/search/users in:email` de GitHub. Les candidats dont l'e-mail n'est pas reconnu par GitHub apparaissent avec leur nom et leur e-mail et ne sont simplement pas pré-remplis — vous pouvez toujours saisir leur handle.
+Sur les forges autres que GitHub, le champ de saisie n'est pas affiché ; la section présente les candidats avec une note indiquant que la suggestion est uniquement locale.
+
+Sur GitHub, chaque personne suggérée est résolue en un identifiant avant l'ouverture de la TUI — au mieux, sans jamais bloquer :
+
+1. Le commit du hit de blame : `GET /repos/{owner}/{repo}/commits/{sha}` renvoie le compte lié à l'e-mail de l'auteur du commit. C'est la voie fiable, et la seule qui voit aussi les adresses professionnelles.
+2. Le parsing de `users.noreply.github.com`, qui ne coûte aucune requête.
+3. Le repli `GET /search/users?q={email} in:email`, qui ne trouve que les e-mails **publics**.
+
+Une personne qui ne résout rien est tout de même affichée, avec son nom et son e-mail, accompagnée de la note qu'aucun identifiant n'a été trouvé — et n'est jamais envoyée telle que saisie : un nom n'est pas un identifiant, et le forge répond `201` à un identifiant qu'il ne connaît pas sans assigner personne. Saisir le nom d'une personne qui **a** été résolue (affichée comme `Suggéré @handle :`) assigne ce handle.
 
 Obtenir moins de suggestions que `top_n` est normal : fichiers sans historique, fichiers binaires, diff sans lignes ajoutées ou dépôt tout nouveau produisent des résultats vides ou partiels avec un avertissement — jamais une erreur. L'analyse ne s'exécute jamais dans les flux `--no-edit`/`--no-publish`, donc les pipelines automatisés ne sont pas affectés.
 
@@ -98,9 +117,9 @@ Obtenir moins de suggestions que `top_n` est normal : fichiers sans historique, 
 
 ## 5. Pour les Développeurs et les Plugins
 
-Le use case vit dans quatre modules plats dans `src/` : `reviewer_suggestion.py` contient le domaine pur (dataclasses, poids, liste de bots, `rank_reviewers()` — sans git, sans réseau), `diff_parser.py` implémente `parse_added_lines()` sur le texte du diff, `blame_engine.py` a gagné la fine `get_blame_for_range()` (le flux de l'archéologie n'a pas été refactorisé) et `suggest_reviewers.py` orchestre le tout avec `compute_reviewer_suggestions()`, qui **ne lève jamais d'exception**. Les trois clés `GITPR_*` ci-dessus sont déclarées dans `DEFAULT_CONFIG` dans `src/config.py`, avec `suggest_reviewers_enabled()` et `get_reviewer_suggestion_settings()`.
+Le use case vit dans cinq modules plats dans `src/` : `reviewer_suggestion.py` contient le domaine pur (dataclasses, poids, liste de bots, `rank_reviewers()`, `identity_key()`/`normalize_identity()` — sans git, sans réseau), `diff_parser.py` implémente `parse_added_lines()` sur le texte du diff, `blame_engine.py` a gagné la fine `get_blame_for_range()` (le flux de l'archéologie n'a pas été refactorisé), `suggest_reviewers.py` orchestre le tout avec `compute_reviewer_suggestions()`, qui **ne lève jamais d'exception**, et `reviewer_resolution.py` transforme les identités en identifiants — `resolve_candidates()` avant la TUI, `resolve_typed_reviewers()` au moment de l'attache ; là non plus rien ne lève d'exception, et ce qui ne se résout pas revient sous forme d'une entrée `dropped` avec son motif. Les trois clés `GITPR_*` ci-dessus sont déclarées dans `DEFAULT_CONFIG` dans `src/config.py`, avec `suggest_reviewers_enabled()` et `get_reviewer_suggestion_settings()`.
 
-Côté SCM, le contrat de base `ScmProvider` a gagné une méthode **non abstraite** `request_pull_request_reviewers(repo, pr_id, reviewers)` dont le défaut lève `ScmNotSupportedError` ; seul `github_provider.py` l'implémente, avec `email_to_handle()`, propre à GitHub. `main.py` limite le calcul au flux TUI par défaut et remet à l'application un dict de vue `{"handles", "lines", "submittable", "note"}`. Tout le texte visible passe par des clés i18n `__()`, donc les 5 packs de langue doivent rester synchronisés lorsque les messages changent.
+Côté SCM, le contrat de base `ScmProvider` a gagné une méthode **non abstraite** `request_pull_request_reviewers(repo, pr_id, reviewers)` dont le défaut lève `ScmNotSupportedError` ; seul `github_provider.py` l'implémente, avec `email_to_handle()`, `get_commit_author_login()` et `get_user_login()`, propres à GitHub. La méthode renvoie les identifiants que le forge a **réellement assignés**, relus dans le corps du `201` — une liste vide est la façon dont l'appelant détecte une demande acceptée et silencieusement ignorée. `main.py` limite le calcul au flux TUI par défaut et remet à l'application un dict de vue `{"handles", "lines", "submittable", "note", "resolutions"}`. Tout le texte visible passe par des clés i18n `__()`, donc les 5 packs de langue doivent rester synchronisés lorsque les messages changent.
 
 Registre de décision d'architecture et vocabulaire canonique : [ADR-002 Suggestion de Relecteurs](plans/ADR-002-reviewer-suggestion.md) et [Glossaire de la Suggestion de Relecteurs](plans/glossary-reviewer-suggestion.md).
 
