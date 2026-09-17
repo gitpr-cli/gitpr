@@ -1,6 +1,6 @@
 # Technical Documentation: AI Providers (--provider)
 
-GitPR is **AI-agnostic** and currently supports two providers: **Google Gemini** and **DeepSeek**. You can switch between them dynamically via command line or persistent configuration.
+GitPR is **AI-agnostic** and currently supports three providers: **Google Gemini**, **DeepSeek**, and **Ollama**. You can switch between them dynamically via command line or persistent configuration.
 
 ---
 

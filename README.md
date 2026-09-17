@@ -129,11 +129,11 @@ You can pass the following *flags* for specific actions:
 * `--status`: Lists uncommitted file changes categorized as **new**, **modified**, and **deleted** — fast, no AI, no network. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-status.md)
 * `--no-unstaged-check`: Skips the unstaged files verification before AI processing for a single invocation. Equivalent to `GITPR_SKIP_UNSTAGED_CHECK=true` for one run. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-status.md)
 * `--linter-setup`: **Interactive external linter wizard.** Guides you through installing and configuring external linters (ESLint, PHPCS, Stylelint) as a Checkstyle XML bridge. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/linter-regras-customizadas.md)
-* `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as 12 annotated tools, 15 resources, and 7 pre-built prompts directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
+* `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as 13 annotated tools, 18 resources, and 7 pre-built prompts directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
 * `--plugins`: Lists all **globally installed plugins** — custom linter packs from `~/.gitpr/plugins/linter/` and MCP prompt templates from `~/.gitpr/plugins/prompts/`. These plugins apply across all your projects without duplication. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/plugins-system.md)
 * `--install`: **Interactive Setup Wizard.** Runs a guided 4-step setup: downloads skill templates, installs Git hooks, configures MCP for detected editors, and checks/requests your AI provider API key. Each step asks for confirmation before proceeding.
 * `-ih` or `--installhooks`: Automatically installs **local Git Hooks** (`pre-commit` and `prepare-commit-msg`) in your repository.
-* `-s` or `--skill`: Creates the AI context template files (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) and the Linter (`.gitpr.linter.yml`) at the project root.
+* `-s` or `--skill`: Creates the AI context template files (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) and the Linter (`.gitpr.linter.yml`) inside `.gitpr/skill/`.
 * `-is` or `--issue`: Automatically generates a draft of a **standardized Issue** and opens an interactive interface (TUI) for editing or direct submission via REST API. This feature has **3 context engines** depending on the command combination:
   * **New Code Issue (`gitpr -is`):** Reads the current `git diff`. **Why use:** Ideal for quickly documenting the task you just finished programming, before committing.
   * **Epic/Release Issue (`gitpr -is -ht`):** Reads the full history of the current branch (Git Log + PR Cache). **Why use:** Ideal for generating consolidated documentation of an entire release or a large *feature* that took several days/commits to complete.
@@ -210,7 +210,7 @@ You can dynamically switch models by configuring the `GEMINI_API_MODEL_PRIMARY` 
 
 ## 🎯 Customizable "Skills" System (Prompt Engineering)
 
-Instead of hiding AI instructions in the source code, GitPR uses local Markdown files that act as *System Instructions*. When running `gitpr -s`, the following files are generated at the root of your project to customize the AI's "persona" according to your company's business rules:
+Instead of hiding AI instructions in the source code, GitPR uses local Markdown files that act as *System Instructions*. When running `gitpr -s`, the following files are generated inside `.gitpr/skill/` to customize the AI's "persona" according to your company's business rules:
 
 * `.gitpr.commit.md`: Rules for generating short commit messages.
 * `.gitpr.pr.md`: Required topic structure for the Pull Request description.

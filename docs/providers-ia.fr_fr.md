@@ -1,6 +1,6 @@
 # Documentation technique : Fournisseurs d'IA (--provider)
 
-GitPR est **agnostique en matière d'IA** et prend actuellement en charge deux fournisseurs : **Google Gemini** et **DeepSeek**. Vous pouvez basculer entre eux dynamiquement via la ligne de commande ou une configuration persistante.
+GitPR est **agnostique en matière d'IA** et prend actuellement en charge trois fournisseurs : **Google Gemini**, **DeepSeek** et **Ollama**. Vous pouvez basculer entre eux dynamiquement via la ligne de commande ou une configuration persistante.
 
 ---
 

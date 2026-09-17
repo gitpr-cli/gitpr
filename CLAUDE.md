@@ -286,7 +286,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - The `get_doc_url()` function in `core.py` builds language-aware documentation URLs
 
 ### Skills System (Prompt Engineering)
-- Local `.gitpr.<type>.md` files at the user's project root act as AI *System Instructions*
+- Local `.gitpr.<type>.md` files inside `.gitpr/skill/` act as AI *System Instructions*
 - Types: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `release`, `fix`, `linter.yml`
 - Remote templates at `https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/`
 - `--skill` downloads templates, but **never overwrites** existing local files

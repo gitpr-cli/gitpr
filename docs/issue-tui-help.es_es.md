@@ -82,7 +82,7 @@ La IA de GitPR está instruida para generar el borrador de la issue siguiendo un
 | **Dónde (Where)** | Especificación de las rutas, módulos, páginas o recursos afectados |
 | **Cómo (How)** | Detalle técnico dividido en Backend/Motor, Base de Datos/Datos y Frontend/CLI/Interfaz |
 
-> **Personalización:** Puedes personalizar la plantilla usada por la IA mediante el archivo `.gitpr.issue.md` en la raíz del proyecto (descárgalo con `gitpr -s`).
+> **Personalización:** Puedes personalizar la plantilla usada por la IA mediante el archivo `.gitpr.issue.md` en `.gitpr/skill/` (descárgalo con `gitpr -s`).
 
 ---
 
