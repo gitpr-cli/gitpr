@@ -29,6 +29,8 @@ from src.infrastructure.scm import (
     provider_is_github,
     resolve_scm_provider,
 )
+from src.reviewer_resolution import resolve_typed_reviewers
+from src.reviewer_suggestion import normalize_identity
 from src.ui.pr_publish_help import PrPublishHelpScreen
 from src.i18n import __
 
@@ -605,6 +607,56 @@ class ErrorScreen(ModalScreen):
         self.dismiss(self.result)
 
 
+class NoticeScreen(ModalScreen):
+    """Modal that only acknowledges a message — a single Close button.
+
+    Used when the PR is published but part of the work did not go through
+    (reviewers the forge refused). A modal the user must dismiss is the only
+    way to make it visible: the final message is printed after the TUI exits
+    and the merge prompt would otherwise steal the attention right away.
+    """
+
+    CSS = """
+    NoticeScreen { align: center middle; }
+    #notice_dialog {
+        width: 75%; height: auto; max-height: 80%;
+        padding: 2 3; overflow-y: auto;
+        background: $surface; border: thick $background 80%;
+    }
+    .notice_title { text-align: center; text-style: bold; margin-bottom: 1; color: $warning; }
+    .notice_message {
+        margin-bottom: 1; padding: 1; background: $boost;
+        color: $text; max-height: 16; overflow-y: auto;
+    }
+    #notice_buttons { align-horizontal: center; }
+    Button { margin: 0 1; min-width: 18; }
+    """
+
+    BINDINGS = [Binding("escape", "close", __("Close"))]
+
+    def __init__(self, title, message, **kwargs):
+        super().__init__(**kwargs)
+        self._title = title
+        self._message = message[:1000] if message else ""
+        self.result = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="notice_dialog"):
+            yield Static(self._title, classes="notice_title")
+            yield Static(self._message, classes="notice_message")
+            with Horizontal(id="notice_buttons"):
+                yield Button(__("Close"), variant="primary", id="btn_close")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn_close":
+            self.result = "close"
+            self.dismiss(self.result)
+
+    def action_close(self) -> None:
+        self.result = "close"
+        self.dismiss(self.result)
+
+
 # ═══════════════════════════════════════════════════════════════════
 # Main App
 # ═══════════════════════════════════════════════════════════════════
@@ -683,7 +735,7 @@ class PrPublishApp(App):
         self.pr_title = pr_data.get("commit_message", "")
         self.pr_body = pr_data.get("pr_description", "")
         # Suggested-reviewers view built by main.py (or None to keep the legacy
-        # layout): {"handles", "lines", "submittable", "note"}.
+        # layout): {"handles", "lines", "submittable", "note", "resolutions"}.
         self.reviewer_suggestion = reviewer_suggestion
 
     def compose(self) -> ComposeResult:
@@ -697,13 +749,13 @@ class PrPublishApp(App):
             if view:
                 yield Label(__("👥 Suggested Reviewers"))
                 if view["submittable"]:
-                    # Editable: remove a handle by deleting it, add one by
-                    # typing — GitHub-only, so it only exists when submission
-                    # is possible.
+                    # Editable: remove a reviewer by deleting it, add one by
+                    # typing a login, a name or an email — GitHub-only, so it
+                    # only exists when submission is possible.
                     yield Input(
                         value=", ".join(view["handles"]),
                         id="reviewers_input",
-                        placeholder=__("GitHub usernames, comma separated"),
+                        placeholder=__("GitHub login, name or email, comma separated"),
                     )
                 hint_lines = list(view["lines"])
                 if view.get("note"):
@@ -744,10 +796,12 @@ class PrPublishApp(App):
     # ── Suggested Reviewers (GitHub attach) ──
 
     def _parsed_reviewers(self):
-        """Comma-separated handles typed in the reviewers input, deduplicated.
+        """Comma-separated values typed in the reviewers input, deduplicated.
 
-        The input only exists on a submittable suggestion view, so any other
-        state (no view, local-only forge, screen torn down) yields no handles.
+        Values are what the user typed — a login, a name or an email — not
+        necessarily submittable handles; resolving them is _attach_reviewers'
+        job. The input only exists on a submittable suggestion view, so any
+        other state (no view, local-only forge, screen torn down) yields [].
         """
         view = self.reviewer_suggestion
         if not view or not view.get("submittable"):
@@ -765,31 +819,157 @@ class PrPublishApp(App):
                 reviewers.append(handle)
         return reviewers
 
-    def _attach_reviewers(self, pr_number, reviewers):
+    def _attach_reviewers(self, pr_number, values):
         """Request reviewers on a published PR (GitHub only, non-fatal).
 
         Runs after the PR already exists, so a failure never blocks the
-        publish: the outcome degrades to a warning on the final message.
+        publish: the outcome degrades to warning lines. Returns those lines —
+        already added to the final message — so the caller can put them in
+        front of the user before moving on.
         """
-        try:
-            self.provider.request_pull_request_reviewers(
-                self.repo_ref, pr_number, reviewers
+        view = self.reviewer_suggestion or {}
+        outcome = resolve_typed_reviewers(
+            values,
+            resolutions=view.get("resolutions") or (),
+            known_logins=view.get("handles") or (),
+            provider=self.provider,
+            repo=self.repo_ref,
+        )
+        warnings = [line for _, line in outcome.dropped]
+
+        if outcome.logins:
+            try:
+                attached = self.provider.request_pull_request_reviewers(
+                    self.repo_ref, pr_number, outcome.logins
+                )
+                self._log(
+                    f"Reviewers requested on PR #{pr_number}: {outcome.logins} "
+                    f"-> attached {attached}"
+                )
+                for login, line in self._unattached_warnings(
+                    outcome.logins, attached
+                ):
+                    self._log(f"Reviewer {login} not attached on PR #{pr_number}")
+                    warnings.append(line)
+            except ScmProviderError as e:
+                if e.http_status == 422 and len(outcome.logins) > 1:
+                    # GitHub rejects the whole batch when one login is
+                    # ineligible (the PR author, a non-collaborator), which
+                    # would drop the good reviewers along with the bad one.
+                    self._log(
+                        f"Reviewer batch rejected on PR #{pr_number}: {e.message}"
+                    )
+                    warnings.extend(
+                        self._request_reviewers_one_by_one(pr_number, outcome.logins)
+                    )
+                else:
+                    self._log(f"Reviewer request failed on PR #{pr_number}: {e}")
+                    warnings.append(
+                        __(
+                            "⚠️ PR published, but the reviewers could not be requested: {error}",
+                            error=e.message,
+                        )
+                    )
+            except Exception as e:
+                # Unexpected provider bug — still non-fatal, the PR exists.
+                self._log(f"Reviewer request failed on PR #{pr_number}: {e}")
+                warnings.append(
+                    __(
+                        "⚠️ PR published, but the reviewers could not be requested: {error}",
+                        error=str(e),
+                    )
+                )
+
+        for line in warnings:
+            self.final_message += "\n" + line
+        return warnings
+
+    def _unattached_warnings(self, requested, attached):
+        """Lines for the logins the forge accepted but did not attach.
+
+        The read-back (``attached``) is the only way to catch this: GitHub
+        answers 201 to a login that does not exist and simply attaches nobody.
+        A provider that does not report the read-back returns None, which we
+        treat as "cannot verify" rather than as a failure.
+        """
+        if attached is None:
+            return []
+        attached_keys = {normalize_identity(login) for login in attached}
+        return [
+            (
+                login,
+                __("⚠️ {value}: GitHub did not attach this reviewer.", value=login),
             )
-            self._log(f"Reviewers requested on PR #{pr_number}: {reviewers}")
-        except ScmProviderError as e:
-            error = e.message
-            self._log(f"Reviewer request failed on PR #{pr_number}: {e}")
-            self.final_message += "\n" + __(
-                "⚠️ PR published, but the reviewers could not be requested: {error}",
-                error=error,
-            )
-        except Exception as e:
-            # Unexpected provider bug — still non-fatal, the PR is published.
-            self._log(f"Reviewer request failed on PR #{pr_number}: {e}")
-            self.final_message += "\n" + __(
-                "⚠️ PR published, but the reviewers could not be requested: {error}",
-                error=str(e),
-            )
+            for login in requested
+            if normalize_identity(login) not in attached_keys
+        ]
+
+    def _request_reviewers_one_by_one(self, pr_number, logins):
+        """Resend the reviewers individually after a batch rejection.
+
+        Each login goes on its own request, so the ones GitHub accepts are
+        attached even when another one is ineligible; the rejected ones are
+        reported with the forge's own message.
+        """
+        warnings = []
+        for login in logins:
+            try:
+                attached = self.provider.request_pull_request_reviewers(
+                    self.repo_ref, pr_number, [login]
+                )
+                self._log(
+                    f"Reviewer {login} on PR #{pr_number}: attached {attached}"
+                )
+                for _, line in self._unattached_warnings([login], attached):
+                    warnings.append(line)
+            except ScmProviderError as e:
+                self._log(f"Reviewer {login} rejected on PR #{pr_number}: {e.message}")
+                warnings.append(
+                    __(
+                        "⚠️ {value}: GitHub rejected this reviewer — {reason}",
+                        value=login,
+                        reason=e.message,
+                    )
+                )
+            except Exception as e:
+                self._log(f"Reviewer {login} failed on PR #{pr_number}: {e}")
+                warnings.append(
+                    __(
+                        "⚠️ {value}: GitHub rejected this reviewer — {reason}",
+                        value=login,
+                        reason=str(e),
+                    )
+                )
+        return warnings
+
+    def _after_attach_continue(self, pr_number, pr_url, warnings, auto_merge):
+        """Move on to the merge prompt, acknowledging reviewer warnings first.
+
+        Must run on the app thread (it pushes a screen). With warnings, the
+        flow waits for the modal to be closed — otherwise the merge prompt
+        would take over the screen and the warning would never be read.
+        """
+
+        def proceed():
+            if auto_merge and pr_number:
+                self._do_merge(pr_number, pr_url)
+            else:
+                self._prompt_merge(pr_number, pr_url)
+
+        if not warnings:
+            proceed()
+            return
+        self.push_screen(
+            NoticeScreen(
+                title=__("⚠️ Reviewers not requested"),
+                message=__(
+                    "The pull request was published, but these reviewers were not requested:"
+                )
+                + "\n\n"
+                + "\n".join(warnings),
+            ),
+            callback=lambda _result: proceed(),
+        )
 
     # ── Auto-Commit Flow (F3) ──
 
@@ -1238,8 +1418,9 @@ class PrPublishApp(App):
                     )
                     # Update path of the reviewers attach (see create path in
                     # _publish_pr_from_progress): GitHub-only, non-fatal.
+                    warnings = []
                     if pr_num and provider_is_github(self.provider) and pending_reviewers:
-                        self._attach_reviewers(pr_num, pending_reviewers)
+                        warnings = self._attach_reviewers(pr_num, pending_reviewers)
                     if pr_num:
                         auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in (
                             "true",
@@ -1247,10 +1428,15 @@ class PrPublishApp(App):
                             "yes",
                             "y",
                         )
-                        if auto_merge:
-                            self.call_from_thread(self._do_merge, pr_num, pr_url)
-                            return
-                        self.call_from_thread(self._prompt_merge, pr_num, pr_url)
+                        # Back to the app thread: _after_attach_continue pushes
+                        # the notice modal when there are warnings.
+                        self.call_from_thread(
+                            self._after_attach_continue,
+                            pr_num,
+                            pr_url,
+                            warnings,
+                            auto_merge,
+                        )
                         return
                 else:
                     self.final_action = "error"
@@ -1487,10 +1673,11 @@ class PrPublishApp(App):
 
             # Attach the reviewers the author accepted/edited (GitHub-only —
             # other forges display suggestions locally and never submit them).
+            warnings = []
             if pr_number and provider_is_github(self.provider):
                 reviewers = self._parsed_reviewers()
                 if reviewers:
-                    self._attach_reviewers(pr_number, reviewers)
+                    warnings = self._attach_reviewers(pr_number, reviewers)
 
             auto_merge = os.getenv("GITPR_AUTO_MERGE", "false").lower() in (
                 "true",
@@ -1498,10 +1685,7 @@ class PrPublishApp(App):
                 "yes",
                 "y",
             )
-            if auto_merge and pr_number:
-                self._do_merge(pr_number, pr_url)
-            else:
-                self._prompt_merge(pr_number, pr_url)
+            self._after_attach_continue(pr_number, pr_url, warnings, auto_merge)
         elif status == 401:
             self._log("PR publish failed: 401 unauthorized")
             self.pop_screen()

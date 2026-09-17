@@ -598,9 +598,13 @@ class TestRequestPullRequestReviewers(unittest.TestCase):
 
     @patch("src.infrastructure.scm.github_provider.requests.post")
     def test_success_posts_requested_reviewers(self, mock_post):
-        mock_post.return_value = _response(201, {"reviewers": ["ana"]})
+        mock_post.return_value = _response(
+            201, {"requested_reviewers": [{"login": "ana"}, {"login": "bob"}]}
+        )
 
-        _provider().request_pull_request_reviewers(_repo(), 7, ["ana", "bob"])
+        attached = _provider().request_pull_request_reviewers(
+            _repo(), 7, ["ana", "bob"]
+        )
 
         args, kwargs = mock_post.call_args
         self.assertEqual(
@@ -609,6 +613,27 @@ class TestRequestPullRequestReviewers(unittest.TestCase):
         )
         self.assertEqual(kwargs["json"], {"reviewers": ["ana", "bob"]})
         self.assertEqual(kwargs["timeout"], 15)
+        self.assertEqual(attached, ["ana", "bob"])
+
+    @patch("src.infrastructure.scm.github_provider.requests.post")
+    def test_unknown_login_is_201_with_empty_read_back(self, mock_post):
+        """A nonexistent login is accepted and silently ignored — the caller
+        can only tell by comparing the read-back against what it asked for."""
+        mock_post.return_value = _response(201, {"requested_reviewers": []})
+
+        attached = _provider().request_pull_request_reviewers(
+            _repo(), 7, ["no-such-user"]
+        )
+
+        self.assertEqual(attached, [])
+
+    @patch("src.infrastructure.scm.github_provider.requests.post")
+    def test_unparsable_body_returns_empty_read_back(self, mock_post):
+        mock_post.return_value = _response(201, raises=ValueError("not json"))
+
+        attached = _provider().request_pull_request_reviewers(_repo(), 7, ["ana"])
+
+        self.assertEqual(attached, [])
 
     @patch("src.infrastructure.scm.github_provider.requests.post")
     def test_invalid_handle_422_is_reported(self, mock_post):
@@ -627,6 +652,89 @@ class TestRequestPullRequestReviewers(unittest.TestCase):
             _provider().request_pull_request_reviewers(_repo(), 7, ["ana"])
 
         self.assertEqual(ctx.exception.http_status, 0)
+
+
+class TestCommitAuthorLogin(unittest.TestCase):
+    """GET /commits/{sha} — the reliable identity path: it works for authors
+    whose commit email is neither a noreply address nor public."""
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_returns_login_of_linked_account(self, mock_get):
+        mock_get.return_value = _response(200, {"author": {"login": "ana"}})
+
+        login = _provider().get_commit_author_login(_repo(), "abc123")
+
+        self.assertEqual(login, "ana")
+        args, kwargs = mock_get.call_args
+        self.assertEqual(
+            args[0], f"https://api.github.com/repos/{REPO}/commits/abc123"
+        )
+        self.assertEqual(kwargs["timeout"], 10)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_unlinked_or_missing_author_is_none(self, mock_get):
+        mock_get.return_value = _response(200, {"author": None})
+        self.assertIsNone(_provider().get_commit_author_login(_repo(), "abc123"))
+
+        mock_get.return_value = _response(200, {"author": {}})
+        self.assertIsNone(_provider().get_commit_author_login(_repo(), "abc123"))
+
+        mock_get.return_value = _response(200, {})
+        self.assertIsNone(_provider().get_commit_author_login(_repo(), "abc123"))
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_unknown_commit_404_is_none_not_an_error(self, mock_get):
+        mock_get.return_value = _response(404, {"message": "Not Found"})
+
+        self.assertIsNone(_provider().get_commit_author_login(_repo(), "deadbeef"))
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_transport_failure_is_none_not_an_error(self, mock_get):
+        mock_get.side_effect = requests.exceptions.ConnectionError("boom")
+
+        self.assertIsNone(_provider().get_commit_author_login(_repo(), "abc123"))
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_empty_sha_needs_no_request(self, mock_get):
+        self.assertIsNone(_provider().get_commit_author_login(_repo(), ""))
+        mock_get.assert_not_called()
+
+
+class TestGetUserLogin(unittest.TestCase):
+    """GET /users/{login} — validates a login the user typed."""
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_existing_user_returns_canonical_login(self, mock_get):
+        mock_get.return_value = _response(200, {"login": "Ana"})
+
+        self.assertEqual(_provider().get_user_login("ana"), "Ana")
+        args, kwargs = mock_get.call_args
+        self.assertEqual(args[0], "https://api.github.com/users/ana")
+        self.assertEqual(kwargs["timeout"], 10)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_missing_user_is_none_without_raising(self, mock_get):
+        mock_get.return_value = _response(404, {"message": "Not Found"})
+
+        self.assertIsNone(_provider().get_user_login("ghost"))
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_display_name_is_rejected_without_a_request(self, mock_get):
+        """'Eduarda Leal' can never be a login — no request, no round trip."""
+        self.assertIsNone(_provider().get_user_login("Eduarda Leal"))
+        self.assertIsNone(_provider().get_user_login("eduarda@corp.com.br"))
+        self.assertIsNone(_provider().get_user_login(""))
+        mock_get.assert_not_called()
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_forbidden_raises_instead_of_looking_absent(self, mock_get):
+        """A transient failure must not be reported as 'user does not exist'."""
+        mock_get.return_value = _response(403, {"message": "rate limit"})
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_user_login("ana")
+
+        self.assertEqual(ctx.exception.http_status, 403)
 
 
 class TestEmailToHandle(unittest.TestCase):

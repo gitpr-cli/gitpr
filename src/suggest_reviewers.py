@@ -12,7 +12,7 @@ from src.diff_parser import parse_added_lines
 from src.i18n import __
 from src.reviewer_suggestion import (
     ReviewerSuggestionResult,
-    normalize_email,
+    identity_key,
     rank_reviewers,
 )
 
@@ -104,36 +104,43 @@ def compute_reviewer_suggestions(
     )
 
 
-def format_candidate_line(candidate, who=None):
+def format_candidate_line(candidate, who=None, no_login=False):
     """One hint line justifying a suggested reviewer.
 
     ``who`` is the display label (GitHub handle when resolved, otherwise the
     author name); when omitted the author name is used, falling back to the
-    email address.
+    email address. ``no_login`` appends the note that the person could not be
+    mapped to a forge account, so the user knows a bare name will not work.
     """
     if who is None:
         who = candidate.author_name or candidate.author_email or "?"
     date_label = candidate.last_touch_date or __("Unknown")
-    return __(
+    line = __(
         "Suggested {who}: {lines} added line(s) in {files} file(s), last touched {date}.",
         who=who,
         lines=candidate.touched_lines,
         files=candidate.touched_files,
         date=date_label,
     )
+    if no_login:
+        line += " " + __("No GitHub login found for this person — type one below.")
+    return line
 
 
-def format_suggestion_lines(result, who_map=None):
+def format_suggestion_lines(result, who_map=None, no_login=()):
     """Hint lines for every candidate, in ranking order.
 
-    ``who_map`` optionally maps a normalized email address to the display
-    label to use (e.g. the resolved GitHub handle); authors not present in
-    the map fall back to format_candidate_line's default.
+    ``who_map`` optionally maps a candidate identity key (see
+    reviewer_suggestion.identity_key) to the display label to use — normally
+    the resolved GitHub handle. ``no_login`` holds the identity keys of the
+    candidates that could not be resolved to an account.
     """
+    no_login_keys = set(no_login or ())
     lines = []
     for candidate in result.candidates:
-        who = None
-        if who_map:
-            who = who_map.get(normalize_email(candidate.author_email))
-        lines.append(format_candidate_line(candidate, who=who))
+        key = identity_key(candidate.author_name, candidate.author_email)
+        who = who_map.get(key) if who_map else None
+        lines.append(
+            format_candidate_line(candidate, who=who, no_login=key in no_login_keys)
+        )
     return lines

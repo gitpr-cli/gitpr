@@ -19,22 +19,31 @@ def _result(*candidates):
     return ReviewerSuggestionResult(candidates=list(candidates))
 
 
-def _candidate(name, email):
+def _candidate(name, email, commit_hash=""):
     return ReviewerCandidate(
         author_name=name,
         author_email=email,
         touched_lines=3,
         touched_files=1,
         last_touch_date="2026-09-01",
+        last_commit_hash=commit_hash,
     )
 
 
-def _github_provider(handle_map, raise_on=None):
+def _github_provider(handle_map, raise_on=None, commit_logins=None):
     def email_to_handle(email):
         if email == raise_on:
             raise RuntimeError("search exploded")
         return handle_map.get(email)
-    return SimpleNamespace(name="github", email_to_handle=email_to_handle)
+
+    def get_commit_author_login(repo, sha, timeout=10):
+        return (commit_logins or {}).get(sha)
+
+    return SimpleNamespace(
+        name="github",
+        email_to_handle=email_to_handle,
+        get_commit_author_login=get_commit_author_login,
+    )
 
 
 class TestReviewerSuggestionView(unittest.TestCase):
@@ -72,8 +81,35 @@ class TestReviewerSuggestionView(unittest.TestCase):
             provider,
         )
         self.assertEqual(view["handles"], ["ana"])
-        # The unresolvable candidate is justified under the author name.
+        # The unresolvable candidate is justified under the author name, with
+        # the note that typing that name will not work.
         self.assertTrue(view["lines"][1].startswith("Suggested Carla Reis:"))
+        self.assertIn("No GitHub login found", view["lines"][1])
+        self.assertNotIn("No GitHub login found", view["lines"][0])
+
+    @patch("src.i18n.TRANSLATIONS", {})
+    def test_commit_author_login_wins_over_the_email_search(self):
+        """Corporate addresses have no public account: the commit is the way in."""
+        provider = _github_provider(
+            {"carla@corp.com": "carla-email"}, commit_logins={"deadbeef": "carla"}
+        )
+        view = _reviewer_suggestion_view(
+            _result(_candidate("Carla Reis", "carla@corp.com", "deadbeef")),
+            provider,
+            repo=SimpleNamespace(workspace="o", name="r", provider="github"),
+        )
+        self.assertEqual(view["handles"], ["carla"])
+        self.assertTrue(view["lines"][0].startswith("Suggested @carla:"))
+        # Carried to the attach step so it does not resolve the same people twice.
+        self.assertEqual([r.login for r in view["resolutions"]], ["carla"])
+
+    @patch("src.i18n.TRANSLATIONS", {})
+    def test_non_github_view_carries_no_resolutions(self):
+        provider = SimpleNamespace(name="gitlab")
+        view = _reviewer_suggestion_view(
+            _result(_candidate("Ana Silva", "ana@example.com")), provider
+        )
+        self.assertEqual(view["resolutions"], [])
 
     @patch("src.i18n.TRANSLATIONS", {})
     def test_handle_lookup_failure_is_silent(self):

@@ -126,3 +126,77 @@ Criar a sugestão de revisores como um use case **flat** de `src/`:
 endpoint (quando existir) ficam para trabalho futuro; `chat_app.py` mantém uma
 chave i18n com texto pré-existente corrompido (`Ctrlhift` — herdado, fora do
 escopo desta feature).
+
+---
+
+## Emenda — 2026-09-17: resolução do login do revisor (o attach que não chegava)
+
+**Status:** Aceito · **Origem:** bug reportado pelo usuário + sessão `/grill-with-docs`
+(4 rodadas, Q1–Q15) · **Levantamento:** [survey 20260917](../survey/20260917_reviewer_login_resolution_surveyfacts.md)
+· **Plano:** [20260917_correcao_sugestao_revisores.md](20260917_correcao_sugestao_revisores.md)
+
+### O defeito
+
+O ADR-002 decidiu exibir o candidato **pelo nome** quando o handle não resolve (item
+7 e desvio 4). A decisão estava certa sobre *exibir*; o que faltou foi o outro lado:
+o campo aceitava texto livre e `_attach_reviewers()` o enviava **verbatim** como se
+fosse login. Com e-mail corporativo (`eduardaleal@grafjb.com.br` no repo real
+SIG-Novo) o `Input` nascia **vazio**, o hint mostrava só o nome, o usuário digitava
+esse nome — e o GitHub respondia **201 sem anexar ninguém** (empírico, do log do
+usuário), sem nenhum aviso. Falha silenciosa em duas pontas: prefill vazio e
+attach não verificado.
+
+### Decisões vinculantes (Q1–Q15 do grill)
+
+| # | Decisão |
+|---|---|
+| Q1 | O campo aceita **login, nome ou e-mail**; o valor é resolvido para login **antes** de submeter |
+| Q2 | **Read-back**: `request_pull_request_reviewers()` devolve os logins que o forge realmente anexou (corpo do `201`) |
+| Q3 | Item que não resolve **avisa** e o campo continua editável |
+| Q4 | Textos novos = chaves novas nos 6 pacotes `langs/*.json` + bump de `__lang_version__` |
+| Q5 | Via primária de resolução: o **commit do blame** (`GET /repos/{o}/{r}/commits/{sha}` → `author.login`); `email_to_handle` vira fallback |
+| Q6 | Resolver **antes da TUI** (prefill + hint) e **validar no attach** o que o usuário digitou/alterou |
+| Q7 | O que não resolve é **pulado e reportado com o motivo** — nunca enviado como veio |
+| Q9 | Casamento com os candidatos **exato e normalizado** (strip + casefold) — **sem fuzzy** (um nome parcial nunca casa) |
+| Q10/Q13 | Autor do PR: **sem** `GET /user` no caminho feliz |
+| Q11 | Falha parcial → **modal `NoticeScreen`** que precisa ser fechado, **mais** a linha no `final_message` |
+| Q12 | Sem login resolvido: o hint mostra a pessoa + aviso i18n; o `Input` segue disponível |
+| Q13 | Forges não-GitHub **inalterados** (`submittable=False`, sem `Input`, nota local-only) |
+| Q14 | `422` no lote (**tudo-ou-nada**, caso do autor do PR/não-colaborador) → **reenviar um a um**, anexando os bons |
+| Q15 | Docs: família `docs/suggested-reviewers.*` (5 cópias), esta emenda, glossário e relatório |
+
+**Decisão reaberta, não trocada em silêncio:** a Q10 original supunha que o read-back
+reportaria o autor do PR. A pesquisa mostrou que esse caso é um `422` que derruba o
+lote inteiro — a premissa não sobreviveu e a questão foi reformulada (Q13/Q14), com o
+reenvio um a um no lugar do filtro. Registro no survey §3.
+
+### Achados de API que sustentam o desenho
+
+- O corpo do `201` traz `requested_reviewers` → o read-back não custa chamada extra.
+- Login **inexistente** → `201` **ignorado** (empírico). Usuário existente mas
+  **inelegível** → `422`. Os dois caminhos são cobertos (read-back + reenvio um a um).
+- `author` do commit vem `null`/**`{}`** quando não há conta ligada ao e-mail → a
+  resolução devolve `None` sem erro. `GET /users/{login}` com charset inválido
+  (`"Eduarda Leal"`) é recusado **antes** de qualquer requisição.
+
+### Ampliações de contrato (o que muda em relação ao texto acima)
+
+1. **`request_pull_request_reviewers(...) -> list[str]`** — o retorno passa a ser a
+   lista de logins efetivamente anexados (o ABC continua **não-abstrato**, default
+   `ScmNotSupportedError`). O método agora diz o que aconteceu, não só que "não deu erro".
+2. **Dois métodos novos, exclusivos do GitHub** — `get_commit_author_login(repo, sha)`
+   e `get_user_login(login)`; ambos nunca levantam para o caso "não existe" e levantam
+   para falha transitória (403/timeout), para não confundir ausência com indisponibilidade.
+3. **`src/reviewer_resolution.py` (novo)** — `resolve_candidates()` (antes da TUI) e
+   `resolve_typed_reviewers()` (no attach); nada ali levanta, o irresolvível sai em
+   `dropped` com motivo i18n.
+4. **View dict** ganha `resolutions` (o ADR-002 listava 4 chaves); é o que evita
+   refazer rede no attach.
+5. **`ReviewerCandidate`** ganha `last_commit_hash` — o hash é o insumo da via primária.
+
+### O que **não** mudou
+
+`PullRequestRequest.reviewers` continua **morto** (o GitHub não aceita reviewers no
+payload de create — a alternativa rejeitada do alto segue rejeitada); nenhuma chave de
+config nova (seguem as 3 do ADR-002); `--no-edit`/`--no-publish` continuam sem calcular
+sugestão; os forges não-GitHub continuam apenas informativos.

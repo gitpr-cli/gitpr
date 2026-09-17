@@ -241,21 +241,76 @@ class GitHubProvider(ScmProvider):
         pr_id: str | int,
         reviewers: list[str],
         timeout: int = 15,
-    ) -> None:
+    ) -> list[str]:
         """Request reviewers on an existing pull request (GitHub API).
 
         GitHub attaches reviewers after creation via
         POST /repos/{o}/{r}/pulls/{n}/requested_reviewers — there is no
-        reviewer field on the create payload. Invalid handles answer 422,
-        which raises ScmProviderError like any other API failure.
+        reviewer field on the create payload. Existing-but-ineligible users
+        (the PR author, a non-collaborator) answer 422 and reject the WHOLE
+        batch, which raises ScmProviderError like any other API failure.
+
+        The 201 body carries the reviewers actually attached, and that
+        read-back is the only way to notice a login GitHub accepted but
+        silently ignored — a nonexistent login returns 201 with an empty
+        requested_reviewers list.
         """
-        self._request(
+        response = self._request(
             "post",
             self._repo_url(repo, "pulls", pr_id, "requested_reviewers"),
             {201},
             timeout,
             json={"reviewers": reviewers},
         )
+        try:
+            attached = response.json().get("requested_reviewers") or []
+        except Exception:
+            return []
+        return [entry.get("login") for entry in attached if entry.get("login")]
+
+    def get_commit_author_login(self, repo: RepoRef, sha: str, timeout: int = 10):
+        """GitHub login of the account linked to a commit's author email.
+
+        Returns None when the commit is unknown to the forge (never pushed, or
+        a shallow clone), when the email is not linked to any account
+        (``author`` comes back null or empty), or on a transport failure.
+        Never raises — callers treat None as "could not resolve".
+        """
+        if not sha:
+            return None
+        try:
+            response = self._request(
+                "get", self._repo_url(repo, "commits", sha), {200}, timeout
+            )
+        except ScmProviderError:
+            return None
+        try:
+            author = response.json().get("author") or {}
+        except Exception:
+            return None
+        return author.get("login") or None
+
+    def get_user_login(self, login: str, timeout: int = 10):
+        """Canonical login for a user handle, or None when it does not exist.
+
+        Values that cannot be a GitHub login (spaces, punctuation) return None
+        without a request — that is what keeps a typed display name from being
+        sent as if it were a handle. A 404 is "no such user"; any other failure
+        raises ScmProviderError, so a transient error is never mistaken for a
+        nonexistent account.
+        """
+        candidate = (login or "").strip()
+        if not _USERNAME_RE.match(candidate):
+            return None
+        response = self._request(
+            "get", f"{self.base_url}/users/{candidate}", {200, 404}, timeout
+        )
+        if response.status_code == 404:
+            return None
+        try:
+            return response.json().get("login") or candidate
+        except Exception:
+            return candidate
 
     def merge_pull_request(
         self, repo: RepoRef, pr_id: str | int, strategy: str = "merge", timeout: int = 15

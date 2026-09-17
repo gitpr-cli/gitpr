@@ -8,8 +8,10 @@ from src.reviewer_suggestion import (
     ReviewerSuggestionResult,
     aggregate_hits,
     compute_scores,
+    identity_key,
     is_bot,
     normalize_email,
+    normalize_identity,
     rank_reviewers,
 )
 
@@ -159,6 +161,27 @@ class TestAggregation(unittest.TestCase):
 
     def test_normalize_email(self):
         self.assertEqual(normalize_email("  ANA@Example.COM "), "ana@example.com")
+
+    def test_last_commit_hash_follows_the_most_recent_touch(self):
+        """The commit is what maps a candidate to a forge account, so it must
+        belong to the same hit whose date and name won."""
+        hits = [
+            _hit("a.py", 1, "Ana Silva", "ana@example.com", 20, commit="old" * 10),
+            _hit("b.py", 1, "ana silva", "ana@example.com", 2, commit="new" * 10),
+        ]
+        result = rank_reviewers(
+            hits, pr_author_email="carla@example.com", today=TODAY
+        )
+        self.assertEqual(result.candidates[0].last_commit_hash, "new" * 10)
+
+    def test_identity_key_prefers_email_and_folds_name_otherwise(self):
+        self.assertEqual(identity_key("Ana Silva", " Ana@Example.COM "), "ana@example.com")
+        self.assertEqual(identity_key("Ana Silva", "unknown"), "name:ana silva")
+        self.assertEqual(identity_key("", ""), "")
+
+    def test_normalize_identity(self):
+        self.assertEqual(normalize_identity("  Ana Silva "), "ana silva")
+        self.assertEqual(normalize_identity(None), "")
 
 
 class TestRecency(unittest.TestCase):

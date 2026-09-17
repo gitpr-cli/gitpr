@@ -220,8 +220,12 @@ class ScmProvider(ABC):
 
     def request_pull_request_reviewers(
         self, repo: RepoRef, pr_id: str | int, reviewers: list[str]
-    ) -> None:
+    ) -> list[str]:
         """Request reviewers on an existing pull request.
+
+        Returns the logins the forge actually attached (read back from the
+        response), which is how the caller detects a request the forge
+        accepted but silently ignored.
 
         Deliberately NOT abstract: only forges with a reviewer API support it
         (GitHub's requested_reviewers). The default raises
