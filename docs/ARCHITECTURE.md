@@ -241,6 +241,7 @@ Each feature has a dedicated guide in `docs/` (English canonical + `.pt_br` / `.
 * [git-status.md](git-status.md) — Uncommitted file status listing  
 * [untracked-files.md](untracked-files.md) — Untracked files explanation  
 * [auto-update.md](auto-update.md) — Auto-updater and mandatory update block  
+* [tutorial/install-from-source.md](tutorial/install-from-source.md) — Installing from source and unblocking the update gate  
 * [providers-ia.md](providers-ia.md) — AI providers (Gemini, DeepSeek, Ollama)  
 * [skill-template.md](skill-template.md) — Skills and templates system  
 

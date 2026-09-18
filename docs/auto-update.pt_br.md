@@ -22,7 +22,7 @@ A cada execução do GitPR (exceto nos modos `--quiet`, `--hook` e `--mcp`), a f
 
 Quando a versão publicada é mais nova que a local, o GitPR **bloqueia a execução**: exibe as duas versões, mostra o comando `pip install --upgrade gitpr-cli` e encerra com status diferente de zero, sem executar nenhum trabalho.
 
-Não existe flag, fallback ou modo de compatibilidade que mantenha uma versão desatualizada rodando — atualizar é a única forma de continuar.
+Não existe flag, fallback ou modo de compatibilidade que mantenha uma **release instalada** desatualizada rodando — atualizar é a única forma de continuar. Um checkout usado para desenvolvimento local tem uma única chave de escape, documentada em [Instalando o GitPR do código-fonte](tutorial/install-from-source.pt_br.md).
 
 ### Exceções
 
