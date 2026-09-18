@@ -93,15 +93,19 @@ O Pytest detectará automaticamente os arquivos dentro da pasta `tests/` e exibi
 
 ### A Partir do Código Fonte
 
-1. Clone o repositório: `git clone https://github.com/gitpr-cli/gitpr.git.git`
+1. Clone o repositório: `git clone https://github.com/gitpr-cli/gitpr.git`
 
 2. Entre na pasta: `cd gitpr`
 
-3. Configure o ambiente:
+3. Instale em modo editável:
 ```bash
-pipenv install google-genai openai python-dotenv click cryptography
+pip install -e .
 ```
-4. Execute: pipenv run python src/main.py
+4. Execute: `gitpr`
+
+> Prefere um ambiente isolado? Instale as dependências com `pipenv install google-genai openai python-dotenv click cryptography` e rode `pipenv run python src/main.py`.
+>
+> **Nota sobre o portão de atualização:** uma instalação do fonte reporta a versão que está no seu checkout, então uma árvore atrás da release publicada é barrada na inicialização. Veja [Instalando o GitPR do código-fonte](docs/tutorial/install-from-source.pt_br.md).
 
 ## **💻 Como Usar**
 
