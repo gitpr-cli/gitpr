@@ -1,5 +1,35 @@
 # Changelog
 
+## [1.2.0] - 2026-09-17
+
+### Resumo
+This release consolidates version 1.1.0 and expands workflows with Git and pull requests, including remote PR review, suggestion of resolved reviewers for GitHub logins, publishing, tracking of existing PRs, and merging with success and failure states. It also adds secure patch correction with rollback, changelog generation, interactive configuration, installation wizard, support for multiple SCM providers, and MCP integration for editors. Internationalization has been expanded with translations, key adjustments, and text normalization, while metrics, telemetry, and export features offer greater visibility into usage, lint, blame, and hooks. There are security and stability improvements, such as prevention of injection into linters, limitation of network and DNS timeouts, correction of MCP server crashes, and more robust handling of files and append errors. Finally, the technical documentation has been updated, and the distribution now requires updates via PyPI, without binary release, in addition to cache cleanup and packaging adjustments.
+
+### ✨ Funcionalidades
+- add review-pr command to review remote pull requests (a8a7770)
+- add gitpr fix subcommand with safe patch apply and rollback (f4d5186)
+
+
+### ⚡ Performance
+- adiciona filtro smart para reduzir tokens da IA (f7ce5c0)
+
+### 📚 Documentação
+- update technical documentation (b9dd930)
+
+
+### ♻️ Refatoração
+- hide coauthor trailer from TUI (d65c175)
+- format codebase for consistency (c67ab6a)
+- remove unused FileStageScreen and update translations (4570646)
+- centralize output path resolution (cae5be5)
+- extract MCP prompts to template files (2c3fb5b)
+- remove fallback pipenv e adiciona errors='replace' (aa675a7)
+
+### 🔧 Tarefas
+- remove pip and pypa caches committed by mistake (f5bed07)
+
+**Contribuidores:** Nataniel Fiuza
+
 ## [1.1.0] - 2026-09-13
 
 ### Summary
