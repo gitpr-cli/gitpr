@@ -128,6 +128,14 @@ class ScmProvider(ABC):
 
     name: str
 
+    # Whether get_pull_request_diff returns something the AI review engine can
+    # actually review. Azure DevOps is False: Azure REST serves no unified diff
+    # and its method returns "{path} (+additions -deletions)" summary lines, so
+    # the remote-PR review refuses the forge up front instead of spending AI
+    # tokens reviewing prose that has no hunks in it. Callers that only surface
+    # a diff (the PR publisher) are unaffected — they never check this flag.
+    supports_reviewable_diff: bool = True
+
     def __init__(self, token: str, base_url: Optional[str] = None, **kwargs):
         self.token = token or ""
         self.base_url = (base_url or self.default_base_url()).rstrip("/")
@@ -235,6 +243,22 @@ class ScmProvider(ABC):
         raise ScmNotSupportedError(
             self.name,
             "This forge has no API to request pull request reviewers.",
+        )
+
+    def get_pull_request(self, repo: RepoRef, pr_id: str | int) -> PullRequestResult:
+        """Fetch a single pull request by its user-visible number.
+
+        Deliberately NOT abstract, for a different reason than the two above:
+        every concrete provider implements it, but the default keeps third-party
+        subclasses and the contract tests compiling. The remote-PR review needs
+        this to resolve metadata and to tell "does not exist" from "merged or
+        closed" — list_open_pull_requests cannot, since it only ever returns
+        open PRs and none of the providers paginate it (so filtering a single
+        page by number silently misses older PRs).
+        """
+        raise ScmNotSupportedError(
+            self.name,
+            "This forge has no API to fetch a single pull request.",
         )
 
     def with_token(self, token: str) -> "ScmProvider":

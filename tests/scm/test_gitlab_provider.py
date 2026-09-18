@@ -332,31 +332,168 @@ class TestMergePullRequest(unittest.TestCase):
 
 
 class TestGetPullRequestDiff(unittest.TestCase):
+    """GitLab's `diff` field is the hunk body alone — the file headers are
+    synthesized from old_path/new_path. The fixtures below mirror that real
+    payload shape (never a pre-built `diff --git` line, which GitLab does not
+    send and which used to hide this defect)."""
+
     @patch("src.infrastructure.scm.gitlab_provider.requests.get")
-    def test_concatenates_change_diffs(self, mock_get):
+    def test_synthesizes_file_headers_from_paths(self, mock_get):
         mock_get.return_value = _response(
             200,
             {
                 "changes": [
-                    {"diff": "diff --git a/x.py b/x.py\n+new"},
-                    {"diff": "diff --git a/y.py b/y.py\n-old"},
+                    {
+                        "old_path": "x.py",
+                        "new_path": "x.py",
+                        "diff": "@@ -1,1 +1,1 @@\n-old\n+new",
+                    },
+                    {
+                        "old_path": "y.py",
+                        "new_path": "y.py",
+                        "diff": "@@ -3,1 +3,0 @@\n-gone",
+                    },
                 ]
             },
         )
 
         diff = _provider().get_pull_request_diff(_repo(), 3)
 
-        self.assertEqual(diff, "diff --git a/x.py b/x.py\n+new\ndiff --git a/y.py b/y.py\n-old")
+        self.assertEqual(
+            diff,
+            "diff --git a/x.py b/x.py\n--- a/x.py\n+++ b/x.py\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+            "diff --git a/y.py b/y.py\n--- a/y.py\n+++ b/y.py\n@@ -3,1 +3,0 @@\n-gone",
+        )
         self.assertEqual(
             mock_get.call_args[0][0],
             f"https://gitlab.com/api/v4/projects/{ENCODED_PROJECT}/merge_requests/3/changes",
         )
 
     @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_rename_keeps_both_paths(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "changes": [
+                    {
+                        "old_path": "old/name.py",
+                        "new_path": "new/name.py",
+                        "renamed_file": True,
+                        "diff": "@@ -1,1 +1,1 @@\n-a\n+b",
+                    }
+                ]
+            },
+        )
+
+        diff = _provider().get_pull_request_diff(_repo(), 3)
+
+        self.assertIn("diff --git a/old/name.py b/new/name.py", diff)
+        self.assertIn("--- a/old/name.py", diff)
+        self.assertIn("+++ b/new/name.py", diff)
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_added_and_deleted_files_use_dev_null(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "changes": [
+                    {
+                        "old_path": "added.py",
+                        "new_path": "added.py",
+                        "new_file": True,
+                        "diff": "@@ -0,0 +1,1 @@\n+hi",
+                    },
+                    {
+                        "old_path": "gone.py",
+                        "new_path": "gone.py",
+                        "deleted_file": True,
+                        "diff": "@@ -1,1 +0,0 @@\n-bye",
+                    },
+                ]
+            },
+        )
+
+        diff = _provider().get_pull_request_diff(_repo(), 3)
+
+        self.assertIn("--- /dev/null\n+++ b/added.py", diff)
+        self.assertIn("--- a/gone.py\n+++ /dev/null", diff)
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
     def test_empty_changes_yield_empty_string(self, mock_get):
         mock_get.return_value = _response(200, {"changes": []})
 
         self.assertEqual(_provider().get_pull_request_diff(_repo(), 3), "")
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_change_without_diff_body_is_skipped(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "changes": [
+                    {"old_path": "x.py", "new_path": "x.py", "diff": ""},
+                    {
+                        "old_path": "y.py",
+                        "new_path": "y.py",
+                        "diff": "@@ -1,1 +1,1 @@\n-a\n+b",
+                    },
+                ]
+            },
+        )
+
+        diff = _provider().get_pull_request_diff(_repo(), 3)
+
+        self.assertNotIn("x.py", diff)
+        self.assertIn("diff --git a/y.py b/y.py", diff)
+
+    @patch("src.i18n.TRANSLATIONS", {})
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_overflow_raises_instead_of_returning_a_truncated_diff(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "overflow": True,
+                "changes": [
+                    {
+                        "old_path": "x.py",
+                        "new_path": "x.py",
+                        "diff": "@@ -1,1 +1,1 @@\n-a\n+b",
+                    }
+                ],
+            },
+        )
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_pull_request_diff(_repo(), 3)
+        self.assertEqual(ctx.exception.http_status, 0)
+        self.assertIn("truncated", ctx.exception.message)
+        self.assertIn("!3", ctx.exception.message)
+
+
+class TestGetPullRequest(unittest.TestCase):
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_maps_single_mr(self, mock_get):
+        mock_get.return_value = _response(
+            200, _mr_object(iid=7, source_branch="feat/x", target_branch="dev")
+        )
+
+        result = _provider().get_pull_request(_repo(), 7)
+
+        self.assertEqual(result.number, 7)
+        self.assertEqual(result.id, 7)
+        self.assertEqual(result.source_branch, "feat/x")
+        self.assertEqual(result.target_branch, "dev")
+        self.assertEqual(
+            mock_get.call_args[0][0],
+            f"https://gitlab.com/api/v4/projects/{ENCODED_PROJECT}/merge_requests/7",
+        )
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_404_propagates_with_status(self, mock_get):
+        mock_get.return_value = _response(404, {"message": "404 Not Found"})
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_pull_request(_repo(), 999)
+        self.assertEqual(ctx.exception.http_status, 404)
 
 
 class TestListOpenPullRequests(unittest.TestCase):

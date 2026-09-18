@@ -555,6 +555,119 @@ class TestFixCandidatesTool(unittest.TestCase):
         self.assertIn("no finding", result["message"])
 
 
+class TestRemoteReviewTool(unittest.TestCase):
+    """Tests for the review_remote_pr MCP tool — the read-only face of review-pr."""
+
+    @staticmethod
+    def _result():
+        from src.review.diff_source import DiffOrigin, DiffSource
+        from src.review.remote_pr import ReviewRemotePrResult
+
+        return ReviewRemotePrResult(
+            pr_number=42,
+            pr_url="https://github.com/owner/repo/pull/42",
+            review="## Review\n\nThe argument is ignored.",
+            diff_source=DiffSource(
+                origin=DiffOrigin.REMOTE_PR,
+                content="diff --git a/src/app.py b/src/app.py\n@@ -1 +1 @@\n-a\n+b\n",
+                identifier="pr-42",
+                pr_number=42,
+                base_branch="main",
+                head_branch="feature/login",
+            ),
+            linter_results={"errors": [], "warnings": []},
+            warnings=["Large diff: processed in 2 batches (map-reduce)."],
+        )
+
+    def _invoke(self, pr_number="42", provider="", result=None, error=None, scm=None):
+        pipeline = patch(
+            "src.review.remote_pr.review_remote_pr",
+            return_value=result if result is not None else self._result(),
+            side_effect=error,
+        )
+        with pipeline as pipeline_mock, \
+             patch.object(
+                 mcp_server,
+                 "_resolve_scm_target",
+                 return_value=scm if scm is not None else (MagicMock(name="github"), MagicMock(), ""),
+             ), \
+             patch("src.config.get_ai_provider", return_value="gemini"), \
+             patch("src.review.render.render_review_result") as render:
+            answer = json.loads(
+                _call_tool(mcp_server.review_remote_pr, pr_number=pr_number, provider=provider)
+            )
+        return answer, pipeline_mock, render
+
+    def test_returns_the_review_of_the_pull_request(self):
+        answer, _pipeline, _render = self._invoke()
+
+        self.assertEqual(answer["status"], "success")
+        self.assertEqual(answer["pr_number"], 42)
+        self.assertEqual(answer["pr_url"], "https://github.com/owner/repo/pull/42")
+        self.assertIn("The argument is ignored", answer["review"])
+
+    def test_reports_where_the_diff_came_from(self):
+        answer, _pipeline, _render = self._invoke()
+
+        self.assertEqual(answer["origin"], "remote_pr")
+        self.assertEqual(answer["head_branch"], "feature/login")
+        self.assertEqual(answer["base_branch"], "main")
+
+    def test_reports_the_linter_and_the_warnings(self):
+        answer, _pipeline, _render = self._invoke()
+
+        self.assertEqual(answer["linter"], {"errors": [], "warnings": []})
+        self.assertIn("map-reduce", answer["warnings"][0])
+
+    def test_never_publishes_on_the_pull_request(self):
+        """Publishing stays an explicit CLI act, behind --post-comment."""
+        _answer, pipeline, _render = self._invoke()
+
+        self.assertFalse(pipeline.call_args.kwargs.get("post_comment", False))
+        self.assertEqual(len(pipeline.call_args.args), 4)
+
+    def test_never_writes_a_report(self):
+        """Tools report; the .txt is the CLI's artefact."""
+        _answer, _pipeline, render = self._invoke()
+        render.assert_not_called()
+
+    def test_the_number_reaches_the_pipeline(self):
+        _answer, pipeline, _render = self._invoke(pr_number="42")
+        self.assertEqual(pipeline.call_args.args[0], 42)
+
+    def test_the_provider_override_reaches_the_pipeline(self):
+        _answer, pipeline, _render = self._invoke(provider="deepseek")
+        self.assertEqual(pipeline.call_args.args[3], "deepseek")
+
+    def test_a_non_numeric_number_is_rejected_before_any_call(self):
+        answer, pipeline, _render = self._invoke(pr_number="abc")
+
+        self.assertEqual(answer["status"], "error")
+        self.assertIn("abc", answer["message"])
+        pipeline.assert_not_called()
+
+    def test_an_unreviewable_pull_request_is_reported_as_an_error(self):
+        from src.review.remote_pr import ReviewPrError
+
+        answer, _pipeline, _render = self._invoke(error=ReviewPrError("Pull request #42 is not open (state: closed)."))
+
+        self.assertEqual(answer["status"], "error")
+        self.assertIn("not open", answer["message"])
+
+    def test_a_forge_failure_is_reported_as_an_error(self):
+        answer, _pipeline, _render = self._invoke(error=RuntimeError("connection reset"))
+
+        self.assertEqual(answer["status"], "error")
+        self.assertIn("connection reset", answer["message"])
+
+    def test_an_unconfigured_forge_is_reported_as_an_error(self):
+        answer, pipeline, _render = self._invoke(scm=(None, None, "Remote repository not identified."))
+
+        self.assertEqual(answer["status"], "error")
+        self.assertIn("Remote repository", answer["message"])
+        pipeline.assert_not_called()
+
+
 class TestResources(unittest.TestCase):
     """Tests for MCP resources (skill templates)."""
 
@@ -687,7 +800,7 @@ class TestToolsCatalog(unittest.TestCase):
             self.assertTrue(tool["description"], f"Tool '{tool['name']}' has empty description")
 
     def test_catalog_has_all_expected_tools(self):
-        """Catalog includes all 13 registered tools."""
+        """Catalog includes all 14 registered tools."""
         catalog = mcp_server._build_tools_catalog()
         tool_names = {t["name"] for t in catalog["tools"]}
         expected = {
@@ -704,6 +817,7 @@ class TestToolsCatalog(unittest.TestCase):
             "analyze_blame",
             "generate_issue",
             "list_fix_candidates",
+            "review_remote_pr",
         }
         missing = expected - tool_names
         extra = tool_names - expected
@@ -840,10 +954,10 @@ class TestWriteRealStdout(unittest.TestCase):
 class TestToolRegistry(unittest.TestCase):
     """Tests for _get_tool_registry and _TOOL_FUNCS."""
 
-    def test_registry_has_all_13_tools(self):
-        """_get_tool_registry returns all 13 tools."""
+    def test_registry_has_all_14_tools(self):
+        """_get_tool_registry returns all 14 tools."""
         registry = mcp_server._get_tool_registry()
-        self.assertEqual(len(registry), 13)
+        self.assertEqual(len(registry), 14)
 
     def test_every_tool_has_func(self):
         """Every tool in the registry has a callable 'func'."""

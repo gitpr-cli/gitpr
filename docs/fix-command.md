@@ -51,9 +51,13 @@ gitpr fix --rollback FIX-001-1a2b3c4d
 
 With no review recorded, the command stops with `❌ No review found for {repo} on branch '{branch}'. Run 'gitpr -r' first.` — "there is no review" and "the review found nothing" are never allowed to look alike.
 
-### 2.2 The Diff Is Re-Derived
+### 2.2 The Diff Comes from the Record
 
-The review *text* comes from the cache; the *diff* is re-derived now, with the very function that produced the review: `get_git_diff()` for `review`, `get_git_full_diff()` for `fullreview`, selected by the recorded `action_type`. That is what anchors the patch to the tree in front of you today instead of the tree of the day the review ran. A working tree with no changes at all aborts with `❌ The working tree has no changes to apply fixes to. Make the changes and run 'gitpr -r' again.`
+The review *text* comes from the cache, and so does the *diff*: the record carries the diff the review actually ran on, and that is what the patches are built against — the revision the reviewer saw, not a reconstruction of it.
+
+The field is not a convenience. A review fetched from a pull request (`gitpr review-pr`) has no local tree that could reproduce its diff at all, and even a local `-f` re-derived later can only approximate the branch as it stood that day. Older records, written before the diff started being stored, have no such field: for those the diff is re-derived as before, with `get_git_diff()` for `review` and `get_git_full_diff()` for `fullreview`, selected by the recorded `action_type`.
+
+An empty diff aborts with `❌ The working tree has no changes to apply fixes to. Make the changes and run 'gitpr -r' again.` — for a recorded diff that means the review itself had nothing to look at; for a re-derived one, that the tree has moved on and no longer holds the changes.
 
 ### 2.3 One AI Call, and the Ids It Produces
 

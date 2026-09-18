@@ -274,6 +274,15 @@ class BitbucketProvider(ScmProvider):
         )
         return response.text
 
+    def get_pull_request(self, repo: RepoRef, pr_id: str | int) -> PullRequestResult:
+        response = self._request(
+            "get",
+            self._repo_url(repo, "pullrequests", pr_id),
+            {200},
+            15,
+        )
+        return self._to_result(response.json())
+
     def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
         response = self._request(
             "get",

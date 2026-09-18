@@ -1,6 +1,6 @@
 # Documentation technique : Code Review avec l'IA (--review / --fullreview / --input)
 
-GitPR CLI offre trois modes de code review utilisant l'intelligence artificielle, chacun adapté à un moment différent du cycle de développement. Tous les modes s'intègrent automatiquement avec le **Linter statique** (`.gitpr.linter.yml`), qui ajoute des alertes de regex en haut du rapport.
+GitPR CLI offre quatre modes de code review utilisant l'intelligence artificielle, chacun adapté à un moment différent du cycle de développement. Tous les modes s'intègrent automatiquement avec le **Linter statique** (`.gitpr.linter.yml`), qui ajoute des alertes de regex en haut du rapport.
 
 ---
 
@@ -52,6 +52,27 @@ gitpr -f -i src/core.py
 | **Sortie** | `{branch}_{datetime}_FILE_REVIEW.txt` |
 | **Nécessite** | `--review` (`-r`) ou `--fullreview` (`-f`) |
 
+### 1.4 Revue de pull request distante — `gitpr review-pr <number>`
+
+Révise une pull request **déjà ouverte sur la forge**, en récupérant son diff directement depuis l'API. La branche n'a pas besoin d'être locale : rien n'est récupéré ni ramené dans votre arbre de travail. C'est le mode pour relire la pull request de quelqu'un d'autre.
+
+```bash
+gitpr review-pr 123
+gitpr review-pr 123 --provider deepseek
+gitpr review-pr 123 --post-comment
+```
+
+| Caractéristique | Description |
+| --- | --- |
+| **Source de données** | Le diff servi par l'API de la forge pour cette pull request |
+| **Quand l'utiliser** | Relire une pull request à laquelle vous avez été invité, sans faire de checkout de la branche |
+| **Sortie** | `{branch}_{datetime}_PR_REVIEW.txt`, nommé d'après la branche source de la pull request |
+| **Publication** | Rien, sauf si `--post-comment` est fourni ; la revue est alors publiée en commentaire |
+| **Nécessite** | Une forge configurée par `gitpr --init` qui serve un diff unifié — Azure DevOps ne le fait pas |
+| **Idéal pour** | La revue de code de contributions tierces, et pour les dépôts que vous ne clonez jamais |
+
+Il exécute le même moteur, la même skill et le même cache que `gitpr -r` : son rapport se lit donc comme une revue locale du même diff. Voir la [documentation de la Revue de pull request distante](review-pr.md) pour le contrat complet — les refus qui ne coûtent aucun token, le filtre smart excludes, la portée de cache et le pied du commentaire.
+
 ---
 
 ## 2. Intégration avec le Linter statique
@@ -68,6 +89,9 @@ Dans tous les modes de review, le **Linter statique** est exécuté automatiquem
 ## 🤖 Code Review de l'IA
 ...
 ```
+
+
+Dans une revue de pull request distant (`gitpr review-pr`), seules les règles YAML s'exécutent : le pont du linter externe lance des binaires contre des fichiers **sur le disque**, qui dans ce mode seraient ce que vous avez en checkout et non la pull request en revue. Revoir la mauvaise révision et publier les alertes en commentaire est pire que de ne pas les exécuter.
 
 ---
 
@@ -90,7 +114,10 @@ Téléchargez les templates avec `gitpr -s` et éditez-les selon les règles mé
 gitpr -r -p deepseek        # Review local avec DeepSeek
 gitpr -f -p gemini          # Full review avec Gemini
 gitpr -r -i arquivo.py -p deepseek  # Audit avec DeepSeek
+gitpr review-pr 123 --provider deepseek  # Revue distante avec DeepSeek
 ```
+
+Le `-p` / `--provider` du groupe racine n'est pas hérité par les sous-commandes : `gitpr review-pr` écrit donc la même option `--provider`.
 
 ---
 
@@ -98,7 +125,7 @@ gitpr -r -i arquivo.py -p deepseek  # Audit avec DeepSeek
 
 | Variable | Mode | Valeur par défaut |
 | --- | --- | --- |
-| `OUTPUT_FILE_NAME_REVIEW` | `-r` | `{branch}_{datetime}_PR_REVIEW.txt` |
+| `OUTPUT_FILE_NAME_REVIEW` | `-r`, `review-pr` | `{branch}_{datetime}_PR_REVIEW.txt` |
 | `OUTPUT_FILE_NAME_FULLREVIEW` | `-f` | `{branch}_{datetime}_PR_FULLREVIEW.txt` |
 | `OUTPUT_FILE_NAME_FILEREVIEW` | `-i` | `{branch}_{datetime}_FILE_REVIEW.txt` |
 

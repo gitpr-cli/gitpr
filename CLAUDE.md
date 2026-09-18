@@ -35,6 +35,12 @@ src/
 │   ├── fix_history.py            # .gitpr/fix_history.json (what --rollback reads)
 │   ├── apply_fix.py              # review → AI findings → classify → dry-run/apply
 │   └── rollback_fix.py           # history → git apply --reverse
+├── review/           # Sub-package: remote PR review (gitpr review-pr)
+│   ├── __init__.py       # Package marker (required for setuptools discovery)
+│   ├── diff_source.py            # DiffOrigin + DiffSource (provenance + cache scope, pure data)
+│   ├── diff_normalizer.py        # newline normalization, diff validation, Python-side smart excludes
+│   ├── render.py                 # compose/write the review artefact — shared with the local flows
+│   └── remote_pr.py              # forge → diff → engine → linter → optional comment
 ├── infrastructure/scm/  # Multi-forge SCM abstraction (ScmProvider)
 │   ├── __init__.py       # Public re-exports (contract, providers, factory)
 │   ├── base.py           # ScmProvider ABC, dataclasses, ScmProviderError
@@ -92,6 +98,7 @@ docs/
 ├── code-review-ia.md           # AI Code Review documentation
 ├── commit-message-ia.md        # AI Commit Message documentation
 ├── fix-command.md              # gitpr fix (review findings as patches) documentation
+├── review-pr.md                # gitpr review-pr (remote pull request review) documentation
 ├── git-hooks-locais.md         # Local Git Hooks documentation
 ├── github-pat-integration.md   # GitHub Token (PAT + Fernet) security
 ├── issue-tui-help.md           # TUI Issue interface guide
@@ -120,6 +127,7 @@ docs/
 | `-r` / `--review`        | Local code review      | `git diff HEAD` → AI + Linter → `.txt`                                    |
 | `-f` / `--fullreview`    | Full code review       | `git fetch` → diff against remote base → AI + Linter → `.txt`             |
 | `fix` (subcommand)       | Apply review findings   | last cached review → AI findings → `git apply --check` → classify → dry run (or `--apply`) |
+| `review-pr` (subcommand) | Remote PR review        | forge API → PR diff (no checkout) → smart excludes in Python → AI + Linter (YAML only) → `.txt` (+ comment with `--post-comment`) |
 | `-i` / `--input`         | File audit             | Entire file → AI (uses `.gitpr.filereview.md`)                            |
 | `-l` / `--linter`        | Static linter          | `git diff` → YAML regex + external linters → console/TUI (no AI)          |
 | `--linter-setup`         | Linter wizard          | Interactive setup of external linters (Checkstyle bridge presets)         |
@@ -326,6 +334,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Filters: file extension (`extensions`), `require_paths`, `ignore_paths`
 - `ignore_comments: true` ignores comment lines (language-specific comment regex)
 - In diff mode, only checks added lines (`+`) — focused and fast
+- `parse_diff_and_lint(diff, skip_external=False)` — the remote PR review passes `skip_external=True`: the bridge runs binaries against files on disk (the local tree), which would lint the wrong revision and publish it as a comment
 
 ### Blame engine (Code Archaeology)
 - Maximum tracing depth: 4 parent commits
@@ -341,6 +350,9 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Repo addressed via `parse_repo_ref(remote_url) -> RepoRef(raw, workspace, name, provider)`; workspace = GitHub owner / GitLab namespace (subgroups) / Bitbucket workspace / Azure display-only `"{org}/{project}"`
 - `gitpr --init` → `core.run_scm_init_wizard()`: detects the forge from the origin remote → prompts extras (Azure org/project, Bitbucket username) → validates token (`test_connection`, 3 attempts, 401 re-prompt) → **persists only on success**: `GITPR_SCM_PROVIDER` + `GITPR_SCM_TOKEN_ENCRYPTED` (Fernet) + extras when present
 - Fail-fast providers: Azure DevOps requires `GITPR_SCM_ORGANIZATION`/`GITPR_SCM_PROJECT`; Bitbucket requires `GITPR_SCM_USERNAME` (App Password = HTTP Basic username+token)
+- `get_pull_request(repo, pr_id)` is a **concrete** ABC method (default raises `ScmNotSupportedError`) implemented by all four providers — `list_open_pull_requests` paginates one page only, so filtering it by number silently misses older PRs and cannot tell closed from nonexistent
+- `supports_reviewable_diff` (class attribute, `False` on Azure DevOps) gates the remote PR review before any network call: Azure's API returns a file list, not a unified diff
+- GitLab's `get_pull_request_diff` synthesizes the `diff --git a/… / --- / +++` headers (`changes[].diff` is a bare hunk) and raises on `overflow: true` (truncated diff)
 - `src/github_api.py` is a **DEPRECATED shim** — legacy `(ok, data, status)` tuples + `DeprecationWarning`, delegating to `github_provider.py`; no new code may import it
 - Glossário + desvios aprovados: `docs/plans/glossary-scm-multiforge.md` e `docs/plans/ADR-001-scm-abstraction.md`
 
@@ -379,7 +391,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Server stdout is monkey-patched to isolate the JSON-RPC stream from prints
 - Tools run on an `anyio` offload thread (`_offload`) to avoid blocking the event loop; if a tool hangs in the IDE, kill `gitpr-mcp.exe` and restart the editor
 
-**Tools (13):**
+**Tools (14):**
 
 | Tool | Action | Parameters |
 |------|--------|------------|
@@ -396,6 +408,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 | `analyze_blame` | AI blame archaeology on a file region | `file_path`, `start_line`, `end_line` |
 | `generate_issue` | Structured issue (What/Why/Where/How) | `context_type`: `diff`/`history`/`blame` |
 | `list_fix_candidates` | Fix candidates of the last review: patch, classification, id (read-only) | `finding_id` |
+| `review_remote_pr` | AI review of a PR already open on the forge, fetched by number (read-only, never comments) | `pr_number`, `provider` |
 
 **Resources (18):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame,release,fix}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
 

@@ -129,7 +129,7 @@ You can pass the following *flags* for specific actions:
 * `--status`: Lists uncommitted file changes categorized as **new**, **modified**, and **deleted** — fast, no AI, no network. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-status.md)
 * `--no-unstaged-check`: Skips the unstaged files verification before AI processing for a single invocation. Equivalent to `GITPR_SKIP_UNSTAGED_CHECK=true` for one run. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-status.md)
 * `--linter-setup`: **Interactive external linter wizard.** Guides you through installing and configuring external linters (ESLint, PHPCS, Stylelint) as a Checkstyle XML bridge. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/linter-regras-customizadas.md)
-* `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as 13 annotated tools, 18 resources, and 7 pre-built prompts directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
+* `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as 14 annotated tools, 18 resources, and 7 pre-built prompts directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
 * `--plugins`: Lists all **globally installed plugins** — custom linter packs from `~/.gitpr/plugins/linter/` and MCP prompt templates from `~/.gitpr/plugins/prompts/`. These plugins apply across all your projects without duplication. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/plugins-system.md)
 * `--install`: **Interactive Setup Wizard.** Runs a guided 4-step setup: downloads skill templates, installs Git hooks, configures MCP for detected editors, and checks/requests your AI provider API key. Each step asks for confirmation before proceeding.
 * `-ih` or `--installhooks`: Automatically installs **local Git Hooks** (`pre-commit` and `prepare-commit-msg`) in your repository.
@@ -316,6 +316,8 @@ Once configured, use natural language in your editor's AI chat:
 | `generate_issue` | Structured issue from diff, history, or blame |
 | `list_unstaged_files` | Uncommitted file changes categorized (new/modified/deleted) |
 | `analyze_unstaged_diff` | Unstaged diff only (working tree vs index) |
+| `list_fix_candidates` | Fix candidates of the last review: patch, classification, id (read-only) |
+| `review_remote_pr` | AI review of a pull request already open on the forge, fetched by number (read-only) |
 
 ### Direct CLI Invocation
 
@@ -411,7 +413,8 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 
 * [**Pull Request (Default Mode)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pr-descricao-padrao.md) — Complete flow for generating PR descriptions without flags.
 * [**Pull Request Publisher TUI**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.md) — How to review and publish Pull Requests directly to GitHub from the terminal.
-* [**AI Code Review**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/code-review-ia.md) — Guide to review modes (`--review`, `--fullreview`) and file auditing (`--input`).
+* [**AI Code Review**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/code-review-ia.md) — Guide to review modes (`--review`, `--fullreview`), file auditing (`--input`) and remote pull request review (`gitpr review-pr`).
+* [**Remote Pull Request Review (gitpr review-pr)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/review-pr.md) — How the `gitpr review-pr` subcommand reviews a pull request that is already open on the forge, fetching its diff from the API without checking out its branch.
 * [**AI Commit Messages**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/commit-message-ia.md) — How to generate messages in the Conventional Commits standard and integrate with Git Hooks.
 * [**Issue Generation and TUI Interface**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/issue-tui-help.md) — How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
 * [**Code Archaeologist (Git Blame)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/blame-arqueologo.md) — How to trace the origin of business rules with `git blame` and AI.

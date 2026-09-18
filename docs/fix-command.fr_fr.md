@@ -51,9 +51,13 @@ gitpr fix --rollback FIX-001-1a2b3c4d
 
 Sans revue enregistrée, la commande s'arrête avec `❌ No review found for {repo} on branch '{branch}'. Run 'gitpr -r' first.` — « il n'y a pas de revue » et « la revue n'a rien trouvé » ne doivent jamais se ressembler.
 
-### 2.2 Le diff est recalculé
+### 2.2 Le diff vient de l'enregistrement
 
-Le *texte* de la revue vient du cache ; le *diff* est recalculé maintenant, avec la fonction même qui a produit la revue : `get_git_diff()` pour `review`, `get_git_full_diff()` pour `fullreview`, sélectionnée par l'`action_type` enregistré. C'est ce qui ancre le patch à l'arbre qui se trouve devant vous aujourd'hui plutôt qu'à celui du jour où la revue a été exécutée. Un arbre de travail sans aucune modification abandonne avec `❌ The working tree has no changes to apply fixes to. Make the changes and run 'gitpr -r' again.`
+Le *texte* de la revue vient du cache, et le *diff* aussi : l'enregistrement porte le diff sur lequel la revue a réellement tourné, et c'est contre lui que les patchs sont construits — la révision que le relecteur a vue, non une reconstruction de celle-ci.
+
+Ce champ n'est pas une commodité. Une revue récupérée depuis une pull request (`gitpr review-pr`) n'a aucun arbre local capable de reproduire son diff, et même un `-f` local recalculé plus tard ne peut qu'approcher la branche telle qu'elle était ce jour-là. Les enregistrements anciens, écrits avant que le diff ne soit conservé, n'ont pas ce champ : pour eux le diff est recalculé comme auparavant, avec `get_git_diff()` pour `review` et `get_git_full_diff()` pour `fullreview`, sélectionnée par l'`action_type` enregistré.
+
+Un diff vide abandonne avec `❌ The working tree has no changes to apply fixes to. Make the changes and run 'gitpr -r' again.` — pour un diff enregistré, cela signifie que la revue elle-même n'avait rien à examiner ; pour un diff recalculé, que l'arbre a avancé et ne contient plus les modifications.
 
 ### 2.3 Un seul appel d'IA, et les ids qu'il produit
 

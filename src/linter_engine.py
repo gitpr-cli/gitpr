@@ -206,14 +206,23 @@ def _collect_external_alerts(
                 alerts["errors"].append(msg)
 
 
-def parse_diff_and_lint(diff_text, is_full_file=False, file_path=None):
+def parse_diff_and_lint(
+    diff_text, is_full_file=False, file_path=None, skip_external=False
+):
     """
     Analyzes the git diff OR a full file and applies the rules defined in .gitpr.linter.yml.
     In diff mode, also bridges external linters (Checkstyle XML) filtered by added lines.
     Returns a dictionary with two lists: 'errors' (critical) and 'warnings' (alerts).
+
+    ``skip_external`` runs the YAML rules only. The external bridge executes a
+    linter binary against files on disk, so it can only speak about the working
+    tree — a review of a pull request fetched over the API would be checking
+    whatever the user happens to have checked out, and publishing that as a
+    comment about someone else's branch. Callers reviewing anything other than
+    the local tree pass True.
     """
     rules = load_linter_rules()
-    external_linters = load_external_linters()
+    external_linters = [] if skip_external else load_external_linters()
     if not rules and not external_linters:
         return {"errors": [], "warnings": []}
 

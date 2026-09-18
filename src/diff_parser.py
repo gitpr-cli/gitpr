@@ -238,3 +238,84 @@ def _remember_file(files, path):
     """Append *path* to *files* once, preserving appearance order."""
     if path and path not in files:
         files.append(path)
+
+
+@dataclass(frozen=True)
+class PatchSection:
+    """One file's slice of a unified diff, with the path it belongs to.
+
+    ``path`` is the new-side path (the b/ side), so a deletion keeps its name —
+    its own '+++ /dev/null' header carries none. ``text`` is the section
+    verbatim, headers included, so the pieces of a split diff concatenate back
+    into something the review engine can still read.
+    """
+    path: str
+    text: str
+
+
+def split_patch_sections(diff_text):
+    """Split *diff_text* into one PatchSection per file, in order.
+
+    The counterpart of summarize_patch for callers that must drop whole files
+    (the remote-PR smart-excludes filter): it needs each file's path next to its
+    own text, which no other helper here exposes. Accepts both header shapes
+    summarize_patch accepts — git's own output ('diff --git' plus a '---'/'+++'
+    pair per file) and the looser shape an AI returns (bare '---'/'+++' pairs).
+    Text before the first header is dropped, as are sections whose path never
+    resolves; a diff with no recognizable file yields [].
+
+    Pure, like its siblings: it interprets the text it is given, never runs git.
+    """
+    lines = [raw.rstrip("\r") for raw in diff_text.split("\n")]
+    sections = []
+    start = None
+    path = ""
+    in_hunk = False
+
+    def flush(end):
+        if start is not None and path:
+            sections.append(
+                PatchSection(path=path, text="\n".join(lines[start:end]))
+            )
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+
+        if line.startswith("diff --git "):
+            flush(i)
+            start, in_hunk = i, False
+            # The b/ side names the file on the new revision, and unlike the
+            # '+++ /dev/null' of a deletion it is always populated.
+            path = _strip_diff_prefix(_header_path(line))
+            i += 1
+            continue
+
+        # A '---' immediately followed by a '+++' is a file header pair. Inside
+        # a 'diff --git' section it is that section's own header; anywhere else
+        # it opens a new file, which is how the AI's looser patches arrive.
+        if (
+            line.startswith("--- ")
+            and i + 1 < len(lines)
+            and lines[i + 1].startswith("+++ ")
+        ):
+            candidate = _strip_diff_prefix(_header_path(lines[i + 1], marker="+++ "))
+            if candidate == "/dev/null":
+                candidate = ""
+            already_open = start is not None and lines[start].startswith("diff --git ")
+            if not already_open:
+                flush(i)
+                start, in_hunk = i, False
+                path = candidate
+            elif candidate:
+                path = candidate
+            i += 1
+            continue
+
+        if line.startswith("@@"):
+            in_hunk = bool(_HUNK_HEADER_RE.match(line))
+
+        i += 1
+
+    flush(len(lines))
+    return sections
