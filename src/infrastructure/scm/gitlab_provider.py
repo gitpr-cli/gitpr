@@ -239,16 +239,63 @@ class GitLabProvider(ScmProvider):
         )
 
     def get_pull_request_diff(self, repo: RepoRef, pr_id: str | int) -> str:
+        """Rebuild a unified diff from the MR changes.
+
+        GitLab's `diff` field holds the hunk body ALONE — unlike GitHub and
+        Bitbucket, which serve a complete unified patch. The file identity lives
+        in old_path/new_path, so the `diff --git`, `---` and `+++` headers are
+        synthesized here. Without them the review engine sees orphan hunks: it
+        cannot tell which file a change belongs to, the chunker (which splits on
+        `^diff --git a/`) degenerates into one giant chunk, and smart-excludes
+        has no path to match on.
+        """
         response = self._request(
             "get",
             self._project_url(repo, "merge_requests", pr_id, "changes"),
             {200},
             15,
         )
-        changes = response.json().get("changes", [])
-        return "\n".join(
-            item.get("diff", "") for item in changes if item.get("diff")
+        j = response.json()
+        if j.get("overflow"):
+            # GitLab truncates the payload past a size limit and flags it here.
+            # Reviewing the fragment silently would publish a review of half a
+            # merge request, so the caller gets a hard failure instead.
+            raise ScmProviderError(
+                self.name,
+                0,
+                __(
+                    "GitLab truncated the diff of merge request !{pr_id} "
+                    "(it exceeds the API size limit). Review it locally instead.",
+                    pr_id=pr_id,
+                ),
+            )
+        parts = []
+        for item in j.get("changes", []):
+            body = item.get("diff", "")
+            if not body:
+                continue
+            old_path = item.get("old_path", "")
+            new_path = item.get("new_path", "")
+            # Git's convention for added/removed files: /dev/null on the side
+            # that does not exist. A rename keeps both real paths.
+            old_side = "/dev/null" if item.get("new_file") else f"a/{old_path}"
+            new_side = "/dev/null" if item.get("deleted_file") else f"b/{new_path}"
+            parts.append(
+                f"diff --git a/{old_path} b/{new_path}\n"
+                f"--- {old_side}\n"
+                f"+++ {new_side}\n"
+                f"{body}"
+            )
+        return "\n".join(parts)
+
+    def get_pull_request(self, repo: RepoRef, pr_id: str | int) -> PullRequestResult:
+        response = self._request(
+            "get",
+            self._project_url(repo, "merge_requests", pr_id),
+            {200},
+            15,
         )
+        return self._to_result(response.json())
 
     def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
         response = self._request(

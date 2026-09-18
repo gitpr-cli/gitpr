@@ -316,6 +316,8 @@ Uma vez configurado, use linguagem natural no chat de IA do seu editor:
 | `generate_issue` | Issue estruturada a partir de diff, histórico ou blame |
 | `list_unstaged_files` | Alterações não commitadas categorizadas (novos/modificados/deletados) |
 | `analyze_unstaged_diff` | Diff apenas unstaged (working tree vs index) |
+| `list_fix_candidates` | Candidatos de correção da última revisão: patch, classificação, id (somente leitura) |
+| `review_remote_pr` | Revisão por IA de um pull request já aberto na forge, buscado pelo número (somente leitura) |
 
 ### Invocação Direta via CLI
 
@@ -411,7 +413,8 @@ Se você deseja implementar o GitPR como uma barreira de qualidade automatizada 
 
 * [**Pull Request (Modo Padrão)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pr-descricao-padrao.md) — Fluxo completo para gerar descrições de PR sem flags.
 * [**Publicador de Pull Request (TUI)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.pt_br.md) — Como revisar e publicar Pull Requests diretamente no GitHub pelo terminal.
-* [**Code Review com IA**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/code-review-ia.md) — Guia dos modos de review (`--review`, `--fullreview`) e auditoria de arquivos (`--input`).
+* [**Code Review com IA**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/code-review-ia.md) — Guia dos modos de review (`--review`, `--fullreview`), auditoria de arquivos (`--input`) e review de pull request remoto (`gitpr review-pr`).
+* [**Review de Pull Request Remoto (gitpr review-pr)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/review-pr.pt_br.md) — Como o subcomando `gitpr review-pr` revisa um pull request já aberto na forge, buscando o diff pela API sem fazer checkout da branch.
 * [**Mensagens de Commit com IA**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/commit-message-ia.md) — Como gerar mensagens no padrão Conventional Commits e integrar com Git Hooks.
 * [**Geração de Issues e Interface TUI**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/issue-tui-help.md) — Como usar a interface gráfica de terminal (TUI) e os 3 motores de contexto para gerenciar Issues estruturadas.
 * [**Arqueólogo de Código (Git Blame)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/blame-arqueologo.md) — Como rastrear a origem de regras de negócio com `git blame` e IA.

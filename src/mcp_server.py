@@ -995,6 +995,125 @@ def list_fix_candidates(finding_id: str = "") -> str:
 
 
 # =============================================================================
+# Tools — Remote Pull Request Review
+# =============================================================================
+
+
+def _resolve_scm_target():
+    """The forge configured for this repository, as (provider, repo_ref, error).
+
+    The same resolution ``gitpr --init`` establishes and the CLI performs before
+    any API call (src/main.py::_resolve_scm_context), minus the terminal output:
+    inside a tool call the answer is a JSON field, not a line on stderr.  The
+    error string is empty on success and meant for the user as-is.
+    """
+    from src.config import get_scm_settings
+    from src.core import get_origin_remote_url
+    from src.infrastructure.scm import (
+        ScmProviderError,
+        detect_provider_from_remote,
+        resolve_scm_provider,
+    )
+
+    raw_remote = _safe_call(get_origin_remote_url)
+    if not raw_remote:
+        return (
+            None,
+            None,
+            __("Remote repository not identified. Run 'gitpr --init' to configure the SCM forge."),
+        )
+
+    settings = _safe_call(get_scm_settings) or {}
+    if not settings.get("provider"):
+        settings["provider"] = detect_provider_from_remote(raw_remote)
+
+    try:
+        provider = resolve_scm_provider(settings)
+        repo_ref = provider.parse_repo_ref(raw_remote)
+    except (ValueError, ScmProviderError) as error:
+        # ValueError: the remote does not parse for the detected forge.
+        # ScmProviderError: provider fail-fast (Azure without org/project, ...).
+        return None, None, str(error)
+
+    return provider, repo_ref, ""
+
+
+@mcp.tool(
+    description=__(
+        "Review a pull request that is already open on the forge, without "
+        "checking its branch out: the diff is fetched over the API and run "
+        "through the same AI review the local flows use. Returns the review "
+        "and the linter alerts. Read-only — nothing is published on the "
+        "pull request and no file is written."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True
+    ),
+)
+@_offload
+def review_remote_pr(pr_number: str, provider: str = "") -> str:
+    """Review an open pull request by its number.
+
+    Args:
+        pr_number: Pull request number as shown on the forge (e.g. "123").
+        provider: AI provider override: gemini, deepseek, or ollama. Empty uses the default.
+    """
+    from src.review.remote_pr import ReviewPrError
+    from src.review.remote_pr import review_remote_pr as run_remote_review
+
+    try:
+        number = int(str(pr_number).strip())
+    except (TypeError, ValueError):
+        return json.dumps(
+            {
+                "status": "error",
+                "message": __("'{pr_number}' is not a pull request number.", pr_number=pr_number),
+            },
+            ensure_ascii=False,
+        )
+
+    scm_provider, repo_ref, error = _resolve_scm_target()
+    if error:
+        return json.dumps(
+            {"status": "error", "message": error}, ensure_ascii=False
+        )
+
+    try:
+        # No post_comment, ever: this tool is the read-only face of the
+        # command. Publishing to someone else's pull request stays an
+        # explicit act of the user, at the CLI, behind --post-comment.
+        result = run_remote_review(
+            number, scm_provider, repo_ref, _resolve_provider(provider)
+        )
+    except ReviewPrError as exc:
+        return json.dumps(
+            {"status": "error", "message": str(exc)}, ensure_ascii=False
+        )
+    except Exception as exc:
+        # Network and HTTP failures from the forge arrive here; the traceback
+        # goes to stderr (see _patch_output) and the caller gets the reason.
+        traceback.print_exc(file=sys.stderr)
+        return json.dumps(
+            {"status": "error", "message": str(exc)}, ensure_ascii=False
+        )
+
+    return json.dumps(
+        {
+            "status": "success",
+            "pr_number": result.pr_number,
+            "pr_url": result.pr_url,
+            "head_branch": result.diff_source.head_branch,
+            "base_branch": result.diff_source.base_branch,
+            "origin": result.diff_source.origin.value,
+            "linter": result.linter_results,
+            "warnings": result.warnings,
+            "review": result.review,
+        },
+        ensure_ascii=False,
+    )
+
+
+# =============================================================================
 # Resources — Skill Templates & Linter Config
 # =============================================================================
 
@@ -1653,6 +1772,27 @@ def _build_tools_catalog() -> dict:
                     "idempotentHint": True,
                 },
             },
+            {
+                "name": "review_remote_pr",
+                "description": "Review a pull request that is already open on the forge, without checking its branch out: the diff is fetched over the API and run through the same AI review the local flows use. Returns the review and the linter alerts. Read-only — nothing is published on the pull request and no file is written.",
+                "parameters": {
+                    "pr_number": {
+                        "type": "string",
+                        "required": True,
+                        "description": "Pull request number as shown on the forge (e.g. '123').",
+                    },
+                    "provider": {
+                        "type": "string",
+                        "required": False,
+                        "description": "AI provider override: gemini, deepseek, or ollama. Empty uses default from ~/.gitpr/.env.",
+                    },
+                },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                },
+            },
         ],
         "resources": [
             {
@@ -1872,6 +2012,7 @@ _TOOL_FUNCS = {
     "analyze_blame": analyze_blame.__wrapped__,
     "generate_issue": generate_issue.__wrapped__,
     "list_fix_candidates": list_fix_candidates.__wrapped__,
+    "review_remote_pr": review_remote_pr.__wrapped__,
 }
 
 

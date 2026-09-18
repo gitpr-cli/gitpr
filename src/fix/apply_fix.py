@@ -108,13 +108,22 @@ def review_text(record):
 
 
 def reviewed_diff(record, quiet=False):
-    """Re-derive the reviewed diff against the tree as it is now.
+    """The diff the review ran on: the recorded one, else re-derive it.
 
-    A ``review`` reads ``git diff HEAD``; a ``fullreview`` reads the branch
-    against the remote base. The recorded ``action_type`` selects between them,
-    which is the only thing that keeps the patch anchored to the same scope the
-    reviewer saw.
+    Records written since the diff started being stored carry it outright, and
+    that is always the better answer — a review fetched from a pull request has
+    no local tree that could reproduce it.
+
+    Older records have no such field, so the diff is re-derived: a ``review``
+    reads ``git diff HEAD`` and a ``fullreview`` reads the branch against the
+    remote base, with the recorded ``action_type`` selecting between them. That
+    is a reconstruction of the revision the reviewer saw, not the revision
+    itself, which is why storing it was worth doing.
     """
+    recorded = record.get("diff")
+    if recorded:
+        return recorded
+
     from src.core import get_git_diff, get_git_full_diff
 
     if record.get("action_type") == "fullreview":

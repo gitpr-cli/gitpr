@@ -41,6 +41,7 @@ from src.core import (
 )
 from src.i18n import __
 from src.linter_engine import generate_linter_report_content, parse_diff_and_lint
+from src.review.render import render_review_result
 from src.ui.chat_app import ChatApp
 from src.updater import __version__, check_and_update, enforce_update_required
 from src.usage_log import log_usage
@@ -1318,8 +1319,16 @@ def cli(
         )
         return
 
-    # Call AI according to active_provider using the new function signature
-    data = generate_pr_content(action_type, action_type, diff_text, active_provider)
+    # Call AI according to active_provider using the new function signature.
+    # The two branch-review modes record their diff so `gitpr fix` patches
+    # against the revision that was reviewed, not against a later working tree.
+    data = generate_pr_content(
+        action_type,
+        action_type,
+        diff_text,
+        active_provider,
+        store_diff=action_type in ("review", "fullreview"),
+    )
     if not data:
         return
 
@@ -1393,43 +1402,7 @@ def cli(
         else:
             linter_results = parse_diff_and_lint(diff_text)
 
-        all_alerts = linter_results["errors"] + linter_results["warnings"]
-
-        if all_alerts:
-            click.secho(
-                __(
-                    "⚠️ Attention! Found {count} alerts in the Linter rules.",
-                    count=len(all_alerts),
-                ),
-                fg="yellow",
-            )
-
-            # Build header with linter errors
-            linter_header = __("## 🚨 Local Static Analysis Alerts (YAML Rules)\n\n")
-            for alert in all_alerts:
-                linter_header += f"- {alert}\n"
-            linter_header += __("\n---\n\n## 🤖 AI Code Review\n\n")
-
-            # Inject header at the top of AI-generated content
-            content = linter_header + content
-        else:
-            click.secho(
-                __("✅ Local Linter passed with no rule violations!"), fg="green"
-            )
-
-        try:
-            with open(output_filename, "w", encoding="utf-8") as f:
-                f.write(content)
-            click.secho(
-                __(
-                    "\n✅ Code Review successfully generated: '{output_filename}'",
-                    output_filename=output_filename,
-                ),
-                fg="green",
-                bold=True,
-            )
-        except Exception as e:
-            click.secho(__("\n❌ Error saving review: {error}", error=str(e)), fg="red")
+        render_review_result(content, linter_results, output_filename)
         return
 
     # Default Pull Request (.md file)
@@ -2240,6 +2213,78 @@ def fix(
             click.secho(f"   {warning}", fg="yellow")
     if all_safe:
         _print_fix_left_out(candidates, selected)
+
+
+@cli.command(
+    "review-pr",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("review-pr.md"),
+)
+@click.argument("pr_number", type=int, metavar="<number>")
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+@click.option(
+    "--post-comment",
+    "post_comment",
+    is_flag=True,
+    help=__(
+        "Publishes the review as a comment on the pull request. Without it the forge is never written to."
+    ),
+)
+def review_pr(pr_number, ai_provider, post_comment):
+    """Reviews a pull request that is already open, without checking it out.
+
+    Fetches the diff straight from the forge and runs the same review engine as
+    ``gitpr -r``, so the report, the linter alerts and the saved .txt are the
+    same — only the diff's origin differs. Built for reviewing someone else's
+    pull request, where the branch is not and need not be local.
+
+    Nothing is published on the forge unless --post-comment is given.
+    """
+    from src.infrastructure.scm.base import ScmProviderError
+    from src.review.remote_pr import ReviewPrError, review_remote_pr
+
+    provider, repo_ref = _resolve_scm_context()
+    if not provider or not repo_ref:
+        raise click.exceptions.Exit(1)
+
+    active_provider = ai_provider or get_ai_provider()
+
+    try:
+        result = review_remote_pr(
+            pr_number, provider, repo_ref, active_provider, post_comment
+        )
+    except ReviewPrError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+    except ScmProviderError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    for warning in result.warnings:
+        click.secho(f"⚠️  {warning}", fg="yellow")
+
+    # The {branch} slot carries the PR's source branch: the report belongs to
+    # the revision being reviewed, not to whatever branch is checked out.
+    safe_branch_name = (result.diff_source.head_branch or f"pr-{pr_number}").replace(
+        "/", "-"
+    ).replace("\\", "-")
+    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+    output_filename = resolve_output_path(
+        "OUTPUT_FILE_NAME_REVIEW",
+        "{branch}_{datetime}_PR_REVIEW.txt",
+        safe_branch_name,
+        current_time,
+    )
+
+    render_review_result(result.review, result.linter_results, output_filename)
 
 
 def _env_flag(name, default="false"):

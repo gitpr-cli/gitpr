@@ -47,9 +47,22 @@ def get_cached_response(action_folder, prompt_text):
 
 
 def save_cached_response(
-    action_folder, action_type, prompt_text, response_dict, meta_raw=None
+    action_folder,
+    action_type,
+    prompt_text,
+    response_dict,
+    meta_raw=None,
+    reviewed_diff=None,
 ):
-    """Saves the AI response to the local cache."""
+    """Saves the AI response to the local cache.
+
+    ``reviewed_diff`` is the diff the review actually ran on. When given it is
+    stored at the top level of the record, so ``gitpr fix`` can re-derive its
+    patch from the revision that was reviewed instead of whatever the working
+    tree happens to hold later — the two differ whenever the review came from a
+    pull request (src/review/remote_pr.py) or from a full-branch diff. Records
+    written before this field existed simply lack it, and the reader falls back.
+    """
     md5_hash = generate_md5(prompt_text)
     folder_path = get_cache_base_dir() / action_folder
     folder_path.mkdir(parents=True, exist_ok=True)
@@ -75,6 +88,9 @@ def save_cached_response(
         "prompt": prompt_text,
         "response": response_dict,
     }
+
+    if reviewed_diff is not None:
+        cache_data["diff"] = reviewed_diff
 
     try:
         with open(cache_file, "w", encoding="utf-8") as f:

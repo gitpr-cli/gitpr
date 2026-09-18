@@ -334,6 +334,24 @@ class GitHubProvider(ScmProvider):
         )
         return response.text
 
+    def get_pull_request(self, repo: RepoRef, pr_id: str | int) -> PullRequestResult:
+        response = self._request(
+            "get",
+            self._repo_url(repo, "pulls", pr_id),
+            {200},
+            15,
+        )
+        j = response.json()
+        return PullRequestResult(
+            id=j.get("number"),
+            url=j.get("html_url", ""),
+            number=j.get("number"),
+            state=j.get("state", "open"),
+            source_branch=j.get("head", {}).get("ref", ""),
+            target_branch=j.get("base", {}).get("ref", ""),
+            provider=self.name,
+        )
+
     def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
         response = self._request(
             "get",

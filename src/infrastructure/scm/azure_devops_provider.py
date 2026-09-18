@@ -89,6 +89,10 @@ class AzureDevOpsProvider(ScmProvider):
 
     name = "azure_devops"
 
+    # Azure REST serves no unified diff (see get_pull_request_diff): the
+    # remote-PR review must refuse this forge before spending AI tokens.
+    supports_reviewable_diff = False
+
     def __init__(self, token="", base_url=None, **kwargs):
         # Fail-fast: the org/project come from the provider extras, so both are
         # mandatory — the error names the .env keys the user must configure.
@@ -353,6 +357,15 @@ class AzureDevOpsProvider(ScmProvider):
             params={"searchCriteria.status": "active"},
         )
         return [self._to_result(pr) for pr in response.json().get("value", [])]
+
+    def get_pull_request(self, repo: RepoRef, pr_id: str | int) -> PullRequestResult:
+        response = self._request(
+            "get",
+            self._repo_url(repo, "pullrequests", pr_id),
+            {200},
+            15,
+        )
+        return self._to_result(response.json())
 
     def add_comment(self, repo: RepoRef, pr_id: str | int, body: str) -> None:
         # Thread comments: commentType 1 = text, status 1 = active thread.

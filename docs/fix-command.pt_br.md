@@ -51,9 +51,13 @@ gitpr fix --rollback FIX-001-1a2b3c4d
 
 Sem revisão registrada, o comando para com `❌ No review found for {repo} on branch '{branch}'. Run 'gitpr -r' first.` — "não há revisão" e "a revisão não encontrou nada" nunca podem parecer a mesma coisa.
 
-### 2.2 O Diff É Recalculado
+### 2.2 O Diff Vem do Registro
 
-O *texto* da revisão vem do cache; o *diff* é recalculado agora, com a mesma função que produziu a revisão: `get_git_diff()` para `review`, `get_git_full_diff()` para `fullreview`, selecionados pelo `action_type` registrado. É isso que ancora o patch à árvore que está na sua frente hoje, e não à árvore do dia em que a revisão rodou. Uma árvore de trabalho sem nenhuma alteração aborta com `❌ The working tree has no changes to apply fixes to. Make the changes and run 'gitpr -r' again.`
+O *texto* da revisão vem do cache, e o *diff* também: o registro carrega o diff sobre o qual a revisão de fato rodou, e é contra ele que os patches são construídos — a revisão que o revisor viu, não uma reconstrução dela.
+
+O campo não é uma conveniência. Uma revisão buscada de um pull request (`gitpr review-pr`) não tem árvore local alguma capaz de reproduzir o seu diff, e mesmo um `-f` local recalculado depois só consegue aproximar a branch como ela estava naquele dia. Registros antigos, gravados antes de o diff passar a ser armazenado, não têm esse campo: para eles o diff é recalculado como antes, com `get_git_diff()` para `review` e `get_git_full_diff()` para `fullreview`, selecionados pelo `action_type` registrado.
+
+Um diff vazio aborta com `❌ The working tree has no changes to apply fixes to. Make the changes and run 'gitpr -r' again.` — num diff registrado isso significa que a própria revisão não tinha o que olhar; num recalculado, que a árvore seguiu adiante e não contém mais as alterações.
 
 ### 2.3 Uma Chamada de IA, e os Ids que Ela Produz
 

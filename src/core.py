@@ -330,6 +330,23 @@ def _load_docs_smart_excludes():
 SMART_EXCLUDES = _load_smart_excludes() + _load_docs_smart_excludes()
 
 
+def get_smart_exclude_patterns():
+    """
+    Return the raw glob patterns behind SMART_EXCLUDES, without the prefix.
+
+    SMART_EXCLUDES is a list of git pathspecs (":(exclude)*.lock") because that
+    is what `git diff` takes on its command line. A diff fetched from a forge
+    API never passes through git, so the same exclusions have to be applied in
+    Python — this exposes the patterns both paths share, derived from the very
+    list the git command uses so the two can never drift apart.
+
+    GITPR_SKIP_SMART_EXCLUDES is honored upstream in the loaders, so an empty
+    SMART_EXCLUDES already yields an empty list here.
+    """
+    prefix = ":(exclude)"
+    return [p[len(prefix):] for p in SMART_EXCLUDES if p.startswith(prefix)]
+
+
 def _get_raw_docs_patterns():
     """
     Returns raw glob patterns for documentation extensions (e.g. ['*.md', '*.txt']).
@@ -742,8 +759,30 @@ def split_diff_into_chunks(diff_text, max_tokens=90000):
     return chunks
 
 
-def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"):
-    """Sends the diff to the AI using System Instruction and returns a parsed JSON."""
+def generate_pr_content(
+    action_folder,
+    action_type,
+    diff_text,
+    provider="gemini",
+    cache_scope="",
+    store_diff=False,
+):
+    """Sends the diff to the AI using System Instruction and returns a parsed JSON.
+
+    The engine has no idea where ``diff_text`` came from and does not need one:
+    a local ``git diff`` and a pull request fetched over the API are the same
+    text by the time they arrive, so both review flows share this function.
+
+    ``cache_scope`` is appended to the cache key only — never to the prompt the
+    model receives — so a review of PR 42 and a review of an identical local
+    diff cannot answer each other. The default "" leaves the MD5 of every
+    existing local review untouched, so switching a caller to DiffSource
+    invalidates no cache.
+
+    ``store_diff`` records the reviewed diff alongside the response, which is
+    what lets ``gitpr fix`` patch against the revision that was reviewed rather
+    than the working tree of the day it runs.
+    """
     if not diff_text or not diff_text.strip():
         click.secho(
             __("⚠️ No diff found. Make some changes before running the command."),
@@ -870,7 +909,7 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
         pass  # Non-critical — never block the main flow for this metadata
 
     # TRY TO RETRIEVE FROM CACHE
-    cached_data = get_cached_response(action_folder, prompt)
+    cached_data = get_cached_response(action_folder, prompt + cache_scope)
     if cached_data:
         click.secho(__("⚡ Response retrieved from local cache."), fg="green", dim=True)
         from src.metrics import log_command_metric
@@ -1061,7 +1100,12 @@ def generate_pr_content(action_folder, action_type, diff_text, provider="gemini"
     # SAVE TO CACHE AND RETURN
     if result_json:
         save_cached_response(
-            action_folder, action_type, prompt, result_json, meta_raw=total_meta
+            action_folder,
+            action_type,
+            prompt + cache_scope,
+            result_json,
+            meta_raw=total_meta,
+            reviewed_diff=diff_text if store_diff else None,
         )
         # Fire-and-forget metric for successful AI-powered command
         from src.metrics import log_command_metric
