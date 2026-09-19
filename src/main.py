@@ -1852,6 +1852,67 @@ def config():
 
 
 # ============================================================
+# gitpr demo — guided tour over a recorded example
+# ============================================================
+
+
+@cli.command(
+    "demo",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("demo.md"),
+)
+@click.option(
+    "--scenario",
+    "scenario_name",
+    metavar="<name>",
+    help=__("Example to walk through. Without it, the first one is used."),
+)
+@click.option(
+    "--lang",
+    "lang",
+    metavar="<lang>",
+    help=__("Language for this run (en_us, pt_br, pt_pt, es_es, fr_fr)."),
+)
+@click.option(
+    "--no-tui",
+    "no_tui",
+    is_flag=True,
+    help=__("Prints the tour as plain text instead of opening the screen."),
+)
+def demo(scenario_name, lang, no_tui):
+    """Guided tour of GitPR over an example diff.
+
+    Walks through the three things GitPR does with a change — the commit
+    message, the code review and the pull request description — using an
+    example that ships with the tool. Nothing is generated and nothing is sent:
+    the answers were recorded once and are replayed, so the tour needs no API
+    key, no Git repository and no connection.
+
+    This is the second way to use GitPR. For the real thing, run ``gitpr --init``
+    to configure a provider and a forge token.
+    """
+    # The root callback returns before its --lang handler for every subcommand,
+    # so the flag has to be applied here. reload_thinking_words() is
+    # deliberately not called: the tour never spins, and it would download.
+    if lang:
+        from src.i18n import set_lang
+
+        set_lang(lang)
+
+    from src.demo.demo_runner import run_demo
+    from src.demo.scenarios import DemoScenarioError
+
+    try:
+        run_demo(scenario_name, tui=not no_tui)
+    except DemoScenarioError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+
+# ============================================================
 # gitpr fix — review findings applied as reviewable diffs (ADR-004)
 # ============================================================
 _FIX_SAFETY_COLORS = {"safe": "green", "review_required": "yellow", "experimental": "red"}

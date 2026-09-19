@@ -419,6 +419,10 @@ def setup_environment():
         load_dotenv(ENV_FILE)  # Reload to ensure the new defaults are live
 
     # Ask for the default provider if none exists
+    #
+    # Reached only when the variable is explicitly blank: the loop above seeds
+    # DEFAULT_AI_PROVIDER from DEFAULT_CONFIG on any machine that never had one,
+    # so a first run arrives at the API-key branch below, not here.
     provider = os.getenv("DEFAULT_AI_PROVIDER")
     if not provider:
         click.secho(
@@ -453,6 +457,16 @@ def setup_environment():
                 fg="yellow",
             )
             sys.exit(1)
+
+        # First run is the one moment the tour is worth most: it answers "what
+        # does this do?" before the user has bought in with a key.
+        click.secho(
+            __(
+                "💡 Want to see it first? `gitpr demo` walks through the whole "
+                "tool on a recorded example — no key needed."
+            ),
+            fg="cyan",
+        )
 
         click.secho(
             __("🔑 API Key for {provider} not found.", provider=provider.capitalize()),

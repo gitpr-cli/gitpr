@@ -20,7 +20,18 @@ Instale o GitPR CLI usando o `pip`:
 pip install gitpr-cli
 ```
 
-### **2. Inicializando em um Novo Repositório**
+### **2. Vendo Funcionar (Sem Configuração)**
+
+O GitPR traz um tour guiado sobre um diff de exemplo. Ele não precisa de chave de API, de repositório Git nem de conexão:
+
+```bash
+gitpr demo
+```
+
+> **Tour Guiado:** Seis telas percorrendo um exemplo real — o diff, a mensagem de commit, a revisão de código e a descrição do pull request — com as respostas gravadas uma vez e reproduzidas. Use `--no-tui` para texto simples e `--scenario security-issue` para o outro exemplo.  
+> 📖 **Documentação completa:** [https://gitpr.natanfiuza.dev.br/docs/demo?lang=pt_br](https://gitpr.natanfiuza.dev.br/docs/demo?lang=pt_br)
+
+### **3. Inicializando em um Novo Repositório**
 
 Para inicializar o GitPR na pasta de um novo repositório, execute:
 
@@ -121,6 +132,7 @@ A ferramenta irá sincronizar com o remoto (`git fetch`), comparar suas alteraç
 ### **Opções e Comandos Avançados**
 Você pode passar as seguintes *flags* para ações específicas:
 
+* `gitpr demo`: **Tour guiado** sobre um diff de exemplo que acompanha a ferramenta — a mensagem de commit, a revisão de código e a descrição do pull request, produzidas pelo pipeline real sobre um exemplo gravado. Não precisa de chave de API, de repositório Git nem de conexão, o que faz dele a primeira coisa a rodar numa máquina nova. Use `--scenario <name>` para outro exemplo, `--lang <code>` para outro idioma, `--no-tui` para texto simples. 📖 [Documentação completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.md)
 * `-c` ou `--commit`: Executa um `git diff` local e exibe **apenas a mensagem de commit sugerida**.
 * `-r` ou `--review`: Realiza um **Code Review** detalhado das alterações locais.
 * `-f` ou `--fullreview`: Realiza um **Code Review Completo** analisando todas as alterações desde a branch remota.
@@ -415,6 +427,7 @@ Se você deseja implementar o GitPR como uma barreira de qualidade automatizada 
 
 ### Funcionalidades Principais
 
+* [**Tour Guiado (gitpr demo)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.pt_br.md) — Como o subcomando `gitpr demo` percorre a mensagem de commit, a revisão de código e a descrição do pull request sobre um exemplo gravado, sem chave de API, sem repositório e sem rede.
 * [**Pull Request (Modo Padrão)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pr-descricao-padrao.md) — Fluxo completo para gerar descrições de PR sem flags.
 * [**Publicador de Pull Request (TUI)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.pt_br.md) — Como revisar e publicar Pull Requests diretamente no GitHub pelo terminal.
 * [**Code Review com IA**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/code-review-ia.md) — Guia dos modos de review (`--review`, `--fullreview`), auditoria de arquivos (`--input`) e review de pull request remoto (`gitpr review-pr`).

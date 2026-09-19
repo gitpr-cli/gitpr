@@ -20,7 +20,18 @@ Installez GitPR CLI avec `pip` :
 pip install gitpr-cli
 ```
 
-### **2. Initialisation dans un Nouveau Dépôt**
+### **2. Le Voir Fonctionner (Sans Configuration)**
+
+GitPR embarque une visite guidée sur un diff d'exemple. Elle n'a besoin d'aucune clé d'API, d'aucun dépôt Git et d'aucune connexion :
+
+```bash
+gitpr demo
+```
+
+> **Visite Guidée :** Six écrans qui parcourent un exemple réel — le diff, le message de commit, la revue de code et la description de la pull request — avec les réponses enregistrées une fois et rejouées. Utilisez `--no-tui` pour le texte brut et `--scenario security-issue` pour l'autre exemple.  
+> 📖 **Documentation complète :** [https://gitpr.natanfiuza.dev.br/docs/demo?lang=fr_fr](https://gitpr.natanfiuza.dev.br/docs/demo?lang=fr_fr)
+
+### **3. Initialisation dans un Nouveau Dépôt**
 
 Pour initialiser GitPR dans le dossier d'un nouveau dépôt, exécutez :
 
@@ -121,6 +132,7 @@ L'outil se synchronisera avec le dépôt distant (`git fetch`), comparera vos mo
 ### **Options et Commandes Avancées**
 Vous pouvez passer les *flags* suivants pour des actions spécifiques :
 
+* `gitpr demo` : **Visite guidée** sur un diff d'exemple fourni avec l'outil — le message de commit, la revue de code et la description de la pull request, produits par le pipeline réel sur un exemple enregistré. Aucune clé d'API, aucun dépôt Git et aucune connexion ne sont nécessaires, ce qui en fait la première chose à lancer sur une machine neuve. Utilisez `--scenario <name>` pour un autre exemple, `--lang <code>` pour une autre langue, `--no-tui` pour le texte brut. 📖 [Documentation complète](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.fr_fr.md)
 * `-c` ou `--commit` : Exécute un `git diff` local et affiche **uniquement le message de commit suggéré**.
 * `-r` ou `--review` : Effectue un **Code Review** détaillé des modifications locales.
 * `-f` ou `--fullreview` : Effectue un **Code Review Complet** analysant toutes les modifications depuis la branche distante.
@@ -412,6 +424,8 @@ Si vous souhaitez implémenter GitPR comme une barrière de qualité automatisé
 * [**Intégration CI/CD (GitHub Actions)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/github-ci-linter.md) — Comment exécuter GitPR dans le pipeline pour bloquer le "Merge" des PR avec des violations.
 
 ### Fonctionnalités Principales
+
+* [**Visite Guidée (gitpr demo)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.fr_fr.md) — Comment le sous-commande `gitpr demo` parcourt le message de commit, la revue de code et la description de la pull request sur un exemple enregistré, sans clé d'API, sans dépôt et sans réseau.
 
 * [**Pull Request (Mode par Défaut)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pr-descricao-padrao.md) — Flux complet pour générer des descriptions de PR sans flags.
 * [**Éditeur de Pull Request (TUI)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.fr_fr.md) — Comment réviser et publier des Pull Requests directement sur GitHub depuis le terminal.
