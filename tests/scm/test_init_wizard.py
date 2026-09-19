@@ -179,6 +179,28 @@ class TestScmInitWizard(unittest.TestCase):
             bold=True,
         )
 
+    def test_the_badge_is_disclosed_once_the_forge_is_configured(self):
+        """The wizard is where publishing becomes possible, so it is where the
+        automatic badge is disclosed — with the switch that turns it off."""
+        self._run_github_success()
+        self.secho.assert_any_call(
+            "🏷️ Pull requests published by GitPR carry a GitPR badge with the linter counts of the diff.\n"
+            "Set GITPR_BADGE=false to publish without it.\n",
+            dim=True,
+        )
+
+    def test_nothing_is_disclosed_when_the_configuration_fails(self):
+        """No forge, no publishing — so no badge to explain either."""
+        self.resolve.side_effect = _provider_factory(error_status=500)
+        self.prompt.side_effect = ["ghp_token123"]
+        core.run_scm_init_wizard()
+        disclosed = [
+            call
+            for call in self.secho.call_args_list
+            if "GITPR_BADGE" in str(call.args[0])
+        ]
+        self.assertEqual(disclosed, [])
+
     # -- declined detection / manual forge key ---------------------------
 
     def test_declined_detection_prompts_forge_key_and_keeps_default_base_url(self):

@@ -273,6 +273,16 @@ FIELDS = (
         default="true",
     ),
     ConfigField(
+        key="GITPR_BADGE",
+        label=__("Pull Request Badge"),
+        description=__(
+            "Adds a GitPR badge with the linter counts to published pull request bodies. Enabled by default; false hides it."
+        ),
+        category="general",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
         key="GITPR_SHOW_LOGS",
         label=__("Save General Logs"),
         description=__(

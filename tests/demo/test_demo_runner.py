@@ -140,8 +140,8 @@ class TestArtifacts:
     def test_commit_artifact_is_the_pipeline_commit_message(self, state):
         assert state.artifacts["commit"] == state.scenario.commit_message
 
-    def test_pr_artifact_is_the_pipeline_description(self, state):
-        assert state.artifacts["pr"] == state.scenario.pr_description
+    def test_pr_artifact_starts_with_the_pipeline_description(self, state):
+        assert state.artifacts["pr"].startswith(state.scenario.pr_description)
 
     def test_review_artifact_carries_the_linter_alerts(self, state):
         """Composed the way the local review flow composes it."""
@@ -180,6 +180,48 @@ class TestArtifacts:
             "review",
             "pr",
         }
+
+
+class TestTheBadgeOnThePrStep:
+    """The PR step shows the badge a publish would attach.
+
+    The tour replays where a real run measures, so the counts come from the
+    scenario's own linter block: no rule is read and no diff is linted.
+    """
+
+    def test_the_pr_artifact_carries_the_badge(self, state):
+        assert "img.shields.io/badge/GitPR" in state.artifacts["pr"]
+
+    def test_the_badge_closes_the_body(self, state):
+        """It is a footer under the description, not a replacement."""
+        assert state.artifacts["pr"].rstrip().endswith("(https://gitpr.natanfiuza.dev.br/)")
+
+    def test_a_lone_warning_is_yellow(self, state):
+        """laravel-bug-fix records one warning and no errors."""
+        assert "GitPR-0_errors_%C2%B7_1_warning-yellow" in state.artifacts["pr"]
+
+    def test_a_recorded_error_is_red(self):
+        state = new_state("security-issue")
+
+        assert "GitPR-1_error_%C2%B7_1_warning-red" in state.artifacts["pr"]
+
+    def test_the_counts_come_from_the_scenario_not_from_the_working_tree(
+        self, tmp_path, monkeypatch
+    ):
+        """Outside a repository there are no rules, so a real lint would find
+        nothing to report — the badge is there all the same, saying what the
+        scenario recorded."""
+        monkeypatch.chdir(tmp_path)
+
+        state = new_state("security-issue")
+
+        assert "1_error_%C2%B7_1_warning-red" in state.artifacts["pr"]
+
+    def test_the_step_explains_where_the_badge_comes_from(self, state):
+        """A raw shields.io line under the body needs saying out loud."""
+        state.current_step = DemoStep.PR_GENERATION
+
+        assert "gitpr --skill" in step_intro(state)
 
 
 class TestStepCopy:

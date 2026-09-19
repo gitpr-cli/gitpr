@@ -1841,6 +1841,17 @@ def run_scm_init_wizard():
         bold=True,
     )
 
+    # Configured forge means pull requests are about to be published, and those
+    # carry the GitPR badge. Said here, once, at the moment that starts being
+    # true — never as a prompt, and never again after this wizard.
+    click.secho(
+        __(
+            "🏷️ Pull requests published by GitPR carry a GitPR badge with the linter counts of the diff.\n"
+            "Set GITPR_BADGE=false to publish without it.\n"
+        ),
+        dim=True,
+    )
+
 
 def get_branch_history_text():
     """Compiles the Git Log and PR Cache of the current branch to generate the epic context."""

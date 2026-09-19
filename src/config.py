@@ -327,6 +327,22 @@ def suggest_reviewers_enabled():
     )
 
 
+def badge_enabled():
+    """Returns True if published PR bodies get the GitPR badge (default True).
+
+    Read-only opt-out: set GITPR_BADGE=false in ~/.gitpr/.env to disable.
+    This variable is never auto-written to .env.
+    """
+    load_dotenv(ENV_FILE)
+    return os.getenv("GITPR_BADGE", "true").strip().lower() not in (
+        "false",
+        "0",
+        "no",
+        "off",
+        "n",
+    )
+
+
 def get_reviewer_suggestion_settings():
     """Returns the reviewer suggestion settings from ~/.gitpr/.env.
 

@@ -4,6 +4,10 @@
   <img src="https://raw.githubusercontent.com/natanfiuza/gitpr/main/docs/logo.png" alt="GitPR Logo" width="150">
 </p>
 
+<p align="center">
+  <a href="https://gitpr.natanfiuza.dev.br/"><img src="https://img.shields.io/badge/GitPR-quality--checked-blue" alt="GitPR"></a>
+</p>
+
 O GitPR CLI é uma ferramenta de automação via linha de comandos que utiliza inteligência artificial do **Google Gemini**, **DeepSeek** e **Ollama** para analisar as suas alterações de código (git diff) ou ficheiros inteiros. A ferramenta gera automaticamente mensagens de commit no padrão *Conventional Commits*, descrições detalhadas de Pull Request e revisões profundas de código com foco na redução da dívida técnica.
 
 🌐 **Site:** [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/) · 📂 **Repositório:** [https://github.com/gitpr-cli/gitpr.git](https://github.com/gitpr-cli/gitpr.git)
@@ -133,6 +137,7 @@ A ferramenta irá sincronizar com o remoto (`git fetch`), comparar as suas alter
 Pode passar as seguintes *flags* para ações específicas:
 
 * `gitpr demo`: **Visita guiada** sobre um diff de exemplo que acompanha a ferramenta — a mensagem de commit, a revisão de código e a descrição do pull request, produzidas pelo pipeline real sobre um exemplo gravado. Não precisa de chave de API, de repositório Git nem de ligação, o que faz dela a primeira coisa a correr numa máquina nova. Use `--scenario <name>` para outro exemplo, `--lang <code>` para outro idioma, `--no-tui` para texto simples. 📖 [Documentação completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.pt_pt.md)
+* `gitpr badge`: **Selo de adoção para o seu README.** Imprime o snippet Markdown — `--readme` imprime apenas a linha, `--style` escolhe o estilo do shields.io (`flat`, `flat-square`, `for-the-badge`). Nada é escrito no seu README. Os pull requests publicados trazem um selo próprio, com as contagens do linter do diff; `GITPR_BADGE=false` desliga-o. 📖 [Documentação completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/badge.pt_pt.md)
 * `-c` ou `--commit`: Executa um `git diff` local e exibe **apenas a mensagem de commit sugerida**.
 * `-r` ou `--review`: Realiza um **Code Review** detalhado das alterações locais.
 * `-f` ou `--fullreview`: Realiza um **Code Review Completo** analisando todas as alterações desde o ramo remoto.
@@ -213,6 +218,22 @@ Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>
 O trailer é anexado programaticamente (nunca pela IA) em todos os fluxos: sugestão na consola (`gitpr -c`), hook `prepare-commit-msg`, auto-commit (`--no-edit`), TUI de publicação de PR e a ferramenta MCP `generate_commit_message`. É idempotente — nunca é duplicado quando a mensagem já o contém — e permanece oculto do ecrã de edição da TUI, sendo injetado apenas na execução do commit.
 
 📖 **Documentação completa:** [docs/commit-message-ia.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/commit-message-ia.md)
+
+## 🏷️ Selo de Pull Request
+
+Todo o pull request que o GitPR publica traz um selo no rodapé do corpo, com o que o linter local contou naquele diff:
+
+```text
+GitPR | 0 errors · 2 warnings
+```
+
+É montado a partir de uma medição real, nunca de uma alegação: vermelho quando há um achado bloqueante, amarelo para aviso, verde quando as regras não encontraram nada — e **nenhum selo quando não há regras de linter configuradas**, porque um selo verde sobre um diff que ninguém verificou diria algo que o GitPR não pode sustentar. Vem ligado por predefinição; `GITPR_BADGE=false` desliga-o, e `gitpr --skill` é o que lhe dá regras para contar.
+
+Para o seu próprio README existe um selo estático. O `gitpr badge --readme` imprime a linha e não escreve nada — colá-la é decisão sua:
+
+[![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
+
+📖 **Documentação completa:** [docs/badge.pt_pt.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/badge.pt_pt.md)
 
 ## 🧠 Arquitetura Multi-Modelo (IA Agnóstica)
 
@@ -426,6 +447,7 @@ Se deseja implementar o GitPR como uma barreira de qualidade automatizada na sua
 ### Funcionalidades Principais
 
 * [**Visita Guiada (gitpr demo)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.pt_pt.md) — Como o subcomando `gitpr demo` percorre a mensagem de commit, a revisão de código e a descrição do pull request sobre um exemplo gravado, sem chave de API, sem repositório e sem rede.
+* [**Selo de Pull Request**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/badge.pt_pt.md) — O que diz o selo que o GitPR anexa aos pull requests publicados, onde é anexado, quando fica de fora e como imprimir o estático para o seu próprio README.
 * [**Pull Request (Modo Padrão)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pr-descricao-padrao.md) — Fluxo completo para gerar descrições de PR sem flags.
 * [**Publicador de Pull Request (TUI)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.pt_pt.md) — Como rever e publicar Pull Requests diretamente no GitHub pelo terminal.
 * [**Code Review com IA**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/code-review-ia.md) — Guia dos modos de review (`--review`, `--fullreview`) e auditoria de ficheiros (`--input`).

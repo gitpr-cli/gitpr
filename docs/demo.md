@@ -50,7 +50,7 @@ The tour is linear: six screens, in this order, each with a heading, a line of f
 | 2 | **The example change** | The unified diff — code, in English, in every language |
 | 3 | **Commit message** | What `gitpr -c` writes for that diff: a Conventional Commits subject plus the reasoning that does not fit in it |
 | 4 | **Code review** | What `gitpr -r` reports, composed exactly as the local review is: the linter alerts first, the review below |
-| 5 | **Pull request description** | What `gitpr` writes for the branch: what changed, why, and what the reviewer should look at |
+| 5 | **Pull request description** | What `gitpr` writes for the branch: what changed, why, and what the reviewer should look at — plus the badge a publish attaches, counted from the recorded linter alerts |
 | 6 | **Next steps** | `gitpr --init` for the real thing, the documentation link, and how to run the tour again |
 
 ### 2.1 Keys
@@ -148,4 +148,4 @@ The tour introduces **no new configuration**. It reads what the rest of the tool
 
 No key, token, model or path variable is read: on a machine with an empty `~/.gitpr/`, `gitpr demo` is the one command that still works.
 
-> **Note:** See also the [Code Review documentation](code-review-ia.md) for what the fourth step is previewing, and the [Commit Messages documentation](commit-message-ia.md) for the third.
+> **Note:** See also the [Code Review documentation](code-review-ia.md) for what the fourth step is previewing, the [Commit Messages documentation](commit-message-ia.md) for the third, and the [Badge documentation](badge.md) for the mark at the foot of the fifth.

@@ -50,7 +50,7 @@ La visite est linéaire : six écrans, dans cet ordre, chacun avec un titre, une
 | 2 | **L'exemple de modification** | Le diff unifié — du code, en anglais, dans toutes les langues |
 | 3 | **Message de commit** | Ce que `gitpr -c` écrit pour ce diff : un sujet au format Conventional Commits plus le raisonnement qui n'y tient pas |
 | 4 | **Revue de code** | Ce que `gitpr -r` rapporte, composé exactement comme la revue locale : les alertes du linter d'abord, la revue en dessous |
-| 5 | **Description de la pull request** | Ce que `gitpr` écrit pour la branche : ce qui a changé, pourquoi, et ce que le relecteur doit regarder |
+| 5 | **Description de la pull request** | Ce que `gitpr` écrit pour la branche : ce qui a changé, pourquoi, et ce que le relecteur doit regarder — plus le badge qu'une publication ajoute, compté à partir des alertes enregistrées du linter |
 | 6 | **Étapes suivantes** | `gitpr --init` pour la vraie chose, le lien de la documentation et comment relancer la visite |
 
 ### 2.1 Touches
@@ -148,4 +148,4 @@ La visite n'introduit **aucune configuration nouvelle**. Elle lit ce que le rest
 
 Aucune variable de clé, de jeton, de modèle ou de chemin n'est lue : sur une machine au `~/.gitpr/` vide, `gitpr demo` est la seule commande qui fonctionne encore.
 
-> **Note :** Voir aussi la [documentation de Revue de Code](code-review-ia.fr_fr.md) pour ce que prévisualise la quatrième étape, et celle des [Messages de Commit](commit-message-ia.fr_fr.md) pour la troisième.
+> **Note :** Voir aussi la [documentation de Revue de Code](code-review-ia.fr_fr.md) pour ce que prévisualise la quatrième étape, celle des [Messages de Commit](commit-message-ia.fr_fr.md) pour la troisième, et celle du [Badge](badge.fr_fr.md) pour la marque au bas de la cinquième.
