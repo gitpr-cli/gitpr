@@ -13,6 +13,8 @@ from enum import Enum
 
 import click
 
+from src.branding.badge_builder import append_badge, build_pr_badge
+from src.branding.badge_data import BadgeCounts
 from src.doc_links import doc_url
 from src.demo.fake_ai_provider import demo_pipeline
 from src.demo.scenarios import DemoScenario, load_scenario
@@ -98,9 +100,18 @@ def step_intro(state):
         )
 
     if state.current_step is DemoStep.PR_GENERATION:
-        return __(
-            "What `gitpr` writes for the branch: a pull request description "
-            "with what changed, why, and what the reviewer should look at."
+        return "\n\n".join(
+            [
+                __(
+                    "What `gitpr` writes for the branch: a pull request description "
+                    "with what changed, why, and what the reviewer should look at."
+                ),
+                __(
+                    "The badge at the end is attached when the pull request is "
+                    "published, with what the linter found. It only appears once "
+                    "you have linter rules configured: run `gitpr --skill`."
+                ),
+            ]
         )
 
     if state.current_step is DemoStep.NEXT_STEPS:
@@ -186,7 +197,9 @@ def build_artifacts(scenario):
     """Generate the three artifacts the tour shows, once.
 
     The review is composed with the linter alerts exactly as the local review
-    flow composes it, so the screen matches what `gitpr -r` writes to disk.
+    flow composes it, so the screen matches what `gitpr -r` writes to disk. The
+    pull request carries the badge a publish would attach, counted from the
+    same recorded alerts.
     """
     from src.core import generate_pr_content
 
@@ -198,8 +211,26 @@ def build_artifacts(scenario):
     return {
         "commit": _required(commit, "commit_message"),
         "review": compose_review_content(_required(review, "review"), scenario.linter),
-        "pr": _required(pr, "pr_description"),
+        "pr": append_badge(
+            _required(pr, "pr_description"), _recorded_badge(scenario.linter)
+        ),
     }
+
+
+def _recorded_badge(linter):
+    """The badge this scenario's alerts would produce.
+
+    The tour replays where a real run measures: the counts come from the
+    scenario's own linter block, so no rule is read from disk and no diff is
+    linted. A scenario whose block is empty shows the badge of a clean run —
+    rules did run there, they just found nothing.
+    """
+    return build_pr_badge(
+        BadgeCounts(
+            errors=len(linter.get("errors", [])),
+            warnings=len(linter.get("warnings", [])),
+        )
+    )
 
 
 def _required(result, key):

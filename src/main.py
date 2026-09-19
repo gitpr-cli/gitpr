@@ -1455,6 +1455,13 @@ def cli(
     if no_publish:
         return
 
+    # The badge goes on here, before either publisher reads `pr_data`: on screen
+    # in the TUI, and in the request `--no-edit` sends. Nothing is attached when
+    # the user opted out or when the linter had no rules to run.
+    from src.branding.badge_builder import attach_pr_badge
+
+    attach_pr_badge(pr_data, diff_text)
+
     # ── --no-edit: auto-commit + direct publish ──
     if no_edit:
         from src.tui_issue import validate_or_request_scm_token
@@ -1910,6 +1917,67 @@ def demo(scenario_name, lang, no_tui):
     except DemoScenarioError as exc:
         click.secho(f"❌ {exc}", fg="red", err=True)
         raise click.exceptions.Exit(1) from exc
+
+
+@cli.command(
+    "badge",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("badge.md"),
+)
+@click.option(
+    "--readme",
+    "readme",
+    is_flag=True,
+    help=__("Prints only the snippet, ready to paste into a README."),
+)
+@click.option(
+    "--style",
+    "style",
+    metavar="<style>",
+    default="flat",
+    show_default=True,
+    help=__("shields.io style: flat, flat-square or for-the-badge."),
+)
+def badge(readme, style):
+    """Adoption badge for a project's README.
+
+    Prints the Markdown for a static badge. Nothing is written to your README —
+    the snippet is printed so you can paste it where you want it.
+    """
+    from src.branding.badge_builder import (
+        DEFAULT_STYLE,
+        VALID_STYLES,
+        build_readme_badge,
+    )
+
+    if style not in VALID_STYLES:
+        click.secho(
+            __(
+                "⚠️ Unknown style '{style}' — falling back to '{default}'.",
+                style=style,
+                default=DEFAULT_STYLE,
+            ),
+            fg="yellow",
+            err=True,
+        )
+
+    snippet = build_readme_badge(style)
+
+    # --readme is the pipe-friendly form: the snippet and nothing else.
+    if readme:
+        click.echo(snippet)
+        return
+
+    click.secho("🏷️  " + __("GitPR badge for your README"), fg="cyan", bold=True)
+    click.echo("")
+    click.echo(snippet)
+    click.echo("")
+    click.secho(
+        __(
+            "Pull requests published by GitPR carry a badge too, with the linter counts of the diff."
+        ),
+        dim=True,
+    )
 
 
 # ============================================================
@@ -2705,6 +2773,19 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
     )
 
     head_branch = get_current_branch()
+
+    # This path publishes a body the user never saw, so it says what went into
+    # it. The TUI needs no such line: the badge is in the text area there.
+    from src.branding.badge_builder import has_badge
+
+    if has_badge(pr_body):
+        click.secho(
+            __(
+                "🏷️ A GitPR badge was added to the PR body. Set GITPR_BADGE=false to publish without it."
+            ),
+            dim=True,
+        )
+
     if github_flow:
         click.secho("🚀 " + __("Publishing Pull Request to GitHub..."), fg="cyan")
     else:

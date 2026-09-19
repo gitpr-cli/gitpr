@@ -50,7 +50,7 @@ El tour es lineal: seis pantallas, en este orden, cada una con un título, una l
 | 2 | **El cambio de ejemplo** | El diff unificado — código, en inglés, en todos los idiomas |
 | 3 | **Mensaje de commit** | Lo que `gitpr -c` escribe para ese diff: un asunto en Conventional Commits más el razonamiento que no cabe en él |
 | 4 | **Revisión de código** | Lo que reporta `gitpr -r`, compuesto exactamente como se compone la revisión local: los avisos del linter primero, la revisión debajo |
-| 5 | **Descripción del pull request** | Lo que `gitpr` escribe para la rama: qué cambió, por qué y qué debe mirar el revisor |
+| 5 | **Descripción del pull request** | Lo que `gitpr` escribe para la rama: qué cambió, por qué y qué debe mirar el revisor — más la insignia que añade una publicación, contada de las alertas grabadas del linter |
 | 6 | **Próximos pasos** | `gitpr --init` para lo de verdad, el enlace de la documentación y cómo volver a ejecutar el tour |
 
 ### 2.1 Teclas
@@ -148,4 +148,4 @@ El tour no introduce **ninguna configuración nueva**. Lee lo que ya lee el rest
 
 No se lee ninguna variable de clave, token, modelo o ruta: en una máquina con el `~/.gitpr/` vacío, `gitpr demo` es el único comando que sigue funcionando.
 
-> **Nota:** Consulta también la [documentación de Revisión de Código](code-review-ia.es_es.md) para lo que previsualiza la cuarta etapa, y la de [Mensajes de Commit](commit-message-ia.es_es.md) para la tercera.
+> **Nota:** Consulta también la [documentación de Revisión de Código](code-review-ia.es_es.md) para lo que previsualiza la cuarta etapa, la de [Mensajes de Commit](commit-message-ia.es_es.md) para la tercera, y la de la [Insignia](badge.es_es.md) para la marca al pie de la quinta.

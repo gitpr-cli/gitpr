@@ -50,7 +50,7 @@ A visita é linear: seis ecrãs, por esta ordem, cada um com um título, uma lin
 | 2 | **A alteração de exemplo** | O diff unificado — código, em inglês, em todos os idiomas |
 | 3 | **Mensagem de commit** | O que o `gitpr -c` escreve para esse diff: um assunto no padrão Conventional Commits mais a justificação que não cabe nele |
 | 4 | **Revisão de código** | O que o `gitpr -r` reporta, composto exatamente como a revisão local é: os alertas do linter primeiro, a revisão abaixo |
-| 5 | **Descrição do pull request** | O que o `gitpr` escreve para a branch: o que mudou, porquê, e o que o revisor deve olhar |
+| 5 | **Descrição do pull request** | O que o `gitpr` escreve para a branch: o que mudou, porquê, e o que o revisor deve olhar — mais o selo que uma publicação anexa, contado dos alertas gravados do linter |
 | 6 | **Próximos passos** | O `gitpr --init` para a coisa a sério, a ligação da documentação e como correr a visita outra vez |
 
 ### 2.1 Teclas
@@ -148,4 +148,4 @@ A visita não introduz **nenhuma configuração nova**. Lê o que o resto da fer
 
 Nenhuma variável de chave, token, modelo ou caminho é lida: numa máquina com o `~/.gitpr/` vazio, o `gitpr demo` é o único comando que ainda funciona.
 
-> **Nota:** Veja também a [documentação de Revisão de Código](code-review-ia.pt_pt.md) para o que a quarta etapa está a pré-visualizar, e a de [Mensagens de Commit](commit-message-ia.pt_pt.md) para a terceira.
+> **Nota:** Veja também a [documentação de Revisão de Código](code-review-ia.pt_pt.md) para o que a quarta etapa está a pré-visualizar, a de [Mensagens de Commit](commit-message-ia.pt_pt.md) para a terceira, e a do [Selo](badge.pt_pt.md) para a marca no rodapé da quinta.
