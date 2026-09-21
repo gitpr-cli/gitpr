@@ -187,6 +187,12 @@ CATEGORIES = (
         doc="fix-command.md",
     ),
     Category(
+        "split",
+        __("Split"),
+        __("A mixed working tree turned into atomic commits, one concern each."),
+        doc="split-command.md",
+    ),
+    Category(
         "scm",
         __("SCM / Forge"),
         __("GitHub, GitLab, Bitbucket and Azure DevOps connection."),
@@ -683,6 +689,37 @@ FIELDS = (
         category="fix",
         kind=KIND_TEMPLATE,
         default="fix/gitpr-{datetime}",
+    ),
+    # ------------------------------------------------------------------- Split
+    ConfigField(
+        key="GITPR_SPLIT_MAX_GROUPS",
+        label=__("Maximum Commits"),
+        description=__(
+            "Upper limit on how many atomic commits a plan may propose, so a diff with many small changes is not shredded into as many commits."
+        ),
+        category="split",
+        kind=KIND_INT,
+        default="5",
+    ),
+    ConfigField(
+        key="GITPR_SPLIT_REQUIRE_CONFIRMATION",
+        label=__("Ask Before Committing"),
+        description=__(
+            "Shows the plan and asks for confirmation before the first commit is created."
+        ),
+        category="split",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_SPLIT_MAX_HUNKS",
+        label=__("Maximum Hunks Analysed"),
+        description=__(
+            "Upper limit on how many hunks are sent to the grouping call. Anything beyond it stays ungrouped and uncommitted, with a warning."
+        ),
+        category="split",
+        kind=KIND_INT,
+        default="50",
     ),
     # --------------------------------------------------------------- SCM/Forge
     # The common settings stay ungrouped and always visible; the fields that

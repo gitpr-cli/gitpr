@@ -460,6 +460,7 @@ Se você deseja implementar o GitPR como uma barreira de qualidade automatizada 
 * [**Sistema de Skills e Templates**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/skill-template.md) — Como personalizar o comportamento da IA com arquivos `.gitpr.*.md`.
 * [**Notas de Versão e Changelog (gitpr release)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/release-notes.md) — Como o subcomando `gitpr release` gera o changelog / as notas de versão de um repositório, sugere a próxima versão semântica e publica releases na forge.
 * [**Comando Fix (gitpr fix)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/fix-command.md) — Como o subcomando `gitpr fix` transforma os apontamentos da última revisão em patches que você lê antes de tocarem a sua árvore, classifica cada um por segurança e desfaz um patch aplicado sob demanda.
+* [**Comando Split (gitpr split)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/split-command.md) — Como o subcomando `gitpr split` lê uma árvore de trabalho com várias preocupações, agrupa os hunks por intenção com IA e os transforma em commits atômicos ordenados, sem nunca escrever nos seus arquivos.
 
 ### Configuração e Infraestrutura
 

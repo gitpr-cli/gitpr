@@ -4,7 +4,7 @@ Modules, in dependency order:
   - patch_provenance.py — the data contract (safety classes, candidates, results)
   - patch_extractor.py — reading the code an AI hands back (shared with the chat)
   - patch_safety_classifier.py — SAFE / REVIEW_REQUIRED / EXPERIMENTAL, pure logic
-  - patch_applier.py — the project's first shared git wrapper (apply, check, reverse)
+  - patch_applier.py — re-export shim; the git wrapper moved to src/infrastructure/git/
   - fix_history.py — the applied-patch record that makes --rollback deterministic
   - apply_fix.py — the use case: review -> AI findings -> classify -> dry-run/apply
   - rollback_fix.py — the use case that undoes an applied patch
