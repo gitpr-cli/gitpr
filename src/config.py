@@ -71,6 +71,12 @@ DEFAULT_CONFIG = {
     "GITPR_FIX_REQUIRE_CONFIRMATION": "true",
     "GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE": "true",
     "GITPR_FIX_BRANCH_NAME_TEMPLATE": "fix/gitpr-{datetime}",
+    # Split feature (gitpr split). The two ceilings bound opposite failures: too
+    # many groups shreds one concern across commits, too many units makes the
+    # grouping call answer from a prompt that had to drop most of the diff.
+    "GITPR_SPLIT_MAX_GROUPS": "5",
+    "GITPR_SPLIT_REQUIRE_CONFIRMATION": "true",
+    "GITPR_SPLIT_MAX_HUNKS": "50",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -701,6 +707,45 @@ def _env_bool_default_true(key):
         "off",
         "n",
     )
+
+
+def _env_positive_int(key, fallback):
+    """Parses a GITPR_* positive integer, falling back on anything else.
+
+    Zero and negatives are rejected with the unparseable values: every ceiling
+    in the tool bounds a count, and a ceiling of zero would silently turn
+    "split this" into "split nothing" rather than into an error the user could
+    see.
+    """
+    load_dotenv(ENV_FILE)
+    try:
+        value = int((os.getenv(key) or "").strip() or fallback)
+        if value <= 0:
+            raise ValueError
+    except ValueError:
+        return fallback
+    return value
+
+
+def get_split_settings():
+    """Returns the gitpr split configuration as a flat dict.
+
+    ``max_groups`` caps how many commits a plan may propose: without it a diff
+    holding twenty small concerns comes back as twenty commits, which is a
+    worse history than the one the user started with. ``max_units`` caps how
+    many units reach the grouping call, so an oversized diff degrades into
+    "these units stayed ungrouped" — the units are still reported and still
+    uncommitted — instead of an answer the model gave after most of the diff
+    was cut out from under it. ``require_confirmation`` is what makes ``--apply``
+    ask before the first commit exists.
+    """
+    return {
+        "max_groups": _env_positive_int("GITPR_SPLIT_MAX_GROUPS", 5),
+        "require_confirmation": _env_bool_default_true(
+            "GITPR_SPLIT_REQUIRE_CONFIRMATION"
+        ),
+        "max_units": _env_positive_int("GITPR_SPLIT_MAX_HUNKS", 50),
+    }
 
 
 def get_release_settings():

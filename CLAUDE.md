@@ -31,7 +31,7 @@ src/
 │   ├── patch_provenance.py       # Data contract (safety classes, candidates, results)
 │   ├── patch_extractor.py        # Fenced code blocks → validated unified diffs
 │   ├── patch_safety_classifier.py # SAFE / REVIEW_REQUIRED / EXPERIMENTAL (pure, no I/O)
-│   ├── patch_applier.py          # git apply --check/apply/--reverse, branch, status
+│   ├── patch_applier.py          # DEPRECATED shim → delegates to infrastructure/git/patch_applier.py
 │   ├── fix_history.py            # .gitpr/fix_history.json (what --rollback reads)
 │   ├── apply_fix.py              # review → AI findings → classify → dry-run/apply
 │   └── rollback_fix.py           # history → git apply --reverse
@@ -41,11 +41,22 @@ src/
 │   ├── diff_normalizer.py        # newline normalization, diff validation, Python-side smart excludes
 │   ├── render.py                 # compose/write the review artefact — shared with the local flows
 │   └── remote_pr.py              # forge → diff → engine → linter → optional comment
-├── infrastructure/scm/  # Multi-forge SCM abstraction (ScmProvider)
-│   ├── __init__.py       # Public re-exports (contract, providers, factory)
-│   ├── base.py           # ScmProvider ABC, dataclasses, ScmProviderError
-│   ├── github_provider.py / gitlab_provider.py / bitbucket_provider.py / azure_devops_provider.py
-│   └── factory.py        # resolve_scm_provider() + detect_provider_from_remote()
+├── split/            # Sub-package: atomic commits by hunk (gitpr split, ADR-006)
+│   ├── __init__.py       # Package marker (required for setuptools discovery)
+│   ├── split_plan.py             # Data contract: SplitError, Hunk, OpaqueSection, ChangeUnit, HunkGroup, SplitPlan
+│   ├── hunk_parser.py            # parse_units() / build_patch() — pure text↔model, never runs git
+│   ├── hunk_grouper.py           # Prompt rendering, budget/trimming, the AI grouping call, response validation
+│   ├── generate_split_plan.py    # diff → units → groups → conflict pre-validation → messages. Read-only
+│   └── apply_split_plan.py       # The only split module that mutates: selective staging + one commit per group
+├── infrastructure/   # Boundary code shared by features
+│   ├── scm/              # Multi-forge SCM abstraction (ScmProvider)
+│   │   ├── __init__.py       # Public re-exports (contract, providers, factory)
+│   │   ├── base.py           # ScmProvider ABC, dataclasses, ScmProviderError
+│   │   ├── github_provider.py / gitlab_provider.py / bitbucket_provider.py / azure_devops_provider.py
+│   │   └── factory.py        # resolve_scm_provider() + detect_provider_from_remote()
+│   └── git/
+│       ├── patch_applier.py      # git apply --check/apply/--reverse + --cached wrappers, branch, status
+│       └── selective_stager.py   # stage_hunks / check_units_at_head / unstage_all / index_is_clean
 ├── github_api.py     # DEPRECATED shim → delegates to github_provider.py
 ├── tui_issue.py      # SCM token validation (validate_or_request_scm_token) + TUI entry point
 ├── ui/               # Sub-package: TUI components (Textual)
@@ -128,6 +139,7 @@ docs/
 | `-f` / `--fullreview`    | Full code review       | `git fetch` → diff against remote base → AI + Linter → `.txt`             |
 | `fix` (subcommand)       | Apply review findings   | last cached review → AI findings → `git apply --check` → classify → dry run (or `--apply`) |
 | `review-pr` (subcommand) | Remote PR review        | forge API → PR diff (no checkout) → smart excludes in Python → AI + Linter (YAML only) → `.txt` (+ comment with `--post-comment`) |
+| `split` (subcommand)     | Atomic commits by hunk  | `git diff HEAD` (own flags) → hunks/units → one AI grouping call → `git apply --cached --check` pre-validation → one commit per group, message per group (dry run by default; writes only with `--apply`) |
 | `-i` / `--input`         | File audit             | Entire file → AI (uses `.gitpr.filereview.md`)                            |
 | `-l` / `--linter`        | Static linter          | `git diff` → YAML regex + external linters → console/TUI (no AI)          |
 | `--linter-setup`         | Linter wizard          | Interactive setup of external linters (Checkstyle bridge presets)         |

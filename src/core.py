@@ -549,6 +549,70 @@ def get_git_diff(quiet=False):
         return None
 
 
+#: The flags ``gitpr split`` captures its diff with — and the reason it does not
+#: reuse ``get_git_diff``'s.
+#:
+#: ``-w`` is the important one. It renders a difference that is *only*
+#: whitespace as context, and the context line it emits need not match the file
+#: byte for byte; a patch built from such a diff is either refused by
+#: ``git apply`` or applies content that differs from the working tree. Split's
+#: one guarantee is that the files on disk at the end are byte-identical to the
+#: files on disk at the start, and ``-w`` is what would break it.
+#:
+#: ``-U1`` leaves ``git apply --check`` too little context to anchor a hunk on,
+#: and ``-B`` turns one applicable hunk into a delete-plus-add pair that only
+#: applies in lockstep. ``-M`` is kept and is load-bearing: without rename
+#: detection a rename arrives as a deletion plus an untracked addition, and
+#: split would commit the bare deletion while the new file sat untracked beside
+#: it — which reads as data loss. ``--binary`` is a no-op for text and the only
+#: thing that makes a changed binary file applicable at all.
+SPLIT_DIFF_ARGS = ("--binary", "-M", "-U3")
+
+
+def get_split_diff(quiet=False):
+    """The working tree's uncommitted changes, as ``gitpr split`` needs them.
+
+    Deliberately not ``get_git_diff()``: see :data:`SPLIT_DIFF_ARGS`. No smart
+    excludes and no pathspec either, and for a different reason — a lockfile and
+    its manifest are one change, so excluding the lockfile commits the manifest
+    alone and leaves a tree in which the two disagree. That broken intermediate
+    commit is exactly what this command exists to prevent.
+
+    The diff is taken against **HEAD**, and therefore must be taken *before*
+    anything is unstaged. A staged new file and a staged rename appear here only
+    because the index tracks them; unstage first and they become untracked,
+    out-of-scope and absent from the plan. Hunks captured against HEAD carry
+    HEAD's preimages whatever the index holds, so they still apply cleanly once
+    the index has been reset to HEAD.
+
+    Returns ``None`` when git cannot produce a diff, like ``get_git_diff``.
+    Untracked files are not warned about here: they belong to the plan's own
+    warnings, which is what ``--dry-run`` prints.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", *SPLIT_DIFF_ARGS, "HEAD"],
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        if not quiet:
+            click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
+        return None
+    except FileNotFoundError:
+        if not quiet:
+            click.secho(
+                __("❌ Git not found. Make sure it is installed and in the PATH."),
+                fg="red",
+            )
+        return None
+
+
 def is_merge_in_progress():
     """Returns True when a merge is in progress (MERGE_HEAD exists).
 

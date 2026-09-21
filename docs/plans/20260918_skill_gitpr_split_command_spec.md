@@ -217,4 +217,4 @@ Classificada como Tier 2 (diferenciação e retenção, médio esforço) porque,
 
 1. Crie a sua documentação própria em docs/
 2. Adicione em README.md e em suas versões em outros idiomas
-3. Se alguma variável ambiente foi criada e utilizada nesta feature adicionar na interface de Configuração na seção nova Demo 
+3. Se alguma variável ambiente foi criada e utilizada nesta feature adicionar na interface de Configuração na seção nova Split 

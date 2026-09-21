@@ -19,6 +19,7 @@ from src.config import (
     check_internet_connection,
     get_ai_provider,
     get_reviewer_suggestion_settings,
+    get_split_settings,
     setup_environment,
     suggest_reviewers_enabled,
 )
@@ -33,6 +34,8 @@ from src.core import (
     get_doc_url,
     get_git_diff,
     get_git_full_diff,
+    get_split_diff,
+    get_uncommitted_summary,
     install_git_hooks,
     is_merge_in_progress,
     resolve_output_path,
@@ -2414,6 +2417,229 @@ def review_pr(pr_number, ai_provider, post_comment):
     )
 
     render_review_result(result.review, result.linter_results, output_filename)
+
+
+@cli.command(
+    "split",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("split-command.md"),
+)
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    help=__("Prints the plan and stops. Never prompts and never writes."),
+)
+@click.option(
+    "--apply",
+    "apply_flag",
+    is_flag=True,
+    help=__("Stages and commits each group of the plan."),
+)
+@click.option(
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help=__("Skips the confirmation prompt. It never bypasses the per-group check."),
+)
+@click.option(
+    "--max-groups",
+    "max_groups",
+    type=int,
+    metavar="<n>",
+    help=__("Upper limit on how many commits the plan may propose."),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def split(dry_run, apply_flag, assume_yes, max_groups, ai_provider):
+    """Turns a working tree holding several concerns into atomic commits.
+
+    Reads the uncommitted changes, asks the AI to group them by intent, and
+    proposes one commit per group — each with a message written for that group
+    alone. The working tree is never written to: the files end up byte-identical
+    to how they started, with the work redistributed across commits.
+
+    Without a flag the plan is printed and you are offered the chance to apply
+    it. --dry-run prints it and stops. --apply prints it, confirms once, and
+    stages and commits every group.
+    """
+    from src.infrastructure.git.patch_applier import is_git_repository
+    from src.split.apply_split_plan import apply_split_plan
+    from src.split.generate_split_plan import generate_split_plan
+    from src.split.split_plan import SplitError
+
+    if dry_run and apply_flag:
+        click.secho(
+            __("❌ --dry-run and --apply cannot be used together."), fg="red", err=True
+        )
+        raise click.exceptions.Exit(1)
+
+    if not is_git_repository():
+        click.secho(__("❌ Not a Git repository."), fg="red", err=True)
+        raise click.exceptions.Exit(1)
+
+    settings = get_split_settings()
+
+    try:
+        plan = generate_split_plan(
+            get_split_diff(),
+            untracked=get_uncommitted_summary()["untracked"],
+            max_groups=max_groups or settings["max_groups"],
+            max_units=settings["max_units"],
+            provider=ai_provider,
+        )
+    except SplitError as exc:
+        click.secho(str(exc), fg="yellow", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    _print_split_plan(plan)
+    for warning in plan.warnings:
+        click.secho(f"   {warning}", fg="yellow")
+
+    if dry_run:
+        click.echo()
+        click.secho(__("ℹ️ Dry run: nothing was staged and nothing was committed."), fg="cyan")
+        return
+
+    # Bare mode always asks, whatever the configuration says. With --apply the
+    # user has already stated the intent, so GITPR_SPLIT_REQUIRE_CONFIRMATION can
+    # legitimately skip the question; with no flag at all the question *is* the
+    # command, and skipping it would make `gitpr split` commit on its own.
+    ask = not apply_flag or settings["require_confirmation"]
+    if ask and not assume_yes:
+        if not click.confirm(
+            __("❓ Stage and commit these {count} group(s)?", count=plan.total_groups),
+            default=False,
+        ):
+            click.secho(__("❌ Operation cancelled by user."), fg="yellow")
+            return
+
+    try:
+        result = apply_split_plan(plan)
+    except SplitError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    _report_split_result(result)
+
+
+def _print_split_plan(plan):
+    """The plan, as the user reads it before anything happens.
+
+    Every group is shown with its files and its units, because the plan is the
+    deliverable and the user is being asked to trust it with a commit. The
+    ungrouped units are listed too: they are not in any commit, and a plan that
+    quietly omitted them would read as complete when it is not.
+    """
+    click.echo()
+    click.secho(
+        __(
+            "📦 Split plan: {count} commit(s) proposed",
+            count=plan.total_groups,
+        ),
+        fg="cyan",
+        bold=True,
+    )
+    for group in plan.groups:
+        click.echo()
+        click.secho(f"  {group.group_id}  {group.intent_label}", fg="green", bold=True)
+        click.echo(
+            "      "
+            + __(
+                "{units} change unit(s) in {files}",
+                units=len(group.units),
+                files=", ".join(group.file_paths),
+            )
+        )
+        if group.justification:
+            click.secho(f"      {group.justification}", dim=True)
+        if group.generated_commit_message:
+            click.secho(
+                "      "
+                + __("message: {message}", message=group.generated_commit_message),
+                fg="cyan",
+            )
+
+    if plan.ungrouped_units:
+        click.echo()
+        click.secho(
+            __(
+                "  Not grouped ({count} unit(s), left in the working tree):",
+                count=len(plan.ungrouped_units),
+            ),
+            fg="yellow",
+        )
+        for unit in plan.ungrouped_units:
+            click.echo(f"      {unit.id}  {unit.file_path}")
+    click.echo()
+
+
+def _report_split_result(result):
+    """What the run did, including the groups that did not make it.
+
+    A failure is reported in full — which group the run stopped at, git's own
+    words about why, and the one thing the user cannot infer afterwards: whether
+    the index is clean or is holding that group staged. Silence about a partial
+    run would leave them to reconstruct it from ``git status``.
+    """
+    if result.commits:
+        click.echo()
+        click.secho(
+            __("✅ {count} commit(s) created:", count=result.total_commits),
+            fg="green",
+            bold=True,
+        )
+        for group_id, sha in result.commits:
+            click.echo(f"  {group_id}  {sha[:10]}")
+
+    if result.completed:
+        return
+
+    click.echo()
+    click.secho(
+        __(
+            "🛑 The run stopped at {group_id}: {error}",
+            group_id=result.stopped_at,
+            error=result.error,
+        ),
+        fg="red",
+        bold=True,
+    )
+    if result.staged_but_not_committed:
+        click.secho(
+            __(
+                "   That group is staged and was not committed. Commit it once the cause is fixed, or run 'git reset' to unstage it."
+            ),
+            fg="yellow",
+        )
+    else:
+        click.secho(
+            __("   Its changes were unstaged and are back in the working tree."),
+            fg="yellow",
+        )
+    if result.commits:
+        click.secho(
+            __(
+                "   The {count} commit(s) above are real and are left in place; 'git reset' undoes them.",
+                count=result.total_commits,
+            ),
+            fg="yellow",
+        )
+    if result.uncommitted_units:
+        click.secho(
+            __(
+                "   Still uncommitted: {count} change unit(s).",
+                count=len(result.uncommitted_units),
+            ),
+            fg="yellow",
+        )
 
 
 def _env_flag(name, default="false"):
