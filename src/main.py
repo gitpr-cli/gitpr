@@ -2642,6 +2642,180 @@ def _report_split_result(result):
         )
 
 
+@cli.group(
+    "tests",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=False,
+)
+def tests_group():
+    """AI-powered test suite generation and scaffolding."""
+    pass
+
+
+@tests_group.command(
+    "generate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+@click.option(
+    "--file",
+    "target_file",
+    type=click.Path(),
+    help=__("Generates tests specifically for this file instead of the full diff."),
+)
+@click.option(
+    "--finding",
+    "finding_id",
+    type=str,
+    help=__("Generates tests targeting a specific review finding ID (e.g. FIX-001)."),
+)
+@click.option(
+    "--framework",
+    "framework_override",
+    type=str,
+    help=__("Forces the test framework (pest, phpunit, jest, vitest, pytest)."),
+)
+@click.option(
+    "--apply",
+    "apply_flag",
+    is_flag=True,
+    help=__("Writes the generated test file directly to disk."),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def tests_generate(target_file, finding_id, framework_override, apply_flag, ai_provider):
+    """Generates complete, executable test files for current changes or specific targets."""
+    from src.application.use_cases.generate_test_file import generate_test_file
+    from src.domain.tests_generation.test_content_types import TestGenerationTarget
+    from src.core import get_git_diff
+    import subprocess
+    import os
+
+    source_type = "diff"
+    diff_content = ""
+
+    if finding_id:
+        source_type = "finding"
+        # Find context from last review findings if available
+        try:
+            from src.fix.apply_fix import collect_candidates, find_candidate, resolve_review
+            record = resolve_review()
+            candidates = collect_candidates(record, quiet=True)
+            cand = find_candidate(candidates, finding_id)
+            target_file = cand.finding.file_path
+            diff_content = (
+                f"Finding: {cand.finding.id} - {cand.finding.message}\n"
+                f"File: {cand.finding.file_path}:{cand.finding.line_start}-{cand.finding.line_end}\n"
+                f"Severity: {cand.finding.severity} | Category: {cand.finding.category}\n"
+                f"Suggested Test: {cand.finding.suggested_test}\n"
+                f"Diff:\n{cand.diff or '(No diff available)'}"
+            )
+        except Exception as e:
+            click.secho(f"⚠️ {e}", fg="yellow")
+            diff_content = f"Finding ID: {finding_id}"
+    elif target_file:
+        source_type = "file"
+        try:
+            res = subprocess.run(
+                ["git", "diff", "HEAD", "--", target_file],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            diff_content = res.stdout if res.returncode == 0 else ""
+            if not diff_content.strip() and os.path.exists(target_file):
+                # Fallback to reading file content if no diff
+                with open(target_file, "r", encoding="utf-8", errors="replace") as f:
+                    diff_content = f.read()
+        except Exception:
+            diff_content = ""
+    else:
+        diff_content = get_git_diff() or ""
+
+    if not diff_content.strip():
+        click.secho(__("❌ No changes or target content found to generate tests."), fg="red")
+        raise click.exceptions.Exit(1)
+
+    target = TestGenerationTarget(
+        source_type=source_type,
+        file_path=target_file,
+        finding_id=finding_id,
+        diff_content=diff_content,
+    )
+
+    click.secho("🧪 " + __("Analyzing diff and generating test file..."), fg="cyan")
+    gen_result = generate_test_file(
+        target=target,
+        repo_path=".",
+        ai_provider=ai_provider,
+        framework_override=framework_override,
+        apply=False,  # dry-run first
+        quiet=False,
+    )
+
+    for warning in gen_result.warnings:
+        click.secho(f"⚠️ {warning}", fg="yellow")
+
+    if not gen_result.content:
+        click.secho(__("❌ Test generation failed."), fg="red")
+        raise click.exceptions.Exit(1)
+
+    click.echo()
+    click.secho(f"📋 {__('Target Framework:')} {gen_result.scaffold.framework.value.upper()}", fg="green", bold=True)
+    click.secho(f"📂 {__('Target Test Path:')} {gen_result.scaffold.target_test_path}", fg="green", bold=True)
+    if finding_id:
+        click.secho(f"🎯 {__('Target Finding:')} {finding_id}", fg="cyan")
+
+    if gen_result.covered_scenarios:
+        click.echo()
+        click.secho(__("🧪 Covered Scenarios:"), fg="cyan", bold=True)
+        for sc in gen_result.covered_scenarios:
+            click.echo(f"  • {sc}")
+
+    click.echo()
+    click.secho("--- " + __("Generated Test Code") + " ---", fg="bright_black")
+    click.echo(gen_result.content)
+    click.secho("---", fg="bright_black")
+    click.echo()
+
+    if not apply_flag:
+        click.secho(__("ℹ️ Dry-run mode. Run with --apply to write to disk."), fg="yellow")
+        return
+
+    # Mode --apply
+    if gen_result.scaffold.already_exists:
+        click.secho(
+            __(
+                "⚠️ Warning: Target test file '{path}' already exists.",
+                path=gen_result.scaffold.target_test_path,
+            ),
+            fg="yellow",
+            bold=True,
+        )
+        if not click.confirm(__("❓ Overwrite existing test file?"), default=False):
+            click.secho(__("❌ Overwrite cancelled by user."), fg="yellow")
+            return
+
+    if not click.confirm(__("❓ Write test file to disk?"), default=True):
+        click.secho(__("❌ Operation cancelled by user."), fg="yellow")
+        return
+
+    dest_path = os.path.normpath(gen_result.scaffold.target_test_path)
+    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+    with open(dest_path, "w", encoding="utf-8", errors="replace") as f:
+        f.write(gen_result.content)
+
+    click.secho(
+        __("✅ Test file successfully created at '{path}'!", path=gen_result.scaffold.target_test_path),
+        fg="green",
+        bold=True,
+    )
+
+
 def _env_flag(name, default="false"):
     """Reads a boolean environment variable (true/1/yes/y)."""
     return os.getenv(name, default).lower() in ("true", "1", "yes", "y")

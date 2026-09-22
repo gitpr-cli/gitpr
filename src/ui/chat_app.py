@@ -541,15 +541,41 @@ class ChatApp(App):
         history_to_send = history[:-1]
         new_message = history[-1]["content"]
 
-        response = call_ai_chat(
-            provider=self.provider,
-            api_key=self.api_key,
-            api_model=self.api_model,
-            system_instruction=self.system_instruction,
-            chat_history=history_to_send,
-            new_message=new_message,
-            quiet=True,  # Don't print terminal loading (sys.stdout) since we're in a TUI
-        )
+        # Delegate /tests directly to shared use case if requested
+        if new_message.strip().lower() in ("/tests", "/testes", "/pruebas", "/tests"):
+            from src.application.use_cases.generate_test_file import generate_test_file
+            from src.domain.tests_generation.test_content_types import TestGenerationTarget
+
+            current_diff = self.memory.get_latest_diff() or ""
+            target = TestGenerationTarget(
+                source_type="diff",
+                diff_content=current_diff,
+            )
+            gen = generate_test_file(
+                target=target,
+                repo_path=".",
+                ai_provider=self.provider,
+                apply=False,
+                quiet=True,
+            )
+            if gen and gen.content:
+                scenarios_md = ""
+                if gen.covered_scenarios:
+                    scenarios_md = "\n\n**" + __("Covered Scenarios:") + "**\n" + "\n".join(f"- {s}" for s in gen.covered_scenarios)
+                fw_md = f"**{__('Target Framework:')}** `{gen.scaffold.framework.value}`\n**{__('Suggested Path:')}** `{gen.scaffold.target_test_path}`\n\n"
+                response = f"{fw_md}```{gen.scaffold.framework.value}\n{gen.content}\n```{scenarios_md}"
+            else:
+                response = None
+        else:
+            response = call_ai_chat(
+                provider=self.provider,
+                api_key=self.api_key,
+                api_model=self.api_model,
+                system_instruction=self.system_instruction,
+                chat_history=history_to_send,
+                new_message=new_message,
+                quiet=True,  # Don't print terminal loading (sys.stdout) since we're in a TUI
+            )
 
         # Update the interface from the main thread
         def update_ui(result):

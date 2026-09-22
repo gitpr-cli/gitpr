@@ -153,6 +153,7 @@ SKILL_FILES_BY_TYPE = {
     "blame": ".gitpr.blame.md",
     "release": ".gitpr.release.md",
     "fix": ".gitpr.fix.md",
+    "tests": ".gitpr.tests.md",
 }
 SKILL_TYPES = tuple(SKILL_FILES_BY_TYPE)
 
