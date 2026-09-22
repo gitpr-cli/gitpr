@@ -1138,5 +1138,16 @@
   "🤖 Welcome to GitPR! Let's configure your AI engine.": "🤖 Bem-vindo ao GitPR! Vamos configurar o seu motor de IA.",
   "🧠 File {file_name} (Skill) found and loaded!": "🧠 Arquivo {file_name} (Skill) encontrado e carregado!",
   "🧪 Auto-Patch: Code extracted from message #{n} and saved to {file}!": "🧪 Auto-Patch: Código extraído da mensagem #{n} e salvo em {file}!",
-  "🧹 Conversation cleared. A new session has started.": "🧹 Conversa limpa. Uma nova sessão foi iniciada."
+  "🧹 Conversation cleared. A new session has started.": "🧹 Conversa limpa. Uma nova sessão foi iniciada.",
+  "Possible AWS Access Key ID hardcoded in {file_name} (Line {line_number}).": "Possível AWS Access Key ID embutida no código em {file_name} (linha {line_number}).",
+  "Possible GitHub token hardcoded in {file_name} (Line {line_number}).": "Possível token do GitHub embutido no código em {file_name} (linha {line_number}).",
+  "Possible Slack token hardcoded in {file_name} (Line {line_number}).": "Possível token do Slack embutido no código em {file_name} (linha {line_number}).",
+  "Possible Google API key hardcoded in {file_name} (Line {line_number}).": "Possível chave de API do Google embutida no código em {file_name} (linha {line_number}).",
+  "Private key block committed in {file_name} (Line {line_number}).": "Bloco de chave privada commitado em {file_name} (linha {line_number}).",
+  "Database connection string with credentials in {file_name} (Line {line_number}).": "String de conexão de banco de dados com credenciais em {file_name} (linha {line_number}).",
+  "Possible hardcoded credential in {file_name} (Line {line_number}).": "Possível credencial embutida no código em {file_name} (linha {line_number}).",
+  "Secret Scanning": "Varredura de segredos",
+  "Disabled Security Rules": "Regras de segurança desativadas",
+  "Looks for hardcoded credentials in every file: provider keys, private key blocks, database URLs and password assignments.": "Procura credenciais embutidas no código em todos os arquivos: chaves de provedores, blocos de chave privada, URLs de banco de dados e atribuições de senha.",
+  "Security rule names to skip, separated by semicolons. Empty runs all of them.": "Nomes de regras de segurança a ignorar, separados por ponto e vírgula. Vazio executa todas."
 }

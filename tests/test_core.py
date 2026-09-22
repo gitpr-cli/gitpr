@@ -546,14 +546,19 @@ class TestHooksLanguage(unittest.TestCase):
     def test_the_language_chosen_with_the_lang_flag_is_honoured(self):
         # i18n.set_lang() rebinds CURRENT_LANG instead of mutating it, and this
         # module keeps a frozen copy — the "automatic" option would otherwise
-        # install in whatever language the process started in.
-        self.assertEqual(i18n.CURRENT_LANG, "pt_br")
-        with patch("src.core.read_env_file_values", return_value={"SCRIPTS_LANG": ""}):
-            i18n.set_lang("fr_fr")
-            try:
+        # install in whatever language the process started in. The starting
+        # language is stated here rather than read from the machine: the point
+        # is only that it differs from the flag's target.
+        previous = i18n.CURRENT_LANG
+        i18n.set_lang("pt_br")
+        try:
+            with patch(
+                "src.core.read_env_file_values", return_value={"SCRIPTS_LANG": ""}
+            ):
+                i18n.set_lang("fr_fr")
                 self.assertEqual(core.effective_hook_lang(), "fr_fr")
-            finally:
-                i18n.set_lang("pt_br")
+        finally:
+            i18n.set_lang(previous)
 
     def test_english_installs_the_base_script_and_says_so(self):
         _, urls, stamps = self.install({"SCRIPTS_LANG": "en_us"})

@@ -20,7 +20,8 @@ The Linter rules live in the .gitpr.linter.yml file inside `.gitpr/skill/`. The 
 
 rules:
   - name: "rule-identifier"
-    extensions: ["js", "php", "py"] # Extensions where the rule applies
+    level: "error" # "error" blocks the commit (exit 1); "warning" only reports
+    extensions: ["js", "php", "py"] # Extensions where the rule applies ("*" = every file)
     regex: 'your-regular-expression-here'
     message: "🚨 Error message that will appear in the terminal ({file_name}, Line {line_number})"
     ignore_comments: true # Ignores if regex matches inside a comment (//, #, /*)
@@ -34,6 +35,19 @@ external_linters:
     extensions: ["js", "ts", "vue", "jsx", "tsx"]
     command: "npx eslint --format checkstyle"
 ```
+
+**`level`** decides what an alert does. `"error"` (the default when the field is
+absent) is blocking: `gitpr --linter` exits with code 1, which is what stops the
+commit in the pre-commit hook and fails the CI job. `"warning"` is informational
+— the alert appears in the terminal and in the Markdown report, and the exit code
+stays 0. Any value other than `"warning"` is treated as `"error"`, so a typo never
+silently downgrades a blocking rule.
+
+**`extensions: ["*"]`** means every file, including the ones with no suffix at all
+(`id_rsa`, `Dockerfile`, `Makefile`) and dotfiles (`.env`). Without the wildcard a
+rule only ever applies to the suffixes you list — a rule with `extensions: ["py"]`
+is skipped on every other file, and a rule with no `extensions` key never applies
+to anything.
 
 ---
 
@@ -143,3 +157,76 @@ This formatted Markdown report is saved automatically, keeping a history of your
 **Default Location:** `.gitpr/reports/linter/`
 
 **Customization:** You can change the name and folder of this file by setting the `OUTPUT_FILE_NAME_LINTER` variable in your `~/.gitpr/.env` file.
+
+---
+
+## **7. Built-in Secret Scanning**
+
+GitPR ships a set of security rules that run with **every** linter invocation,
+whether you triggered it yourself (`gitpr --linter`), through the pre-commit hook
+(`gitpr -ih`) or through CI. They need no `.gitpr.linter.yml` of your own — a
+project with zero custom rules still gets scanned.
+
+They live in the package (`src/security_ruleset.py`) rather than in a downloaded
+template, so they are identical on every machine and cannot be replaced by a
+`--skill` download or rewritten by the setup wizard.
+
+### **What blocks and what only reports**
+
+| Rule | Looks for | Level |
+|------|-----------|-------|
+| `sec-aws-access-key` | AWS access key ID (`AKIA…`) | **error** |
+| `sec-github-token` | GitHub token (`ghp_…`) | **error** |
+| `sec-slack-token` | Slack bot/user token (`xoxb-…`) | **error** |
+| `sec-google-api-key` | Google API key (`AIza…`) | **error** |
+| `sec-private-key-block` | `-----BEGIN … PRIVATE KEY-----` | **error** |
+| `sec-db-connection-string` | Database URL carrying a password | warning |
+| `sec-generic-credential-assignment` | `password = "…"`, `token = "…"`, `api_key = "…"` | warning |
+
+The five `error` rules block: the commit is aborted and `--linter` exits with
+code 1. They are patterns that prove themselves — a string that matches an AWS
+key format is an AWS key. The two `warning` rules report without blocking, because
+a connection string or a `password = "…"` line appears legitimately in examples,
+fixtures and documentation. The generic rule skips the usual placeholders
+(`changeme`, `xxxxxx`, `example`, `dummy`, `sample`, `your_password_here`,
+`sua_senha`) so that a template does not stop a commit.
+
+The rules match **every file** (`extensions: ["*"]`), which is how `id_rsa`,
+`.env`, `Dockerfile` and lockfiles are covered — the files secrets actually leak
+from. In `--input` mode this means `.md` and `.txt` are scanned too; they are
+reported, never blocked.
+
+**An alert never prints the value it matched** — only the file and the line. The
+message reaches the terminal, the Markdown report and, in the PR flow, the pull
+request body; echoing the secret would copy it into all of them.
+
+### **Turning it off**
+
+Two keys in `~/.gitpr/.env`, both editable in the configuration screen under the
+`linter` category:
+
+```bash
+# Turn the whole ruleset off
+GITPR_LINTER_SECURITY=false
+
+# Or drop individual rules by name, separated by semicolons
+GITPR_LINTER_SECURITY_DISABLED_RULES=sec-db-connection-string;sec-slack-token
+```
+
+The ruleset is **on by default**, and only a recognised negative value
+(`false`, `0`, `no`, `off`, `n`) turns it off — an empty or unrecognised value
+keeps it running, so a typo cannot silently disable the scan. Property lines
+added to `~/.gitpr/.env` by the first run of the product seed both keys, so the
+opt-out is a one-line edit rather than a key you have to know about.
+
+### **Known gaps in this version**
+
+* An unquoted assignment is **not** caught: `API_KEY=abc123` — the `.env` format,
+  which is precisely where secrets leak. The generic rule requires quotes.
+* Some prefixes are missing: `ASIA…` (temporary AWS credentials), `github_pat_…`
+  and `xoxc-`/`xoxd-` (Slack user tokens).
+* The generic rule has no left boundary on the key name: `mytoken` matches exactly
+  like `token`, so a variable that merely ends with a keyword is reported.
+
+These are deliberate gaps rather than oversights, kept narrow so the ruleset stays
+trustworthy; a linter that cries wolf is a linter people disable.

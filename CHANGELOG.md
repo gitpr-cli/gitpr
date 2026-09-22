@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.3.0] - 2026-09-21
+
+### Added
+- **Embedded secret ruleset (secret scanning)** — [src/security_ruleset.py](src/security_ruleset.py), seven rules that run with every linter invocation and need no `.gitpr.linter.yml` of your own. **Behavior change: a commit that used to pass can now be blocked.**
+  - **Blocking (`error`, exit code 1):** AWS access key ID, GitHub token, Slack token, Google API key, private key block (`-----BEGIN … PRIVATE KEY-----`).
+  - **Reported (`warning`, never blocks):** database connection string carrying credentials, and a generic credential assignment (`password = "…"`), the latter behind a placeholder filter for `changeme`, `xxxxxx`, `example`, `dummy`, `sample`, `your_password_here` and `sua_senha`.
+- **`GITPR_LINTER_SECURITY`** (default `true`) turns the ruleset off; **`GITPR_LINTER_SECURITY_DISABLED_RULES`** drops individual rules by name, separated by semicolons (e.g. `sec-db-connection-string;sec-slack-token`). Both are seeded into `~/.gitpr/.env` by `setup_environment()` on the next run, so opting out is a one-line edit, and both are editable in the configuration screen under the `linter` category.
+- **`extensions: ["*"]`** in a linter rule now means every file, including the ones with no suffix. The security rules use it, which is how `id_rsa`, `.env` and `Dockerfile` are covered; a rule with `extensions: ["py"]` keeps its suffix filter exactly as before.
+
+### Changed
+- `load_linter_rules()` merges the ruleset **after** the project's own rules and the linter plugins, which stay untouched — only the ordering changes, placing the security alerts last in the report.
+- An alert never prints the value it matched, only the file and the line. The message travels to the console, to the Markdown report and, in the PR flow, to a pull request body; echoing the secret would copy it into all three.
+- `--input` (whole-file audit) now scans `.md`, `.txt` and lockfiles as well, since the ruleset matches every extension. It reports without blocking there — the `sys.exit(1)` exists only on the `--linter` path.
+- `src/branding/badge_data.py` reads an empty rule list as "linter configured and nothing found". With the ruleset on by default, a project that never ran `--skill` now gets a measurement instead of no badge.
+
+### Known coverage gaps (v1)
+- An unquoted assignment is **not** caught (`API_KEY=abc123` — the `.env` format, which is precisely where secrets leak; the generic rule requires quotes).
+- Missing prefixes: `ASIA…` (temporary AWS credentials), `github_pat_…`, `xoxc-`/`xoxd-` (Slack user tokens).
+- The generic rule has no left boundary on the key name: `mytoken` matches exactly like `token`, so a variable that merely ends with a keyword is reported.
+
+### Documentation
+- [docs/linter-regras-customizadas.md](docs/linter-regras-customizadas.md) — the `level` field and the embedded ruleset, with the two escape hatches.
+- [docs/git-hooks-locais.md](docs/git-hooks-locais.md) — what the pre-commit hook now blocks, and how to bypass it.
+
 ## [1.2.0] - 2026-09-17
 
 ### Resumo

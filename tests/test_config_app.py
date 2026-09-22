@@ -303,6 +303,9 @@ class TestSave(ConfigAppTestCase):
                 secret.value = "plain-key"
                 await pilot.pause()
                 await pilot.press("f2")
+                # A save that carries a secret validates the credentials on a
+                # worker thread — the file is only written after that finishes.
+                await app.workers.wait_for_complete()
                 await pilot.pause()
                 self.assertEqual(
                     read_env_file_values()["GEMINI_API_KEY_ENCRYPTED"],

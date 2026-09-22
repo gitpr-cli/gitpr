@@ -12,8 +12,9 @@ from src.metrics import log_local_metric
 
 def _is_rule_applicable(rule, current_file, file_extension):
     """Checks whether the rule applies to the current file based on extension and paths."""
-    # Check extension
-    if file_extension not in rule.get("extensions", []):
+    # Check extension ("*" means every file, including the ones with no suffix)
+    extensions = rule.get("extensions", [])
+    if "*" not in extensions and file_extension not in extensions:
         return False
 
     # Check require_paths (if present, the file MUST match at least one)

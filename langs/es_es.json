@@ -1138,5 +1138,16 @@
   "Checks for a newer version of GitPR and shows how to update it.": "Comprueba si hay una versión más reciente de GitPR y muestra cómo actualizarla.",
   "⚠️ A new version of GitPR is available: {current_version} -> {latest_version}": "⚠️ Hay una nueva versión de GitPR disponible: {current_version} -> {latest_version}",
   "GitPR must be updated before it can run: pip install --upgrade gitpr-cli": "GitPR debe actualizarse antes de poder ejecutarse: pip install --upgrade gitpr-cli",
-  "Run to update: pip install --upgrade gitpr-cli": "Ejecute para actualizar: pip install --upgrade gitpr-cli"
+  "Run to update: pip install --upgrade gitpr-cli": "Ejecute para actualizar: pip install --upgrade gitpr-cli",
+  "Possible AWS Access Key ID hardcoded in {file_name} (Line {line_number}).": "Posible AWS Access Key ID embebida en el código en {file_name} (línea {line_number}).",
+  "Possible GitHub token hardcoded in {file_name} (Line {line_number}).": "Posible token de GitHub embebido en el código en {file_name} (línea {line_number}).",
+  "Possible Slack token hardcoded in {file_name} (Line {line_number}).": "Posible token de Slack embebido en el código en {file_name} (línea {line_number}).",
+  "Possible Google API key hardcoded in {file_name} (Line {line_number}).": "Posible clave de API de Google embebida en el código en {file_name} (línea {line_number}).",
+  "Private key block committed in {file_name} (Line {line_number}).": "Bloque de clave privada incluido en un commit en {file_name} (línea {line_number}).",
+  "Database connection string with credentials in {file_name} (Line {line_number}).": "Cadena de conexión de base de datos con credenciales en {file_name} (línea {line_number}).",
+  "Possible hardcoded credential in {file_name} (Line {line_number}).": "Posible credencial embebida en el código en {file_name} (línea {line_number}).",
+  "Secret Scanning": "Escaneo de secretos",
+  "Disabled Security Rules": "Reglas de seguridad desactivadas",
+  "Looks for hardcoded credentials in every file: provider keys, private key blocks, database URLs and password assignments.": "Busca credenciales embebidas en el código en todos los archivos: claves de proveedores, bloques de clave privada, URL de bases de datos y asignaciones de contraseña.",
+  "Security rule names to skip, separated by semicolons. Empty runs all of them.": "Nombres de reglas de seguridad a omitir, separados por punto y coma. Vacío ejecuta todas."
 }

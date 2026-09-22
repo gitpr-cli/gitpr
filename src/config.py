@@ -45,6 +45,11 @@ DEFAULT_CONFIG = {
     "OUTPUT_FILE_NAME_RELEASE": "{branch}_{datetime}_RELEASE.md",
     "GITPR_AI_TIMEOUT": "180",
     "GITPR_LINTER_TIMEOUT": "120",
+    # Embedded secret ruleset (src/security_ruleset.py): default ON, opt-out via
+    # GITPR_LINTER_SECURITY=false, or drop single rules by name separated with ";"
+    # in GITPR_LINTER_SECURITY_DISABLED_RULES.
+    "GITPR_LINTER_SECURITY": "true",
+    "GITPR_LINTER_SECURITY_DISABLED_RULES": "",
     # Multi-forge SCM configuration (GitHub/GitLab/Bitbucket/Azure DevOps).
     # Empty values mean "not configured" — resolution falls back to github
     # with the legacy GITHUB_TOKEN_* store (see infrastructure/scm/factory.py).
@@ -286,7 +291,7 @@ def _positive_float(raw, fallback):
 
 
 def get_ai_timeout():
-    """Returns the AI SDK request timeout in seconds (GITPR_AI_TIMEOUT, default 600).
+    """Returns the AI SDK request timeout in seconds (GITPR_AI_TIMEOUT, default 180).
 
     Bounds a single model call so a hung provider can never freeze the CLI
     indefinitely. Invalid or non-positive values fall back to the default.
@@ -608,6 +613,18 @@ def load_linter_rules():
                 ),
                 fg="yellow",
             )
+
+    # 3. Security ruleset (embedded; opt-out via config)
+    if _env_bool_default_true("GITPR_LINTER_SECURITY"):
+        load_dotenv(ENV_FILE)
+        disabled = {
+            name.strip()
+            for name in os.getenv("GITPR_LINTER_SECURITY_DISABLED_RULES", "").split(";")
+            if name.strip()
+        }
+        from src.security_ruleset import SECURITY_RULES
+
+        rules.extend(rule for rule in SECURITY_RULES if rule["name"] not in disabled)
 
     return rules
 
