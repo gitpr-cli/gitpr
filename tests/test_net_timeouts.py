@@ -90,13 +90,13 @@ class TestBoundedUrlopen(unittest.TestCase):
 class TestTimeoutConfig(unittest.TestCase):
     """Tests for the configurable timeout getters."""
 
-    def test_ai_timeout_defaults_to_600(self):
+    def test_ai_timeout_defaults_to_180(self):
         from src.config import get_ai_timeout
 
         with patch("src.config.load_dotenv"), patch(
             "src.config.os.getenv", return_value=None
         ):
-            self.assertEqual(get_ai_timeout(), 600.0)
+            self.assertEqual(get_ai_timeout(), 180.0)
 
     def test_ai_timeout_reads_env(self):
         from src.config import get_ai_timeout
@@ -114,7 +114,7 @@ class TestTimeoutConfig(unittest.TestCase):
                 "src.config.os.getenv", return_value=junk
             ):
                 self.assertEqual(
-                    get_ai_timeout(), 600.0, f"{junk!r} should fall back"
+                    get_ai_timeout(), 180.0, f"{junk!r} should fall back"
                 )
 
     def test_linter_timeout_defaults_to_120(self):

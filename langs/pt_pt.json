@@ -1138,5 +1138,16 @@
   "Checks for a newer version of GitPR and shows how to update it.": "Verifica se há uma versão mais recente do GitPR e mostra como atualizá-lo.",
   "⚠️ A new version of GitPR is available: {current_version} -> {latest_version}": "⚠️ Uma nova versão do GitPR está disponível: {current_version} -> {latest_version}",
   "GitPR must be updated before it can run: pip install --upgrade gitpr-cli": "O GitPR precisa ser atualizado antes de ser executado: pip install --upgrade gitpr-cli",
-  "Run to update: pip install --upgrade gitpr-cli": "Rode para atualizar: pip install --upgrade gitpr-cli"
+  "Run to update: pip install --upgrade gitpr-cli": "Rode para atualizar: pip install --upgrade gitpr-cli",
+  "Possible AWS Access Key ID hardcoded in {file_name} (Line {line_number}).": "Possível AWS Access Key ID embutida no código em {file_name} (linha {line_number}).",
+  "Possible GitHub token hardcoded in {file_name} (Line {line_number}).": "Possível token do GitHub embutido no código em {file_name} (linha {line_number}).",
+  "Possible Slack token hardcoded in {file_name} (Line {line_number}).": "Possível token do Slack embutido no código em {file_name} (linha {line_number}).",
+  "Possible Google API key hardcoded in {file_name} (Line {line_number}).": "Possível chave de API do Google embutida no código em {file_name} (linha {line_number}).",
+  "Private key block committed in {file_name} (Line {line_number}).": "Bloco de chave privada incluído num commit em {file_name} (linha {line_number}).",
+  "Database connection string with credentials in {file_name} (Line {line_number}).": "String de ligação a base de dados com credenciais em {file_name} (linha {line_number}).",
+  "Possible hardcoded credential in {file_name} (Line {line_number}).": "Possível credencial embutida no código em {file_name} (linha {line_number}).",
+  "Secret Scanning": "Varrimento de segredos",
+  "Disabled Security Rules": "Regras de segurança desativadas",
+  "Looks for hardcoded credentials in every file: provider keys, private key blocks, database URLs and password assignments.": "Procura credenciais embutidas no código em todos os ficheiros: chaves de fornecedores, blocos de chave privada, URLs de base de dados e atribuições de palavra-passe.",
+  "Security rule names to skip, separated by semicolons. Empty runs all of them.": "Nomes de regras de segurança a ignorar, separados por ponto e vírgula. Vazio executa todas."
 }

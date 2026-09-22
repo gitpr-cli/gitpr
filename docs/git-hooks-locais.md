@@ -33,12 +33,42 @@ The pre-commit hook acts as a local "bodyguard". It is triggered instantly when 
 * **Exit Code 0:** If there are no violations, the Git flow continues normally.
 * **Exit Code 1:** If forbidden strings (e.g.: console.log, passwords, localhost) are detected, the script intercepts the action, displays the alerts in the terminal, and **aborts the commit**.
 
+### **The "passwords" come from the built-in secret scanning**
+
+Those passwords are not rules you have to write. GitPR ships seven security rules
+that run on every commit, even when your `.gitpr.linter.yml` has no rule of your
+own — which is why a fresh project with no linter configuration already blocks
+this:
+
+```python
+aws_access_key_id = "AKIA…"           # aborts the commit
+password = "…"                        # reported, does not abort
+```
+
+A provider key (AWS, GitHub, Slack, Google) or a private key block **blocks**;
+a database URL carrying credentials or a `password = "…"` assignment is
+**reported** without blocking. Section 7 of
+[linter-regras-customizadas.md](linter-regras-customizadas.md) lists the seven
+rules, the placeholder filter that keeps templates from failing, and the two keys
+that turn it off.
+
 ### **Bypass Route**
 
 If there is a strict need to bypass the local Linter validation (for example, when uploading temporary debug code on an isolated branch), use the native Git flag:
 
 ```bash
 git commit --no-verify -m "Your message here"
+```
+
+`--no-verify` skips **everything**, including the AI commit message hook below.
+When it is only the secret ruleset you disagree with — a fixture, a test
+certificate, a documentation example — the narrower route is one line in
+`~/.gitpr/.env`:
+
+```bash
+GITPR_LINTER_SECURITY=false
+# or drop a single rule, keeping the rest:
+GITPR_LINTER_SECURITY_DISABLED_RULES=sec-db-connection-string
 ```
 
 ---

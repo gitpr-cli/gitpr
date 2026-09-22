@@ -38,7 +38,11 @@ def get_system_language():
     except Exception:
         lang = "en_us"
 
-    # Persist the detected language so it survives restarts
+    # Persist the detected language so it survives restarts. set_key() rewrites
+    # the file through a temporary one created next to it, so on a first run —
+    # when ~/.gitpr does not exist yet — the missing directory raises before
+    # anything is written.
+    env_path.parent.mkdir(parents=True, exist_ok=True)
     set_key(env_path, "GITPR_LANG", lang)
 
     # Reload .env so the new variable is available immediately

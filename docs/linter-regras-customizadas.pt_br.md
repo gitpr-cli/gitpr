@@ -21,6 +21,7 @@ As regras do Linter vivem no arquivo .gitpr.linter.yml em `.gitpr/skill/`. O arq
 
 rules:  
   - name: "identificador-da-regra"  
+    level: "error"
     extensions: ["js", "php", "py"] \# Extensões onde a regra se aplica  
     regex: 'sua-expressao-regular-aqui'  
     message: "🚨 Mensagem de erro que aparecerá no terminal ({file\_name}, Linha {line\_number})"  
@@ -34,6 +35,19 @@ external_linters:
   - name: "ESLint (JavaScript/TypeScript)"
     extensions: ["js", "ts", "vue", "jsx", "tsx"]
     command: "npx eslint --format checkstyle"
+
+**`level`** decide o que um alerta faz. `"error"` (o padrão quando o campo está
+ausente) é bloqueante: o `gitpr --linter` sai com código 1, que é o que aborta o
+commit no pre-commit hook e reprova o job de CI. `"warning"` é informativo — o
+alerta aparece no terminal e no relatório Markdown, e o código de saída continua
+0. Qualquer valor diferente de `"warning"` é tratado como `"error"`, então um erro
+de digitação nunca rebaixa uma regra bloqueante em silêncio.
+
+**`extensions: ["*"]`** significa todos os arquivos, incluindo os que não têm
+sufixo algum (`id_rsa`, `Dockerfile`, `Makefile`) e os dotfiles (`.env`). Sem o
+curinga, uma regra só se aplica às extensões que você listar — uma regra com
+`extensions: ["py"]` é pulada em todos os outros arquivos, e uma regra sem a
+chave `extensions` nunca se aplica a nada.
 
 ## ---
 
@@ -140,3 +154,77 @@ Este relatório formatado em Markdown será salvo automaticamente, mantendo um h
 **Localização Padrão:** `.gitpr/reports/linter/`
 
 **Customização:** Você pode alterar o nome e a pasta deste arquivo definindo a variável `OUTPUT_FILE_NAME_LINTER` no seu arquivo `~/.gitpr/.env`.
+
+---
+
+## **7. Varredura de Segredos Embutida**
+
+O GitPR traz um conjunto de regras de segurança que roda em **toda** execução do
+linter, seja acionada por você (`gitpr --linter`), pelo pre-commit hook
+(`gitpr -ih`) ou pela CI. Elas não precisam de nenhum `.gitpr.linter.yml` seu —
+um projeto sem nenhuma regra customizada continua sendo varrido.
+
+Elas vivem no pacote (`src/security_ruleset.py`), e não num template baixado, para
+serem idênticas em toda máquina e não poderem ser substituídas por um download do
+`--skill` nem reescritas pelo assistente de configuração.
+
+### **O que bloqueia e o que apenas reporta**
+
+| Regra | Procura | Nível |
+|-------|---------|-------|
+| `sec-aws-access-key` | AWS access key ID (`AKIA…`) | **error** |
+| `sec-github-token` | Token do GitHub (`ghp_…`) | **error** |
+| `sec-slack-token` | Token do Slack (`xoxb-…`) | **error** |
+| `sec-google-api-key` | Chave de API do Google (`AIza…`) | **error** |
+| `sec-private-key-block` | `-----BEGIN … PRIVATE KEY-----` | **error** |
+| `sec-db-connection-string` | URL de banco de dados com senha | warning |
+| `sec-generic-credential-assignment` | `password = "…"`, `token = "…"`, `api_key = "…"` | warning |
+
+As cinco regras de `error` bloqueiam: o commit é abortado e o `--linter` sai com
+código 1. São padrões que provam a si mesmos — uma string que casa com o formato
+de uma chave da AWS é uma chave da AWS. As duas de `warning` reportam sem
+bloquear, porque uma connection string ou uma linha `password = "…"` aparecem
+legitimamente em exemplos, fixtures e documentação. A regra genérica ignora os
+placeholders de sempre (`changeme`, `xxxxxx`, `example`, `dummy`, `sample`,
+`your_password_here`, `sua_senha`), para que um template não trave um commit.
+
+As regras casam em **todos os arquivos** (`extensions: ["*"]`), que é como
+`id_rsa`, `.env`, `Dockerfile` e lockfiles ficam cobertos — os arquivos de onde
+segredo de fato vaza. No modo `--input` isso significa que `.md` e `.txt` também
+são varridos; eles são reportados, nunca bloqueados.
+
+**Um alerta nunca imprime o valor que casou** — apenas o arquivo e a linha. A
+mensagem chega ao terminal, ao relatório Markdown e, no fluxo de PR, ao corpo do
+pull request; ecoar o segredo o copiaria para os três.
+
+### **Como desligar**
+
+Duas chaves no `~/.gitpr/.env`, ambas editáveis na tela de configuração na
+categoria `linter`:
+
+```bash
+# Desligar o conjunto inteiro
+GITPR_LINTER_SECURITY=false
+
+# Ou remover regras específicas pelo nome, separadas por ponto e vírgula
+GITPR_LINTER_SECURITY_DISABLED_RULES=sec-db-connection-string;sec-slack-token
+```
+
+O conjunto vem **ligado por padrão**, e só um valor negativo reconhecido
+(`false`, `0`, `no`, `off`, `n`) o desliga — um valor vazio ou desconhecido o
+mantém rodando, então um erro de digitação não desativa a varredura em silêncio.
+A primeira execução do produto semeia as duas chaves no `~/.gitpr/.env`, então o
+opt-out é uma edição de uma linha em vez de uma chave que você precisa conhecer.
+
+### **Lacunas conhecidas nesta versão**
+
+* Uma atribuição sem aspas **não** é pega: `API_KEY=abc123` — o formato do `.env`,
+  que é justamente onde segredo vaza. A regra genérica exige aspas.
+* Faltam alguns prefixos: `ASIA…` (credenciais temporárias da AWS), `github_pat_…`
+  e `xoxc-`/`xoxd-` (tokens de usuário do Slack).
+* A regra genérica não tem fronteira à esquerda no nome da chave: `mytoken` casa
+  exatamente como `token`, então uma variável que apenas termina com uma
+  palavra-chave é reportada.
+
+São lacunas deliberadas, e não descuidos, mantidas estreitas para que o conjunto
+continue confiável; um linter que grita demais é um linter que as pessoas desligam.

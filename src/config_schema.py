@@ -586,6 +586,26 @@ FIELDS = (
         kind=KIND_INT,
         default="120",
     ),
+    ConfigField(
+        key="GITPR_LINTER_SECURITY",
+        label=__("Secret Scanning"),
+        description=__(
+            "Looks for hardcoded credentials in every file: provider keys, private key blocks, database URLs and password assignments."
+        ),
+        category="linter",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_LINTER_SECURITY_DISABLED_RULES",
+        label=__("Disabled Security Rules"),
+        description=__(
+            "Security rule names to skip, separated by semicolons. Empty runs all of them."
+        ),
+        category="linter",
+        kind=KIND_STR,
+        default="",
+    ),
     # ----------------------------------------------------------------- Release
     ConfigField(
         key="GITPR_RELEASE_CHANGELOG_PATH",

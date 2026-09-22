@@ -540,6 +540,14 @@ class TestGetMetricsDir:
 # ---------------------------------------------------------------------------
 
 class TestMetricsDashboard:
+    """The dashboard loads its data on a worker thread (MetricsApp._scan_worker).
+
+    Every test below awaits ``app.workers.wait_for_complete()`` before reading
+    the table: ``pilot.pause()`` only waits for the app to go idle, and a
+    thread blocked on file I/O reads as idle, so the scan can still be running
+    when the assertion fires.
+    """
+
     def test_app_loads_with_data(self, tmp_path, monkeypatch):
         """Dashboard loads events, populates table, and doesn't crash."""
         import asyncio
@@ -572,6 +580,8 @@ class TestMetricsDashboard:
             app = MetricsApp(metrics_dir=str(metrics_dir))
             async with app.run_test() as pilot:
                 await pilot.pause()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
                 # Table should have 2 data rows
                 from textual.widgets import DataTable
                 table = app.query_one("#events_table", DataTable)
@@ -591,6 +601,8 @@ class TestMetricsDashboard:
             from src.ui.metrics_app import MetricsApp
             app = MetricsApp(metrics_dir=str(metrics_dir))
             async with app.run_test() as pilot:
+                await pilot.pause()
+                await app.workers.wait_for_complete()
                 await pilot.pause()
                 from textual.widgets import DataTable
                 table = app.query_one("#events_table", DataTable)
@@ -632,6 +644,8 @@ class TestMetricsDashboard:
             from src.ui.metrics_app import MetricsApp
             app = MetricsApp(metrics_dir=str(metrics_dir))
             async with app.run_test() as pilot:
+                await pilot.pause()
+                await app.workers.wait_for_complete()
                 await pilot.pause()
                 from textual.widgets import DataTable
                 table = app.query_one("#events_table", DataTable)
@@ -767,6 +781,8 @@ class TestExportMetricsWithRepoFilter:
 # ---------------------------------------------------------------------------
 
 class TestMetricsDashboardF5:
+    """Refresh (F5) re-launches the same background scan — see TestMetricsDashboard."""
+
     def test_refresh_does_not_duplicate_columns(self, tmp_path, monkeypatch):
         """F5 should clear rows but not re-add columns."""
         import asyncio
@@ -784,6 +800,8 @@ class TestMetricsDashboardF5:
             app = MetricsApp(metrics_dir=str(metrics_dir))
             async with app.run_test() as pilot:
                 await pilot.pause()
+                await app.workers.wait_for_complete()
+                await pilot.pause()
                 from textual.widgets import DataTable
                 table = app.query_one("#events_table", DataTable)
                 col_count_before = len(table.columns)
@@ -792,6 +810,7 @@ class TestMetricsDashboardF5:
 
                 # Simulate F5 refresh
                 app.action_refresh()
+                await app.workers.wait_for_complete()
                 await pilot.pause()
 
                 col_count_after = len(table.columns)
@@ -824,6 +843,8 @@ class TestMetricsDashboardF5:
             from src.ui.metrics_app import MetricsApp
             app = MetricsApp(metrics_dir=str(metrics_dir), repo_filter="owner1/repo-a")
             async with app.run_test() as pilot:
+                await pilot.pause()
+                await app.workers.wait_for_complete()
                 await pilot.pause()
                 from textual.widgets import DataTable
                 table = app.query_one("#events_table", DataTable)

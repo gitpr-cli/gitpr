@@ -33,6 +33,25 @@ O hook de pre-commit atua como um "guarda-costas" local. Ele é disparado instan
 * **Exit Code 0:** Se não houver violações, o fluxo do Git continua normalmente.  
 * **Exit Code 1:** Se strings proibidas (ex: console.log, senhas, localhost) forem detectadas, o script intercepta a ação, exibe os alertas no terminal e **aborta o commit**.
 
+### **As "senhas" vêm da varredura de segredos embutida**
+
+Essas senhas não são regras que você precisa escrever. O GitPR traz sete regras de
+segurança que rodam a cada commit, mesmo quando o seu `.gitpr.linter.yml` não tem
+nenhuma regra sua — é por isso que um projeto novo, sem nenhuma configuração de
+linter, já bloqueia isto:
+
+```python
+aws_access_key_id = "AKIA…"           # aborta o commit
+password = "…"                        # reportado, não aborta
+```
+
+Uma chave de provedor (AWS, GitHub, Slack, Google) ou um bloco de chave privada
+**bloqueiam**; uma URL de banco de dados com credenciais ou uma atribuição
+`password = "…"` é **reportada** sem bloquear. A seção 7 do
+[linter-regras-customizadas.pt_br.md](linter-regras-customizadas.pt_br.md) lista as
+sete regras, o filtro de placeholders que impede que um template trave o commit e
+as duas chaves que desligam tudo.
+
 ### **Rota de Fuga (Bypass)**
 
 Se houver uma necessidade estrita de contornar a validação do Linter local (por exemplo, ao subir um código temporário de debug numa branch isolada), utilize a flag nativa do Git:
@@ -40,6 +59,17 @@ Se houver uma necessidade estrita de contornar a validação do Linter local (po
 Bash
 
 git commit --no-verify -m "Sua mensagem aqui"
+
+O `--no-verify` pula **tudo**, incluindo o hook de mensagem de commit por IA
+abaixo. Quando o incômodo é só a varredura de segredos — uma fixture, um
+certificado de teste, um exemplo de documentação —, o caminho estreito é uma
+linha no `~/.gitpr/.env`:
+
+```bash
+GITPR_LINTER_SECURITY=false
+# ou remova uma única regra, mantendo as outras:
+GITPR_LINTER_SECURITY_DISABLED_RULES=sec-db-connection-string
+```
 
 ---
 

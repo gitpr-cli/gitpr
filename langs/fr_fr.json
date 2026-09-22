@@ -1138,5 +1138,16 @@
   "Checks for a newer version of GitPR and shows how to update it.": "Vérifie si une version plus récente de GitPR existe et indique comment la mettre à jour.",
   "⚠️ A new version of GitPR is available: {current_version} -> {latest_version}": "⚠️ Une nouvelle version de GitPR est disponible : {current_version} -> {latest_version}",
   "GitPR must be updated before it can run: pip install --upgrade gitpr-cli": "GitPR doit être mis à jour avant de pouvoir s'exécuter : pip install --upgrade gitpr-cli",
-  "Run to update: pip install --upgrade gitpr-cli": "Exécutez pour mettre à jour : pip install --upgrade gitpr-cli"
+  "Run to update: pip install --upgrade gitpr-cli": "Exécutez pour mettre à jour : pip install --upgrade gitpr-cli",
+  "Possible AWS Access Key ID hardcoded in {file_name} (Line {line_number}).": "AWS Access Key ID potentielle en dur dans {file_name} (ligne {line_number}).",
+  "Possible GitHub token hardcoded in {file_name} (Line {line_number}).": "Jeton GitHub potentiel en dur dans {file_name} (ligne {line_number}).",
+  "Possible Slack token hardcoded in {file_name} (Line {line_number}).": "Jeton Slack potentiel en dur dans {file_name} (ligne {line_number}).",
+  "Possible Google API key hardcoded in {file_name} (Line {line_number}).": "Clé d'API Google potentielle en dur dans {file_name} (ligne {line_number}).",
+  "Private key block committed in {file_name} (Line {line_number}).": "Bloc de clé privée commité dans {file_name} (ligne {line_number}).",
+  "Database connection string with credentials in {file_name} (Line {line_number}).": "Chaîne de connexion à la base de données avec identifiants dans {file_name} (ligne {line_number}).",
+  "Possible hardcoded credential in {file_name} (Line {line_number}).": "Identifiant potentiel en dur dans {file_name} (ligne {line_number}).",
+  "Secret Scanning": "Analyse des secrets",
+  "Disabled Security Rules": "Règles de sécurité désactivées",
+  "Looks for hardcoded credentials in every file: provider keys, private key blocks, database URLs and password assignments.": "Recherche des identifiants en dur dans tous les fichiers : clés de fournisseurs, blocs de clé privée, URL de bases de données et affectations de mot de passe.",
+  "Security rule names to skip, separated by semicolons. Empty runs all of them.": "Noms des règles de sécurité à ignorer, séparés par des points-virgules. Vide les exécute toutes."
 }
