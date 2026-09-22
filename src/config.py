@@ -660,6 +660,65 @@ def load_external_linters():
     return external_linters
 
 
+def load_sast_config():
+    """Loads SAST tool bridge configurations (semgrep, gitleaks, bandit).
+
+    Defaults to enabled: False (opt-in) unless configured in .gitpr.linter.yml
+    or overridden by GITPR_SAST_* environment variables.
+    """
+    sast_config = {
+        "semgrep": {
+            "enabled": False,
+            "timeout_seconds": 60,
+        },
+        "gitleaks": {
+            "enabled": False,
+            "timeout_seconds": 30,
+        },
+        "bandit": {
+            "enabled": False,
+            "timeout_seconds": 45,
+            "only_if_python_detected": True,
+        },
+    }
+
+    # 1. Read from local .gitpr.linter.yml
+    local_path = resolve_skill_path(".gitpr.linter.yml")
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, "r", encoding="utf-8", errors="replace") as f:
+                data = yaml.safe_load(f) or {}
+                if isinstance(data, dict):
+                    linter_block = data.get("linter", {})
+                    ext_block = linter_block.get("external", {}) if isinstance(linter_block, dict) else {}
+                    sast_block = data.get("sast", ext_block)
+                    if isinstance(sast_block, dict):
+                        for tool in ("semgrep", "gitleaks", "bandit"):
+                            if tool in sast_block and isinstance(sast_block[tool], dict):
+                                sast_config[tool].update(sast_block[tool])
+        except Exception:
+            pass
+
+    # 2. Read from .env overrides
+    load_dotenv(ENV_FILE)
+    for tool in ("semgrep", "gitleaks", "bandit"):
+        env_enabled = os.getenv(f"GITPR_SAST_{tool.upper()}_ENABLED")
+        if env_enabled is not None:
+            sast_config[tool]["enabled"] = env_enabled.strip().lower() in ("true", "1", "yes", "y")
+        
+        env_timeout = os.getenv(f"GITPR_SAST_{tool.upper()}_TIMEOUT")
+        if env_timeout is not None:
+            try:
+                t_val = int(env_timeout.strip())
+                if t_val > 0:
+                    sast_config[tool]["timeout_seconds"] = t_val
+            except ValueError:
+                pass
+
+    return sast_config
+
+
+
 def get_github_token():
     """Reads and decrypts the GitHub Personal Access Token (PAT)."""
     load_dotenv(ENV_FILE)

@@ -1971,9 +1971,25 @@ def _write_real_stdout(text: str) -> None:
     try:
         real_stdout.write(text)
         real_stdout.flush()
+    except (UnicodeEncodeError, UnicodeError):
+        # On Windows terminals with legacy codepages (cp1252), write encoded bytes or fallback
+        if hasattr(real_stdout, "buffer"):
+            real_stdout.buffer.write(text.encode("utf-8", errors="replace"))
+            real_stdout.buffer.flush()
+        else:
+            try:
+                encoding = getattr(real_stdout, "encoding", "utf-8") or "utf-8"
+                real_stdout.write(text.encode(encoding, errors="replace").decode(encoding))
+                real_stdout.flush()
+            except Exception:
+                pass
     except Exception:
         # Last resort: print normally (may end up on stderr but won't crash)
-        print(text)
+        try:
+            print(text)
+        except Exception:
+            pass
+
 
 
 def _run_list() -> None:
