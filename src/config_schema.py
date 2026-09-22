@@ -606,6 +606,36 @@ FIELDS = (
         kind=KIND_STR,
         default="",
     ),
+    ConfigField(
+        key="GITPR_SAST_SEMGREP_ENABLED",
+        label=__("Semgrep SAST"),
+        description=__(
+            "Runs Semgrep static analysis on modified files when installed in PATH."
+        ),
+        category="linter",
+        kind=KIND_BOOL,
+        default="false",
+    ),
+    ConfigField(
+        key="GITPR_SAST_GITLEAKS_ENABLED",
+        label=__("Gitleaks Scanner"),
+        description=__(
+            "Runs Gitleaks entropy-based secret scanning on modified files when installed in PATH."
+        ),
+        category="linter",
+        kind=KIND_BOOL,
+        default="false",
+    ),
+    ConfigField(
+        key="GITPR_SAST_BANDIT_ENABLED",
+        label=__("Bandit Python SAST"),
+        description=__(
+            "Runs Bandit security analysis on modified Python files when installed in PATH."
+        ),
+        category="linter",
+        kind=KIND_BOOL,
+        default="false",
+    ),
     # ----------------------------------------------------------------- Release
     ConfigField(
         key="GITPR_RELEASE_CHANGELOG_PATH",

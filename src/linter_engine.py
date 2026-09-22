@@ -5,9 +5,22 @@ import shutil
 import subprocess
 import os
 import xml.etree.ElementTree as ET
-from src.config import load_linter_rules, load_external_linters, get_linter_timeout
+from src.config import (
+    load_linter_rules,
+    load_external_linters,
+    load_sast_config,
+    get_linter_timeout,
+)
+from src.domain.linter.sast_finding_mapper import (
+    format_finding_message,
+    deduplicate_secret_findings,
+)
+from src.infrastructure.linter.external.semgrep_bridge import SemgrepBridge
+from src.infrastructure.linter.external.gitleaks_bridge import GitleaksBridge
+from src.infrastructure.linter.external.bandit_bridge import BanditBridge
 from src.i18n import __
 from src.metrics import log_local_metric
+
 
 
 def _is_rule_applicable(rule, current_file, file_extension):
@@ -207,12 +220,65 @@ def _collect_external_alerts(
                 alerts["errors"].append(msg)
 
 
+def _run_sast_bridges(target_files, repo_path=".", diff_only=True, allowed_lines_by_file=None):
+    """Executes enabled SAST tool bridges (Semgrep, Gitleaks, Bandit) and returns findings."""
+    sast_config = load_sast_config()
+    all_findings = []
+    warnings = []
+
+    # Map of tool bridges
+    bridges = {
+        "semgrep": SemgrepBridge(),
+        "gitleaks": GitleaksBridge(),
+        "bandit": BanditBridge(),
+    }
+
+    for tool_name, bridge in bridges.items():
+        conf = sast_config.get(tool_name, {})
+        if not conf.get("enabled", False):
+            continue
+
+        if not bridge.is_available():
+            warnings.append(
+                __(
+                    "⚠️ SAST tool '{tool}' is enabled in config but was not found in PATH.",
+                    tool=tool_name,
+                )
+            )
+            continue
+
+        timeout = conf.get("timeout_seconds", 60)
+        result = bridge.run(
+            target_files=target_files,
+            repo_path=repo_path,
+            diff_only=diff_only,
+            timeout=timeout,
+        )
+
+        for w in result.warnings:
+            warnings.append(f"⚠️ [{tool_name}] {w}")
+
+        # Filter findings by added lines if diff-only / allowed_lines provided
+        for f in result.findings:
+            if allowed_lines_by_file is not None:
+                norm_fpath = f.file_path.replace("\\", "/").lower()
+                allowed_lines = allowed_lines_by_file.get(norm_fpath)
+                if allowed_lines is not None and f.line_start not in allowed_lines:
+                    # In diff mode, only alert if line_start is within added lines
+                    # (Unless tool is Gitleaks or Semgrep detecting across lines)
+                    continue
+
+            all_findings.append(f)
+
+    return all_findings, warnings
+
+
 def parse_diff_and_lint(
-    diff_text, is_full_file=False, file_path=None, skip_external=False
+    diff_text, is_full_file=False, file_path=None, skip_external=False, repo_path="."
 ):
     """
     Analyzes the git diff OR a full file and applies the rules defined in .gitpr.linter.yml.
-    In diff mode, also bridges external linters (Checkstyle XML) filtered by added lines.
+    In diff mode, also bridges external linters (Checkstyle XML) and SAST bridges (Semgrep, Gitleaks, Bandit).
     Returns a dictionary with two lists: 'errors' (critical) and 'warnings' (alerts).
 
     ``skip_external`` runs the YAML rules only. The external bridge executes a
@@ -224,7 +290,10 @@ def parse_diff_and_lint(
     """
     rules = load_linter_rules()
     external_linters = [] if skip_external else load_external_linters()
-    if not rules and not external_linters:
+    sast_config = {} if skip_external else load_sast_config()
+    has_sast = any(c.get("enabled", False) for c in sast_config.values())
+
+    if not rules and not external_linters and not has_sast:
         return {"errors": [], "warnings": []}
 
     alerts = {"errors": [], "warnings": []}
@@ -262,6 +331,28 @@ def parse_diff_and_lint(
                 alerts,
                 allowed_lines=None,
             )
+
+        # SAST Bridges full-file execution
+        if not skip_external and has_sast:
+            sast_findings, sast_warnings = _run_sast_bridges(
+                target_files=[current_file],
+                repo_path=repo_path,
+                diff_only=False,
+                allowed_lines_by_file=None,
+            )
+            alerts["warnings"].extend(sast_warnings)
+
+            # Deduplicate regex secret alerts vs SAST findings
+            cleaned_alerts, merged_findings = deduplicate_secret_findings(alerts, sast_findings)
+            alerts["errors"] = cleaned_alerts["errors"]
+            alerts["warnings"] = cleaned_alerts["warnings"]
+
+            for finding in merged_findings:
+                msg = format_finding_message(finding)
+                if finding.severity == "error":
+                    alerts["errors"].append(msg)
+                else:
+                    alerts["warnings"].append(msg)
 
         log_local_metric(
             command="linter",
@@ -322,6 +413,32 @@ def parse_diff_and_lint(
                 allowed_lines=set(modified_lines),
             )
 
+    # SAST Bridges diff execution
+    if not skip_external and has_sast and modified_files:
+        allowed_lines_by_file = {
+            f.replace("\\", "/").lower(): set(lines_list)
+            for f, lines_list in modified_files.items()
+        }
+        sast_findings, sast_warnings = _run_sast_bridges(
+            target_files=list(modified_files.keys()),
+            repo_path=repo_path,
+            diff_only=True,
+            allowed_lines_by_file=allowed_lines_by_file,
+        )
+        alerts["warnings"].extend(sast_warnings)
+
+        # Deduplicate regex secret alerts vs SAST findings
+        cleaned_alerts, merged_findings = deduplicate_secret_findings(alerts, sast_findings)
+        alerts["errors"] = cleaned_alerts["errors"]
+        alerts["warnings"] = cleaned_alerts["warnings"]
+
+        for finding in merged_findings:
+            msg = format_finding_message(finding)
+            if finding.severity == "error":
+                alerts["errors"].append(msg)
+            else:
+                alerts["warnings"].append(msg)
+
     log_local_metric(
         command="linter",
         status="success",
@@ -351,3 +468,4 @@ def generate_linter_report_content(alerts):
             content += f"- {warn}\n"
 
     return content
+
