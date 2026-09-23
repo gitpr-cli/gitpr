@@ -1,6 +1,6 @@
 # Technical Documentation: Release Notes & Changelog (gitpr release)
 
-`gitpr release` is the first subcommand of the GitPR CLI and generates the changelog / release notes of the current repository ("release notes" and "changelog" name the same flow). One invocation scans the commits collected between an origin tag and `HEAD`, classifies them by Conventional Commits, suggests a semantic version bump, optionally adds an AI executive summary, and prepends a new version section to the repository changelog. Generation is purely local by default — nothing is published and no local tags or version files are touched; `--publish` goes further and creates the release on the configured forge after an explicit confirmation.
+`gitpr release` is the first subcommand of the GitPR CLI and generates the changelog / release notes of the current repository ("release notes" and "changelog" name the same flow). One invocation resolves where the previous release ended — the previous version section of the changelog — collects the commits from there up to `HEAD`, classifies them by Conventional Commits, drops anything a previous section already listed, suggests a semantic version bump, optionally adds an AI executive summary, and prepends a new version section to the repository changelog. Each entry carries a link to the commit plus the event date, the pull request when the commit came from a squash merge, and the contributors are linked to their forge profile. Generation is purely local by default — nothing is published and no local tags or version files are touched; `--publish` goes further and creates the release on the configured forge after an explicit confirmation.
 
 ---
 
@@ -20,7 +20,7 @@ gitpr release --publish
 
 | Option | Description |
 | --- | --- |
-| **`--since <tag>`** | Range origin: tag or reference from where commits are collected (default: the latest reachable tag, or the first commit when no tag exists) |
+| **`--since <tag>`** | Range origin: tag or reference from where commits are collected (default: the previous release — see Section 2.1) |
 | **`--version <x.y.z>`** | Target version of the release (default: automatic semantic bump suggestion) |
 | **`--publish`** | After generating, publish the release on the configured forge (asks for confirmation) |
 | **`--draft`** | Create the release as a draft on the forge (GitHub). Only applies together with `--publish`; GitLab has no draft concept |
@@ -29,7 +29,7 @@ gitpr release --publish
 
 | Characteristic | Description |
 | --- | --- |
-| **Data source** | Commits of the range `since..HEAD`, merge commits excluded |
+| **Data source** | Commits of the range `origin..HEAD` (origin = the previous release), merge commits excluded, minus whatever a previous section already listed |
 | **AI summary** | Automatic when an API key is configured (disable with `GITPR_RELEASE_AI_SUMMARY=false`) |
 | **Files written** | New section in `CHANGELOG.md` + `.gitpr/reports/release/{branch}_{datetime}_RELEASE.md` artifact |
 | **Published** | Nothing — local generation is the default |
@@ -41,21 +41,33 @@ gitpr release --publish
 
 ### 2.1 Commit Range — `--since <tag>`
 
-A release always covers the commits from an origin up to `HEAD`. The origin defaults to the latest reachable tag, and the end of the range is always `HEAD` — generating between two older tags is not supported in v1. Merge commits never reach the changelog: they are excluded at collection time.
+A release always covers the commits from an origin up to `HEAD`. The origin defaults to **the previous release as recorded in the changelog**, so each version lists its own delta and nothing that already shipped; the end of the range is always `HEAD` — generating between two older tags is not supported in v1. Merge commits never reach the changelog: they are excluded at collection time.
 
 ```bash
-# Default: from the latest reachable tag to HEAD
+# Default: from the previous release in the changelog to HEAD
 gitpr release
 
 # Explicit origin: everything since v1.0.0
 gitpr release --since v1.0.0
 ```
 
+The default origin is resolved by walking this chain, stopping at the first step that yields a usable reference (every candidate must be an ancestor of `HEAD`):
+
+| # | Origin | When it applies |
+| --- | --- | --- |
+| 1 | **`--since <ref>`** | The flag is always honored, and an unknown reference aborts the run |
+| 2 | **Newest commit hash in the previous version section** | The normal case: commit hashes are tag-independent, so the range is exact even when the version tags live only on another branch |
+| 3 | **The version of that section, as a tag (`1.2.0` or `v1.2.0`)** | Sections written by hand, or generated before hashes were emitted |
+| 4 | **Latest reachable tag (`git describe --tags --abbrev=0`)** | Nothing above could be used. This range can list commits that already shipped, so it comes with a visible warning and an entry in `warnings` |
+
+A section whose commits were already listed is skipped a second time by a **safety filter**: before rendering, any commit whose short hash appears in *another* version section of the changelog is dropped, and the count is reported (`{count} commit(s) already released in a previous version were skipped.`). The anchor already prevents that; the filter keeps a hand-edited changelog honest. When every commit of the range turns out to be already released, the run aborts instead of writing an empty section (`❌ Nothing new to release: every commit of the range is already in {path}.`).
+
 | Characteristic | Description |
 | --- | --- |
-| **Default origin** | Latest reachable tag (`git describe --tags --abbrev=0`) |
-| **No tag in the repository** | First release: the range starts at the repository's first commit |
+| **Default origin** | The previous version section of the changelog (see the chain above) |
+| **No previous section** | First release: the range starts at the latest tag, or at the repository's first commit when there is no tag |
 | **Merge commits** | Excluded from the collection |
+| **Already released commits** | Dropped by the safety filter, with a count |
 | **Range end** | Always `HEAD` |
 
 ### 2.2 Semantic Version Suggestion
@@ -68,7 +80,7 @@ Without `--version`, the engine suggests a bump from the classified commits, fol
 | No breaking commit, at least one **feature** | **MINOR** |
 | Only fixes, chores or other changes | **PATCH** |
 
-The suggestion is read-only: it comes exclusively from git tags — the engine never reads version files (such as `pyproject.toml`) and never creates local tags. A `v` prefix on the last tag is preserved (`v1.2.3` suggests `v1.2.4`, written as `## [v1.2.4]`). When there is no previous semantic version tag, no suggestion exists — for a first release, `--version` becomes mandatory to publish.
+The suggestion is read-only: it comes exclusively from the previous release — the version of the previous changelog section, falling back to the latest git tag — so the engine never reads version files (such as `pyproject.toml`) and never creates local tags. A `v` prefix on the previous version is preserved (`v1.2.3` suggests `v1.2.4`, written as `## [v1.2.4]`). When there is no previous semantic version, no suggestion exists — for a first release, `--version` becomes mandatory to publish.
 
 When the version comes from the suggestion, the command asks for confirmation before the AI call: `❓ Use the suggested version {version}?` (accepting is the default). The prompt is skipped with an explicit `--version`, in `--format json`, in quiet or non-interactive terminals, and with `GITPR_RELEASE_AUTO_BUMP=false` (which forces an explicit `--version` on every run).
 
@@ -104,7 +116,18 @@ The category blocks follow the fixed order FEATURE, FIX, PERFORMANCE, DOCS, REFA
 
 ### 3.2 Version Section Anatomy
 
-One release produces one version section: the header `## [x.y.z] - date`, an optional `### Summary`, one block per present category, and a `**Contributors:**` footer with the unique author names (deduplicated by e-mail, sorted). Each entry is rendered as `subject (short hash)`, with the commit scope appended when present:
+One release produces one version section: the header `## [x.y.z] - date`, an optional `### Summary`, one block per present category, and a `**Contributors:**` footer with the unique author names (deduplicated by e-mail, sorted). Every entry follows this shape:
+
+```text
+- {subject} ([{short_hash}]({commit_url})) — {scope} · [#{n}]({pr_url}) · {YYYY-MM-DD}
+```
+
+| Part | Rule |
+| --- | --- |
+| `({short_hash})` | Always present, linked to the commit on the forge. The short form stays visible as the link text |
+| `— {scope}` | Only when the Conventional Commit declares a scope (unchanged position) |
+| `· [#{n}]({pr_url})` | Only when the commit carries a PR number (a squash-merge `(#123)` tail) |
+| `· {YYYY-MM-DD}` | Always present — the author date of the commit |
 
 ```markdown
 ## [1.2.0] - 2026-09-08
@@ -113,17 +136,21 @@ One release produces one version section: the header `## [x.y.z] - date`, an opt
 Release highlights generated by the AI executive summary.
 
 ### ⚠️ Breaking Changes
-- drop support for Python 3.9 (b2c3d4e) — core
+- drop support for Python 3.9 ([b2c3d4e](https://github.com/acme/app/commit/b2c3d4e…)) — core · 2026-09-02
 
 ### ✨ Features
-- add the gitpr release subcommand (a1b2c3d) — cli
-- publish releases on GitLab (#567) (d4e5f6g) — scm
+- add the gitpr release subcommand ([a1b2c3d](https://github.com/acme/app/commit/a1b2c3d…)) — cli · 2026-09-01
+- publish releases on GitLab ([d4e5f6a](https://github.com/acme/app/commit/d4e5f6a…)) — scm · [#567](https://github.com/acme/app/pull/567) · 2026-09-03
 
 ### 🐛 Fixes
-- handle repositories without tags (f6a7b8c) — release
+- handle repositories without tags ([f6a7b8c](https://github.com/acme/app/commit/f6a7b8c…)) — release · 2026-09-04
 
-**Contributors:** Ana Souza, Bob Smith
+**Contributors:** [@anasouza](https://github.com/anasouza), Bob Smith
 ```
+
+Contributors are linked to their profile when the forge exposes one: the author e-mail is resolved to a login, and the footer renders `[@login]({profile_url})` in place of the display name. Resolution is best-effort and never blocks the release — a name that cannot be mapped (no token, offline, private address, or a forge without simple profiles such as Azure DevOps) keeps its plain display name. Successful lookups are cached in `~/.gitpr/cache/contributors.json` (`email → login`); only successes are stored, so a rate-limited run retries on the next release.
+
+Without a forge link context — no `origin` remote, or a remote whose host is not one of the supported forges — the section degrades to plain text: hashes stay unlinked and the date and PR number remain. A section is never lost to a link failure.
 
 The section is prepended to `CHANGELOG.md` — the file is never rewritten from scratch and previous sections are preserved. When a `## [x.y.z]` section for the same version already exists, the command aborts with exit code 1 (see Section 6, JSON Mode and Idempotency); it never duplicates and never overwrites silently.
 
@@ -134,6 +161,7 @@ The section is prepended to `CHANGELOG.md` — the file is never rewritten from 
 | **Changelog** | `CHANGELOG.md` | Repository root by default — the deliberate exception to the `.gitpr/reports/` convention, because it is a public, committable file. Override with `GITPR_RELEASE_CHANGELOG_PATH` (relative paths resolved against the repository root) |
 | **Release notes artifact** | `.gitpr/reports/release/{branch}_{datetime}_RELEASE.md` | Written on every markdown run, best-effort: a save failure only warns and never fails the command. Name template via `OUTPUT_FILE_NAME_RELEASE` |
 | **Terminal preview** | — | Printed after saving, up to 40 lines |
+| **Contributor cache** | `~/.gitpr/cache/contributors.json` | `email → login` map shared by every repository; written only on successful lookups, best-effort (a write failure only means the next run resolves again) |
 
 ---
 
@@ -198,7 +226,7 @@ gitpr release --publish --draft
 
 ### 6.1 Pure JSON Output — `--format json`
 
-`--format json` is stdout-only, ideal for scripts and CI: it writes nothing (no `CHANGELOG.md` update, no per-run artifact, no skill template download), publishes nothing and never prompts (the version confirmation is skipped). The stdout stream stays clean — warnings travel inside the JSON payload. The output follows the release result: `version`, `previous_tag`, `generated_at`, `summary`, `sections` (one list of classified commits per category), `breaking_changes`, `contributors`, `markdown` and `warnings`.
+`--format json` is stdout-only, ideal for scripts and CI: it writes nothing (no `CHANGELOG.md` update, no per-run artifact, no skill template download), publishes nothing and never prompts (the version confirmation is skipped). The stdout stream stays clean — warnings travel inside the JSON payload. The output follows the release result: `version`, `previous_version` (the version read from the changelog), `previous_tag` (the resolved range origin, which is a commit hash when the anchor came from a section), `generated_at`, `summary`, `sections` (one list of classified commits per category), `breaking_changes`, `contributors`, `markdown` and `warnings`.
 
 ```bash
 gitpr release --format json
@@ -206,7 +234,7 @@ gitpr release --format json
 
 ### 6.2 Existing Section and `--force`
 
-The changelog write is idempotent per version: when the `## [x.y.z]` section of the target version already exists, the command aborts with exit code 1 without changing the file — it never duplicates content and never silently overwrites it. `--force` regenerates and replaces that section (`🔄 Existing section for version {version} regenerated.`); with no existing section, `--force` is a plain addition.
+The changelog write is idempotent per version: when the `## [x.y.z]` section of the target version already exists, the command aborts with exit code 1 without changing the file — it never duplicates content and never silently overwrites it. `--force` regenerates and replaces that section **as a whole**, from its header down to the next version heading, keeping the neighbouring sections untouched (`🔄 Existing section for version {version} regenerated.`); with no existing section, `--force` is a plain addition.
 
 ```bash
 gitpr release --force

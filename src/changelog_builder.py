@@ -10,12 +10,17 @@ The Markdown helpers build a single changelog version section:
 ``## [x.y.z] - date`` + localized category sections + contributors footer.
 Heading labels go through the ``__()`` engine, so the artifact language
 follows the interface language (grill Q1).
+
+Bullets carry the commit link, the pull request and the date of the event;
+the URLs are built by ``infrastructure/scm/web_links.py`` from a ``LinkContext``
+the caller assembles, so this module keeps its no-I/O promise.
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
 
 from src.i18n import __
+from src.infrastructure.scm.web_links import commit_url, pull_request_url, user_url
 
 
 class ChangeCategory(str, Enum):
@@ -50,11 +55,26 @@ class ClassifiedCommit:
 
 
 @dataclass
+class LinkContext:
+    """Where the links of one release section point.
+
+    ``base`` is the repository web root (see ``web_links.repo_web_base``) and
+    ``logins`` maps a contributor display name to their forge login. Either may
+    be missing: the section then renders without that link instead of failing.
+    """
+
+    provider: str = ""
+    base: str | None = None
+    logins: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class ReleaseNotesResult:
     """Everything the release flow produced for one version."""
 
     version: str  # target version, ex.: "1.2.0"
-    previous_tag: str | None  # origin tag, None on the first release
+    previous_tag: str | None  # range origin (tag or commit sha), None on the first release
+    previous_version: str | None  # version of the previous section in the changelog
     generated_at: str  # ISO 8601
     summary: str  # natural-language AI summary ("" when degraded)
     sections: dict[ChangeCategory, list[ClassifiedCommit]]
@@ -112,15 +132,58 @@ def normalize_contributors(commits):
     )
 
 
-def _commit_line(commit):
-    """Renders one bullet of a category section."""
-    if commit.scope:
-        return "- {subject} ({short_hash}) — {scope}".format(
-            subject=commit.subject, short_hash=commit.short_hash, scope=commit.scope
-        )
-    return "- {subject} ({short_hash})".format(
-        subject=commit.subject, short_hash=commit.short_hash
+def _hash_markup(commit, links):
+    """The ``(hash)`` group of a bullet, linked when a link context allows it.
+
+    The short hash stays the visible text and the full SHA travels in the URL,
+    so the bullet keeps reading as a changelog while being clickable.
+    """
+    if links:
+        url = commit_url(links.provider, links.base, commit.hash)
+        if url:
+            return f"([{commit.short_hash}]({url}))"
+    return f"({commit.short_hash})"
+
+
+def _pull_markup(commit, links):
+    """The ``#PR`` group of a bullet, or "" when the commit has no PR."""
+    if not commit.pr_number:
+        return ""
+    url = (
+        pull_request_url(links.provider, links.base, commit.pr_number) if links else None
     )
+    if url:
+        return f"· [#{commit.pr_number}]({url})"
+    return f"· #{commit.pr_number}"
+
+
+def _commit_line(commit, links=None):
+    """Renders one bullet of a category section.
+
+    Shape: ``- subject ([hash](url)) — scope · [#PR](url) · date``. The scope
+    and the pull request only appear when the commit carries them; the date
+    always does. Without a link context the bullet degrades to plain text
+    rather than dropping the information.
+    """
+    parts = [f"- {commit.subject} {_hash_markup(commit, links)}"]
+    if commit.scope:
+        parts.append(f"— {commit.scope}")
+    pull = _pull_markup(commit, links)
+    if pull:
+        parts.append(pull)
+    date = (commit.date or "")[:10]
+    if date:
+        parts.append(f"· {date}")
+    return " ".join(parts)
+
+
+def _contributor_markup(name, links):
+    """Profile link for a contributor, falling back to the plain name."""
+    login = (links.logins or {}).get(name) if links else None
+    url = user_url(links.provider, links.base, login) if login else None
+    if url:
+        return f"[@{login}]({url})"
+    return name
 
 
 def _category_heading(category):
@@ -142,17 +205,23 @@ def _category_heading(category):
     return headings[category]
 
 
-def _render_category_block(category, commits):
+def _render_category_block(category, commits, links=None):
     """Renders a full category subsection, or "" when there are no commits."""
     if not commits:
         return ""
     heading = _category_heading(category)
-    lines = [f"### {heading}"] + [_commit_line(c) for c in commits]
+    lines = [f"### {heading}"] + [_commit_line(c, links) for c in commits]
     return "\n".join(lines)
 
 
 def build_release_section(
-    version, generated_at, summary, sections, breaking_changes, contributors
+    version,
+    generated_at,
+    summary,
+    sections,
+    breaking_changes,
+    contributors,
+    links=None,
 ):
     """Builds the Markdown of one changelog version section (no I/O).
 
@@ -163,6 +232,7 @@ def build_release_section(
         sections: mapping category -> non-breaking commits (see organize_commits).
         breaking_changes: commits rendered under the Breaking Changes heading.
         contributors: unique author names for the footer (see normalize_contributors).
+        links: optional ``LinkContext``; without it bullets and names stay plain.
 
     Returns:
         The section as a Markdown string, ready to be prepended to a changelog.
@@ -175,18 +245,21 @@ def build_release_section(
 
     if breaking_changes:
         lines = [f"### {__('⚠️ Breaking Changes')}"] + [
-            _commit_line(c) for c in breaking_changes
+            _commit_line(c, links) for c in breaking_changes
         ]
         blocks.append("\n".join(lines))
 
     for category in _SECTION_ORDER:
-        rendered = _render_category_block(category, sections.get(category) or [])
+        rendered = _render_category_block(
+            category, sections.get(category) or [], links
+        )
         if rendered:
             blocks.append(rendered)
 
     if contributors:
         blocks.append("**{label}:** {names}".format(
-            label=__("Contributors"), names=", ".join(contributors)
+            label=__("Contributors"),
+            names=", ".join(_contributor_markup(name, links) for name in contributors),
         ))
 
     return "\n\n".join(blocks) + "\n"

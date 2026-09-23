@@ -1721,6 +1721,7 @@ def release(since_tag, target_version, publish, draft, output_format, force):
             auto_bump=settings["auto_bump"],
             quiet=json_mode,
             ask_version=not json_mode,
+            changelog_path=settings["changelog_path"],
         )
     except ReleaseNotesError as exc:
         click.secho(str(exc), fg="red", err=True)

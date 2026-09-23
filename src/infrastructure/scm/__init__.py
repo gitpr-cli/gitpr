@@ -5,6 +5,7 @@ Public surface for consumers (main.py, the TUI apps, the wizard):
   - concrete providers (github_provider.py, gitlab_provider.py,
     bitbucket_provider.py, azure_devops_provider.py)
   - factory.resolve_scm_provider / detect_provider_from_remote
+  - web_links.py: browser URLs (commits, PRs, profiles) built from a remote
 
 Internal code must go through resolve_scm_provider and never import the
 concrete provider modules directly.
@@ -26,6 +27,12 @@ from src.infrastructure.scm.factory import (
     provider_is_github,
     resolve_scm_provider,
 )
+from src.infrastructure.scm.web_links import (
+    commit_url,
+    pull_request_url,
+    repo_web_base,
+    user_url,
+)
 from src.infrastructure.scm.azure_devops_provider import AzureDevOpsProvider
 from src.infrastructure.scm.bitbucket_provider import BitbucketProvider
 from src.infrastructure.scm.github_provider import GitHubProvider
@@ -44,6 +51,10 @@ __all__ = [
     "provider_display_name",
     "provider_is_github",
     "resolve_scm_provider",
+    "commit_url",
+    "pull_request_url",
+    "repo_web_base",
+    "user_url",
     "AzureDevOpsProvider",
     "BitbucketProvider",
     "GitHubProvider",
