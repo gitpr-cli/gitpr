@@ -238,6 +238,13 @@ HELP_MAP: dict[str, dict[str, str]] = {
             "Interactive wizard to configure external linters (ESLint, PHPCS, etc.) via Checkstyle XML integration."
         ),
     },
+    "explain": {
+        "url": get_doc_url("pull-request-publication.md"),
+        "title": __("Reviewer Guide (--explain / gitpr explain)"),
+        "description": __(
+            "Generates a concise reviewer-centric summary (What changes, Why it changes, Where to focus, and Regression risk)."
+        ),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -458,6 +465,14 @@ HELP_PRIORITY: dict[str, int] = {
     ),
 )
 @click.option(
+    "--explain",
+    "explain_flag",
+    is_flag=True,
+    help=__(
+        "Includes the Reviewer Guide section ('Explain my PR') in the Pull Request description."
+    ),
+)
+@click.option(
     "--plugins",
     is_flag=True,
     help=__("Lists all active global plugins (linters and prompts)."),
@@ -527,6 +542,7 @@ def cli(
     base,
     no_publish,
     no_edit,
+    explain_flag,
     plugins,
     status,
     no_unstaged_check,
@@ -1416,12 +1432,22 @@ def cli(
         current_time,
     )
 
+    pr_desc_body = data.get("pr_description", __("No detailed description."))
+
+    from src.config import explain_enabled_by_default
+    if explain_flag or explain_enabled_by_default():
+        from src.application.use_cases.generate_pr_explanation import generate_pr_explanation
+        click.secho("🧐 " + __("Generating Reviewer Guide (Explain my PR)..."), fg="cyan", dim=True)
+        explanation = generate_pr_explanation(diff_text, ai_provider=active_provider, quiet=True)
+        if explanation and explanation.markdown:
+            pr_desc_body = f"{pr_desc_body.rstrip()}\n\n---\n\n{explanation.markdown}"
+
     markdown_content = (
         __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
         + "```text\n"
         + f"{data.get('commit_message', __('Code update'))}\n"
         + "```\n\n---\n\n"
-        + data.get("pr_description", __("No detailed description."))
+        + pr_desc_body
     )
 
     try:
@@ -1451,7 +1477,7 @@ def cli(
 
     pr_data = {
         "commit_message": data.get("commit_message", ""),
-        "pr_description": data.get("pr_description", __("No detailed description.")),
+        "pr_description": pr_desc_body,
     }
 
     # ── --no-publish: save locally and exit ──
@@ -2814,6 +2840,71 @@ def tests_generate(target_file, finding_id, framework_override, apply_flag, ai_p
         fg="green",
         bold=True,
     )
+
+
+@cli.command(
+    "explain",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("pull-request-publication.md"),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def explain(ai_provider):
+    """Generates a concise reviewer guide explaining what changes, why, and where to focus."""
+    from src.application.use_cases.generate_pr_explanation import generate_pr_explanation
+    from src.core import get_git_diff
+
+    diff_text = get_git_diff()
+    if not diff_text or not diff_text.strip():
+        click.secho(__("⚠️ No diff found. Make some changes before running the command."), fg="yellow")
+        raise click.exceptions.Exit(1)
+
+    click.secho("🧐 " + __("Analyzing diff from reviewer perspective..."), fg="cyan")
+    explanation = generate_pr_explanation(diff_text, ai_provider=ai_provider, quiet=False)
+
+    if not explanation.markdown:
+        click.secho(__("❌ Failed to generate PR explanation."), fg="red")
+        raise click.exceptions.Exit(1)
+
+    click.echo()
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.secho("  " + __("REVIEWER GUIDE (Explain My PR)"), fg="cyan", bold=True)
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.echo()
+
+    click.secho("🔍 " + __("What changes:"), fg="green", bold=True)
+    click.echo(f"  {explanation.what_changes}")
+    click.echo()
+
+    click.secho("💡 " + __("Why it changes:"), fg="green", bold=True)
+    click.echo(f"  {explanation.why_it_changes}")
+    click.echo()
+
+    if explanation.reviewer_focus_points:
+        click.secho("🎯 " + __("Where to focus review:"), fg="yellow", bold=True)
+        for pt in explanation.reviewer_focus_points:
+            loc = f" [{pt.file_path}:{pt.related_line}]" if pt.file_path and pt.related_line else (f" [{pt.file_path}]" if pt.file_path else "")
+            click.echo(f"  • {pt.description}{loc}")
+        click.echo()
+
+    if explanation.regression_risk:
+        click.secho("⚠️ " + __("Regression Risk:"), fg="red", bold=True)
+        click.echo(f"  {explanation.regression_risk}")
+        click.echo()
+
+    if not explanation.has_sufficient_evidence:
+        click.secho(
+            __("⚠️ Notice: Inferred with partial context. Some fields contain placeholders to complete."),
+            fg="yellow",
+            dim=True,
+        )
 
 
 def _env_flag(name, default="false"):

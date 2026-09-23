@@ -512,6 +512,16 @@ FIELDS = (
         kind=KIND_STR,
         default="",
     ),
+    ConfigField(
+        key="GITPR_EXPLAIN_BY_DEFAULT",
+        label=__("Explain PR by Default"),
+        description=__(
+            "Automatically includes the Reviewer Guide section in generated Pull Request descriptions."
+        ),
+        category="pr",
+        kind=KIND_BOOL,
+        default="false",
+    ),
     # ------------------------------------------------------------- Code review
     ConfigField(
         key="OUTPUT_FILE_NAME_REVIEW",
