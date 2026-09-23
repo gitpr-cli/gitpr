@@ -1,28 +1,24 @@
 # Changelog
 
-## [1.3.0] - 2026-09-21
+## [1.3.0] - 2026-09-23
 
-### Added
-- **Embedded secret ruleset (secret scanning)** — [src/security_ruleset.py](src/security_ruleset.py), seven rules that run with every linter invocation and need no `.gitpr.linter.yml` of your own. **Behavior change: a commit that used to pass can now be blocked.**
-  - **Blocking (`error`, exit code 1):** AWS access key ID, GitHub token, Slack token, Google API key, private key block (`-----BEGIN … PRIVATE KEY-----`).
-  - **Reported (`warning`, never blocks):** database connection string carrying credentials, and a generic credential assignment (`password = "…"`), the latter behind a placeholder filter for `changeme`, `xxxxxx`, `example`, `dummy`, `sample`, `your_password_here` and `sua_senha`.
-- **`GITPR_LINTER_SECURITY`** (default `true`) turns the ruleset off; **`GITPR_LINTER_SECURITY_DISABLED_RULES`** drops individual rules by name, separated by semicolons (e.g. `sec-db-connection-string;sec-slack-token`). Both are seeded into `~/.gitpr/.env` by `setup_environment()` on the next run, so opting out is a one-line edit, and both are editable in the configuration screen under the `linter` category.
-- **`extensions: ["*"]`** in a linter rule now means every file, including the ones with no suffix. The security rules use it, which is how `id_rsa`, `.env` and `Dockerfile` are covered; a rule with `extensions: ["py"]` keeps its suffix filter exactly as before.
+### SUmmary
+This release significantly expands the features supporting the pull request workflow and code quality. Commands have been added that automatically generate AI-powered test suites, break changes into atomic commits, and provide a reviewer guide, in addition to strengthening security with static analysis checks and secret detection built into the linter. The presentation experience is also improved, with an identification badge included in pull requests and READMEs, a guided demo tour based on recorded examples, and an automatic update tutorial. Finally, the documentation has been revised and updated to reflect all these new features.
 
-### Changed
-- `load_linter_rules()` merges the ruleset **after** the project's own rules and the linter plugins, which stay untouched — only the ordering changes, placing the security alerts last in the report.
-- An alert never prints the value it matched, only the file and the line. The message travels to the console, to the Markdown report and, in the PR flow, to a pull request body; echoing the secret would copy it into all three.
-- `--input` (whole-file audit) now scans `.md`, `.txt` and lockfiles as well, since the ruleset matches every extension. It reports without blocking there — the `sys.exit(1)` exists only on the `--linter` path.
-- `src/branding/badge_data.py` reads an empty rule list as "linter configured and nothing found". With the ruleset on by default, a project that never ran `--skill` now gets a measurement instead of no badge.
+### ✨ Features
+- add reviewer guide explain command and PR section ([6138cf1](https://github.com/gitpr-cli/gitpr/commit/6138cf1e5fe2001fb4be89b604f564f188ff5612)) · 2026-09-23
+- add AI-powered test suite generation command ([7d84daf](https://github.com/gitpr-cli/gitpr/commit/7d84daf7ff8a8d5acf924547297c10b259ce1fff)) · 2026-09-22
+- add Semgrep, Gitleaks and Bandit SAST bridges ([a799664](https://github.com/gitpr-cli/gitpr/commit/a799664dd0e79b8b1d81dc7985afb035780001f3)) — linter · 2026-09-22
+- add embedded secret scanning ruleset to linter ([47784a7](https://github.com/gitpr-cli/gitpr/commit/47784a751cab2bb673be481c0046461e0e287d4c)) · 2026-09-21
+- add command to split changes into atomic commits ([c38aed2](https://github.com/gitpr-cli/gitpr/commit/c38aed23a30d02e41a1de1e49157dba86c89ece3)) — split · 2026-09-21
+- add GitPR badge to PR bodies and README snippet ([69f41ec](https://github.com/gitpr-cli/gitpr/commit/69f41ecd7f7bf7228959bfc83460e6572404039f)) · 2026-09-19
+- add gitpr demo guided tour over recorded examples ([da162d0](https://github.com/gitpr-cli/gitpr/commit/da162d0d705664b5a710adf6b7d385b1fd7f22b3)) · 2026-09-18
 
-### Known coverage gaps (v1)
-- An unquoted assignment is **not** caught (`API_KEY=abc123` — the `.env` format, which is precisely where secrets leak; the generic rule requires quotes).
-- Missing prefixes: `ASIA…` (temporary AWS credentials), `github_pat_…`, `xoxc-`/`xoxd-` (Slack user tokens).
-- The generic rule has no left boundary on the key name: `mytoken` matches exactly like `token`, so a variable that merely ends with a keyword is reported.
+### 📚 Documentation
+- add auto update tutorial ([8920d13](https://github.com/gitpr-cli/gitpr/commit/8920d13e1bd58c80ac9c35ad7c2d2df4c0b1844d)) · 2026-09-18
+- update docs files ([4218b5a](https://github.com/gitpr-cli/gitpr/commit/4218b5aae99adc6092315254b2090bf3e6084073)) · 2026-09-17
 
-### Documentation
-- [docs/linter-regras-customizadas.md](docs/linter-regras-customizadas.md) — the `level` field and the embedded ruleset, with the two escape hatches.
-- [docs/git-hooks-locais.md](docs/git-hooks-locais.md) — what the pre-commit hook now blocks, and how to bypass it.
+**Collaborators:** [@natanfiuza](https://github.com/natanfiuza)
 
 ## [1.2.0] - 2026-09-17
 

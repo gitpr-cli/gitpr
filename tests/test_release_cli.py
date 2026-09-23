@@ -25,6 +25,7 @@ def _result(version="1.2.4", summary="Executive summary text."):
     return ReleaseNotesResult(
         version=version,
         previous_tag="v1.2.3",
+        previous_version="1.2.3",
         generated_at="2026-09-08T10:00:00",
         summary=summary,
         sections={},

@@ -139,6 +139,7 @@ docs/
 | `-f` / `--fullreview`    | Full code review       | `git fetch` → diff against remote base → AI + Linter → `.txt`             |
 | `fix` (subcommand)       | Apply review findings   | last cached review → AI findings → `git apply --check` → classify → dry run (or `--apply`) |
 | `review-pr` (subcommand) | Remote PR review        | forge API → PR diff (no checkout) → smart excludes in Python → AI + Linter (YAML only) → `.txt` (+ comment with `--post-comment`) |
+| `release` (subcommand)   | Release notes           | previous version section of the changelog → `git log` range → classify → drop already-released → AI summary → `CHANGELOG.md` + `.gitpr/reports/release/` artifact (+ forge release with `--publish`) |
 | `split` (subcommand)     | Atomic commits by hunk  | `git diff HEAD` (own flags) → hunks/units → one AI grouping call → `git apply --cached --check` pre-validation → one commit per group, message per group (dry run by default; writes only with `--apply`) |
 | `-i` / `--input`         | File audit             | Entire file → AI (uses `.gitpr.filereview.md`)                            |
 | `-l` / `--linter`        | Static linter          | `git diff` → YAML regex + external linters → console/TUI (no AI)          |
@@ -349,6 +350,14 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - In diff mode, only checks added lines (`+`) — focused and fast
 - `parse_diff_and_lint(diff, skip_external=False)` — the remote PR review passes `skip_external=True`: the bridge runs binaries against files on disk (the local tree), which would lint the wrong revision and publish it as a comment
 - **Secret scanning** (`src/security_ruleset.py`) runs with every invocation, merged at the end of `load_linter_rules()` after the project rules and the plugins, which stay untouched. Seven rules, all `extensions: ["*"]`: five `error` (AWS key ID, GitHub/Slack token, Google API key, private key block) and two `warning` (DB URL with credentials, generic credential assignment behind a placeholder filter). Rules live in the package, not in a downloaded template, so they are identical on every machine and cannot be replaced by `--skill` or rewritten by the wizard. An alert never echoes the matched value — it travels to the console, the report and the PR body. Opt-out: `GITPR_LINTER_SECURITY` (fail-open — only `false`/`0`/`no`/`off`/`n` disables it) and `GITPR_LINTER_SECURITY_DISABLED_RULES` (`;`-separated names). Both are seeded into `~/.gitpr/.env` by `setup_environment()`, and `tests/conftest.py` pins the first to `false` so three suites keep seeing an empty rule list
+
+### Release engine (changelog, delta and links)
+- The commit range is anchored on **the previous version section of the changelog**, not on `git describe`: the newest commit hash of that section is the origin (falling back to that version as a tag, then to `git describe` with a visible warning). Tags live only on the branch that cut the release, so a `git describe` anchor would list every commit of every previous version again
+- `_drop_released()` is the second line of defence: any commit whose short hash appears in *another* version section is dropped, with a count. When nothing survives, the run aborts instead of writing an empty section
+- Every bullet is `- {subject} ([{short_hash}]({commit_url})) — {scope} · [#{n}]({pr_url}) · {YYYY-MM-DD}`; PRs come from the squash-merge `(#123)` tail, which stays in the subject
+- Contributor e-mails resolve to logins through the same ladder as the reviewer resolution (`get_commit_author_login` first — it sees private addresses the user search cannot — then `email_to_handle`), cached in `~/.gitpr/cache/contributors.json`; only successes are cached, so a rate-limited run retries later. Everything degrades to plain text without a forge or a token
+- Web URLs live in `src/infrastructure/scm/web_links.py` (`repo_web_base`, `commit_url`, `pull_request_url`, `user_url`) — pure functions, no provider was changed; Azure DevOps has no simple profile URL, so its contributors keep the display name
+- `upsert_changelog(force=True)` replaces the section from its `## [x.y.z]` header to the next level-2 header. The boundary must never be a `###` subsection, or the old body survives above the new one
 
 ### Blame engine (Code Archaeology)
 - Maximum tracing depth: 4 parent commits

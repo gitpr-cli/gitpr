@@ -5,6 +5,7 @@ import unittest
 from src.changelog_builder import (
     ChangeCategory,
     ClassifiedCommit,
+    LinkContext,
     build_release_section,
     normalize_contributors,
     organize_commits,
@@ -21,19 +22,21 @@ def _commit(
     author_name="Ada Lovelace",
     author_email="ada@example.com",
     short_hash="abc1234",
+    pr_number=None,
+    date="2026-09-01T10:00:00+00:00",
 ):
     return ClassifiedCommit(
         hash=short_hash * 5,
         short_hash=short_hash,
         author_name=author_name,
         author_email=author_email,
-        date="2026-09-01T10:00:00+00:00",
+        date=date,
         subject=subject,
         body="",
         category=category,
         scope=scope,
         breaking=breaking,
-        pr_number=None,
+        pr_number=pr_number,
         raw_type="feat" if category is ChangeCategory.FEATURE else "",
     )
 
@@ -88,14 +91,16 @@ class TestBuildReleaseSection(BuilderTestCase):
             },
             summary="",
         )
-        self.assertIn("### ✨ Features\n- add linter (abc1234) — linter", markdown)
+        self.assertIn(
+            "### ✨ Features\n- add linter (abc1234) — linter · 2026-09-01", markdown
+        )
 
     def test_category_section_without_scope(self):
         markdown = self._render(
             sections={ChangeCategory.FIX: [_commit(ChangeCategory.FIX, "repair")]},
             summary="",
         )
-        self.assertIn("### 🐛 Fixes\n- repair (abc1234)", markdown)
+        self.assertIn("### 🐛 Fixes\n- repair (abc1234) · 2026-09-01", markdown)
 
     def test_breaking_changes_section_and_dedup(self):
         breaking_feat = _commit(
@@ -105,10 +110,12 @@ class TestBuildReleaseSection(BuilderTestCase):
         sections, breaking = organize_commits([breaking_feat, fix])
         markdown = self._render(sections=sections, breaking=breaking, summary="")
         # Breaking commit appears under the Breaking heading...
-        self.assertIn("### ⚠️ Breaking Changes\n- drop old api (abc1234)", markdown)
+        self.assertIn(
+            "### ⚠️ Breaking Changes\n- drop old api (abc1234) · 2026-09-01", markdown
+        )
         # ...and is NOT duplicated inside Features.
         self.assertNotIn("### ✨ Features", markdown)
-        self.assertIn("### 🐛 Fixes\n- repair (abc1234)", markdown)
+        self.assertIn("### 🐛 Fixes\n- repair (abc1234) · 2026-09-01", markdown)
 
     def test_empty_categories_are_skipped(self):
         markdown = self._render(
@@ -125,7 +132,7 @@ class TestBuildReleaseSection(BuilderTestCase):
             sections={ChangeCategory.OTHER: [_commit(ChangeCategory.OTHER, "junk")]},
             summary="",
         )
-        self.assertIn("### 📦 Other Changes\n- junk (abc1234)", markdown)
+        self.assertIn("### 📦 Other Changes\n- junk (abc1234) · 2026-09-01", markdown)
 
     def test_contributors_footer(self):
         markdown = self._render(summary="", contributors=["Ada Lovelace", "Grace Hopper"])
@@ -134,6 +141,100 @@ class TestBuildReleaseSection(BuilderTestCase):
     def test_no_footer_without_contributors(self):
         markdown = self._render(summary="", contributors=[])
         self.assertNotIn("Contributors", markdown)
+
+    def test_bullet_without_date_omits_the_trailing_group(self):
+        markdown = self._render(
+            sections={ChangeCategory.FIX: [_commit(ChangeCategory.FIX, "repair", date="")]},
+            summary="",
+        )
+        self.assertIn("### 🐛 Fixes\n- repair (abc1234)", markdown)
+        self.assertNotIn("·", markdown)
+
+
+class TestBuildReleaseSectionWithLinks(BuilderTestCase):
+    """The bullet/contributor link rendering driven by a LinkContext."""
+
+    LINKS = LinkContext(
+        provider="github",
+        base="https://github.com/o/r",
+        logins={"Ada Lovelace": "ada"},
+    )
+
+    def _render(self, commit, contributors=None, links=None):
+        return build_release_section(
+            version="1.2.0",
+            generated_at="2026-09-07T12:00:00+00:00",
+            summary="",
+            sections={commit.category: [commit]},
+            breaking_changes=[],
+            contributors=contributors or [],
+            links=self.LINKS if links is None else links,
+        )
+
+    def test_hash_becomes_a_link_keeping_the_short_form_visible(self):
+        markdown = self._render(_commit(ChangeCategory.FEATURE, "add linter"))
+        self.assertIn(
+            "- add linter ([abc1234](https://github.com/o/r/commit/abc1234abc1234abc1234abc1234abc1234))",
+            markdown,
+        )
+
+    def test_scope_pr_and_date_keep_their_order(self):
+        markdown = self._render(
+            _commit(
+                ChangeCategory.FEATURE,
+                "add linter",
+                scope="linter",
+                pr_number=190,
+                date="2026-09-22T08:00:00-03:00",
+            )
+        )
+        self.assertIn(
+            "- add linter ([abc1234](https://github.com/o/r/commit/abc1234abc1234abc1234abc1234abc1234))"
+            " — linter · [#190](https://github.com/o/r/pull/190) · 2026-09-22",
+            markdown,
+        )
+
+    def test_pr_without_link_context_stays_as_plain_number(self):
+        markdown = build_release_section(
+            version="1.2.0",
+            generated_at="2026-09-07T12:00:00+00:00",
+            summary="",
+            sections={
+                ChangeCategory.FIX: [
+                    _commit(ChangeCategory.FIX, "repair", pr_number=190)
+                ]
+            },
+            breaking_changes=[],
+            contributors=[],
+        )
+        self.assertIn("- repair (abc1234) · #190 · 2026-09-01", markdown)
+
+    def test_contributor_login_replaces_the_display_name(self):
+        markdown = self._render(
+            _commit(ChangeCategory.FIX, "repair"),
+            contributors=["Ada Lovelace", "Grace Hopper"],
+        )
+        self.assertIn(
+            "**Contributors:** [@ada](https://github.com/ada), Grace Hopper", markdown
+        )
+
+    def test_azure_contributors_keep_the_plain_name(self):
+        markdown = self._render(
+            _commit(ChangeCategory.FIX, "repair"),
+            contributors=["Ada Lovelace"],
+            links=LinkContext(
+                provider="azure_devops",
+                base="https://dev.azure.com/org/prj/_git/r",
+                logins={"Ada Lovelace": "ada"},
+            ),
+        )
+        self.assertIn("**Contributors:** Ada Lovelace", markdown)
+
+    def test_empty_link_context_degrades_to_plain_text(self):
+        markdown = self._render(
+            _commit(ChangeCategory.FIX, "repair"), links=LinkContext()
+        )
+        self.assertIn("- repair (abc1234) · 2026-09-01", markdown)
 
 
 class TestOrganizeCommits(unittest.TestCase):
