@@ -154,6 +154,7 @@ SKILL_FILES_BY_TYPE = {
     "release": ".gitpr.release.md",
     "fix": ".gitpr.fix.md",
     "tests": ".gitpr.tests.md",
+    "explain": ".gitpr.explain.md",
 }
 SKILL_TYPES = tuple(SKILL_FILES_BY_TYPE)
 
@@ -352,6 +353,17 @@ def badge_enabled():
         "no",
         "off",
         "n",
+    )
+
+
+def explain_enabled_by_default():
+    """Returns True if 'Explain my PR' section is automatically included in PRs."""
+    load_dotenv(ENV_FILE)
+    return os.getenv("GITPR_EXPLAIN_BY_DEFAULT", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "y",
     )
 
 
