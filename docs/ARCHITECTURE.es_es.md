@@ -23,11 +23,12 @@ El objetivo principal de GitPR es eliminar el trabajo repetitivo y garantizar un
 * **⚡ Linter Estático Local (`-l` / `--linter`):** Un motor de Expresiones Regulares (Regex) ultrarrápido que se ejecuta localmente para detectar errores obvios (p. ej., console.log, claves hardcoded) sin gastar tokens de IA. También admite **linters externos** (ESLint, PHPCS, Stylelint) como puente Checkstyle — configurados mediante un asistente interactivo (`--linter-setup`).  
 * **🪝 Integración con Git Hooks (`-ih` / `--installhooks`):** Inyecta GitPR en el ciclo natural de Git, ejecutando el Linter en un pre-commit o sugiriendo mensajes en un prepare-commit-msg. Instala **5 hooks** (pre-commit, prepare-commit-msg, pre-push, post-checkout, post-merge) con **auto-sync versionado y localizado** (EN, PT-BR, PT-PT, ES, FR).  
 * **🗿 Arqueología de Código (`-b` / `--blame`):** Rastrea el origen de una regla de negocio con `git blame` + IA (profundidad máxima de 4 commits padre), clasificando cada commit como **ORIGIN** u **REFACTORING** y generando una línea de tiempo con resumen ejecutivo.  
-* **📋 Issues Estandarizadas (`-is` / `--issue`):** Genera un borrador de Issue en formato **What / Why / Where / How** y abre una TUI para edición o publicación mediante la API REST de GitHub. Tiene **3 motores de contexto**: diff (predeterminado), historial de la rama (`-ht`) y blame (`-b file:lines`).  
+* **📋 Issues Estandarizadas (`-is` / `--issue`):** Genera un borrador de Issue en formato **What / Why / Where / How** y abre una TUI para edición o publicación mediante la API de la forge configurada (GitHub, GitLab, Bitbucket; Azure DevOps no ofrece endpoint universal de issues — guardado local). Tiene **3 motores de contexto**: diff (predeterminado), historial de la rama (`-ht`) y blame (`-b file:lines`).  
 * **💬 Chat de Programación en Pareja (`-ch` / `--chat`):** TUI interactiva donde la IA ve el diff actual y mantiene una conversación contextual, con memoria por rama, slash commands (`/explain`, `/tests`, `/optimize`, `/clear`), auto-patch y exportación de sesión.  
 * **🔌 Servidor MCP (`--mcp` / `gitpr-mcp`):** Expone todas las capacidades de IA como **12 tools**, **resources** y **7 prompts** para editores compatibles con MCP (VS Code, Cursor, Claude Desktop, Zed, Claude Code). Instalación automática mediante `gitpr-mcp --install <editor|auto>`. Invocación directa sin servidor persistente: `gitpr-mcp --tool <name> --tool-args '{...}'` — JSON en stdout, diagnóstico en stderr (seguro para pipes, scripts y CI).  
 * **📊 Métricas y Telemetría Local (`--metrics` / `--dashboard`):** Recolección offline de eventos (comando, estado, proveedor, tokens, duración) con exportación CSV/JSON y dashboard TUI con alcance por repositorio, enriquecido con tokens reales leídos de la caché de prompts.  
 * **🧙 Asistente de Configuración (`--install`):** Configuración guiada en 4 pasos — plantillas de skills, git hooks, configuración MCP en los editores detectados y verificación de la API key del proveedor de IA.  
+* **🪄 Asistente de Forge SCM (`--init`):** Detecta la forge del repositorio a partir del remote origin (GitHub, GitLab, Bitbucket Cloud, Azure DevOps), recopila extras del proveedor y el token de acceso, lo valida contra la API de la forge y persiste la configuración cifrada (`GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED`, extras) — solo en caso de éxito.
 * **🔎 Estado de Archivos (`--status`):** Lista archivos sin commitear categorizados (new / modified / deleted) — rápido, sin IA y sin red.  
 * **🧩 Sistema de Plugins (`--plugins`):** Paquetes globales de reglas de linter (`~/.gitpr/plugins/linter/*.yml`) y prompts MCP (`~/.gitpr/plugins/prompts/*.md`) aplicados de forma aditiva en todos los proyectos.  
 * **🔄 Multi-Model (Agnóstico de IA):** Permite elegir entre **Google Gemini**, **DeepSeek** u **Ollama** (local, sin red) como motor de razonamiento, alternando dinámicamente mediante .env o la flag `--provider`, con fallback automático entre proveedores.  
@@ -123,6 +124,8 @@ Las interfaces visuales viven en `src/ui/` y siguen patrones comunes: retorno de
 
 Los recursos remotos (traducciones, thinking words, smart excludes, presets de linter, scripts de hooks) se vuelven a descargar en bloque cuando cambian los marcadores de versión (`__lang_version__`, `__scripts_version__` en `updater.py`). Los hooks instalados se comparan con `SCRIPTS_VERSION` + `SCRIPTS_INSTALLED_LANG` en `.env` y se **auto-sincronizan silenciosamente** en cada ejecución (respetando `SCRIPTS_LANG`, el idioma que eligió el usuario, o el idioma de la interfaz cuando está vacío).
 
+Los cinco marcadores (`LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`, `LINTER_PRESETS_VERSION`, `SCRIPTS_VERSION`), lo que almacena en caché cada uno y el orden correcto para publicar un cambio están documentados en **[version-markers.md](version-markers.md)**.
+
 ### **17. Sistema de Auto-Update**
 
 GitPR se distribuye exclusivamente a través de PyPI, y el módulo `updater.py` consulta la API JSON de PyPI (`pypi.org/pypi/gitpr-cli/json`) como fuente única de la versión publicada. La verificación se guarda en caché a diario (`~/.gitpr/update_cache.json`) y está protegida por una comprobación de conexión (socket `8.8.8.8:53`) antes de cualquier operación de red.
@@ -132,6 +135,16 @@ Cuando la versión publicada es más nueva que `__version__`, la puerta de arran
 ### **18. Spinner Adaptativo**
 
 Durante las llamadas a la IA, el `spinner.py` se ejecuta en un hilo en segundo plano con caracteres braille, "palabras de pensamiento" descubiertas letra a letra (lista controlada remotamente, con caché por versión) y velocidad adaptativa al tamaño de la frase.
+
+### **19. SCM Multi-Forge (ScmProvider)**
+
+La publicación de PRs e issues ya no es exclusiva de GitHub (en desarrollo tras la v0.0.37). `src/infrastructure/scm/` abstrae las forges de alojamiento Git bajo un único contrato:
+
+* **`base.py`** — ABC `ScmProvider` (11 métodos abstractos: crear/verificar/actualizar/hacer merge de PR, diff, listar PRs abiertos, comentar, issues, prueba de conexión, parsing de repositorio), las dataclasses `RepoRef`/`PullRequestRequest`/`PullRequestResult`/`IssueRequest`/`IssueResult` y la jerarquía `ScmProviderError` / `ScmNotSupportedError`.
+* **Proveedores** — un módulo por forge (`github_provider.py`, `gitlab_provider.py`, `bitbucket_provider.py`, `azure_devops_provider.py`), cada uno implementando los mismos verbos REST con autenticación y payloads específicos de la forge. Los proveedores **lanzan** `ScmProviderError` (`http_status` 0 = red) — las antiguas tuplas silenciosas `(ok, data, status)` sobreviven solo en la capa de UI (`src/github_api.py` ahora es un shim obsoleto).
+* **`factory.py`** — `resolve_scm_provider()` selecciona el proveedor a partir de la variable de entorno `GITPR_SCM_PROVIDER` (predeterminado `github`, con fallback al token heredado `GITHUB_TOKEN_ENCRYPTED` — cero migración); `detect_provider_from_remote()` deduce la forge a partir de la URL del remote origin.
+* **Asistente `--init`** — `core.run_scm_init_wizard()` detecta la forge, recopila extras del proveedor (organización/proyecto Azure, usuario Bitbucket) y el token de acceso, lo valida mediante `test_connection()` (3 intentos, reintento en 401) y persiste **solo en caso de éxito**: `GITPR_SCM_PROVIDER` + `GITPR_SCM_TOKEN_ENCRYPTED` (Fernet) + extras.
+* **Notas de diseño** — consulte el [Glosario y ADR Multi-Forge](plans/glossary-scm-multiforge.md) en `docs/plans/` para detalles específicos de cada forge (`api-version` de Azure, `iid` vs `id` en GitLab, App Password de Bitbucket, resumen textual de diff en Azure) y las desviaciones aprobadas.
 
 ---
 
@@ -171,9 +184,12 @@ src/
 ├── blame_engine.py   # Arqueología de código con git blame + IA
 ├── issue_engine.py   # Generación de issues con IA (3 motores de contexto)
 ├── chat_memory.py    # Persistencia de sesiones del chat (repo+branch, historial de diffs)
-├── tui_issue.py      # Validación de token de GitHub y punto de entrada de la TUI
+├── tui_issue.py      # Validación de token SCM (validate_or_request_scm_token) y punto de entrada de la TUI
 ├── metrics.py        # Telemetría offline (fire-and-forget, enriquecimiento vía caché)
-├── github_api.py     # Llamadas centralizadas a la API REST de GitHub (PRs)
+├── infrastructure/   # Infraestructura de dominio
+│   └── scm/          # SCM multi-forge: base.py (ScmProvider ABC, dataclasses, errores),
+│                     # proveedores github/gitlab/bitbucket/azure_devops + factory.py
+├── github_api.py     # Shim OBSOLETO → src/infrastructure/scm/github_provider.py
 ├── mcp_server.py     # Servidor MCP (stdio) + tools/resources/prompts + modo --tool
 ├── updater.py        # Verificación de versión (PyPI), bloqueo obligatorio y version markers
 └── ui/               # Sub-paquete: componentes TUI (Textual)
