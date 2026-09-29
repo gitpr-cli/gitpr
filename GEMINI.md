@@ -24,6 +24,7 @@ src/
 ├── chat_memory.py    # Interactive chat session memory & history manager
 ├── mcp_server.py     # Model Context Protocol (MCP) Stdio server implementation
 ├── metrics.py        # Local telemetry & usage metrics tracking engine
+├── ledger.py         # SQLite usage ledger — one row per executed command
 ├── spinner.py        # Animated braille spinner with thinking words
 ├── i18n.py           # Internationalization engine (Laravel-inspired __() function)
 ├── linter_engine.py  # Static analysis with regex (YAML rules)
@@ -122,7 +123,7 @@ docs/
 | `-s` / `--skill`          | Download templates      | Download `.gitpr.*.md` into `.gitpr/skill/` (never overwrites)           |
 | `-ih` / `--installhooks`  | Install hooks            | Download + install hooks in `.git/hooks/`                                  |
 | `-u` / `--update`         | Update                  | Check PyPI → print the `pip install --upgrade gitpr-cli` command          |
-| `--metrics` / `--dashboard` | Telemetry & Analytics | View summary, `--export` CSV/JSON, `--purge` data, or `--dashboard` TUI  |
+| `metrics` (subcommand)    | Telemetry & metrics     | Summary, `export` CSV/JSON, `dashboard` TUI, `migrate`, `prune`, `purge`  |
 | `--lang <lang>`           | Override language       | Forces interface language (`en_us`, `pt_br`, `pt_pt`, `es_es`, `fr_fr`)   |
 | `--provider`              | Force AI provider       | `gemini`, `deepseek`, or `ollama`                                         |
 | `--mcp` / `gitpr-mcp`     | MCP Server              | Starts stdio Model Context Protocol server for IDE/agent integration      |
@@ -306,7 +307,7 @@ It must be placed in `docs/gemini/reports/{branch}/{current_date}_{taskname}.md`
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
 - Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json`
-- Telemetry metrics: `~/.gitpr/metrics/*.json`
+- Telemetry ledger: `~/.gitpr/metrics/telemetry.db` (pre-ledger files move to `~/.gitpr/metrics_legacy/`)
 - Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OLLAMA_API_MODEL_PRIMARY`, `OLLAMA_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `GITHUB_TOKEN_ENCRYPTED`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
 
 ### AI Providers (Multi-Model Architecture)
@@ -329,10 +330,14 @@ It must be placed in `docs/gemini/reports/{branch}/{current_date}_{taskname}.md`
 - Context manager: `src/chat_memory.py` → class `ChatMemoryManager`
 - Features: full diff context, message history, F5 auto-patching code changes into workspace, F2 diff refresh
 
-### Telemetry & Analytics Engine (`--metrics`, `--dashboard`)
-- Engine: `src/metrics.py` logs local token counts, execution status, and timing data
-- TUI Dashboard: `src/ui/metrics_app.py` → class `MetricsApp(App)`
-- Commands: `--metrics` (summary), `--export` (CSV/JSON export), `--purge` (clean logs), `--dashboard` (interactive TUI)
+### Telemetry & Analytics Engine (`gitpr metrics`)
+- Ledger: `src/ledger.py` — SQLite at `~/.gitpr/metrics/telemetry.db` (WAL, UUID primary key, `PRAGMA user_version`), one row per executed command, written synchronously
+- Read surfaces: `src/metrics.py` — each metric computed once and rendered once into `(style, text)` pairs, shared by the CLI and the TUI, so one ledger is never counted two ways
+- TUI Dashboard: `src/ui/metrics_app.py` → class `MetricsApp(App)`; migration wizard: `src/ui/metrics_migration_app.py`
+- Commands: `metrics` (summary), `metrics export` (CSV/JSON), `metrics bundle` + `metrics merge` (a `.db` slice of the ledger to move between machines, deduplicated by UUID), `metrics dashboard` (TUI), `metrics migrate` (pre-ledger files), `metrics prune --before <date>`, `metrics purge`
+- Window: `--days` / `--since` / `--until`, inclusive on both ends, limit every read surface; the cycle section reads the forge and therefore defaults to the last 30 days
+- Cost: built-in USD price table plus `GITPR_METRICS_PRICE_<MODEL>_INPUT` / `_OUTPUT` overrides and `GITPR_METRICS_CURRENCY`; `ollama` and `local` cost zero by definition
+- MCP: `get_usage_metrics(repo, since, until)` exposes the same read-only surfaces to an agent
 
 ### Interactive Setup Wizard (`--install`)
 - Guided CLI wizard (`run_install_wizard()` in `core.py`)
@@ -548,17 +553,17 @@ This section summarizes the design decisions, patterns, and historical fixes cap
   1. Todo `call_ai_model()` deve retornar `meta_raw` com `_telemetry_meta`
   2. `save_cached_response()` deve receber e persistir `meta_raw`
   3. `_telemetry_meta` contém: `prompt_tokens`, `completion_tokens`, `model`, `duration_ms`
-  4. O matching é por minuto-granularity com token tie-breaker (suficiente para ~99% dos casos)
+  4. Os tokens são copiados para a linha do ledger **na escrita** — não existe mais join posterior com o cache
   5. Dashboard deve trancar contra JSON não-dict (lista, escalar) para evitar crash
 
 ### metrics-telemetry-architecture
-- **Description:** Arquitetura de telemetria offline com fire-and-forget threads e dashboard TUI
+- **Description:** Arquitetura de telemetria offline com ledger SQLite e dashboard TUI
 - **How to apply:**
   1. Novos comandos devem chamar `log_command_metric()` com status, provider, duration
   2. Usar lazy import: `from src.metrics import log_command_metric` dentro da função
-  3. Eventos são agregados por uuid+data; re-execuções no mesmo dia sobrescrevem
-  4. Dashboard acessível via `gitpr --metrics --dashboard`
-  5. Export via `gitpr --metrics --export` (salva em `./.gitpr/metrics/export/`)
+  3. Cada execução é uma linha com UUID próprio (chave primária) — re-execuções no mesmo dia **não** se sobrescrevem
+  4. Dashboard acessível via `gitpr metrics dashboard`
+  5. Export via `gitpr metrics export` (salva em `./.gitpr/metrics/export/`)
 
 ### nothing-to-commit-detection
 - **Description:** Detecção multilingue de "nothing to commit" no git commit — trata como sucesso, não erro

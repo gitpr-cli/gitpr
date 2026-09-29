@@ -36,4 +36,11 @@ existem na resposta da API, que é cacheada. O enriquecimento casa os dois.
 4. O matching é por minuto-granularity com token tie-breaker (suficiente para ~99% dos casos)
 5. Dashboard deve ter guard contra JSON não-dict (lista, escalar) para evitar crash
 
+**Superseded (2026-09-28):** `enrich_metrics_from_cache()` foi **removido** — o
+join por minuto dependia de três cópias divergentes do mapa comando→pasta de
+cache. Os tokens passam a ser copiados do `meta_raw` **na escrita** da linha
+(`log_command_metric(meta=...)`), sem mapa e sem minuto. As colunas
+`prompt_tokens`/`completion_tokens`/`tokens_actual` continuam no CSV.
+Ver `docs/claude-code/reports/develop_natan/2026-09-29_metrics_telemetry_v2.md`.
+
 Relacionado: [[metrics-telemetry-architecture]], [[ai-call-duration-tracking]]

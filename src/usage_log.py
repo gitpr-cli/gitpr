@@ -7,10 +7,11 @@ enough to record every run.
 
 Three decisions worth knowing about:
 
-* The write is synchronous. src.metrics.log_local_metric uses a daemon thread,
-  which loses the entry whenever the process exits before the thread is
-  scheduled — unacceptable for a log whose whole promise is that every command
-  gets recorded.
+* The write is synchronous. The audit log carries the promise that every command
+  gets recorded, and a write deferred to a background thread breaks exactly that
+  promise whenever the process exits before the thread is scheduled — which is
+  the whole lifecycle of `gitpr --hook-event`. src.metrics.log_local_metric made
+  the same choice for the same reason, after the same defect was found there.
 * Nothing here ever prints. The MCP server runs on stdio and reserves stdout
   for JSON-RPC, so a stray print would corrupt the protocol.
 * The daily filename is a uuid5 derived from the date, which yields one stable
@@ -19,19 +20,16 @@ Three decisions worth knowing about:
 """
 
 import os
-import subprocess
 import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
 
+from src.infrastructure.git.identity import git_identity, repo_label
+
 # The literals every boolean reader in the project agrees on. Same set the
 # sibling PR publish log accepts, so the two logs agree on what "on" means.
 _BOOL_TRUE = ("true", "1", "yes", "y")
-
-# What the log line needs from git. Fetched together — see _git_identity().
-_GIT_KEYS = ("remote.origin.url", "user.name", "user.email")
-_GIT_REGEX = "^(%s)$" % "|".join(key.replace(".", r"\.") for key in _GIT_KEYS)
 
 
 def _enabled():
@@ -63,31 +61,11 @@ def _flat(value):
 def _repo_label(remote_url):
     """Reduces any forge's remote URL to a readable "owner/repo" label.
 
-    Deliberately not core.get_repo_name(): that one hardcodes github.com and
-    answers "unknown/repo" on every other forge. Deliberately not
-    parse_repo_ref() either — that is a provider method, so reaching it here
-    would mean building a provider (token, HTTP session) on every command.
+    Thin alias for src.infrastructure.git.identity.repo_label — the grammar is
+    shared with the telemetry ledger, which needs the same answer for the same
+    remote so the two records can be joined.
     """
-    url = _flat(remote_url)
-    if not url:
-        return ""
-    if url.endswith(".git"):
-        url = url[:-4]
-
-    if "://" in url:
-        # https://host/path, ssh://host:2222/path — drop scheme and host
-        path = url.split("://", 1)[1]
-        path = path.split("/", 1)[1] if "/" in path else ""
-    elif ":" in url and "@" in url.split(":", 1)[0]:
-        # scp-like shorthand: git@host:path
-        path = url.split(":", 1)[1]
-    else:
-        # A plain local path, or a host with nothing after it
-        path = url
-
-    # "_git" is an Azure DevOps URL artifact, not part of the repository's
-    # identity — the project and the repo are what identify it there.
-    return "/".join(seg for seg in path.strip("/").split("/") if seg and seg != "_git")
+    return repo_label(remote_url)
 
 
 def _git_identity():
@@ -97,34 +75,8 @@ def _git_identity():
     (user.name, user.email and remote -v). Three process spawns cost roughly
     150 ms on Windows on every command; one costs about 40 ms.
     """
-    try:
-        proc = subprocess.run(
-            ["git", "config", "--get-regexp", _GIT_REGEX],
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=5,
-        )
-    except Exception:
-        return "", ""
-
-    # git config exits 1 when nothing matched — no repository, or no identity
-    if proc.returncode != 0:
-        return "", ""
-
-    values = {}
-    for line in (proc.stdout or "").splitlines():
-        key, _, value = line.partition(" ")
-        values[key.strip().lower()] = value.strip()
-
-    name = values.get("user.name", "")
-    email = values.get("user.email", "")
-    if name and email:
-        author = f"{name} <{email}>"
-    else:
-        author = name or email
-
-    return _repo_label(values.get("remote.origin.url", "")), author
+    context = git_identity()
+    return context.repo, context.author
 
 
 def _command():

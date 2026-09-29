@@ -153,7 +153,7 @@ docs/
 | `--install`              | Setup wizard           | Interactive wizard for templates, hooks, MCP, and API keys                |
 | `-s` / `--skill`         | Download templates      | Download `.gitpr.*.md` into `.gitpr/skill/` (never overwrites)            |
 | `-ih` / `--installhooks` | Install hooks           | Download + install hooks in `.git/hooks/`                                  |
-| `--metrics` / `--dashboard` | Telemetry & analytics | Summary, `--export` CSV/JSON, `--purge` data, or `--dashboard` TUI      |
+| `metrics` (subcommand)   | Telemetry & metrics    | Summary, `export` CSV/JSON, `dashboard` TUI, `migrate`, `prune`, `purge`  |
 | `--status`               | Environment status      | Report provider, keys, versions, and local configuration state            |
 | `--plugins`              | Plugin management       | List and manage global plugins (linter rules + MCP prompts)              |
 | `--mcp` / `gitpr-mcp`    | MCP server              | Starts the stdio Model Context Protocol server for IDE/agent integration  |
@@ -323,7 +323,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
 - Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json` (auto-downloaded, re-fetched when `__lang_version__` changes)
-- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `OUTPUT_FILE_NAME_RELEASE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `GITPR_LINTER_SECURITY`, `GITPR_LINTER_SECURITY_DISABLED_RULES`, `GITPR_FIX_SAFE_MAX_LINES_CHANGED`, `GITPR_FIX_SAFE_EXCLUDED_PATHS`, `GITPR_FIX_REQUIRE_CONFIRMATION`, `GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE`, `GITPR_FIX_BRANCH_NAME_TEMPLATE`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `OUTPUT_FILE_NAME_RELEASE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `GITPR_LINTER_SECURITY`, `GITPR_LINTER_SECURITY_DISABLED_RULES`, `GITPR_FIX_SAFE_MAX_LINES_CHANGED`, `GITPR_FIX_SAFE_EXCLUDED_PATHS`, `GITPR_FIX_REQUIRE_CONFIRMATION`, `GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE`, `GITPR_FIX_BRANCH_NAME_TEMPLATE`, `GITPR_METRICS_CURRENCY`, `GITPR_METRICS_PRICE_<MODEL>_INPUT`, `GITPR_METRICS_PRICE_<MODEL>_OUTPUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
 
 ### AI Providers (Multi-Model Architecture)
 - **Gemini:** `gemini-pro-latest` (primary/advanced) / `gemini-flash-lite-latest` (secondary/simple)
@@ -355,6 +355,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - The commit range is anchored on **the previous version section of the changelog**, not on `git describe`: the newest commit hash of that section is the origin (falling back to that version as a tag, then to `git describe` with a visible warning). Tags live only on the branch that cut the release, so a `git describe` anchor would list every commit of every previous version again
 - `_drop_released()` is the second line of defence: any commit whose short hash appears in *another* version section is dropped, with a count. When nothing survives, the run aborts instead of writing an empty section
 - Every bullet is `- {subject} ([{short_hash}]({commit_url})) — {scope} · [#{n}]({pr_url}) · {YYYY-MM-DD}`; PRs come from the squash-merge `(#123)` tail, which stays in the subject
+- `git log --no-merges` means merge commits never reach the classifier, so a repository that merges with merge commits had `pr_number = None` **by construction** and no `[#n]` segment ever appeared in a changelog. A **second pass over the same range** (`git log --merges`) builds `hash → PR number` from the ancestry (`rev-list <merge>^1..<merge>^2`); the bullets stay one per commit, now with the link. A merge that is not a pull request (`Merge branch 'main' into …`) lends no number, a commit reachable from two merges takes the closest one, and the fix is **not retroactive** — only a newly cut section gets links
 - Contributor e-mails resolve to logins through the same ladder as the reviewer resolution (`get_commit_author_login` first — it sees private addresses the user search cannot — then `email_to_handle`), cached in `~/.gitpr/cache/contributors.json`; only successes are cached, so a rate-limited run retries later. Everything degrades to plain text without a forge or a token
 - Web URLs live in `src/infrastructure/scm/web_links.py` (`repo_web_base`, `commit_url`, `pull_request_url`, `user_url`) — pure functions, no provider was changed; Azure DevOps has no simple profile URL, so its contributors keep the display name
 - `upsert_changelog(force=True)` replaces the section from its `## [x.y.z]` header to the next level-2 header. The boundary must never be a `###` subsection, or the old body survives above the new one
@@ -373,11 +374,25 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Repo addressed via `parse_repo_ref(remote_url) -> RepoRef(raw, workspace, name, provider)`; workspace = GitHub owner / GitLab namespace (subgroups) / Bitbucket workspace / Azure display-only `"{org}/{project}"`
 - `gitpr --init` → `core.run_scm_init_wizard()`: detects the forge from the origin remote → prompts extras (Azure org/project, Bitbucket username) → validates token (`test_connection`, 3 attempts, 401 re-prompt) → **persists only on success**: `GITPR_SCM_PROVIDER` + `GITPR_SCM_TOKEN_ENCRYPTED` (Fernet) + extras when present
 - Fail-fast providers: Azure DevOps requires `GITPR_SCM_ORGANIZATION`/`GITPR_SCM_PROJECT`; Bitbucket requires `GITPR_SCM_USERNAME` (App Password = HTTP Basic username+token)
-- `get_pull_request(repo, pr_id)` is a **concrete** ABC method (default raises `ScmNotSupportedError`) implemented by all four providers — `list_open_pull_requests` paginates one page only, so filtering it by number silently misses older PRs and cannot tell closed from nonexistent
+- `get_pull_request(repo, pr_id)` is a **concrete** ABC method (default raises `ScmNotSupportedError`) implemented by all four providers — `list_open_pull_requests` cannot tell "merged or closed" from "never existed", so the remote-PR review resolves metadata through it
+- `list_pull_requests(repo, state, since, until)` is the paginated listing the four providers implement; `list_open_pull_requests(repo)` is now a **thin wrapper on the base class** (`state="open"`), so every call site and test is unchanged but the one-page limit is gone for real. `state` is the canonical vocabulary (`open`/`closed`/`merged`/`all`): each provider translates it to its own and then filters the answer, because three of the four return something wider for a merged request (GitHub has no merged state at all, Azure calls a merge `completed`, Bitbucket says `DECLINED`). `since`/`until` are inclusive `YYYY-MM-DD` bounds on the date the state implies — `merged_at` for merged, `closed_at` for closed, `created_at` otherwise
+- `supports_merged_dates` (class attribute, `False` on Bitbucket Cloud — its PR object publishes no `merged_on`) is declared before the call, like `supports_reviewable_diff`: a Bitbucket row carries an empty `merged_at` rather than a neighbouring date
 - `supports_reviewable_diff` (class attribute, `False` on Azure DevOps) gates the remote PR review before any network call: Azure's API returns a file list, not a unified diff
 - GitLab's `get_pull_request_diff` synthesizes the `diff --git a/… / --- / +++` headers (`changes[].diff` is a bare hunk) and raises on `overflow: true` (truncated diff)
 - `src/github_api.py` is a **DEPRECATED shim** — legacy `(ok, data, status)` tuples + `DeprecationWarning`, delegating to `github_provider.py`; no new code may import it
 - Glossário + desvios aprovados: `docs/plans/glossary-scm-multiforge.md` e `docs/plans/ADR-001-scm-abstraction.md`
+
+### Metrics & Telemetry (local ledger)
+- `src/ledger.py` is the ledger: SQLite at `~/.gitpr/metrics/telemetry.db` (WAL, UUID primary key, `PRAGMA user_version`), one row per executed command. Rows are written **synchronously** — `log_command_metric()` resolves the git context once per process instead of handing the row to a daemon thread that a hook process may outlive
+- `src/metrics.py` holds the read surfaces; `gitpr metrics` is a group with its own `-h` and doc epilog exposing `export`, `bundle`, `merge`, `migrate`, `prune`, `purge`, `dashboard` and the hidden `hook-event` the git hooks call. The root `--metrics`/`--dashboard` flags are gone (R10.3), so contextual help for the group comes from Click rather than from `HELP_MAP`
+- One window, one meaning: `--since`/`--until`/`--days` (inclusive on both ends) narrow every read surface. The cycle section is the exception — it asks the network, so it defaults to the last 30 days and names the window in its own header instead of narrowing in silence
+- Each metric is computed once and rendered once into `(style, text)` pairs (`TITLE`/`PLAIN`/`WARN`), so the CLI (click colours) and the Textual dashboard (`_markup`) cannot tell two stories about one ledger. A section with nothing to say is left out, never printed empty
+- Cost: a built-in USD table for the four model IDs GitPR ships with, overridden per model by `GITPR_METRICS_PRICE_<MODEL>_INPUT`/`_OUTPUT` (model name uppercased, every run of non-alphanumerics collapsed into one `_`). **Both rates are required** or the model is reported in tokens alone, because pricing half a model at an unconfigured zero understates the bill. `ollama`/`local` cost zero; `GITPR_METRICS_CURRENCY` labels the total and, when it is not USD, drops the built-in table instead of mislabelling a dollar rate. A total that leaves models out reads `Total (partial)`
+- `modules` carries the diff's paths normalized to two segments (`src/fix`), `(root)` for a file at the repository root, and `(no module)` for the commands that never had a diff (linter, blame, hooks)
+- `bundle` writes the window as a standalone `.db` (schema and `user_version` travel with it); `merge` attaches it and inserts by UUID, migrating an older bundle up and **refusing a newer one before the `ATTACH`** (`LedgerVersionError`), so the local ledger is never left half-imported
+- `cache_backfill` rows are reconstructed from the AI cache and stay out of the execution aggregates: the cache keys an answer by its prompt, so it counts distinct prompts, not runs
+- The cycle section is the one metric the ledger cannot answer: it lists merged pull requests through `ScmProvider.list_pull_requests` and measures `created_at → merged_at`. Every failure degrades to one line — `Not read: <reason>`, no merge date on Bitbucket, nothing merged in the window — never a stack trace and never a guessed number
+- The four surfaces are named in `docs/plans/glossary-metrics-telemetry.md`, the ledger decision is `docs/plans/ADR-008-metrics-ledger.md`, and the user-facing doc is `docs/metricas-telemetria.md` (+4 translations)
 
 ### Issues TUI (Textual)
 - Main app: `src/ui/issue_app.py` → class `IssueApp(App)`
@@ -414,7 +429,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Server stdout is monkey-patched to isolate the JSON-RPC stream from prints
 - Tools run on an `anyio` offload thread (`_offload`) to avoid blocking the event loop; if a tool hangs in the IDE, kill `gitpr-mcp.exe` and restart the editor
 
-**Tools (14):**
+**Tools (15):**
 
 | Tool | Action | Parameters |
 |------|--------|------------|
@@ -432,6 +447,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 | `generate_issue` | Structured issue (What/Why/Where/How) | `context_type`: `diff`/`history`/`blame` |
 | `list_fix_candidates` | Fix candidates of the last review: patch, classification, id (read-only) | `finding_id` |
 | `review_remote_pr` | AI review of a PR already open on the forge, fetched by number (read-only, never comments) | `pr_number`, `provider` |
+| `get_usage_metrics` | The local usage ledger over a window: runs, cost per model, modules touched, providers, quality rates (read-only, no day shortcut — the caller names its own dates) | `repo`, `since`, `until` |
 
 **Resources (18):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame,release,fix}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
 

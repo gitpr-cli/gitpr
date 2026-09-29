@@ -16,6 +16,7 @@ from pathlib import Path
 from unittest import mock
 
 from src import usage_log
+from src.infrastructure.git import identity
 
 # Imported before any sandbox is applied, on purpose. src.i18n writes
 # GITPR_LANG into ~/.gitpr/.env from its module body when the variable is
@@ -206,7 +207,7 @@ class TestLogUsage(unittest.TestCase):
         home = self._sandbox()
         with HomeSandbox(home), mock.patch.dict(os.environ, {"GITPR_SHOW_LOGS": "true"}):
             with mock.patch.object(
-                usage_log.subprocess, "run", side_effect=FileNotFoundError("no git")
+                identity.subprocess, "run", side_effect=FileNotFoundError("no git")
             ):
                 path = usage_log.log_usage()
 
@@ -217,7 +218,7 @@ class TestLogUsage(unittest.TestCase):
         home = self._sandbox()
         failed = mock.Mock(returncode=1, stdout="")
         with HomeSandbox(home), mock.patch.dict(os.environ, {"GITPR_SHOW_LOGS": "true"}):
-            with mock.patch.object(usage_log.subprocess, "run", return_value=failed):
+            with mock.patch.object(identity.subprocess, "run", return_value=failed):
                 path = usage_log.log_usage()
 
         self.assertIsNotNone(path)

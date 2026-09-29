@@ -1,10 +1,14 @@
-#!/bin/bash
-# GitPR Métricas: hook post-merge
-# Regista eventos de pull/merge para telemetria da equipa.
+#!/usr/bin/env bash
+# GitPR Métricas: hook post-merge (eventos de pull/merge)
 # Instalado automaticamente por: gitpr --installhooks
 
-IS_SQUASH=$1
+# O gitpr grava o evento e resolve o repositório sozinho: parse_repo_ref()
+# conhece todas as forges, enquanto o bash que isto substitui só conhecia o
+# GitHub e caía para um nome de pasta solto, que o dashboard depois filtrava
+# fora. O `command -v` deixa uma máquina sem gitpr continuar a funcionar; o
+# `|| true` impede que uma falha do ledger derrube o seu comando git.
 
-gitpr --hook-event "post-merge" --quiet 2>/dev/null || true
+command -v gitpr >/dev/null 2>&1 || exit 0
+gitpr --quiet metrics hook-event post-merge 2>/dev/null || true
 
 exit 0

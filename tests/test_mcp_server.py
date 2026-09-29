@@ -800,7 +800,7 @@ class TestToolsCatalog(unittest.TestCase):
             self.assertTrue(tool["description"], f"Tool '{tool['name']}' has empty description")
 
     def test_catalog_has_all_expected_tools(self):
-        """Catalog includes all 14 registered tools."""
+        """Catalog includes all 15 registered tools."""
         catalog = mcp_server._build_tools_catalog()
         tool_names = {t["name"] for t in catalog["tools"]}
         expected = {
@@ -818,6 +818,7 @@ class TestToolsCatalog(unittest.TestCase):
             "generate_issue",
             "list_fix_candidates",
             "review_remote_pr",
+            "get_usage_metrics",
         }
         missing = expected - tool_names
         extra = tool_names - expected
@@ -954,10 +955,10 @@ class TestWriteRealStdout(unittest.TestCase):
 class TestToolRegistry(unittest.TestCase):
     """Tests for _get_tool_registry and _TOOL_FUNCS."""
 
-    def test_registry_has_all_14_tools(self):
-        """_get_tool_registry returns all 14 tools."""
+    def test_registry_has_all_15_tools(self):
+        """_get_tool_registry returns all 15 tools."""
         registry = mcp_server._get_tool_registry()
-        self.assertEqual(len(registry), 14)
+        self.assertEqual(len(registry), 15)
 
     def test_every_tool_has_func(self):
         """Every tool in the registry has a callable 'func'."""

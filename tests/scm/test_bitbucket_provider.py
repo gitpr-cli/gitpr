@@ -417,7 +417,99 @@ class TestListOpenPullRequests(unittest.TestCase):
         self.assertEqual(results[1].number, 5)
         self.assertEqual(results[1].source_branch, "feat/b")
         self.assertEqual(results[1].target_branch, "dev")
-        self.assertEqual(mock_get.call_args.kwargs["params"], {"state": "OPEN"})
+        self.assertEqual(
+            mock_get.call_args.kwargs["params"],
+            {"state": ["OPEN"], "sort": "-updated_on", "pagelen": 100},
+        )
+
+
+class TestListPullRequests(unittest.TestCase):
+    """The listing with a state and a period, paginated for real."""
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_merged_maps_to_the_forges_own_word(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "values": [
+                    _pr_object(pr_id=3, state="MERGED", updated_on="2026-09-10T10:00:00+00:00"),
+                    _pr_object(pr_id=5, state="DECLINED", updated_on="2026-09-11T10:00:00+00:00"),
+                ]
+            },
+        )
+
+        results = _provider().list_pull_requests(_repo(), state="merged")
+
+        self.assertEqual([pr.number for pr in results], [3])
+        self.assertEqual(mock_get.call_args.kwargs["params"]["state"], ["MERGED"])
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_closed_covers_declined_and_superseded(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "values": [
+                    _pr_object(pr_id=3, state="DECLINED"),
+                    _pr_object(pr_id=4, state="SUPERSEDED"),
+                    _pr_object(pr_id=5, state="MERGED"),
+                ]
+            },
+        )
+
+        results = _provider().list_pull_requests(_repo(), state="closed")
+
+        self.assertEqual([pr.number for pr in results], [3, 4])
+        self.assertEqual(mock_get.call_args.kwargs["params"]["state"],
+                         ["DECLINED", "SUPERSEDED"])
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_a_merged_row_carries_no_merge_date(self, mock_get):
+        """Bitbucket publishes no merged_on, so the field stays empty rather
+        than carrying updated_on as if it were the merge instant."""
+        mock_get.return_value = _response(
+            200,
+            {"values": [_pr_object(pr_id=3, state="MERGED",
+                                   created_on="2026-09-01T09:00:00+00:00",
+                                   updated_on="2026-09-10T10:00:00+00:00")]},
+        )
+
+        result = _provider().list_pull_requests(_repo(), state="merged")[0]
+
+        self.assertEqual(result.merged_at, "")
+        self.assertEqual(result.created_at, "2026-09-01T09:00:00+00:00")
+        self.assertFalse(_provider().supports_merged_dates)
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_the_walk_follows_the_next_url_in_the_body(self, mock_get):
+        first = _response(
+            200,
+            {
+                "values": [_pr_object(pr_id=1)],
+                "next": "https://api.bitbucket.org/2.0/repositories/w/r/pullrequests?page=2",
+            },
+        )
+        second = _response(200, {"values": [_pr_object(pr_id=2)]})
+        mock_get.side_effect = [first, second]
+
+        results = _provider().list_pull_requests(_repo(), state="all")
+
+        self.assertEqual([pr.number for pr in results], [1, 2])
+        self.assertIsNone(mock_get.call_args_list[1].kwargs["params"])
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_a_page_updated_before_the_window_ends_the_walk(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {"values": [_pr_object(pr_id=1, state="MERGED",
+                                   updated_on="2026-01-05T10:00:00+00:00")]},
+        )
+
+        results = _provider().list_pull_requests(
+            _repo(), state="merged", since="2026-09-01"
+        )
+
+        self.assertEqual(results, [])
+        self.assertEqual(mock_get.call_count, 1)
 
     @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
     def test_empty_list(self, mock_get):

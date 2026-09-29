@@ -467,8 +467,90 @@ class TestListOpenPullRequests(unittest.TestCase):
         self.assertEqual(results[1].target_branch, "dev")
         self.assertEqual(
             mock_get.call_args.kwargs["params"],
-            {"searchCriteria.status": "active", "api-version": "7.1"},
+            {"searchCriteria.status": "active", "$top": 100, "api-version": "7.1"},
         )
+
+
+class TestListPullRequests(unittest.TestCase):
+    """The listing with a state and a period, paginated for real."""
+
+    @patch("src.infrastructure.scm.azure_devops_provider.requests.get")
+    def test_merged_maps_to_completed_and_dates_the_merge(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "value": [
+                    _pr_object(pr_id=3, status="completed",
+                               creationDate="2026-09-01T09:00:00.1234567Z",
+                               closedDate="2026-09-10T10:00:00.1234567Z"),
+                    _pr_object(pr_id=5, status="abandoned",
+                               creationDate="2026-09-02T09:00:00.1234567Z",
+                               closedDate="2026-09-11T10:00:00.1234567Z"),
+                ]
+            },
+        )
+
+        results = _provider().list_pull_requests(_repo(), state="merged")
+
+        self.assertEqual([pr.number for pr in results], [3])
+        self.assertEqual(results[0].merged_at, "2026-09-10T10:00:00.1234567Z")
+        self.assertEqual(mock_get.call_args.kwargs["params"]["searchCriteria.status"],
+                         "completed")
+
+    @patch("src.infrastructure.scm.azure_devops_provider.requests.get")
+    def test_an_abandoned_row_is_closed_and_not_merged(self, mock_get):
+        """closedDate exists for both outcomes, so only the status says which."""
+        mock_get.return_value = _response(
+            200,
+            {"value": [_pr_object(pr_id=5, status="abandoned",
+                                  closedDate="2026-09-11T10:00:00.1234567Z")]},
+        )
+
+        result = _provider().list_pull_requests(_repo(), state="closed")[0]
+
+        self.assertEqual(result.merged_at, "")
+        self.assertEqual(result.closed_at, "2026-09-11T10:00:00.1234567Z")
+
+    @patch("src.infrastructure.scm.azure_devops_provider.requests.get")
+    def test_the_window_goes_to_the_server_on_the_close_date(self, mock_get):
+        """Azure has no ordering to stop early on, so the range is the
+        server's — and queryTimeRangeType has to say which date it means,
+        or minTime would filter creations while the caller asked about
+        merges."""
+        mock_get.return_value = _response(200, {"value": []})
+
+        _provider().list_pull_requests(
+            _repo(), state="merged", since="2026-09-01", until="2026-09-30"
+        )
+
+        params = mock_get.call_args.kwargs["params"]
+        self.assertEqual(params["searchCriteria.minTime"], "2026-09-01")
+        self.assertEqual(params["searchCriteria.maxTime"], "2026-09-30")
+        self.assertEqual(params["searchCriteria.queryTimeRangeType"], "closed")
+
+    @patch("src.infrastructure.scm.azure_devops_provider.requests.get")
+    def test_an_open_window_asks_about_creation_dates(self, mock_get):
+        mock_get.return_value = _response(200, {"value": []})
+
+        _provider().list_pull_requests(_repo(), state="open", since="2026-09-01")
+
+        params = mock_get.call_args.kwargs["params"]
+        self.assertEqual(params["searchCriteria.queryTimeRangeType"], "created")
+        self.assertNotIn("searchCriteria.maxTime", params)
+
+    @patch("src.infrastructure.scm.azure_devops_provider.requests.get")
+    def test_the_walk_follows_the_continuation_token(self, mock_get):
+        first = _response(200, {"value": [_pr_object(pr_id=1)]})
+        first.headers = {"x-ms-continuationtoken": "dG9rZW4="}
+        second = _response(200, {"value": [_pr_object(pr_id=2)]})
+        second.headers = {}
+        mock_get.side_effect = [first, second]
+
+        results = _provider().list_pull_requests(_repo(), state="all")
+
+        self.assertEqual([pr.number for pr in results], [1, 2])
+        self.assertEqual(mock_get.call_args_list[1].kwargs["params"]["continuationToken"],
+                         "dG9rZW4=")
 
     @patch("src.infrastructure.scm.azure_devops_provider.requests.get")
     def test_empty_list(self, mock_get):

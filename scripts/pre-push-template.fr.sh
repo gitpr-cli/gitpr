@@ -1,36 +1,14 @@
 #!/usr/bin/env bash
-# GitPR: Télémétrie Pre-Push (Suivi des livraisons)
+# GitPR Métriques : hook pre-push (suivi des livraisons)
+# Installé automatiquement par: gitpr --installhooks
 
-REMOTE="$1"
-REPO=$(git config --get remote.origin.url | grep -o 'github\.com[:/][^.]*' | sed 's/github.com[:/]//' || basename -s .git `git config --get remote.origin.url` || echo "local_repo")
-OWNER=$(echo "$REPO" | cut -d'/' -f1)
-if [ -z "$OWNER" ]; then OWNER=$(git config user.name | tr ' ' '_'); fi
-if [ -z "$OWNER" ]; then OWNER="local_user"; fi
+# gitpr enregistre l'événement et résout lui-même le dépôt : parse_repo_ref()
+# connaît toutes les forges, là où le bash remplacé ne connaissait que GitHub
+# et retombait sur un simple nom de dossier que le dashboard filtrait ensuite.
+# `command -v` laisse fonctionner une machine sans gitpr ; `|| true` évite
+# qu'un échec du ledger ne fasse échouer votre commande git.
 
-METRICS_DIR="$HOME/.gitpr/metrics/$OWNER/git"
-mkdir -p "$METRICS_DIR"
+command -v gitpr >/dev/null 2>&1 || exit 0
+gitpr --quiet metrics hook-event pre-push 2>/dev/null || true
 
-UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s%N)
-DATE_STR=$(date +'%Y-%m-%dT%H:%M:%S')
-
-COMMIT_COUNT=0
-while read local_ref local_sha remote_ref remote_sha; do
-    if [ "$local_sha" != "0000000000000000000000000000000000000000" ] && [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
-        COUNT=$(git rev-list --count $remote_sha..$local_sha 2>/dev/null || echo 0)
-        COMMIT_COUNT=$((COMMIT_COUNT + COUNT))
-    fi
-done
-
-FILE_PATH="$METRICS_DIR/${UUID}_pre-push.json"
-
-cat <<EOF > "$FILE_PATH"
-{
-  "timestamp": "$DATE_STR",
-  "command": "git_push",
-  "status": "success",
-  "repo": "$REPO",
-  "commits_pushed": $COMMIT_COUNT,
-  "remote": "$REMOTE",
-  "provider": "git_hook"
-}
-EOF
+exit 0

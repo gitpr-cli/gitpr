@@ -3,7 +3,11 @@
 import unittest
 
 from src.changelog_builder import ChangeCategory
-from src.commit_classifier import classify_commit, classify_commits
+from src.commit_classifier import (
+    classify_commit,
+    classify_commits,
+    pr_number_from_merge,
+)
 
 
 def _commit(subject, body="", **overrides):
@@ -168,6 +172,50 @@ class TestClassifyBatch(unittest.TestCase):
         self.assertEqual(commits[1].category, ChangeCategory.OTHER)
         self.assertEqual(commits[2].category, ChangeCategory.FIX)
         self.assertEqual([c.hash for c in commits], ["1", "2", "3"])
+
+
+class TestPrNumberFromMerge(unittest.TestCase):
+    """One merge message per forge, and the merges that name nothing."""
+
+    def test_github_merge_commit(self):
+        self.assertEqual(
+            pr_number_from_merge("Merge pull request #193 from gitpr-cli/develop_natan"),
+            193,
+        )
+
+    def test_bitbucket_merge_commit(self):
+        self.assertEqual(
+            pr_number_from_merge("Merged in feature/widget (pull request #193)"),
+            193,
+        )
+
+    def test_azure_devops_merge_commit(self):
+        self.assertEqual(pr_number_from_merge("Merged PR 193: Add widget"), 193)
+
+    def test_gitlab_writes_the_reference_in_the_body(self):
+        self.assertEqual(
+            pr_number_from_merge(
+                "Merge branch 'feature/widget' into 'main'",
+                "Add the widget\n\nSee merge request group/subgroup/project!193",
+            ),
+            193,
+        )
+
+    def test_a_branch_synchronization_names_no_request(self):
+        """The merge that must stay silent, or the commits it carries would
+        inherit a PR number that is not theirs."""
+        self.assertIsNone(
+            pr_number_from_merge("Merge branch 'main' into develop_natan")
+        )
+
+    def test_a_merge_subject_is_never_read_as_a_squash_tail(self):
+        # A body carrying a bare "(#n)" is prose, not a reference: only the
+        # "See merge request" line counts.
+        self.assertIsNone(pr_number_from_merge("Merge branch 'x'", "closes (#7)"))
+
+    def test_empty_message_is_not_a_merge(self):
+        self.assertIsNone(pr_number_from_merge(""))
+        self.assertIsNone(pr_number_from_merge("", None))
 
 
 if __name__ == "__main__":

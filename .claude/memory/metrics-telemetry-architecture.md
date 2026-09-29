@@ -42,4 +42,13 @@ dos comandos. Tudo fica no filesystem local.
 4. Dashboard acessível via `gitpr --metrics --dashboard`
 5. Export via `gitpr --metrics --export` (salva em `./.gitpr/metrics/export/`)
 
+**Superseded (2026-09-28):** o ledger SQLite (`~/.gitpr/metrics/telemetry.db`)
+substituiu os arquivos de evento e o `config.json`; a escrita é **síncrona** (não
+mais thread daemon); cada execução é uma linha com UUID próprio, sem agregação
+por data; os templates de hook chamam `gitpr --quiet metrics hook-event <nome>`;
+e o CLI virou o subcomando `gitpr metrics
+[export|bundle|merge|dashboard|migrate|prune|purge|hook-event]`, com as flags
+`--metrics`/`--dashboard` **removidas** da raiz.
+Ver `docs/claude-code/reports/develop_natan/2026-09-29_metrics_telemetry_v2.md`.
+
 Relacionado: [[metrics-cache-enrichment]], [[dashboard-repo-scope]]

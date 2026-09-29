@@ -513,13 +513,93 @@ class TestListOpenPullRequests(unittest.TestCase):
         self.assertEqual(results[1].number, 5)
         self.assertEqual(results[1].source_branch, "feat/b")
         self.assertEqual(results[1].target_branch, "dev")
-        self.assertEqual(mock_get.call_args.kwargs["params"], {"state": "opened"})
+        self.assertEqual(
+            mock_get.call_args.kwargs["params"],
+            {"state": "opened", "order_by": "updated_at", "sort": "desc",
+             "per_page": 100},
+        )
 
     @patch("src.infrastructure.scm.gitlab_provider.requests.get")
     def test_empty_list(self, mock_get):
         mock_get.return_value = _response(200, [])
 
         self.assertEqual(_provider().list_open_pull_requests(_repo()), [])
+
+
+class TestListPullRequests(unittest.TestCase):
+    """The listing with a state and a period, paginated for real."""
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_all_sends_no_state_at_all(self, mock_get):
+        """GitLab answers every state when nothing is filtered, and a value it
+        does not know is a 400 — so "all" is the absence of the parameter."""
+        mock_get.return_value = _response(200, [_mr_object(iid=3)])
+
+        _provider().list_pull_requests(_repo(), state="all")
+
+        self.assertNotIn("state", mock_get.call_args.kwargs["params"])
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_merged_maps_to_the_forges_own_word(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            [
+                _mr_object(iid=3, state="merged", merged_at="2026-09-10T10:00:00.000Z"),
+                _mr_object(iid=5, state="closed", closed_at="2026-09-11T10:00:00.000Z"),
+            ],
+        )
+
+        results = _provider().list_pull_requests(_repo(), state="merged")
+
+        self.assertEqual([mr.number for mr in results], [3])
+        self.assertEqual(results[0].merged_at, "2026-09-10T10:00:00.000Z")
+        self.assertEqual(mock_get.call_args.kwargs["params"]["state"], "merged")
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_the_walk_follows_the_next_page_header(self, mock_get):
+        first = _response(200, [_mr_object(iid=1)])
+        first.headers = {"X-Next-Page": "2"}
+        second = _response(200, [_mr_object(iid=2)])
+        second.headers = {"X-Next-Page": ""}
+        mock_get.side_effect = [first, second]
+
+        results = _provider().list_pull_requests(_repo(), state="all")
+
+        self.assertEqual([mr.number for mr in results], [1, 2])
+        self.assertEqual(mock_get.call_args_list[1].kwargs["params"], {"page": "2"})
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_a_page_updated_before_the_window_ends_the_walk(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            [_mr_object(iid=1, state="merged", merged_at="2026-01-02T10:00:00.000Z",
+                        updated_at="2026-01-05T10:00:00.000Z")],
+        )
+
+        results = _provider().list_pull_requests(
+            _repo(), state="merged", since="2026-09-01"
+        )
+
+        self.assertEqual(results, [])
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_the_window_keeps_the_merges_inside_it(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            [
+                _mr_object(iid=1, state="merged", merged_at="2026-09-10T10:00:00.000Z",
+                           updated_at="2026-09-10T10:00:00.000Z"),
+                _mr_object(iid=2, state="merged", merged_at="2026-10-02T10:00:00.000Z",
+                           updated_at="2026-10-02T10:00:00.000Z"),
+            ],
+        )
+
+        results = _provider().list_pull_requests(
+            _repo(), state="merged", since="2026-09-01", until="2026-09-30"
+        )
+
+        self.assertEqual([mr.number for mr in results], [1])
 
 
 class TestAddComment(unittest.TestCase):

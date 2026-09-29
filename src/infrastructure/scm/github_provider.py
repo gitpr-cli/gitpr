@@ -24,6 +24,7 @@ from src.infrastructure.scm.base import (
     RepoRef,
     ScmProvider,
     ScmProviderError,
+    within_window,
 )
 
 
@@ -352,28 +353,85 @@ class GitHubProvider(ScmProvider):
             provider=self.name,
         )
 
-    def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
-        response = self._request(
-            "get",
-            self._repo_url(repo, "pulls"),
-            {200},
-            15,
-            params={"state": "open"},
-        )
+    def list_pull_requests(
+        self, repo: RepoRef, state: str = "all", since=None, until=None
+    ) -> list[PullRequestResult]:
+        # GitHub has no "merged" state: asking for closed and keeping the rows
+        # that carry a merged_at is the only way the API answers the question.
+        asked = {"open": "open", "closed": "closed", "merged": "closed", "all": "all"}
+        api_state = asked.get(state, "all")
+        params = {
+            "state": api_state,
+            "sort": "updated",
+            "direction": "desc",
+            "per_page": 100,
+        }
+
         results = []
-        for pr in response.json():
-            results.append(
-                PullRequestResult(
-                    id=pr.get("number"),
-                    url=pr.get("html_url", ""),
-                    number=pr.get("number"),
-                    state=pr.get("state", "open"),
-                    source_branch=pr.get("head", {}).get("ref", ""),
-                    target_branch=pr.get("base", {}).get("ref", ""),
-                    provider=self.name,
+        url = self._repo_url(repo, "pulls")
+        while url:
+            response = self._request("get", url, {200}, 15, params=params or None)
+            page = response.json()
+            for pr in page:
+                if not self._matches_state(pr, state):
+                    continue
+                if not within_window(self._state_date(pr, state), since, until):
+                    continue
+                results.append(
+                    PullRequestResult(
+                        id=pr.get("number"),
+                        url=pr.get("html_url", ""),
+                        number=pr.get("number"),
+                        state=pr.get("state", "open"),
+                        source_branch=pr.get("head", {}).get("ref", ""),
+                        target_branch=pr.get("base", {}).get("ref", ""),
+                        provider=self.name,
+                        created_at=pr.get("created_at") or "",
+                        merged_at=pr.get("merged_at") or "",
+                        closed_at=pr.get("closed_at") or "",
+                    )
                 )
-            )
+            # Sorted by updated desc, and a pull request is updated at or after
+            # it is merged: everything past this page was last touched before
+            # the window opened, so nothing below can be in it.
+            if since and self._page_left_the_window(page, since):
+                break
+            # The next page arrives as a Link header, and it carries the query
+            # string with it — sending our params again would be wrong twice.
+            # A header that is not a URL is no next page (a client that does
+            # not implement Link must end the walk, not loop on it).
+            next_url = (getattr(response, "links", None) or {}).get("next", {}) or {}
+            next_url = next_url.get("url") if isinstance(next_url, dict) else None
+            url = next_url if isinstance(next_url, str) and next_url else None
+            params = None
         return results
+
+    @staticmethod
+    def _matches_state(pr: dict, state: str) -> bool:
+        """Whether a pull request is in the canonical state the caller asked for."""
+        merged = bool(pr.get("merged_at"))
+        if state == "merged":
+            return merged
+        if state == "closed":
+            return not merged
+        if state == "open":
+            return str(pr.get("state", "")) == "open"
+        return True
+
+    @staticmethod
+    def _state_date(pr: dict, state: str) -> str:
+        """The date the state implies: merged_at, closed_at, or created_at."""
+        if state == "merged":
+            return pr.get("merged_at") or ""
+        if state == "closed":
+            return pr.get("closed_at") or ""
+        return pr.get("created_at") or ""
+
+    @staticmethod
+    def _page_left_the_window(page: list, since: str) -> bool:
+        """Whether every row on this page was last updated before ``since``."""
+        stamps = [str(pr.get("updated_at") or "")[:10] for pr in page]
+        return bool(page) and all(stamp and stamp < str(since)[:10] for stamp in stamps)
 
     def add_comment(self, repo: RepoRef, pr_id: str | int, body: str) -> None:
         self._request(

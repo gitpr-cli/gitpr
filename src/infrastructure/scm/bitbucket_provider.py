@@ -32,6 +32,7 @@ from src.infrastructure.scm.base import (
     RepoRef,
     ScmProvider,
     ScmProviderError,
+    within_window,
 )
 
 # https://bitbucket.org/{workspace}/{slug}[/.git] and git@bitbucket.org:...
@@ -77,6 +78,12 @@ class BitbucketProvider(ScmProvider):
     """Bitbucket Cloud (api.bitbucket.org/2.0, and self-hosted base_urls)."""
 
     name = "bitbucket"
+
+    # Bitbucket Cloud publishes no merged date: the pull request object carries
+    # created_on and updated_on, and updated_on keeps moving while people leave
+    # comments after the merge. A close date would be no better — the reason and
+    # closed_by fields exist, the date does not.
+    supports_merged_dates = False
 
     def __init__(self, token="", base_url=None, **kwargs):
         # Fail-fast: Bitbucket auth is Basic(username, App Password), so the
@@ -188,6 +195,7 @@ class BitbucketProvider(ScmProvider):
             source_branch=self._branch_of(j, "source"),
             target_branch=self._branch_of(j, "destination"),
             provider=self.name,
+            created_at=j.get("created_on") or "",
         )
 
     # -- pull requests ---------------------------------------------------
@@ -283,15 +291,74 @@ class BitbucketProvider(ScmProvider):
         )
         return self._to_result(response.json())
 
-    def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
-        response = self._request(
-            "get",
-            self._repo_url(repo, "pullrequests"),
-            {200},
-            15,
-            params={"state": "OPEN"},
-        )
-        return [self._to_result(pr) for pr in response.json().get("values", [])]
+    def list_pull_requests(
+        self, repo: RepoRef, state: str = "all", since=None, until=None
+    ) -> list[PullRequestResult]:
+        # DECLINED is Bitbucket's "closed without merging"; SUPERSEDED is the
+        # same outcome when the source branch was reused. "all" sends no state
+        # at all — the resource returns every state by default.
+        asked = {
+            "open": ["OPEN"],
+            "merged": ["MERGED"],
+            "closed": ["DECLINED", "SUPERSEDED"],
+        }
+        params = {"sort": "-updated_on", "pagelen": 100}
+        if state in asked:
+            params["state"] = asked[state]
+
+        results = []
+        url = self._repo_url(repo, "pullrequests")
+        while url:
+            response = self._request("get", url, {200}, 15, params=params or None)
+            page = response.json()
+            rows = page.get("values", []) if isinstance(page, dict) else []
+            for pr in rows:
+                if not self._matches_state(pr, state):
+                    continue
+                if not within_window(self._state_date(pr, state), since, until):
+                    continue
+                results.append(self._to_result(pr))
+            # Newest updated first, and a pull request is updated at or after
+            # it is merged: a page whose entries all predate the window closes
+            # it. (updated_on is the closest Bitbucket has to a merge date —
+            # see supports_merged_dates.)
+            if since and self._page_left_the_window(rows, since):
+                break
+            # The next page arrives as a full URL in the body, query included.
+            url = page.get("next") if isinstance(page, dict) else None
+            params = None
+        return results
+
+    @staticmethod
+    def _matches_state(pr: dict, state: str) -> bool:
+        """Whether a pull request is in the canonical state the caller asked for."""
+        asked = {
+            "open": ("OPEN",),
+            "merged": ("MERGED",),
+            "closed": ("DECLINED", "SUPERSEDED"),
+        }
+        if state not in asked:
+            return True
+        return str(pr.get("state", "")).upper() in asked[state]
+
+    @staticmethod
+    def _state_date(pr: dict, state: str) -> str:
+        """The date the state implies.
+
+        Bitbucket dates a merge with nothing better than the last update, so
+        both closed states read updated_on — the bound is coarse on purpose,
+        and supports_merged_dates is what tells a caller not to trust it as a
+        merge date.
+        """
+        if state in ("merged", "closed"):
+            return pr.get("updated_on") or ""
+        return pr.get("created_on") or ""
+
+    @staticmethod
+    def _page_left_the_window(page: list, since: str) -> bool:
+        """Whether every PR on this page was last updated before ``since``."""
+        stamps = [str(pr.get("updated_on") or "")[:10] for pr in page]
+        return bool(page) and all(stamp and stamp < str(since)[:10] for stamp in stamps)
 
     def add_comment(self, repo: RepoRef, pr_id: str | int, body: str) -> None:
         self._request(

@@ -40,7 +40,7 @@ from src.changelog_builder import (
     organize_commits,
     release_body,
 )
-from src.commit_classifier import classify_commits
+from src.commit_classifier import classify_commits, pr_number_from_merge
 from src.config import get_api_key, get_api_model, get_ai_provider
 from src.core import get_skill_context
 from src.i18n import CURRENT_LANG, __
@@ -59,6 +59,8 @@ _LOG_SEP_FIELD = "\x1f"
 _LOG_FORMAT = (
     "%x1e%H" + "%x1f%an" + "%x1f%ae" + "%x1f%aI" + "%x1f%s" + "%x1f%b"
 )
+# The merge pass reads only what names a pull request: hash, subject, body.
+_MERGES_LOG_FORMAT = "%x1e%H" + "%x1f%s" + "%x1f%b"
 
 # Header of a changelog block, ex.: "## [1.2.0] - 2026-09-07" or "## Unreleased".
 # Level 2 only: the "###" subsections of a release (Summary, Features, ...) are
@@ -457,6 +459,59 @@ def _collect_raw_commits(root, since_used):
     return raw_commits
 
 
+def _collect_merge_pr_map(root, since_used):
+    """Maps commit hash -> PR number, read from the range's merge commits.
+
+    ``_collect_raw_commits`` skips merge commits, so the squash tail ``(#123)``
+    is the only PR reference the classifier can ever see. In a repository that
+    merges through a merge commit the number lives in the merge message
+    instead, and every bullet would ship without its link: this is the second
+    read of the same range that recovers it.
+
+    Oldest merge first, and the first claim on a commit wins: the merge deepest
+    in the ancestry is the one that actually brought the commit in, and a later
+    merge that merely carries it along cannot steal the number. That is also
+    what keeps a branch synchronization honest — it names no request, so it
+    claims nothing, and the commits it carries keep the number of the merge
+    that introduced them (or none at all).
+
+    Returns an empty map when the range has no merge commits.
+    """
+    args = [
+        "log",
+        "--merges",
+        "--reverse",
+        f"--pretty=format:{_MERGES_LOG_FORMAT}",
+    ]
+    args.append(f"{since_used}..HEAD" if since_used else "HEAD")
+    completed = _run_git(root, args)
+    if completed.returncode != 0:
+        raise ReleaseNotesError(
+            __("❌ Failed to read the git history: {error}", error=completed.stderr.strip())
+        )
+
+    claims = {}
+    for record in completed.stdout.split(_LOG_SEP_RECORD):
+        record = record.strip("\n\x1e")
+        if not record:
+            continue
+        fields = record.split(_LOG_SEP_FIELD)
+        if len(fields) < 3:
+            continue  # corrupt record — never crash the whole release on it
+        merge_hash, subject, body = fields[:3]
+        number = pr_number_from_merge(subject, body)
+        if number is None:
+            continue
+        reachable = _run_git(root, ["rev-list", f"{merge_hash}^1..{merge_hash}^2"])
+        if reachable.returncode != 0:
+            continue  # a merge we cannot walk (shallow clone) claims nothing
+        for line in reachable.stdout.splitlines():
+            sha = line.strip()
+            if sha:
+                claims.setdefault(sha, number)
+    return claims
+
+
 def _language_for_prompt():
     """Maps the interface language code to a spoken language name."""
     names = {
@@ -682,6 +737,15 @@ def generate_release_notes(
         raise ReleaseNotesError(__("❌ This repository has no commits yet."))
 
     commits = classify_commits(raw_commits)
+
+    # What the classifier cannot see: a merge commit's PR number belongs to the
+    # commits the merge brought in. Only the gaps are filled, so a squash
+    # subject always keeps the number it already carries.
+    merge_prs = _collect_merge_pr_map(root, since_used)
+    if merge_prs:
+        for commit in commits:
+            if commit.pr_number is None and commit.hash in merge_prs:
+                commit.pr_number = merge_prs[commit.hash]
 
     commits, already_released = _drop_released(
         commits, _read_changelog(resolved_changelog), target_version

@@ -1114,6 +1114,91 @@ def review_remote_pr(pr_number: str, provider: str = "") -> str:
 
 
 # =============================================================================
+# Tools — Usage Telemetry
+# =============================================================================
+
+
+@mcp.tool(
+    description=__(
+        "Read the local usage ledger of ~/.gitpr/metrics/telemetry.db: how many "
+        "commands ran in the window, what they cost in tokens and money, which "
+        "modules were touched, which providers did the work, and how the runs "
+        "went (linter pass rate, map-reduce rate). Read-only — nothing is "
+        "written, exported or deleted."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True
+    ),
+)
+@_offload
+def get_usage_metrics(repo: str = "", since: str = "", until: str = "") -> str:
+    """Read the usage ledger over a window.
+
+    Args:
+        repo: Repository as "owner/name" (e.g. "gitpr-cli/gitpr"). Empty reads every repository on this machine.
+        since: Start of the window, inclusive (YYYY-MM-DD). Empty leaves the start open.
+        until: End of the window, inclusive (YYYY-MM-DD). Empty leaves the end open.
+    """
+    from src.metrics import (
+        cost_report,
+        module_debt,
+        provider_breakdown,
+        quality_report,
+        show_metrics_summary,
+    )
+
+    # The window is whatever the caller narrowed to — no day shortcut here: an
+    # agent that wants "the last week" can do the arithmetic and, more to the
+    # point, can say which dates it asked about afterwards.
+    window = {
+        "repo_filter": repo.strip() or None,
+        "since": since.strip() or None,
+        "until": until.strip() or None,
+    }
+
+    try:
+        summary = show_metrics_summary(**window)
+        cost = cost_report(**window)
+        quality = quality_report(**window)
+        debt = module_debt(**window)
+        providers = provider_breakdown(**window)
+    except Exception as exc:
+        # A ledger that cannot be read is not an empty ledger, and saying
+        # "no data" would be a wrong answer rather than a missing one.
+        traceback.print_exc(file=sys.stderr)
+        return json.dumps(
+            {"status": "error", "message": str(exc)}, ensure_ascii=False
+        )
+
+    # show_metrics_summary carries the ledger's own directory as a Path; the
+    # protocol is JSON, which has no such type.
+    summary["path"] = str(summary.get("path") or "")
+
+    return json.dumps(
+        {
+            "status": "success",
+            "window": {"repo": repo.strip(), "since": since.strip(), "until": until.strip()},
+            "summary": summary,
+            "cost": cost,
+            "quality": quality,
+            "modules": debt["modules"],
+            "modules_unmapped": debt["unmapped"],
+            "providers": providers["providers"],
+            "models": providers["models"],
+            # Both sources are counted apart: the backfilled rows were
+            # reconstructed from the response cache, which holds one file per
+            # distinct prompt, so they say how many different prompts ran — not
+            # how many times.
+            "source_note": __(
+                "Rows of source 'cache_backfill' were reconstructed from the AI "
+                "cache and count distinct prompts, not executions."
+            ),
+        },
+        ensure_ascii=False,
+    )
+
+
+# =============================================================================
 # Resources — Skill Templates & Linter Config
 # =============================================================================
 
@@ -1793,6 +1878,32 @@ def _build_tools_catalog() -> dict:
                     "idempotentHint": True,
                 },
             },
+            {
+                "name": "get_usage_metrics",
+                "description": "Read the local usage ledger of ~/.gitpr/metrics/telemetry.db: how many commands ran in the window, what they cost in tokens and money, which modules were touched, which providers did the work, and how the runs went (linter pass rate, map-reduce rate). Read-only — nothing is written, exported or deleted.",
+                "parameters": {
+                    "repo": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Repository as 'owner/name' (e.g. 'gitpr-cli/gitpr'). Empty reads every repository on this machine.",
+                    },
+                    "since": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Start of the window, inclusive (YYYY-MM-DD). Empty leaves the start open.",
+                    },
+                    "until": {
+                        "type": "string",
+                        "required": False,
+                        "description": "End of the window, inclusive (YYYY-MM-DD). Empty leaves the end open.",
+                    },
+                },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                },
+            },
         ],
         "resources": [
             {
@@ -2029,6 +2140,7 @@ _TOOL_FUNCS = {
     "generate_issue": generate_issue.__wrapped__,
     "list_fix_candidates": list_fix_candidates.__wrapped__,
     "review_remote_pr": review_remote_pr.__wrapped__,
+    "get_usage_metrics": get_usage_metrics.__wrapped__,
 }
 
 
