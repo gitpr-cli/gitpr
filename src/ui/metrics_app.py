@@ -1,23 +1,58 @@
 """
 Metrics Dashboard TUI - displays telemetry data in an interactive terminal UI.
 
-Usage: gitpr --dashboard
+Usage: gitpr metrics dashboard
+
+Reads the ledger. The pre-ledger path — walking the AI cache and the event
+files, then joining the two by (repo, branch, command, minute) — survives only
+as a bridge for the window before the first write creates telemetry.db, and
+only ever runs when that file is absent. See src/metrics.py for why the join
+was removed rather than fixed.
+
+The screen is the four sections: the overview (the summary bar plus the event
+table), the cost, the quality and where the work went, by module and by
+provider. The sections are the same lines `gitpr metrics` prints — rendered by
+src/metrics.py and spelled in markup here — so neither surface can tell a
+different story about one ledger.
 """
 
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static, DataTable, ProgressBar
-from textual.containers import Vertical
+from textual.containers import Vertical, VerticalScroll
 from textual.binding import Binding
-import json
-import os
 from collections import Counter
+import os
 
+from src import ledger
 from src.i18n import __
 from src.metrics import (
+    TITLE,
+    WARN,
+    cost_lines,
+    cost_report,
+    cycle_lines,
+    cycle_report,
+    module_debt,
+    module_lines,
+    provider_breakdown,
+    provider_lines,
+    quality_lines,
+    quality_report,
     scan_cache_files_for_dashboard,
-    load_processed_cache_list,
-    save_processed_cache_list,
-    get_processed_cache_file,
+    scan_event_files_for_dashboard,
+    _ledger_rows_to_display,
+)
+
+# The four ledger sections, in the order they are read. Each is one widget,
+# fed by the reader and the renderer of the same name in src/metrics.py, and
+# each starts hidden — the loader lights up the ones that have something to
+# say. ``sections_notice`` stands in for all four while the ledger is absent.
+SECTION_IDS = (
+    "section_cost",
+    "section_quality",
+    "section_modules",
+    "section_providers",
+    "section_cycle",
 )
 
 
@@ -43,6 +78,19 @@ class MetricsApp(App):
     #table_container {
         height: 1fr;
         margin: 0 2;
+    }
+    #sections {
+        height: auto;
+        max-height: 20;
+        margin: 0 2;
+    }
+    #sections Static {
+        height: auto;
+        margin-bottom: 1;
+        display: none;
+    }
+    #sections_notice {
+        color: $text-muted;
     }
     #status_bar {
         padding: 0 2;
@@ -72,30 +120,13 @@ class MetricsApp(App):
         Binding("escape", "quit", __("Exit")),
     ]
 
-    def __init__(self, metrics_dir=None, repo_filter=None, **kwargs):
+    def __init__(self, repo_filter=None, since=None, until=None, **kwargs):
         super().__init__(**kwargs)
-        self.metrics_dir = metrics_dir or os.path.join(
-            os.path.expanduser("~"), ".gitpr", "metrics"
-        )
         self.repo_filter = repo_filter
-        self.repo_key = repo_filter or "all_repos"
+        self.since = since
+        self.until = until
         self.events = []
-
-        # Load last_scan from the per-repo processed-cache file
-        self._last_scan_date = None
-        try:
-            state = load_processed_cache_list(self.repo_key)
-            # load_processed_cache_list returns a set; we need the last_scan field
-            state_file = get_processed_cache_file(self.repo_key)
-            if os.path.exists(state_file):
-                import json as _json
-
-                with open(state_file, "r", encoding="utf-8", errors="replace") as f:
-                    raw = _json.load(f)
-                self._last_scan_date = raw.get("last_scan", None)
-        except Exception:
-            pass
-
+        self.using_ledger = ledger.ledger_exists()
         self._columns_set = False
 
     def compose(self) -> ComposeResult:
@@ -106,12 +137,17 @@ class MetricsApp(App):
 
         yield Static("", id="summary")
 
+        with VerticalScroll(id="sections"):
+            yield Static("", id="sections_notice")
+            for section_id in SECTION_IDS:
+                yield Static("", id=section_id)
+
         with Vertical(id="table_container"):
             yield DataTable(id="events_table")
 
         yield Static("", id="status_bar")
 
-        # Loading overlay (hidden until scan starts)
+        # Loading overlay (hidden until a scan starts)
         with Vertical(id="loading_overlay"):
             yield Static(__("Scanning cache files..."), id="loading_label")
             yield ProgressBar(total=100, show_eta=False, id="scan_progress")
@@ -119,7 +155,7 @@ class MetricsApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        """Start the scan on first mount."""
+        """Load the table on first mount."""
         self._setup_columns()
         self._start_scan()
 
@@ -141,156 +177,140 @@ class MetricsApp(App):
         self._columns_set = True
 
     # ------------------------------------------------------------------
-    # Scan orchestration
+    # Loading
     # ------------------------------------------------------------------
 
-    def _start_scan(self, incremental: bool = False) -> None:
-        """Show the loading overlay and launch the background scan worker.
+    def _start_scan(self) -> None:
+        """Show the loading overlay and launch the background worker.
 
-        Args:
-            incremental: If True (F5 refresh), only scan files newer than
-                         last_scan. New rows are merged with existing data.
-                         If False (initial mount), scan all files since Jan 1st.
+        The ledger is queried on a worker thread too: it keeps the UI
+        responsive for a large database and, more importantly, keeps the two
+        sources on the same code path so neither can quietly stop being
+        exercised.
         """
         overlay = self.query_one("#loading_overlay")
-        overlay.display = True
         progress = self.query_one("#scan_progress", ProgressBar)
-        progress.display = True
-        progress.update(total=100, progress=0)
+        self.using_ledger = ledger.ledger_exists()
 
-        # Determine since_date
-        if incremental and self._last_scan_date:
-            since_date = self._last_scan_date[:10]  # YYYY-MM-DD
+        if self.using_ledger:
+            # Reading a database needs no progress bar, and showing one for an
+            # operation measured in milliseconds would only flash.
+            overlay.display = False
+            progress.display = False
         else:
-            since_date = None  # scan_cache_files_for_dashboard defaults to Jan 1st
+            overlay.display = True
+            progress.display = True
+            progress.update(total=100, progress=0)
 
-        self.run_worker(
-            lambda: self._scan_worker(since_date=since_date, incremental=incremental),
-            thread=True,
+        self.run_worker(self._scan_worker, thread=True)
+
+    def _scan_worker(self) -> None:
+        """Background worker: reads the ledger, or the files while it is absent."""
+        if self.using_ledger:
+            rows = self._load_from_ledger()
+            sections = self._load_sections()
+        else:
+            rows = self._load_from_files()
+            sections = self._load_sections(with_ledger=False)
+
+        self.call_from_thread(self._finish_scan, rows, sections)
+
+    def _load_sections(self, with_ledger: bool = True) -> list:
+        """The metric sections, through the readers the terminal also uses.
+
+        Same readers, same lines, only the markup differs: a metric drawn here
+        and not in `gitpr metrics` — or the other way round — would be two
+        metrics wearing one name, and the two surfaces would start disagreeing
+        about the same ledger.
+
+        Runs in the scan worker, which is what makes the cycle affordable here:
+        it is the one reader that waits on the network.
+
+        ``with_ledger=False`` is the bridge path, where the four ledger readers
+        have nothing to read. The cycle is kept because it does not read the
+        ledger at all — it asks the forge — so hiding it there would hide the
+        one section that still has an answer.
+        """
+        scope = {
+            "repo_filter": self.repo_filter or None,
+            "since": self.since,
+            "until": self.until,
+        }
+        readers = (
+            cost_report,
+            quality_report,
+            module_debt,
+            provider_breakdown,
+            cycle_report,
         )
+        renderers = (
+            cost_lines,
+            quality_lines,
+            module_lines,
+            provider_lines,
+            cycle_lines,
+        )
+        sections = list(zip(SECTION_IDS, readers, renderers))
+        if not with_ledger:
+            sections = sections[-1:]
+        return [
+            (f"#{section_id}", renderer(reader(**scope)))
+            for section_id, reader, renderer in sections
+        ]
 
-    def _scan_worker(self, since_date=None, incremental=False) -> None:
-        """Background worker: scans cache files + metric events with progress."""
+    def _load_from_ledger(self) -> list:
+        """Rows in the window, newest first, filtered by repository.
 
-        # Phase 1: scan cache files
+        ``source=None`` on purpose: cache_backfill rows belong on screen, and
+        they are labeled as such in the summary and carry their own source, so
+        the reader can see which is which instead of the two being silently
+        mixed (R10.1). ``query_events`` defaults to executions only, which would
+        have hidden the reconstructed rows from the one surface that names them.
+        """
+        events = ledger.query_events(
+            repo=self.repo_filter or None,
+            since=self.since,
+            until=self.until,
+            source=None,
+            order="DESC",
+        )
+        return _ledger_rows_to_display(events)
+
+    def _load_from_files(self) -> list:
+        """The bridge: the AI cache plus the event files still on disk.
+
+        Concatenated, not joined. The join by minute was the defect — it
+        attributed a cached response to whichever execution shared its minute,
+        and read the action through a map that disagreed with the writer's.
+        Two clearly-labeled rows beat one row that is quietly wrong.
+        """
+
         def progress_cb(done: int, total_count: int):
             self.call_from_thread(self._update_progress, done, total_count)
 
-        cache_rows = scan_cache_files_for_dashboard(
+        rows = scan_cache_files_for_dashboard(
             repo_filter=self.repo_filter,
             progress_cb=progress_cb,
-            since_date=since_date,
+            since_date=self.since,
         )
-
-        # Phase 2: load metric events from ~/.gitpr/metrics/
-        event_rows = self._load_metric_events()
-
-        # Merge: event rows enrich cache rows, unmatched events are appended
-        rows = self._merge_rows(cache_rows, event_rows)
-
-        self.call_from_thread(self._finish_scan, rows, incremental)
-
-    def _load_metric_events(self) -> list:
-        """Walk ~/.gitpr/metrics/ and return event rows (no progress bar)."""
-        events = []
-        if not os.path.isdir(self.metrics_dir):
-            return events
-
-        for root, dirs, files in os.walk(self.metrics_dir):
-            # Skip the export subdirectory
-            if "export" in root.replace(self.metrics_dir, "").split(os.sep):
-                continue
-            for fname in files:
-                if fname.endswith(".json") and not fname.startswith("config"):
-                    fpath = os.path.join(root, fname)
-                    try:
-                        with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                            data = json.load(f)
-                        if isinstance(data, dict):
-                            events.append(data)
-                    except Exception:
-                        pass
-
-        # Filter by repo
-        if self.repo_filter:
-            events = [e for e in events if e.get("repo", "") == self.repo_filter]
-
-        # Convert to row format
-        rows = []
-        for evt in events:
-            row = {
-                "timestamp": (evt.get("timestamp") or "").replace("T", " ")[:19],
-                "command": evt.get("command", "unknown"),
-                "status": evt.get("status", "success"),
-                "provider": evt.get("provider", ""),
-                "tokens": evt.get("tokens_estimated", 0),
-                "duration_ms": evt.get("duration_ms", 0),
-                "repo": evt.get("repo", ""),
-                "branch": evt.get("branch", ""),
-                "source": "event",
-                "md5": "",
-                "path": "",
-            }
-            rows.append(row)
-
+        rows.extend(scan_event_files_for_dashboard(repo_filter=self.repo_filter))
+        # The same window the ledger applies in SQL, applied to rows whose
+        # `day` does not exist yet. ISO 8601 compares as text, which is what
+        # `day >= since` relies on inside the database too.
+        rows = [row for row in rows if self._in_window(row.get("timestamp"))]
+        rows.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
         return rows
 
-    @staticmethod
-    def _merge_rows(cache_rows: list, event_rows: list) -> list:
-        """Merge cache and event rows, deduplicating by (repo, branch, command, minute).
-
-        When a cache row and an event row match, the event's status/provider/duration
-        enrich the cache row. Unmatched event rows are appended as-is.
-        """
-        if not event_rows:
-            return cache_rows
-
-        # Map to normalize action_type → cache folder name for matching
-        _action_map = {
-            "pr": "pr_desc",
-            "commit": "commit",
-            "review": "review",
-            "fullreview": "review",
-            "filereview": "review",
-            "issue": "issue",
-        }
-
-        # Build lookup for cache rows: (repo, branch, action, minute) → row index
-        cache_index = {}
-        for i, row in enumerate(cache_rows):
-            action = _action_map.get(row.get("command", ""), row.get("command", ""))
-            ts = row.get("timestamp", "")[:16]  # YYYY-MM-DD HH:MM
-            key = (row.get("repo", ""), row.get("branch", ""), action, ts)
-            if key not in cache_index:
-                cache_index[key] = i
-
-        used_events = set()
-        merged = list(cache_rows)
-
-        for evt in event_rows:
-            cmd = evt.get("command", "")
-            action = _action_map.get(cmd, cmd)
-            ts = evt.get("timestamp", "")[:16]
-            key = (evt.get("repo", ""), evt.get("branch", ""), action, ts)
-
-            if key in cache_index:
-                idx = cache_index[key]
-                # Enrich cache row with event data (status, provider, real duration)
-                if evt.get("status"):
-                    merged[idx]["status"] = evt["status"]
-                if evt.get("provider"):
-                    merged[idx]["provider"] = evt["provider"]
-                if evt.get("duration_ms", 0) > 0:
-                    merged[idx]["duration_ms"] = evt["duration_ms"]
-                if evt.get("tokens", 0) > 0 and merged[idx]["tokens"] == 0:
-                    merged[idx]["tokens"] = evt["tokens"]
-            else:
-                # Unmatched event — append as new row
-                merged.append(evt)
-
-        # Re-sort by timestamp descending
-        merged.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
-        return merged
+    def _in_window(self, timestamp) -> bool:
+        """Whether a file row's timestamp falls inside --since/--until."""
+        day = str(timestamp or "")[:10]
+        if not day:
+            return not (self.since or self.until)
+        if self.since and day < str(self.since):
+            return False
+        if self.until and day > str(self.until):
+            return False
+        return True
 
     def _update_progress(self, done: int, total: int) -> None:
         """Update the progress bar from the worker thread."""
@@ -304,69 +324,52 @@ class MetricsApp(App):
         except Exception:
             pass  # Widget may not exist yet or may have been removed
 
-    def _finish_scan(self, rows: list, incremental: bool = False) -> None:
-        """Called on the main thread when scanning is complete.
-
-        Args:
-            rows: Newly scanned rows.
-            incremental: If True, merge with existing events (F5 refresh).
-        """
-        from datetime import datetime as _dt
-
-        # Hide the loading overlay
-        overlay = self.query_one("#loading_overlay")
-        overlay.display = False
-
-        if incremental and self.events:
-            # Merge: deduplicate by (repo, branch, command, timestamp)
-            existing_keys = {
-                (
-                    r.get("repo", ""),
-                    r.get("branch", ""),
-                    r.get("command", ""),
-                    r.get("timestamp", ""),
-                )
-                for r in self.events
-            }
-            new_rows = [
-                r
-                for r in rows
-                if (
-                    r.get("repo", ""),
-                    r.get("branch", ""),
-                    r.get("command", ""),
-                    r.get("timestamp", ""),
-                )
-                not in existing_keys
-            ]
-            new_count = len(new_rows)
-            if new_rows:
-                self.events = new_rows + self.events
-                self.events.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
-        else:
-            new_count = len(rows)
-            self.events = rows
-
+    def _finish_scan(self, rows: list, sections: list = None) -> None:
+        """Called on the main thread when loading is complete."""
+        self.query_one("#loading_overlay").display = False
+        self.events = rows
         self._populate_table()
         self._update_summary()
+        self._render_sections(sections)
 
-        # Fire-and-forget: save processed cache paths (per-repo)
-        cache_paths = [r["path"] for r in rows if r.get("source") == "cache"]
-        if cache_paths:
-            try:
-                save_processed_cache_list(cache_paths, self.repo_key)
-            except Exception:
-                pass  # Never break the UI for a state-file write
+    def _render_sections(self, sections: list = None) -> None:
+        """Draws the shared section lines, in Textual markup.
 
-        # Update last_scan date for next incremental refresh
-        self._last_scan_date = _dt.now().isoformat()
-
-        # Notify user how many new files were found (F5 only)
-        if incremental:
-            status = self.query_one("#status_bar", Static)
-            status.update(
-                f"{__('F5 refresh')}: {new_count} {__('new entries')}  |  {__('Entries')}: {len(self.events)}"
+        While the ledger is absent the four readers that query it have nothing
+        to read, and saying so is the honest answer — computing those metrics
+        off the file rows instead would be a second implementation, which is
+        how the two surfaces drifted apart in the first place. The cycle is
+        drawn either way: it never read the ledger.
+        """
+        notice = self.query_one("#sections_notice", Static)
+        notice.display = not self.using_ledger
+        if notice.display:
+            notice.update(
+                __(
+                    "Cost, quality, modules and providers need the ledger — "
+                    "run `gitpr metrics migrate` to import the event files."
+                )
             )
+
+        for widget_id, lines in sections or []:
+            widget = self.query_one(widget_id, Static)
+            widget.display = bool(lines)
+            if lines:
+                widget.update(self._markup(lines))
+
+    @staticmethod
+    def _markup(lines: list) -> str:
+        """The section lines as Textual markup, one rendering spelled twice.
+
+        The styles come from src/metrics.py and only their spelling changes
+        here. ``[`` is escaped because a module path or a model name may carry
+        one and Textual would read it as the start of a tag.
+        """
+        shapes = {TITLE: "[bold cyan]{0}[/bold cyan]", WARN: "[yellow]{0}[/yellow]"}
+        return "\n".join(
+            shapes.get(style, "{0}").format(text.replace("[", r"\["))
+            for style, text in lines
+        )
 
     # ------------------------------------------------------------------
     # Table + summary rendering
@@ -400,7 +403,7 @@ class MetricsApp(App):
             )
 
     def _update_summary(self) -> None:
-        """Update the summary bar with aggregate stats from scanned rows."""
+        """Update the summary bar with aggregate stats from the loaded rows."""
         summary = self.query_one("#summary", Static)
         status = self.query_one("#status_bar", Static)
 
@@ -417,12 +420,14 @@ class MetricsApp(App):
         commands = Counter(r.get("command", "?") for r in self.events)
         total_tokens = sum(r.get("tokens", 0) for r in self.events)
         total_duration_ms = sum(r.get("duration_ms", 0) for r in self.events)
-        cache_count = sum(1 for r in self.events if r.get("source") == "cache")
+        backfilled = sum(
+            1 for r in self.events if r.get("source") == ledger.SOURCE_BACKFILL
+        )
 
         top_cmds = ", ".join(f"{cmd}({n})" for cmd, n in commands.most_common(3))
 
         lines = [
-            f"{__('Total entries')}: {total}  |  {__('Cache files')}: {cache_count}",
+            f"{__('Total entries')}: {total}  |  {__('Reconstructed')}: {backfilled}",
             f"{__('Tokens')}: {total_tokens:,}  |  {__('Total duration')}: {total_duration_ms:,} ms",
             f"{__('Top commands')}: {top_cmds}",
         ]
@@ -433,6 +438,7 @@ class MetricsApp(App):
         oldest = self.events[-1].get("timestamp", "")[:19]
         status.update(
             f"{__('Range')}: {oldest} → {newest}  |  {__('Entries')}: {total}"
+            + ("" if self.using_ledger else f"  |  {__('reading files before import')}")
         )
 
     # ------------------------------------------------------------------
@@ -440,11 +446,11 @@ class MetricsApp(App):
     # ------------------------------------------------------------------
 
     def action_refresh(self) -> None:
-        """Reload data from disk (F5). Incremental — only scans files newer than last_scan."""
-        self._start_scan(incremental=True)
+        """Reload data from its source (F5)."""
+        self._start_scan()
 
 
-def launch_metrics_dashboard(metrics_dir=None, repo_filter=None):
+def launch_metrics_dashboard(repo_filter=None, since=None, until=None):
     """Entry point: launches the metrics TUI."""
-    app = MetricsApp(metrics_dir=metrics_dir, repo_filter=repo_filter)
+    app = MetricsApp(repo_filter=repo_filter, since=since, until=until)
     app.run()

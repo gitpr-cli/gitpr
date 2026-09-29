@@ -308,6 +308,101 @@ def get_linter_timeout():
     return _positive_float(os.getenv("GITPR_LINTER_TIMEOUT"), _DEFAULT_LINTER_TIMEOUT)
 
 
+# Metrics pricing.
+#
+# Two layers, the second overriding the first per model:
+#
+#   1. DEFAULT_MODEL_PRICES below — the vendors' published list prices, so the
+#      cost section says something on a machine nobody configured.
+#   2. The environment, per model:
+#
+#   GITPR_METRICS_PRICE_<MODEL>_INPUT=1.25     per million prompt tokens
+#   GITPR_METRICS_PRICE_<MODEL>_OUTPUT=10.00   per million completion tokens
+#   GITPR_METRICS_CURRENCY=USD                 the label the totals carry
+#
+# <MODEL> is the provider's model name uppercased, with every run of anything
+# that is not a letter or a digit collapsed into one "_": gemini-pro-latest
+# becomes GEMINI_PRO_LATEST. Both rates are required for a model to be priced:
+# pricing the output at an unconfigured zero would understate the bill, so a
+# half-configured model is reported in tokens only, like an unconfigured one —
+# a half-configured model is never completed from the built-in table, because
+# a bill that mixes the reader's rate with ours is nobody's rate.
+METRICS_PRICE_PREFIX = "GITPR_METRICS_PRICE_"
+METRICS_CURRENCY_VAR = "GITPR_METRICS_CURRENCY"
+
+# The currency DEFAULT_MODEL_PRICES is published in. Prices are quoted in US
+# dollars, so that is what an unconfigured machine measures in: a report is
+# only coherent while its label matches its rates, and a dollar rate printed
+# as reais is a wrong number rather than a missing one. Configure rates in
+# another currency and set GITPR_METRICS_CURRENCY to it — the built-in table
+# then steps aside for every model that has no rate of its own.
+DEFAULT_PRICE_CURRENCY = "USD"
+DEFAULT_METRICS_CURRENCY = DEFAULT_PRICE_CURRENCY
+
+# List prices per million tokens — cache-miss input, then output — for the
+# model IDs GitPR can be pointed at. Fixed IDs only: `-latest` is an alias
+# that moves under the table (gemini-pro-latest has been two generations while
+# this file existed), so a baked rate for it would be stale on arrival and
+# belongs in .env, where the reader can put a date on it. A rate configured
+# for the same model wins over the entry here.
+DEFAULT_MODEL_PRICES = {
+    "deepseek-v4-flash": (0.14, 0.28),
+    "deepseek-v4-pro": (0.435, 0.87),
+    "gemini-2.5-pro": (1.25, 10.00),
+    "gemini-2.5-flash-lite": (0.10, 0.40),
+}
+
+# Providers that run on this machine. There is no invoice behind them, so their
+# cost is zero by definition and no rate is needed to know it.
+LOCAL_PROVIDERS = ("ollama", "local")
+
+
+def metrics_price_env_key(model, kind):
+    """The .env key holding one rate for *model* ("INPUT" or "OUTPUT")."""
+    safe = "".join(char if char.isalnum() else "_" for char in str(model or ""))
+    while "__" in safe:
+        safe = safe.replace("__", "_")
+    return f"{METRICS_PRICE_PREFIX}{safe.strip('_').upper()}_{kind}"
+
+
+def get_model_price(model):
+    """Returns (input_rate, output_rate) per million tokens, or None.
+
+    The environment first — a rate the reader configured is the better fact —
+    then the built-in list prices, which apply only while the report is in the
+    currency they are published in.
+
+    None means "no rate". Every surface renders that as tokens without money,
+    which is why the absence is distinct from a zero: a configured 0.0 is a
+    real answer (a free model) and comes back as (0.0, 0.0), while None means
+    nobody said.
+    """
+    load_dotenv(ENV_FILE)
+    name = str(model or "").strip()
+    if not name:
+        return None
+
+    configured = [
+        os.getenv(metrics_price_env_key(name, kind)) for kind in ("INPUT", "OUTPUT")
+    ]
+    if any(value is not None for value in configured):
+        try:
+            return (float(str(configured[0]).strip()), float(str(configured[1]).strip()))
+        except (TypeError, ValueError):
+            return None
+
+    if get_metrics_currency() != DEFAULT_PRICE_CURRENCY:
+        return None
+    return DEFAULT_MODEL_PRICES.get(name)
+
+
+def get_metrics_currency():
+    """Returns the currency the cost totals are labeled with (default USD)."""
+    load_dotenv(ENV_FILE)
+    return (os.getenv(METRICS_CURRENCY_VAR) or "").strip() or DEFAULT_METRICS_CURRENCY
+
+
+
 def coauthor_enabled():
     """Returns True if the Gitpr-cli co-author trailer should be appended (default True).
 
@@ -422,7 +517,6 @@ def get_api_model(provider, task_complexity="advanced"):
     'advanced' uses primary models (Pro) - more robust.
     """
     load_dotenv(ENV_FILE)
-
     suffix = "PRIMARY" if task_complexity == "advanced" else "SECONDARY"
     env_var = f"{provider.upper()}_API_MODEL_{suffix}"
 

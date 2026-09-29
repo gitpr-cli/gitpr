@@ -34,6 +34,7 @@ from src.infrastructure.scm.base import (
     ScmNotSupportedError,
     ScmProvider,
     ScmProviderError,
+    within_window,
 )
 
 # https://dev.azure.com/{org}/{project}/_git/{repo} and the ssh variants
@@ -217,14 +218,22 @@ class AzureDevOpsProvider(ScmProvider):
         self, j: dict, source: str = "", target: str = ""
     ) -> PullRequestResult:
         pr_id = j.get("pullRequestId")
+        status = j.get("status", "active")
+        closed = j.get("closedDate") or ""
         return PullRequestResult(
             id=pr_id,
             url=self._pr_web_url_from_pr(j),
             number=pr_id,
-            state=j.get("status", "active"),
+            state=status,
             source_branch=self._branch_name(j.get("sourceRefName", source)),
             target_branch=self._branch_name(j.get("targetRefName", target)),
             provider=self.name,
+            created_at=j.get("creationDate") or "",
+            # A completed pull request was merged, and its closedDate is when
+            # that happened — Azure keeps one date for both. An abandoned one
+            # has the date and no merge, so merged_at stays empty.
+            merged_at=closed if status == "completed" else "",
+            closed_at=closed,
         )
 
     def _pr_web_url_from_pr(self, j: dict) -> str:
@@ -348,15 +357,69 @@ class AzureDevOpsProvider(ScmProvider):
             summary.append(f"{path} (+{additions} -{deletions})")
         return "\n".join(summary)
 
-    def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
-        response = self._request(
-            "get",
-            self._repo_url(repo, "pullrequests"),
-            {200},
-            15,
-            params={"searchCriteria.status": "active"},
-        )
-        return [self._to_result(pr) for pr in response.json().get("value", [])]
+    def list_pull_requests(
+        self, repo: RepoRef, state: str = "all", since=None, until=None
+    ) -> list[PullRequestResult]:
+        # Azure merges "completed", closes "abandoned" — the vocabulary has no
+        # merged/closed split of its own, so the mapping decides which is which.
+        asked = {
+            "open": "active",
+            "merged": "completed",
+            "closed": "abandoned",
+            "all": "all",
+        }
+        params = {"searchCriteria.status": asked.get(state, "all"), "$top": 100}
+        # Unlike the other three, this listing comes back in an order nobody
+        # documented, so the window cannot be enforced by stopping early on it:
+        # the server filters by date instead. queryTimeRangeType decides which
+        # date minTime/maxTime mean, and it defaults to created — leaving it
+        # there would ask "created in the window" of a question about merges.
+        if since or until:
+            params["searchCriteria.queryTimeRangeType"] = (
+                "closed" if state in ("merged", "closed") else "created"
+            )
+            if since:
+                params["searchCriteria.minTime"] = since
+            if until:
+                params["searchCriteria.maxTime"] = until
+
+        results = []
+        url = self._repo_url(repo, "pullrequests")
+        while url:
+            response = self._request("get", url, {200}, 15, params=params or None)
+            page = response.json()
+            for pr in page.get("value", []):
+                if not self._matches_state(pr, state):
+                    continue
+                if not within_window(self._state_date(pr, state), since, until):
+                    continue
+                results.append(self._to_result(pr))
+            # The continuation token lands in a response header, and in the body
+            # on newer API versions — whichever is there goes back as a param.
+            # Anything that is not a string is no token, so a client that
+            # answers differently ends the walk instead of looping on it.
+            token = response.headers.get("x-ms-continuationtoken") or ""
+            if not isinstance(token, str) or not token.strip():
+                token = page.get("continuationToken") if isinstance(page, dict) else ""
+            token = token.strip() if isinstance(token, str) else ""
+            url = url if token else None
+            params = {"continuationToken": token} if token else None
+        return results
+
+    @staticmethod
+    def _matches_state(pr: dict, state: str) -> bool:
+        """Whether a PR is in the canonical state the caller asked for."""
+        asked = {"open": "active", "merged": "completed", "closed": "abandoned"}
+        if state not in asked:
+            return True
+        return str(pr.get("status", "")) == asked[state]
+
+    @staticmethod
+    def _state_date(pr: dict, state: str) -> str:
+        """The date the state implies: closedDate for a merge or a close."""
+        if state in ("merged", "closed"):
+            return pr.get("closedDate") or ""
+        return pr.get("creationDate") or ""
 
     def get_pull_request(self, repo: RepoRef, pr_id: str | int) -> PullRequestResult:
         response = self._request(

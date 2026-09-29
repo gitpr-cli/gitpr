@@ -28,6 +28,7 @@ from src.infrastructure.scm.base import (
     RepoRef,
     ScmProvider,
     ScmProviderError,
+    within_window,
 )
 
 # Matches any git remote URL: optional user@, host (with optional port), then
@@ -162,6 +163,9 @@ class GitLabProvider(ScmProvider):
             source_branch=j.get("source_branch", source),
             target_branch=j.get("target_branch", target),
             provider=self.name,
+            created_at=j.get("created_at") or "",
+            merged_at=j.get("merged_at") or "",
+            closed_at=j.get("closed_at") or "",
         )
 
     # -- merge requests --------------------------------------------------
@@ -297,15 +301,64 @@ class GitLabProvider(ScmProvider):
         )
         return self._to_result(response.json())
 
-    def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
-        response = self._request(
-            "get",
-            self._project_url(repo, "merge_requests"),
-            {200},
-            15,
-            params={"state": "opened"},
-        )
-        return [self._to_result(mr) for mr in response.json()]
+    def list_pull_requests(
+        self, repo: RepoRef, state: str = "all", since=None, until=None
+    ) -> list[PullRequestResult]:
+        # GitLab distinguishes opened/merged/closed itself, so "all" is the
+        # absence of the filter — its own default already returns every state
+        # the token can see, and asking for a value it may not accept would be
+        # a way to get a 400 instead of an answer.
+        asked = {"open": "opened", "closed": "closed", "merged": "merged"}
+        params = {"order_by": "updated_at", "sort": "desc", "per_page": 100}
+        if state in asked:
+            params["state"] = asked[state]
+
+        results = []
+        url = self._project_url(repo, "merge_requests")
+        while url:
+            response = self._request("get", url, {200}, 15, params=params or None)
+            page = response.json()
+            for mr in page:
+                if not self._matches_state(mr, state):
+                    continue
+                if not within_window(self._state_date(mr, state), since, until):
+                    continue
+                results.append(self._to_result(mr))
+            # Newest updated first, and an MR is updated at or after it is
+            # merged: a page whose entries all predate the window closes it.
+            if since and self._page_left_the_window(page, since):
+                break
+            # X-Next-Page carries the page number, empty on the last one. A
+            # header that is not a number is no next page, and asking the API
+            # for page "anything" is how a walk turns into a loop.
+            next_page = response.headers.get("X-Next-Page") or ""
+            next_page = next_page.strip() if isinstance(next_page, str) else ""
+            url = url if next_page.isdigit() else None
+            params = {"page": next_page} if next_page.isdigit() else None
+        return results
+
+    @staticmethod
+    def _matches_state(mr: dict, state: str) -> bool:
+        """Whether an MR is in the canonical state the caller asked for."""
+        asked = {"open": "opened", "closed": "closed", "merged": "merged"}
+        if state not in asked:
+            return True
+        return str(mr.get("state", "")) == asked[state]
+
+    @staticmethod
+    def _state_date(mr: dict, state: str) -> str:
+        """The date the state implies: merged_at, closed_at, or created_at."""
+        if state == "merged":
+            return mr.get("merged_at") or ""
+        if state == "closed":
+            return mr.get("closed_at") or ""
+        return mr.get("created_at") or ""
+
+    @staticmethod
+    def _page_left_the_window(page: list, since: str) -> bool:
+        """Whether every MR on this page was last updated before ``since``."""
+        stamps = [str(mr.get("updated_at") or "")[:10] for mr in page]
+        return bool(page) and all(stamp and stamp < str(since)[:10] for stamp in stamps)
 
     def add_comment(self, repo: RepoRef, pr_id: str | int, body: str) -> None:
         self._request(

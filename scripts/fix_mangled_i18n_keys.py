@@ -157,8 +157,8 @@ PT_BR = {
         "⚠️ Aviso: Falha ao ler o arquivo {file_name} ({error})",
     "✅ Found {count} commit(s) on the surface. Starting time travel...\n":
         "✅ Encontrado(s) {count} commit(s) na superfície. Iniciando viagem no tempo...\n",
-    "✅ Metrics purged ({count} files removed).":
-        "✅ Métricas expurgadas ({count} arquivos removidos).",
+    "✅ Metrics purged ({count} records removed).":
+        "✅ Métricas expurgadas ({count} registros removidos).",
     "❌ Commit failed: {output}":
         "❌ Commit falhou: {output}",
     "❌ Error calculating diff: {error}":
@@ -258,8 +258,8 @@ PT_PT = {
         "⚠️ Aviso: Falha ao ler o ficheiro {file_name} ({error})",
     "✅ Found {count} commit(s) on the surface. Starting time travel...\n":
         "✅ Encontrado(s) {count} commit(s) à superfície. A iniciar viagem no tempo...\n",
-    "✅ Metrics purged ({count} files removed).":
-        "✅ Métricas expurgadas ({count} ficheiros removidos).",
+    "✅ Metrics purged ({count} records removed).":
+        "✅ Métricas expurgadas ({count} registos removidos).",
     "❌ Commit failed: {output}":
         "❌ Commit falhou: {output}",
     "❌ Error calculating diff: {error}":

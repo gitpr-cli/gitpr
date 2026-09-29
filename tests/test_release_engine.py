@@ -14,6 +14,7 @@ from src.release_engine import (
     ReleaseNotesError,
     _LOG_FORMAT,
     _LOG_SEP_FIELD,
+    _MERGES_LOG_FORMAT,
     _ask_about_suggested_version,
     _resolve_contributor_logins,
     _stdin_is_interactive,
@@ -28,6 +29,7 @@ _ORIGIN = "https://github.com/o/r.git"
 
 # The engine's own log format, so a format change can never desync the mocks.
 _LOG_ARGS = ("log", "--no-merges", f"--pretty=format:{_LOG_FORMAT}")
+_MERGES_LOG_ARGS = ("log", "--merges", "--reverse", f"--pretty=format:{_MERGES_LOG_FORMAT}")
 
 
 def _log_record(sha, subject, date="2026-09-01T10:00:00+00:00", author="Ada",
@@ -46,6 +48,11 @@ def _fake_run(script):
     def fake_run(cmd, capture_output=None, text=None, encoding=None,
                  errors=None, check=None):
         key = tuple(cmd[3:])
+        if key not in script and key[:2] == _MERGES_LOG_ARGS[:2]:
+            # The merge pass reads the same range a second time. A script that
+            # does not mention it describes a repository with no merge commits
+            # — which is what a squash-only history looks like.
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
         if key not in script:
             raise AssertionError(f"Unexpected git command: {cmd}")
         rc, stdout = script[key]
@@ -552,6 +559,151 @@ class TestLinksInTheSection(EngineTestCase):
             result.markdown,
         )
         self.assertNotIn("https://github.com", result.markdown)
+
+
+class TestMergeCommitPullRequests(EngineTestCase):
+    """G15: a repository that merges through merge commits gets its PR links.
+
+    The engine's range read skips merge commits, so the squash tail is the only
+    reference the classifier can see; a forge that merges through a merge
+    commit keeps the number in the merge message instead, which the second pass
+    recovers. Every commit below is ordinary — none carries a "(#n)" tail.
+    """
+
+    RANGE = "v1.2.3..HEAD"
+    PR_COMMIT = "b" * 40
+    SYNC_COMMIT = "c" * 40
+    SQUASH_COMMIT = "d" * 40
+
+    @staticmethod
+    def _merge_record(merge_hash, subject, body=""):
+        """One ``git log --merges`` record in the engine's field shape."""
+        return f"\x1e{merge_hash}\x1f{subject}\x1f{body}"
+
+    @staticmethod
+    def _rev_list(merge_hash, *commits):
+        return (f"rev-list", f"{merge_hash}^1..{merge_hash}^2"), (0, "\n".join(commits) + "\n")
+
+    def _script(self, log_records, merges="", extras=()):
+        script = self._base_script(
+            {
+                ("describe", "--tags", "--abbrev=0"): (0, "v1.2.3\n"),
+                _LOG_ARGS + (self.RANGE,): (0, "".join(log_records)),
+                _MERGES_LOG_ARGS + (self.RANGE,): (0, merges),
+            }
+        )
+        script.update(dict(extras))
+        return script
+
+    def _run(self, script):
+        with patch("src.release_engine.subprocess.run", side_effect=_fake_run(script)), \
+             patch("src.release_engine.click.secho"):
+            return generate_release_notes(
+                repo_path=".", target_version="1.3.0", ai_summary=False
+            )
+
+    @staticmethod
+    def _bullet(markdown, text):
+        """The one bullet line of the section whose subject is ``text``."""
+        lines = [line for line in markdown.splitlines() if text in line]
+        assert len(lines) == 1, f"expected one bullet for {text!r}, got {lines}"
+        return lines[0]
+
+    def test_a_merge_commit_gives_its_commit_the_pull_request_link(self):
+        script = self._script(
+            [_log_record(self.PR_COMMIT, "fix: repair widget")],
+            merges=self._merge_record(
+                "e" * 40, "Merge pull request #193 from gitpr-cli/develop_natan"
+            ),
+            extras=[self._rev_list("e" * 40, self.PR_COMMIT)],
+        )
+        result = self._run(script)
+        self.assertIn(
+            " · [#193](https://github.com/o/r/pull/193) · 2026-09-01",
+            self._bullet(result.markdown, "repair widget"),
+        )
+
+    def test_a_branch_merge_and_a_pull_request_merge_in_the_same_range(self):
+        """The branch synchronization names no request, so the merge it carried
+        keeps no number — and the engine never even walks it."""
+        script = self._script(
+            [
+                _log_record(self.SYNC_COMMIT, "chore: sync with main"),
+                _log_record(self.PR_COMMIT, "feat: add widget"),
+            ],
+            merges=(
+                self._merge_record(
+                    "e" * 40, "Merge pull request #193 from gitpr-cli/feature"
+                )
+                + self._merge_record(
+                    "f" * 40, "Merge branch 'main' into develop_natan"
+                )
+            ),
+            extras=[self._rev_list("e" * 40, self.PR_COMMIT)],
+        )
+        result = self._run(script)
+        self.assertIn("pull/193", self._bullet(result.markdown, "add widget"))
+        self.assertNotIn("pull/", self._bullet(result.markdown, "sync with main"))
+        self.assertEqual(result.markdown.count("pull/193"), 1)
+
+    def test_a_commit_reachable_by_two_merges_keeps_the_first_claim(self):
+        """Oldest merge first: the one deepest in the ancestry is the one that
+        brought the commit in; the later merge only carries it along."""
+        script = self._script(
+            [
+                _log_record(self.SYNC_COMMIT, "feat: later widget"),
+                _log_record(self.PR_COMMIT, "fix: earlier widget"),
+            ],
+            merges=(
+                self._merge_record("e" * 40, "Merge pull request #100 from o:first")
+                + self._merge_record("f" * 40, "Merge pull request #200 from o:second")
+            ),
+            extras=[
+                self._rev_list("e" * 40, self.PR_COMMIT),
+                self._rev_list("f" * 40, self.PR_COMMIT, self.SYNC_COMMIT),
+            ],
+        )
+        result = self._run(script)
+        self.assertIn("pull/100", self._bullet(result.markdown, "earlier widget"))
+        self.assertIn("pull/200", self._bullet(result.markdown, "later widget"))
+
+    def test_a_squash_tail_wins_over_the_merge_the_commit_arrived_by(self):
+        script = self._script(
+            [_log_record(self.SQUASH_COMMIT, "feat: squashed widget (#190)")],
+            merges=self._merge_record(
+                "e" * 40, "Merge pull request #193 from gitpr-cli/develop_natan"
+            ),
+            extras=[self._rev_list("e" * 40, self.SQUASH_COMMIT)],
+        )
+        result = self._run(script)
+        self.assertIn("pull/190", result.markdown)
+        self.assertNotIn("pull/193", result.markdown)
+
+    def test_a_gitlab_merge_names_its_request_in_the_body(self):
+        script = self._script(
+            [_log_record(self.PR_COMMIT, "fix: repair widget")],
+            merges=self._merge_record(
+                "e" * 40,
+                "Merge branch 'feature/widget' into 'main'",
+                "See merge request group/subgroup/project!193",
+            ),
+            extras=[self._rev_list("e" * 40, self.PR_COMMIT)],
+        )
+        result = self._run(script)
+        self.assertIn("[#193](https://github.com/o/r/pull/193)", result.markdown)
+
+    def test_an_unwalkable_merge_claims_nothing(self):
+        """A shallow clone cannot attribute the merge's commits — no number is
+        better than the wrong one."""
+        script = self._script(
+            [_log_record(self.PR_COMMIT, "fix: repair widget")],
+            merges=self._merge_record(
+                "e" * 40, "Merge pull request #193 from gitpr-cli/develop_natan"
+            ),
+            extras=[(("rev-list", f"{'e' * 40}^1..{'e' * 40}^2"), (128, ""))],
+        )
+        result = self._run(script)
+        self.assertNotIn("pull/", result.markdown)
 
 
 class TestContributorLogins(unittest.TestCase):

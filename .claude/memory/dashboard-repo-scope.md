@@ -39,4 +39,10 @@ portable entre máquinas.
 4. Cache files sem campo `"repo"` são excluídos quando repo filter ativo
 5. `processed_cache.json` permite retomar scan incremental no futuro
 
+**Superseded (2026-09-28):** o filtro de repositório vem de `working_context()`
+(multi-forja), não de `get_repo_name()`; `load_cache_token_summary()` foi removido
+e os tokens vêm do próprio ledger; e `processed_cache.json` não existe mais — a
+marca de exportação vive na linha (`exported_at`), por repositório.
+Ver `docs/claude-code/reports/develop_natan/2026-09-29_metrics_telemetry_v2.md`.
+
 Relacionado: [[metrics-telemetry-architecture]], [[metrics-cache-enrichment]]

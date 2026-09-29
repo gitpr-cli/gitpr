@@ -675,6 +675,7 @@ def get_current_branch():
             stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout.strip()
@@ -691,6 +692,7 @@ def get_repo_name():
             stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
+            errors="replace",
             check=True,
         )
         match = re.search(
@@ -856,7 +858,12 @@ def generate_pr_content(
 
     t_start = time.perf_counter()
 
-    # Cache folder configuration
+    # Cache folder configuration — THE map for the whole project. It used to
+    # have three copies (two in metrics.py, one in the dashboard) and all three
+    # disagreed: the metrics copies sent fullreview/filereview to folders that
+    # do not exist, which is why tokens_actual was always 0 for those commands.
+    # Anything that needs to know where a command's cache lives reads it here,
+    # from the row it wrote, or not at all.
     action_folder_map = {
         "pr": "pr_desc",
         "commit": "commit",
@@ -1037,6 +1044,14 @@ def generate_pr_content(
             total_meta["completion_tokens"] += new_meta.get("completion_tokens", 0)
             total_meta["total_tokens"] += new_meta.get("total_tokens", 0)
             total_meta["duration_ms"] += new_meta.get("duration_ms", 0)
+            # Counters add up across chunks; the provider and the model do not —
+            # they are scalars, so the last chunk to report one wins. That is the
+            # honest reading under map-reduce: if a chunk fell back to the other
+            # provider, the row names the one that served the final call.
+            if new_meta.get("provider"):
+                total_meta["provider"] = new_meta["provider"]
+            if new_meta.get("model"):
+                total_meta["model"] = new_meta["model"]
 
     if len(chunks) == 1:
         result_json = call_ai_model(
@@ -1171,7 +1186,11 @@ def generate_pr_content(
             meta_raw=total_meta,
             reviewed_diff=diff_text if store_diff else None,
         )
-        # Fire-and-forget metric for successful AI-powered command
+        # Metric for a successful AI-powered command. `total_meta` is handed
+        # over whole: this is the only moment the provider's own accounting and
+        # this execution are in the same hand, and copying it into the row here
+        # is what replaced the after-the-fact join with the cache.
+        from src.ledger import extract_modules
         from src.metrics import log_command_metric
 
         duration_ms = int((time.perf_counter() - t_start) * 1000)
@@ -1182,6 +1201,8 @@ def generate_pr_content(
             tokens_estimated=total_meta.get("total_tokens", 0),
             duration_ms=duration_ms,
             map_reduce_triggered=(len(chunks) > 1),
+            meta=total_meta,
+            modules=extract_modules(diff_text),
         )
         return result_json
 

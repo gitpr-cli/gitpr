@@ -50,6 +50,21 @@ from src.updater import __version__, check_and_update, enforce_update_required
 from src.usage_log import log_usage
 
 
+def _may_ask_the_user(quiet=False, hook=False, mcp=False):
+    """Whether this run may stop and ask a question in a TUI.
+
+    False for the modes that exist precisely so that nothing blocks: the hooks
+    (--quiet), the MCP stdio server (whose stdout is a JSON-RPC stream), and any
+    run without a terminal to draw on — a pipe, a cron job, CI.
+    """
+    if quiet or hook or mcp:
+        return False
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:
+        return False
+
+
 def print_banner():
     """Displays the project ASCII Art signature"""
     banner = r"""
@@ -184,11 +199,6 @@ HELP_MAP: dict[str, dict[str, str]] = {
             "Forces the interface language for this execution (e.g.: en_us, pt_br). Overrides the GITPR_LANG environment variable and OS locale detection."
         ),
     },
-    "metrics": {
-        "url": get_doc_url("metricas-telemetria.md"),
-        "title": __("Metrics & Analytics (--metrics)"),
-        "description": __("Export or purge local telemetry data for team analytics."),
-    },
     "no-publish": {
         "url": get_doc_url("pull-request-publication.md"),
         "title": __("Skip Interactive Publisher (--no-publish)"),
@@ -264,7 +274,6 @@ HELP_PRIORITY: dict[str, int] = {
     "history": 11,
     "provider": 12,
     "lang": 13,
-    "metrics": 15,
     "no-publish": 16,
     "no-edit": 17,
     "plugins": 18,
@@ -417,37 +426,6 @@ HELP_PRIORITY: dict[str, int] = {
     ),
 )
 @click.option(
-    "--metrics",
-    is_flag=True,
-    help=__(
-        "Shows local telemetry summary. Use --export to consolidate, --purge to clean."
-    ),
-)
-@click.option(
-    "--export",
-    is_flag=True,
-    help=__("Exports consolidated metrics to CSV and JSON in the current folder."),
-)
-@click.option(
-    "--purge",
-    is_flag=True,
-    help=__(
-        "Deletes all local metric files (~/.gitpr/metrics/). Requires confirmation."
-    ),
-)
-@click.option(
-    "--hook-event",
-    type=str,
-    hidden=True,
-    help=__("Internal: logs a git hook event name."),
-)
-@click.option(
-    "--dashboard",
-    "show_dashboard",
-    is_flag=True,
-    help=__("Opens the interactive metrics dashboard (TUI)."),
-)
-@click.option(
     "--base",
     type=str,
     help=__("Target base branch for the Pull Request (overrides PR_DEFAULT_BASE)."),
@@ -534,11 +512,6 @@ def cli(
     help_flag,
     lang,
     mcp,
-    metrics,
-    export,
-    purge,
-    hook_event,
-    show_dashboard,
     base,
     no_publish,
     no_edit,
@@ -560,6 +533,22 @@ def cli(
     # subcommand and every -h path reaches. Silent and best-effort, so it
     # cannot disturb anything below.
     log_usage()
+
+    # How much of a terminal this run may use, and — on the first run after an
+    # upgrade — the question of what becomes of the pre-ledger event files. The
+    # question belongs here rather than at the first write: it decides whether a
+    # screen appears, and a screen that appears after the command has done its
+    # work is a screen nobody is looking at.
+    from src import ledger
+
+    may_ask = _may_ask_the_user(quiet=quiet, hook=hook, mcp=mcp)
+    ledger.configure_terminal(interactive=may_ask, quiet=quiet)
+
+    # `gitpr metrics` takes the same one-time migration in its own callback,
+    # where the reason for its one exemption (`migrate` asks on purpose) is
+    # visible next to the action that needs it.
+    if ctx.invoked_subcommand != "metrics":
+        ledger.ensure_ledger(interactive=may_ask)
 
     # Subcommand dispatch (gitpr release …): Click invokes this group callback
     # first, so everything below runs only when NO subcommand was requested —
@@ -648,68 +637,6 @@ def cli(
         check_and_update_hooks_scripts()
 
     # MCP Server Mode — start stdio MCP server (handled before any interactive setup)
-    if hook_event:
-        # Hidden: fire-and-forget git hook event logging
-        from src.metrics import log_command_metric
-
-        log_command_metric(command=f"hook:{hook_event}", status="fired", provider="git")
-        return
-
-    if metrics and export:
-        from src.core import get_repo_name
-        from src.metrics import export_metrics
-
-        csv_path, json_path, count = export_metrics(repo_filter=get_repo_name())
-        if count > 0:
-            click.secho(
-                __("✅ Metrics exported: {count} events.", count=count),
-                fg="green",
-                bold=True,
-            )
-            if csv_path:
-                click.echo(f"  CSV: {csv_path}")
-            if json_path:
-                click.echo(f"  JSON: {json_path}")
-        else:
-            click.secho(__("No new metrics to export."), fg="yellow")
-        return
-
-    if metrics and purge:
-        from src.metrics import purge_metrics
-
-        if click.confirm(
-            __("⚠ This will permanently delete all local metric files. Continue?")
-        ):
-            removed = purge_metrics()
-            click.secho(
-                __("✅ Metrics purged ({count} files removed).", count=removed),
-                fg="green",
-            )
-        else:
-            click.secho(__("Purge cancelled."), fg="yellow")
-        return
-
-    if show_dashboard:
-        from src.core import get_repo_name
-        from src.ui.metrics_app import launch_metrics_dashboard
-
-        launch_metrics_dashboard(repo_filter=get_repo_name())
-        return
-
-    if metrics:
-        from src.metrics import show_metrics_summary
-
-        summary = show_metrics_summary()
-        click.secho(__("\n📊 Local Telemetry Summary"), fg="cyan", bold=True)
-        click.echo(f"  {__('Path')}: {summary['path']}")
-        click.echo(f"  {__('Files')}: {summary['total_files']}")
-        click.echo(f"  {__('Disk usage')}: {summary['disk_usage']}")
-        click.echo()
-        click.echo(
-            __("Use --metrics --export to consolidate, --metrics --purge to clean.")
-        )
-        return
-
     if mcp:
         from src.mcp_server import main as mcp_main
 
@@ -2667,6 +2594,406 @@ def _report_split_result(result):
             ),
             fg="yellow",
         )
+
+
+# ============================================================
+# gitpr metrics — the local usage ledger
+# ============================================================
+
+
+def _echo_sections(sections):
+    """Prints the (style, text) lines the dashboard also draws.
+
+    The styles come from src/metrics.py, where each section is rendered once:
+    the terminal maps them onto click's palette and the dashboard onto Textual
+    markup, so the two surfaces cannot tell different stories about one ledger.
+    """
+    from src.metrics import TITLE, WARN
+
+    # The terminal's spelling of the two intents the renderer names: a section
+    # header, and a line the reader should not skim past.
+    styles = {TITLE: {"fg": "cyan", "bold": True}, WARN: {"fg": "yellow"}}
+    for style, text in sections:
+        click.secho(text, **styles.get(style, {}))
+
+
+def _metrics_summary_lines(summary, window=None, cost=None, quality=None,
+                           debt=None, breakdown=None, cycle=None):
+    """Renders the summary once, so every caller prints the same numbers.
+
+    The same sections the dashboard draws, in text: a metric is computed
+    once (see the readers in src/metrics.py) and rendered wherever it is read,
+    so the terminal and the TUI cannot drift apart.
+    """
+    from src.metrics import (
+        cost_lines,
+        cycle_lines,
+        module_lines,
+        provider_lines,
+        quality_lines,
+    )
+
+    click.secho(__("\n📊 Local Telemetry Summary"), fg="cyan", bold=True)
+    click.echo(f"  {__('Path')}: {summary['path']}")
+    # The scope is said out loud because the surfaces do not share one: this
+    # summary answers "what did this machine do" (the cost question), while
+    # `export` and `dashboard` narrow to the repository you are standing in.
+    click.echo(f"  {__('Repository')}: {__('All repositories')}")
+    click.echo(f"  {__('Events')}: {summary['total_events']}")
+    if window and any(window):
+        since, until = window
+        click.echo(f"  {__('Window')}: {since or '…'} → {until or '…'}")
+    if summary["backfilled_events"]:
+        click.echo(
+            f"  {__('Reconstructed from cache')}: {summary['backfilled_events']}"
+        )
+    click.echo(f"  {__('Disk usage')}: {summary['disk_usage']}")
+    if summary["pending_legacy_files"]:
+        click.secho(
+            __(
+                "  ⚠ {count} event files are not imported yet — run `gitpr metrics migrate`.",
+                count=summary["pending_legacy_files"],
+            ),
+            fg="yellow",
+        )
+
+    for section in (
+        cost_lines(cost),
+        quality_lines(quality),
+        module_lines(debt),
+        provider_lines(breakdown),
+        cycle_lines(cycle),
+    ):
+        if section:
+            click.echo()
+            _echo_sections(section)
+
+
+def _window_options(command):
+    """The same three window flags, on every reading sub-action.
+
+    Declared per subcommand instead of inherited from the group because Click
+    parses a group's options before the subcommand name: `gitpr metrics --days 7
+    export` would set a window the export never sees. One definition, applied
+    wherever a read happens, so no surface can quietly go without it.
+    """
+    options = [
+        click.option(
+            "--days",
+            type=int,
+            help=__("Limits every number below to the last N days."),
+        ),
+        click.option("--since", type=str, help=__("Start of the window (YYYY-MM-DD).")),
+        click.option("--until", type=str, help=__("End of the window (YYYY-MM-DD).")),
+    ]
+    for option in reversed(options):
+        command = option(command)
+    return command
+
+
+@cli.group(
+    "metrics",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True,
+    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("metricas-telemetria.md"),
+)
+@_window_options
+@click.pass_context
+def metrics_group(ctx, days, since, until):
+    """Local usage telemetry: what ran, how often, and what it cost.
+
+    Everything here reads ~/.gitpr/metrics/telemetry.db, which records one row
+    per executed command. With no action it prints the summary; `export` writes
+    the CSV/JSON other people can read, `bundle` and `merge` move rows between
+    machines, `dashboard` opens the TUI, `migrate` imports the event files
+    written before the ledger existed, and `prune` and `purge` are the two ways
+    to delete rows.
+    """
+    from src import ledger
+
+    # The same one-time migration the rest of the CLI takes at startup, minus
+    # the action that *is* the migration: `migrate` asks on purpose, and asking
+    # twice in one invocation would be asking the same question twice. Every
+    # other action reads the ledger, so they all need the rows to be in it —
+    # `gitpr metrics export` answering "nothing to export" while the files sit
+    # on disk would be true and useless.
+    if ctx.invoked_subcommand != "migrate":
+        ledger.ensure_ledger(interactive=ledger.interactive())
+
+    if ctx.invoked_subcommand is None:
+        from src.metrics import (
+            cost_report,
+            cycle_report,
+            module_debt,
+            provider_breakdown,
+            quality_report,
+            resolve_window,
+            show_metrics_summary,
+        )
+
+        since, until = resolve_window(days=days, since=since, until=until)
+        window = {"since": since, "until": until}
+        _metrics_summary_lines(
+            show_metrics_summary(**window),
+            window=(since, until),
+            cost=cost_report(**window),
+            quality=quality_report(**window),
+            debt=module_debt(**window),
+            breakdown=provider_breakdown(**window),
+            cycle=cycle_report(**window),
+        )
+        click.echo()
+        click.echo(
+            __(
+                "Use `gitpr metrics export` to consolidate, `gitpr metrics prune` to clean."
+            )
+        )
+
+@metrics_group.command(
+    "export",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Exports consolidated metrics to CSV and JSON in the current folder."),
+)
+@_window_options
+def metrics_export(days, since, until):
+    from src.infrastructure.git.identity import working_context
+    from src.metrics import export_metrics, resolve_window
+
+    since, until = resolve_window(days=days, since=since, until=until)
+    csv_path, json_path, count = export_metrics(
+        repo_filter=working_context().repo or None, since=since, until=until
+    )
+    if count > 0:
+        click.secho(
+            __("✅ Metrics exported: {count} events.", count=count),
+            fg="green",
+            bold=True,
+        )
+        if csv_path:
+            click.echo(f"  CSV: {csv_path}")
+        if json_path:
+            click.echo(f"  JSON: {json_path}")
+    else:
+        click.secho(__("No new metrics to export."), fg="yellow")
+
+
+@metrics_group.command(
+    "bundle",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Writes a slice of the ledger as a .db file to hand to someone else."),
+)
+@_window_options
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    type=click.Path(),
+    help=__("Where to write the bundle (default: ./.gitpr/metrics/export/)."),
+)
+def metrics_bundle(days, since, until, output_path):
+    """The transport for a team: the receiver merges it and the rows are theirs.
+
+    The CSV/JSON export stays the human-readable surface — this is the one path
+    that writes a binary, and only because rows must arrive with their UUIDs
+    intact.
+    """
+    from src import ledger
+    from src.infrastructure.git.identity import working_context
+    from src.metrics import resolve_window
+
+    since, until = resolve_window(days=days, since=since, until=until)
+    destination = output_path or ledger.default_bundle_path()
+
+    if os.path.exists(destination):
+        if not click.confirm(
+            __("⚠ {path} already exists. Replace it?", path=destination)
+        ):
+            click.secho(__("Bundle cancelled."), fg="yellow")
+            return
+        os.remove(destination)
+
+    try:
+        rows = ledger.build_bundle(
+            destination,
+            repo=working_context().repo or None,
+            since=since,
+            until=until,
+        )
+    except ledger.LedgerError as exc:
+        click.secho(f"❌ {exc}", fg="red")
+        return
+
+    click.secho(__("✅ Bundle written: {count} events.", count=rows), fg="green", bold=True)
+    click.echo(f"  {destination}")
+
+
+@metrics_group.command(
+    "merge",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Merges bundle files into the local ledger, skipping rows it already has."),
+)
+@click.argument("bundles", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+def metrics_merge(bundles):
+    """Folds someone else's numbers into yours.
+
+    Rows are keyed by UUID, so merging the same bundle twice changes nothing —
+    and a bundle written by a newer GitPR is refused before anything is
+    attached, leaving the local ledger exactly as it was.
+    """
+    from src import ledger
+
+    if not bundles:
+        click.secho(__("Name at least one bundle file to merge."), fg="yellow")
+        return
+
+    try:
+        merged, skipped = ledger.merge_bundles(bundles)
+    except ledger.LedgerVersionError as exc:
+        click.secho(
+            __(
+                "❌ {path} was written by a newer GitPR (schema {found}); this one "
+                "understands {supported}. Upgrade GitPR to merge it.",
+                path=bundles[0],
+                found=exc.found,
+                supported=exc.supported,
+            ),
+            fg="red",
+        )
+        return
+    except ledger.LedgerError as exc:
+        click.secho(f"❌ {exc}", fg="red")
+        return
+
+    click.secho(
+        __(
+            "✅ Merged {count} events ({skipped} already present).",
+            count=merged,
+            skipped=skipped,
+        ),
+        fg="green",
+        bold=True,
+    )
+
+
+@metrics_group.command(
+    "dashboard",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Opens the interactive metrics dashboard (TUI)."),
+)
+@_window_options
+def metrics_dashboard(days, since, until):
+    from src.infrastructure.git.identity import working_context
+    from src.metrics import resolve_window
+    from src.ui.metrics_app import launch_metrics_dashboard
+
+    since, until = resolve_window(days=days, since=since, until=until)
+    # The working copy's own label, not get_repo_name(): the latter hardcodes
+    # github.com and answers "unknown/repo" everywhere else, so filtering the
+    # ledger by it would show an empty dashboard on GitLab, Bitbucket and
+    # Azure — the same defect the hooks had.
+    launch_metrics_dashboard(
+        repo_filter=working_context().repo or None, since=since, until=until
+    )
+
+
+@metrics_group.command(
+    "migrate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Imports the pre-ledger event files into the ledger."),
+)
+def metrics_migrate():
+    """The way back in for anyone who declined the wizard.
+
+    It asks on purpose — typing the command *is* the answer — so the skip marker
+    written by an earlier refusal does not suppress it. Without a terminal there
+    is nobody to ask, so the import happens with progress on stderr.
+    """
+    from src import ledger
+
+    files = ledger.pending_legacy_files()
+    if not files:
+        click.secho(__("Nothing to import."), fg="yellow")
+        return
+
+    if _may_ask_the_user():
+        from src.ui.metrics_migration_app import run_migration_wizard
+
+        run_migration_wizard(legacy_files=files)
+        return
+
+    absorbed, _already = ledger.absorb_legacy_files(files=files)
+    click.secho(__("✅ Imported {count} events.", count=absorbed), fg="green")
+
+
+@metrics_group.command(
+    "prune",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Deletes metric records older than a date."),
+)
+@click.option(
+    "--before",
+    type=str,
+    required=True,
+    help=__("Deletes records written before this date (YYYY-MM-DD). Required."),
+)
+@click.option(
+    "--source",
+    type=str,
+    help=__("Restricts the deletion to one source (execution or cache_backfill)."),
+)
+def metrics_prune(before, source):
+    """There is no automatic expiry: a calendar that deletes on its own would
+    change last year's answer without anyone asking."""
+    from src.metrics import prune_metrics
+
+    if not click.confirm(
+        __("⚠ This will permanently delete records written before {date}. Continue?", date=before)
+    ):
+        click.secho(__("Purge cancelled."), fg="yellow")
+        return
+
+    removed = prune_metrics(before, source=source)
+    click.secho(
+        __("✅ {count} records removed.", count=removed), fg="green"
+    )
+
+
+@metrics_group.command(
+    "purge",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Deletes every local metric record, and the pre-ledger files with it."),
+)
+def metrics_purge():
+    from src.metrics import purge_metrics
+
+    if click.confirm(
+        __("⚠ This will permanently delete all local metric records. Continue?")
+    ):
+        removed = purge_metrics()
+        click.secho(
+            __("✅ Metrics purged ({count} records removed).", count=removed),
+            fg="green",
+        )
+    else:
+        click.secho(__("Purge cancelled."), fg="yellow")
+
+
+@metrics_group.command(
+    "hook-event",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    hidden=True,
+    help=__("Internal: logs a git hook event name."),
+)
+@click.argument("event_name", metavar="<name>")
+def metrics_hook_event(event_name):
+    """Fire-and-forget event logging, called by the installed Git hooks.
+
+    Hidden because it is not a user-facing action: the whole process is "start,
+    write one row, exit", and the hooks guard the call with `command -v gitpr`.
+    """
+    from src.metrics import log_command_metric
+
+    log_command_metric(command=f"hook:{event_name}", status="fired", provider="git")
 
 
 @cli.group(

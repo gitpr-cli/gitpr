@@ -565,7 +565,94 @@ class TestListAndCommentAndDiff(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].number, 3)
         self.assertEqual(results[0].source_branch, "feat/a")
-        self.assertEqual(mock_get.call_args.kwargs["params"], {"state": "open"})
+        self.assertEqual(
+            mock_get.call_args.kwargs["params"],
+            {"state": "open", "sort": "updated", "direction": "desc", "per_page": 100},
+        )
+
+
+class TestListPullRequests(unittest.TestCase):
+    """The listing with a state and a period, paginated for real."""
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_merged_asks_for_closed_and_keeps_only_the_merges(self, mock_get):
+        """GitHub has no merged state: closed is the widest it can answer, and
+        the rows without a merged_at are the ones the question excluded."""
+        mock_get.return_value = _response(
+            200,
+            [
+                {"number": 1, "state": "closed", "merged_at": "2026-09-10T10:00:00Z",
+                 "closed_at": "2026-09-10T10:00:00Z", "created_at": "2026-09-01T09:00:00Z",
+                 "head": {"ref": "feat/a"}, "base": {"ref": "main"}},
+                {"number": 2, "state": "closed", "merged_at": None,
+                 "closed_at": "2026-09-11T10:00:00Z", "created_at": "2026-09-02T09:00:00Z",
+                 "head": {"ref": "feat/b"}, "base": {"ref": "main"}},
+            ],
+        )
+
+        results = _provider().list_pull_requests(_repo(), state="merged")
+
+        self.assertEqual([pr.number for pr in results], [1])
+        self.assertEqual(results[0].merged_at, "2026-09-10T10:00:00Z")
+        self.assertEqual(mock_get.call_args.kwargs["params"]["state"], "closed")
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_the_walk_follows_the_link_header(self, mock_get):
+        first = _response(200, [{"number": 1, "state": "open", "created_at": "2026-09-05T09:00:00Z",
+                                 "head": {"ref": "feat/a"}, "base": {"ref": "main"}}])
+        first.links = {"next": {"url": "https://api.github.com/repos/x/y/pulls?page=2"}}
+        second = _response(200, [{"number": 2, "state": "open", "created_at": "2026-09-04T09:00:00Z",
+                                  "head": {"ref": "feat/b"}, "base": {"ref": "main"}}])
+        second.links = {}
+        mock_get.side_effect = [first, second]
+
+        results = _provider().list_pull_requests(_repo(), state="open")
+
+        self.assertEqual([pr.number for pr in results], [1, 2])
+        # The next URL carries its own query string; repeating ours would
+        # contradict it.
+        self.assertEqual(mock_get.call_args_list[1].args[0],
+                         "https://api.github.com/repos/x/y/pulls?page=2")
+        self.assertIsNone(mock_get.call_args_list[1].kwargs["params"])
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_a_page_updated_before_the_window_ends_the_walk(self, mock_get):
+        """Sorted by updated desc, so nothing below can be inside the window —
+        one request answers for a window the history has already left."""
+        mock_get.return_value = _response(
+            200,
+            [{"number": 1, "state": "closed", "merged_at": "2026-01-02T10:00:00Z",
+              "updated_at": "2026-01-05T10:00:00Z", "head": {"ref": "feat/a"},
+              "base": {"ref": "main"}}],
+        )
+
+        results = _provider().list_pull_requests(
+            _repo(), state="merged", since="2026-09-01"
+        )
+
+        self.assertEqual(results, [])
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_the_window_keeps_the_merges_inside_it(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            [
+                {"number": 1, "state": "closed", "merged_at": "2026-09-10T10:00:00Z",
+                 "updated_at": "2026-09-10T10:00:00Z", "head": {"ref": "feat/a"},
+                 "base": {"ref": "main"}},
+                {"number": 2, "state": "closed", "merged_at": "2026-10-02T10:00:00Z",
+                 "updated_at": "2026-10-02T10:00:00Z", "head": {"ref": "feat/b"},
+                 "base": {"ref": "main"}},
+            ],
+        )
+
+        results = _provider().list_pull_requests(
+            _repo(), state="merged", since="2026-09-01", until="2026-09-30"
+        )
+
+        self.assertEqual([pr.number for pr in results], [1])
+        self.assertEqual(results[0].closed_at, "")
 
     @patch("src.infrastructure.scm.github_provider.requests.post")
     def test_add_comment_posts_to_issue_comments(self, mock_post):

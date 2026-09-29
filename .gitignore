@@ -14,6 +14,12 @@ dist/
 # Variáveis de ambiente locais
 .env
 
+# GitPR's local state inside the repository: the CSV/JSON written by
+# `gitpr metrics export` and the per-repo cache marker beside them. The ledger
+# itself lives in ~/.gitpr/, outside the tree. `.gitpr/skill/` is NOT ignored —
+# it is project content.
+.gitpr/metrics/
+
 # MacOS
 .DS_Store
 

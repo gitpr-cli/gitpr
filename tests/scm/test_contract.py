@@ -18,6 +18,7 @@ from src.infrastructure.scm.base import (
     ScmNotSupportedError,
     ScmProvider,
     ScmProviderError,
+    within_window,
 )
 
 
@@ -205,6 +206,104 @@ class TestDomainDataclasses(unittest.TestCase):
         result = IssueResult(id=1, url="https://x/i/1", number=1, provider="gitlab")
         self.assertEqual(req.title, "t")
         self.assertEqual(result.provider, "gitlab")
+
+
+class _BareProvider(ScmProvider):
+    """The smallest provider that satisfies the ABC — nothing else.
+
+    It exists to hold the contract's defaults: what a forge that implements
+    only what the ABC demands gets for the methods the ABC does not.
+    """
+
+    name = "bare"
+
+    def default_base_url(self):
+        return "https://bare.example/api"
+
+    def parse_repo_ref(self, remote_url):
+        raise ValueError(remote_url)
+
+    def create_pull_request(self, repo, req):
+        raise NotImplementedError
+
+    def get_pull_request_diff(self, repo, pr_id):
+        raise NotImplementedError
+
+    def add_comment(self, repo, pr_id, body):
+        raise NotImplementedError
+
+    def merge_pull_request(self, repo, pr_id, strategy="merge"):
+        raise NotImplementedError
+
+    def test_connection(self):
+        return True
+
+    def check_existing_pull_request(self, repo, source_branch):
+        return None
+
+    def update_pull_request(self, repo, pr_id, title=None, description=None):
+        raise NotImplementedError
+
+    def create_issue(self, repo, req):
+        raise NotImplementedError
+
+
+class _ListingProvider(_BareProvider):
+    """A provider whose only speciality is knowing how to list pull requests."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.asked = []
+
+    def list_pull_requests(self, repo, state="all", since=None, until=None):
+        self.asked.append((state, since, until))
+        return []
+
+
+class TestPullRequestListingContract(unittest.TestCase):
+    """The listing's shape: one implementation, one name kept, one honest hole."""
+
+    REPO = RepoRef(raw="u", workspace="w", name="r", provider="bare")
+
+    def test_the_open_listing_is_the_general_one_asked_for_open(self):
+        """The old name survives as a wrapper, so every call site and test that
+        uses it now walks the paginated implementation underneath."""
+        provider = _ListingProvider("token")
+
+        self.assertEqual(provider.list_open_pull_requests(self.REPO), [])
+        self.assertEqual(provider.asked, [("open", None, None)])
+
+    def test_a_forge_that_cannot_list_raises_instead_of_returning_nothing(self):
+        """An empty list is an answer, and a wrong one for a forge that has no
+        way to answer: the caller has to be able to tell "no pull requests"
+        from "cannot say"."""
+        with self.assertRaises(ScmNotSupportedError) as ctx:
+            _BareProvider("token").list_pull_requests(self.REPO)
+
+        self.assertEqual(ctx.exception.provider, "bare")
+        # The wrapper goes through the same hole, with the same error.
+        with self.assertRaises(ScmNotSupportedError):
+            _BareProvider("token").list_open_pull_requests(self.REPO)
+
+    def test_the_result_carries_the_dates_the_contract_promises(self):
+        result = PullRequestResult(
+            id=1, url="u", number=1, state="open",
+            source_branch="a", target_branch="b", provider="bare",
+        )
+
+        self.assertEqual(result.created_at, "")
+        self.assertEqual(result.merged_at, "")
+        self.assertEqual(result.closed_at, "")
+
+    def test_the_window_is_an_inclusive_range_of_calendar_days(self):
+        self.assertTrue(within_window("2026-09-01T00:00:00Z", "2026-09-01", "2026-09-30"))
+        self.assertTrue(within_window("2026-09-30T23:59:59Z", "2026-09-01", "2026-09-30"))
+        self.assertFalse(within_window("2026-08-31T23:59:59Z", "2026-09-01", None))
+        self.assertFalse(within_window("2026-10-01T00:00:00Z", None, "2026-09-30"))
+        # A date the forge never published cannot be placed in a window, and
+        # with no window asked for there is nothing to place it in.
+        self.assertFalse(within_window("", "2026-09-01", None))
+        self.assertTrue(within_window("", None, None))
 
 
 class TestErrors(unittest.TestCase):

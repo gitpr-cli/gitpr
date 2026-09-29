@@ -1,34 +1,17 @@
 #!/usr/bin/env bash
-# GitPR: Post-Checkout Telemetry (Context switch tracker)
+# GitPR Metrics: post-checkout hook (context switch tracker)
+# Installed automatically by: gitpr --installhooks
 
 # Only run on branch switch (flag 1)
 if [ "$3" != "1" ]; then exit 0; fi
 
-PREV_BRANCH=$(git name-rev --name-only "$1" 2>/dev/null || echo "detached")
-NEW_BRANCH=$(git name-rev --name-only "$2" 2>/dev/null || echo "detached")
+# gitpr records the event and resolves the repository itself: parse_repo_ref()
+# knows every forge, where the bash this replaces only knew GitHub and fell
+# back to a bare folder name the dashboard then filtered out. `command -v`
+# lets a machine without gitpr keep working; `|| true` keeps a ledger failure
+# from failing your git command.
 
-if [ "$PREV_BRANCH" = "$NEW_BRANCH" ]; then exit 0; fi
+command -v gitpr >/dev/null 2>&1 || exit 0
+gitpr --quiet metrics hook-event post-checkout 2>/dev/null || true
 
-REPO=$(git config --get remote.origin.url | grep -o 'github\.com[:/][^.]*' | sed 's/github.com[:/]//' || basename -s .git `git config --get remote.origin.url` || echo "local_repo")
-OWNER=$(echo "$REPO" | cut -d'/' -f1)
-if [ -z "$OWNER" ]; then OWNER=$(git config user.name | tr ' ' '_'); fi
-if [ -z "$OWNER" ]; then OWNER="local_user"; fi
-
-METRICS_DIR="$HOME/.gitpr/metrics/$OWNER/git"
-mkdir -p "$METRICS_DIR"
-
-UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || date +%s%N)
-DATE_STR=$(date +'%Y-%m-%dT%H:%M:%S')
-FILE_PATH="$METRICS_DIR/${UUID}_post-checkout.json"
-
-cat <<EOF > "$FILE_PATH"
-{
-  "timestamp": "$DATE_STR",
-  "command": "git_checkout",
-  "status": "success",
-  "repo": "$REPO",
-  "previous_branch": "$PREV_BRANCH",
-  "current_branch": "$NEW_BRANCH",
-  "provider": "git_hook"
-}
-EOF
+exit 0

@@ -42,6 +42,13 @@ class PullRequestResult:
     MR ``iid`` here, never the global project-scoped id); number is the
     user-visible number (GitLab iid, GitHub number, Bitbucket id, Azure
     pullRequestId).
+
+    The three dates are the forge's own ISO-8601 strings, exactly as published
+    and in the forge's timezone (UTC everywhere today) — normalizing them would
+    mean inventing a precision the source did not have. Empty means the forge
+    published no such date for this pull request, which is not the same as
+    "never": Bitbucket Cloud has no merged_on on the pull request list, so every
+    Bitbucket row leaves merged_at empty (see ScmProvider.supports_merged_dates).
     """
 
     id: str | int
@@ -51,6 +58,31 @@ class PullRequestResult:
     source_branch: str
     target_branch: str
     provider: str
+    created_at: str = ""
+    merged_at: str = ""
+    closed_at: str = ""
+
+
+def within_window(timestamp: str, since: Optional[str], until: Optional[str]) -> bool:
+    """Whether an ISO-8601 timestamp falls inside inclusive YYYY-MM-DD bounds.
+
+    Only the calendar day is compared — ``timestamp[:10]`` — which is what a
+    window means to the reader and what every forge format agrees on
+    (``...T10:00:00Z``, ``...T10:00:00.1234567Z``, ``...+00:00``). The day is
+    the forge's, so a pull request merged late in the evening locally can land
+    on the next day's UTC date; moving the window is the caller's to do.
+
+    A row the forge gave no date for cannot be placed in a window: it passes
+    only when no window was asked for.
+    """
+    day = str(timestamp or "")[:10]
+    if not day:
+        return not (since or until)
+    if since and day < str(since)[:10]:
+        return False
+    if until and day > str(until)[:10]:
+        return False
+    return True
 
 
 @dataclass
@@ -136,6 +168,16 @@ class ScmProvider(ABC):
     # a diff (the PR publisher) are unaffected — they never check this flag.
     supports_reviewable_diff: bool = True
 
+    # Whether list_pull_requests can date a merge. Bitbucket Cloud is False: its
+    # pull request object publishes created_on and updated_on and no merged_on
+    # (nor a closed_on), and updated_on moves with every comment left after the
+    # merge — so a Bitbucket row carries an empty merged_at rather than a date
+    # that is not the one asked for. Callers that measure a commit-to-merge
+    # cycle read this flag and say what they cannot measure, in the same spirit
+    # as supports_reviewable_diff: declared before the call, not discovered
+    # from a wrong number afterwards.
+    supports_merged_dates: bool = True
+
     def __init__(self, token: str, base_url: Optional[str] = None, **kwargs):
         self.token = token or ""
         self.base_url = (base_url or self.default_base_url()).rstrip("/")
@@ -162,9 +204,15 @@ class ScmProvider(ABC):
     def get_pull_request_diff(self, repo: RepoRef, pr_id: str | int) -> str:
         """Fetch the pull request diff as text (provider-specific fidelity)."""
 
-    @abstractmethod
     def list_open_pull_requests(self, repo: RepoRef) -> list[PullRequestResult]:
-        """List open pull requests of the repository."""
+        """List open pull requests of the repository.
+
+        A thin wrapper over list_pull_requests(state="open"). The name stays —
+        every call site and test uses it, and a forge that cannot list pull
+        requests at all raises from underneath, with the same error it would
+        have raised for any other state.
+        """
+        return self.list_pull_requests(repo, state="open")
 
     @abstractmethod
     def add_comment(self, repo: RepoRef, pr_id: str | int, body: str) -> None:
@@ -253,12 +301,50 @@ class ScmProvider(ABC):
         subclasses and the contract tests compiling. The remote-PR review needs
         this to resolve metadata and to tell "does not exist" from "merged or
         closed" — list_open_pull_requests cannot, since it only ever returns
-        open PRs and none of the providers paginate it (so filtering a single
-        page by number silently misses older PRs).
+        open PRs (it paginates now, but the state it filters by is still the
+        one thing it cannot leave).
         """
         raise ScmNotSupportedError(
             self.name,
             "This forge has no API to fetch a single pull request.",
+        )
+
+    def list_pull_requests(
+        self,
+        repo: RepoRef,
+        state: str = "all",
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+    ) -> list[PullRequestResult]:
+        """List the repository's pull requests by state and period, paginated.
+
+        state is the canonical vocabulary — "open", "closed", "merged", "all" —
+        and each provider translates it to its own and then filters the answers
+        by it, because three of the four forges answer a request for merged
+        pull requests with something wider: GitHub has no merged state at all
+        (it reads ``state=closed`` and drops the rows without a merged_at),
+        Azure calls a merge "completed" and a close "abandoned", Bitbucket says
+        DECLINED. A caller asking for merged pull requests gets merged pull
+        requests, or an error — never a superset dressed as the answer.
+
+        since/until are inclusive YYYY-MM-DD bounds on the date the state
+        implies: merged_at for "merged", closed_at for "closed", created_at
+        otherwise. Every page is read until the forge says there is no next one
+        — GitHub by Link, GitLab by X-Next-Page, Bitbucket by the body's next
+        URL, Azure by continuation token — with one early stop: three of the
+        four list newest-updated first, and since a pull request is updated at
+        or after it is merged, a page whose newest entry predates ``since``
+        cannot be followed by one that does not. Azure has no such ordering, so
+        it hands the window to the server (minTime/maxTime with
+        queryTimeRangeType) instead.
+
+        Deliberately NOT abstract: a forge with no way to list pull requests
+        raises ScmNotSupportedError, exactly like create_release above, so the
+        caller can degrade instead of guessing at an empty list.
+        """
+        raise ScmNotSupportedError(
+            self.name,
+            "This forge has no API to list pull requests.",
         )
 
     def with_token(self, token: str) -> "ScmProvider":
