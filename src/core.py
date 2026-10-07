@@ -1330,6 +1330,9 @@ def generate_skill_template():
         ".gitpr.issue.md": f"gitpr.issue{lang_suffix}.md",
         ".gitpr.release.md": f"gitpr.release{lang_suffix}.md",
         ".gitpr.fix.md": f"gitpr.fix{lang_suffix}.md",
+        ".gitpr.tests.md": f"gitpr.tests{lang_suffix}.md",
+        ".gitpr.explain.md": f"gitpr.explain{lang_suffix}.md",
+        ".gitpr.mentor.md": f"gitpr.mentor{lang_suffix}.md",
     }
 
     success_count = 0

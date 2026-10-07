@@ -1211,6 +1211,9 @@ SKILL_FILES = {
     "blame": ".gitpr.blame.md",
     "release": ".gitpr.release.md",
     "fix": ".gitpr.fix.md",
+    "tests": ".gitpr.tests.md",
+    "explain": ".gitpr.explain.md",
+    "mentor": ".gitpr.mentor.md",
 }
 
 # Prompt template files (message templates for common MCP flows).

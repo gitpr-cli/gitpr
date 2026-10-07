@@ -144,11 +144,12 @@ You can pass the following *flags* for specific actions:
 * `gitpr fix [<finding_id>]`: **Review findings patch application & rollback.** Turns findings from the last code review (`gitpr -r`) into safe, reviewable unified diffs. Includes safety classification (`safe`, `review_required`, `experimental`), `--all-safe` batching, `--force` validation, and `--rollback <patch-id>`. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/fix-command.md)
 * `gitpr split`: **Atomic commit splitter.** Reads uncommitted working tree changes, groups hunks by intent using AI, and proposes ordered atomic commits without altering your working tree files (`--dry-run`, `--apply`). 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/split-command.md)
 * `gitpr tests generate`: **AI test suite generation & scaffolding.** Analyzes your diff, a target file (`--file`), or a review finding (`--finding`) and generates complete, executable test suites (supporting pytest, jest, vitest, phpunit, pest). Use `--apply` to write to disk.
+* `gitpr mentor [<finding_id>]`: **Junior Mentor Pedagogical Explanations.** Breaks down code review findings with educational context ("why this matters", real-world analogy, guided questions, and key takeaway) to foster growth and mentor developers. Works standalone over the latest review findings or with `--finding <id>`. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mentor-mode.md)
 * `gitpr explain`: **Reviewer Guide generator.** Generates a concise summary explaining what changed, why it changed, where reviewers should focus, and potential regression risks. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.md)
 * `gitpr review-pr <pr_number>`: **Remote Pull Request review.** Fetches and reviews an open pull request directly from the forge (GitHub, GitLab, Bitbucket, Azure DevOps) without checking out the branch locally. Use `--post-comment` to post the review directly to the PR. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/review-pr.md)
 * `-c` or `--commit`: Runs a local `git diff` and displays **only the suggested commit message**.
-* `-r` or `--review`: Performs a detailed **Code Review** of local changes.
-* `-f` or `--fullreview`: Performs a **Full Code Review** analyzing all changes since the remote branch.
+* `-r` or `--review`: Performs a detailed **Code Review** of local changes. Use with `--mentor` to append pedagogical mentoring explanations for each finding.
+* `-f` or `--fullreview`: Performs a **Full Code Review** analyzing all changes since the remote branch. Use with `--mentor` to append pedagogical mentoring explanations.
 * `-i <file>` or `--input <file>`: **Full File Audit.** Must be used together with `-r` or `-f`; it ignores git history and does a Code Review of the entire file. Excellent for acting as a consultant on legacy code refactoring.
 * `--provider <gemini|deepseek|ollama>`: Forces the use of a specific AI only for this execution, ignoring your default saved in `.env`.
 * `--lang <code>`: Forces the interface language for this execution (e.g.: `en_us`, `pt_br`). Overrides `GITPR_LANG` in `.env` without persisting the change.
@@ -265,6 +266,7 @@ Instead of hiding AI instructions in the source code, GitPR uses local Markdown 
 * `.gitpr.filereview.md`: Defines strict cohesion and coupling rules for full file auditing (used with `--input`).
 * `.gitpr.issue.md`: Defines the structure and level of detail required for generating standardized Issues (used with `--issue`).
 * `.gitpr.blame.md`: Defines the focus of archaeological analysis for legacy code tracing (used with `--blame`).
+* `.gitpr.mentor.md`: Defines pedagogical coaching style, analogy framing, and tone for Junior Mentor Mode (used with `gitpr mentor` or `--mentor`).
 
 ## 🌐 Internationalization (i18n)
 
