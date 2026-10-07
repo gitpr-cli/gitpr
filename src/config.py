@@ -82,6 +82,9 @@ DEFAULT_CONFIG = {
     "GITPR_SPLIT_MAX_GROUPS": "5",
     "GITPR_SPLIT_REQUIRE_CONFIRMATION": "true",
     "GITPR_SPLIT_MAX_HUNKS": "50",
+    # Mentor feature (gitpr -r/--review --mentor, gitpr mentor)
+    "GITPR_REVIEW_MENTOR_MODE": "false",
+    "GITPR_MENTOR_INCLUDE_ANALOGY": "true",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -155,6 +158,7 @@ SKILL_FILES_BY_TYPE = {
     "fix": ".gitpr.fix.md",
     "tests": ".gitpr.tests.md",
     "explain": ".gitpr.explain.md",
+    "mentor": ".gitpr.mentor.md",
 }
 SKILL_TYPES = tuple(SKILL_FILES_BY_TYPE)
 
@@ -460,6 +464,22 @@ def explain_enabled_by_default():
         "yes",
         "y",
     )
+
+
+def mentor_mode_enabled():
+    """Returns True if Mentor explanation section is automatically included in reviews."""
+    load_dotenv(ENV_FILE)
+    return os.getenv("GITPR_REVIEW_MENTOR_MODE", "false").strip().lower() in (
+        "true",
+        "1",
+        "yes",
+        "y",
+    )
+
+
+def mentor_include_analogy():
+    """Returns True if Mentor explanations should include analogies (default true)."""
+    return _env_bool_default_true("GITPR_MENTOR_INCLUDE_ANALOGY")
 
 
 def get_reviewer_suggestion_settings():

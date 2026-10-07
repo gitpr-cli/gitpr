@@ -255,6 +255,13 @@ HELP_MAP: dict[str, dict[str, str]] = {
             "Generates a concise reviewer-centric summary (What changes, Why it changes, Where to focus, and Regression risk)."
         ),
     },
+    "mentor": {
+        "url": get_doc_url("mentor-mode.md"),
+        "title": __("Junior Mentor Mode (--mentor / gitpr mentor)"),
+        "description": __(
+            "Enriches code reviews with pedagogical explanations (what is happening, why it matters, analogies, and concepts to learn) designed for junior engineers."
+        ),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -270,6 +277,7 @@ HELP_PRIORITY: dict[str, int] = {
     "commit": 7,
     "fullreview": 8,
     "review": 9,
+    "mentor": 9,
     "input": 10,
     "history": 11,
     "provider": 12,
@@ -451,6 +459,14 @@ HELP_PRIORITY: dict[str, int] = {
     ),
 )
 @click.option(
+    "--mentor",
+    "mentor_flag",
+    is_flag=True,
+    help=__(
+        "Adds a didactic Mentor section to the code review (-r / -f)."
+    ),
+)
+@click.option(
     "--plugins",
     is_flag=True,
     help=__("Lists all active global plugins (linters and prompts)."),
@@ -516,6 +532,7 @@ def cli(
     no_publish,
     no_edit,
     explain_flag,
+    mentor_flag,
     plugins,
     status,
     no_unstaged_check,
@@ -1339,6 +1356,15 @@ def cli(
                 current_time,
             )
         content = data.get("review", __("No analysis generated."))
+        from src.config import mentor_mode_enabled
+        if action_type in ("review", "fullreview") and (mentor_flag or mentor_mode_enabled()):
+            content = _append_mentor_section(content, action_type, diff_text, active_provider)
+        elif mentor_flag:
+            click.secho(
+                __("⚠️ Notice: --mentor option is only supported for -r (--review) and -f (--fullreview)."),
+                fg="yellow",
+                dim=True,
+            )
 
         # Run the Linter. If "filereview", enable full-file mode.
         if action_type == "filereview":
@@ -2025,6 +2051,58 @@ def _print_fix_left_out(candidates, selected):
                 fg="white",
                 dim=True,
             )
+
+
+def _append_mentor_section(content, action_type, diff_text, active_provider):
+    """Generates and appends pedagogical mentor explanations to a code review."""
+    from src.application.use_cases.generate_mentor_explanation import (
+        MentorError,
+        explain_review,
+    )
+
+    synthetic_record = {
+        "response": {"review": content},
+        "diff": diff_text,
+        "action_type": action_type,
+    }
+
+    try:
+        click.secho("🎓 " + __("Generating Mentor guidance for review findings..."), fg="cyan", dim=True)
+        run = explain_review(
+            record=synthetic_record,
+            finding_id=None,
+            ai_provider=active_provider,
+            quiet=False,
+        )
+        if run and run.markdown:
+            click.secho(
+                __("🎓 Mentor: {count} finding(s) explained successfully.", count=len(run.explanations)),
+                fg="green",
+                dim=True,
+            )
+            if run.skipped_ids:
+                click.secho(
+                    __(
+                        "ℹ️ {count} additional finding(s) not expanded. Run 'gitpr mentor --finding <id>' to view.",
+                        count=len(run.skipped_ids),
+                    ),
+                    fg="yellow",
+                    dim=True,
+                )
+            return f"{content.rstrip()}\n\n---\n\n{run.markdown}"
+    except MentorError as exc:
+        click.secho(f"⚠️ {exc}", fg="yellow", dim=True)
+    except Exception as exc:
+        click.secho(
+            __(
+                "⚠️ Warning: Failed to generate mentor section ({error})",
+                error=str(exc),
+            ),
+            fg="yellow",
+            dim=True,
+        )
+
+    return content
 
 
 @cli.command(
@@ -3233,6 +3311,81 @@ def explain(ai_provider):
             fg="yellow",
             dim=True,
         )
+
+
+@cli.command(
+    "mentor",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("mentor-mode.md"),
+)
+@click.option(
+    "--finding",
+    "finding_id",
+    metavar="<id>",
+    help=__("Explains only this finding of the last review (e.g. FIX-002)."),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def mentor(finding_id, ai_provider):
+    """Provides pedagogical and didactic guidance on findings from the last code review."""
+    from src.application.use_cases.generate_mentor_explanation import (
+        MentorError,
+        explain_review,
+    )
+    from src.fix.apply_fix import FixError, resolve_review
+
+    try:
+        record = resolve_review()
+    except FixError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    try:
+        click.secho("🎓 " + __("Analyzing findings in Junior Mentor mode..."), fg="cyan")
+        run = explain_review(
+            record=record,
+            finding_id=finding_id,
+            ai_provider=ai_provider,
+            quiet=False,
+        )
+    except MentorError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    if not run or not run.explanations:
+        click.secho(__("ℹ️ The review raised no fixable findings."), fg="yellow")
+        return
+
+    click.echo()
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.secho("  " + __("JUNIOR MENTOR GUIDANCE"), fg="cyan", bold=True)
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.echo()
+
+    for item in run.explanations:
+        click.echo(item.markdown)
+        click.echo()
+        click.secho("-" * 40, fg="white", dim=True)
+        click.echo()
+
+    if run.skipped_ids:
+        click.secho(
+            __(
+                "ℹ️ {count} additional finding(s) not expanded here. Run 'gitpr mentor --finding <id>' to inspect them individually.",
+                count=len(run.skipped_ids),
+            )
+            + f" ({', '.join(run.skipped_ids)})",
+            fg="yellow",
+            dim=True,
+        )
+
 
 
 def _env_flag(name, default="false"):

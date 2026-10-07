@@ -234,6 +234,9 @@ SKILL_LABELS = {
     "blame": __("Blame"),
     "release": __("Release"),
     "fix": __("Fix"),
+    "tests": __("Tests"),
+    "explain": __("Explain"),
+    "mentor": __("Mentor"),
 }
 
 # Sub-headers shown inside a category. Generic words go through __(); forge and
@@ -552,6 +555,26 @@ FIELDS = (
         category="review",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_FILE_REVIEW.txt",
+    ),
+    ConfigField(
+        key="GITPR_REVIEW_MENTOR_MODE",
+        label=__("Mentor Mode by Default"),
+        description=__(
+            "Automatically appends pedagogical Mentor explanations to code reviews (-r and -f)."
+        ),
+        category="review",
+        kind=KIND_BOOL,
+        default="false",
+    ),
+    ConfigField(
+        key="GITPR_MENTOR_INCLUDE_ANALOGY",
+        label=__("Include Analogies in Mentor Mode"),
+        description=__(
+            "Whether Mentor explanations should attempt to include everyday analogies."
+        ),
+        category="review",
+        kind=KIND_BOOL,
+        default="true",
     ),
     # ------------------------------------------------------------------- Issue
     ConfigField(
