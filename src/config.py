@@ -85,6 +85,8 @@ DEFAULT_CONFIG = {
     # Mentor feature (gitpr -r/--review --mentor, gitpr mentor)
     "GITPR_REVIEW_MENTOR_MODE": "false",
     "GITPR_MENTOR_INCLUDE_ANALOGY": "true",
+    # Risk scoring feature (gitpr risk, gitpr -r/--review risk assessment)
+    "GITPR_RISK_INCLUDE_IN_REVIEW": "true",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -480,6 +482,11 @@ def mentor_mode_enabled():
 def mentor_include_analogy():
     """Returns True if Mentor explanations should include analogies (default true)."""
     return _env_bool_default_true("GITPR_MENTOR_INCLUDE_ANALOGY")
+
+
+def risk_scoring_in_review_enabled():
+    """Returns True if Risk Scoring assessment section is included in reviews."""
+    return _env_bool_default_true("GITPR_RISK_INCLUDE_IN_REVIEW")
 
 
 def get_reviewer_suggestion_settings():

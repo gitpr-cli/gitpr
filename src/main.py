@@ -20,6 +20,7 @@ from src.config import (
     get_ai_provider,
     get_reviewer_suggestion_settings,
     get_split_settings,
+    risk_scoring_in_review_enabled,
     setup_environment,
     suggest_reviewers_enabled,
 )
@@ -262,6 +263,13 @@ HELP_MAP: dict[str, dict[str, str]] = {
             "Enriches code reviews with pedagogical explanations (what is happening, why it matters, analogies, and concepts to learn) designed for junior engineers."
         ),
     },
+    "risk": {
+        "url": get_doc_url("risk-scoring.md"),
+        "title": __("Local Risk Scoring (gitpr risk)"),
+        "description": __(
+            "Calculates deterministic, explainable risk scores for the diff and files without AI, highlighting critical paths, missing tests, migrations, and bug history."
+        ),
+    },
 }
 
 # Priority for contextual help when multiple flags are used with -h
@@ -278,8 +286,9 @@ HELP_PRIORITY: dict[str, int] = {
     "fullreview": 8,
     "review": 9,
     "mentor": 9,
-    "input": 10,
-    "history": 11,
+    "risk": 10,
+    "input": 11,
+    "history": 12,
     "provider": 12,
     "lang": 13,
     "no-publish": 16,
@@ -1374,7 +1383,24 @@ def cli(
         else:
             linter_results = parse_diff_and_lint(diff_text)
 
-        render_review_result(content, linter_results, output_filename)
+        risk_section = None
+        if action_type in ("review", "fullreview") and risk_scoring_in_review_enabled():
+            try:
+                from src.application.use_cases.calculate_risk import execute_calculate_risk
+                from src.domain.risk.risk_explanation import format_risk_review_section
+                from src.review.diff_source import DiffOrigin, DiffSource
+
+                r_diff_source = DiffSource(
+                    origin=DiffOrigin.LOCAL,
+                    content=diff_text,
+                    identifier="head",
+                )
+                r_risk = execute_calculate_risk(r_diff_source)
+                risk_section = format_risk_review_section(r_risk)
+            except Exception:
+                risk_section = None
+
+        render_review_result(content, linter_results, output_filename, risk_assessment_text=risk_section)
         return
 
     # Default Pull Request (.md file)
@@ -2448,7 +2474,18 @@ def review_pr(pr_number, ai_provider, post_comment):
         current_time,
     )
 
-    render_review_result(result.review, result.linter_results, output_filename)
+    risk_section = None
+    if risk_scoring_in_review_enabled() and result.diff_source:
+        try:
+            from src.application.use_cases.calculate_risk import execute_calculate_risk
+            from src.domain.risk.risk_explanation import format_risk_review_section
+
+            r_risk = execute_calculate_risk(result.diff_source)
+            risk_section = format_risk_review_section(r_risk)
+        except Exception:
+            risk_section = None
+
+    render_review_result(result.review, result.linter_results, output_filename, risk_assessment_text=risk_section)
 
 
 @cli.command(
@@ -3386,6 +3423,182 @@ def mentor(finding_id, ai_provider):
             dim=True,
         )
 
+
+@cli.command(
+    "risk",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("risk-scoring.md"),
+)
+@click.option(
+    "--file",
+    "target_file",
+    metavar="<path>",
+    help=__("Calculates risk breakdown for a specific file."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+@click.option(
+    "--base",
+    "base_ref",
+    metavar="<ref>",
+    default=None,
+    help=__("Calculate risk against an explicit git base ref."),
+)
+@click.option(
+    "--no-history",
+    is_flag=True,
+    default=False,
+    help=__("Disables git history extraction for faster evaluation."),
+)
+def risk(target_file, output_format, base_ref, no_history):
+    """Calculates deterministic and explainable risk scores for the current diff or files."""
+    import json
+    import re
+    from src.application.use_cases.calculate_risk import execute_calculate_risk
+    from src.core import SMART_EXCLUDES
+    from src.domain.risk.risk_explanation import format_evidence_line
+    from src.domain.risk.risk_types import RiskLevel
+    from src.infrastructure.linter.external.base_bridge import NormalizedFinding
+    from src.linter_engine import parse_diff_and_lint
+    from src.review.diff_source import DiffOrigin, DiffSource
+
+    if base_ref:
+        cmd = ["git", "diff", "-U1", "-w", "-M", "-B", base_ref, "--"] + SMART_EXCLUDES
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        diff_text = res.stdout if res.returncode == 0 else ""
+    else:
+        diff_text = get_git_diff(quiet=True)
+        if not diff_text or not diff_text.strip():
+            diff_text = get_git_full_diff()
+
+    diff_text = diff_text or ""
+    diff_source = DiffSource(
+        origin=DiffOrigin.LOCAL,
+        content=diff_text,
+        identifier="head" if not base_ref else base_ref,
+    )
+
+    if not diff_text.strip():
+        click.secho(__("⚠️ No diff found to calculate risk score."), fg="yellow")
+        if output_format.lower() == "json":
+            click.echo(
+                json.dumps(
+                    {
+                        "score": 0.0,
+                        "level": "low",
+                        "files": [],
+                        "evidence": [],
+                        "warnings": ["Empty diff"],
+                    },
+                    indent=2,
+                )
+            )
+        return
+
+    findings = []
+    try:
+        alerts = parse_diff_and_lint(diff_text, skip_external=True)
+        loc_pattern = re.compile(
+            r"in\s+([^\s\(\)]+)\s+\(Line\s+(\d+)\)|\(([^\s\(\)]+),\s+Line\s+(\d+)\)",
+            re.IGNORECASE,
+        )
+        for sev, msgs in (("error", alerts.get("errors", [])), ("warning", alerts.get("warnings", []))):
+            for msg in msgs:
+                m = loc_pattern.search(msg)
+                f_path = (m.group(1) or m.group(3)) if m else ""
+                line_no = int(m.group(2) or m.group(4)) if m else 1
+                findings.append(
+                    NormalizedFinding(
+                        severity=sev,
+                        category="security" if ("secret" in msg.lower() or "security" in msg.lower()) else "lint",
+                        file_path=f_path,
+                        line_start=line_no,
+                        line_end=line_no,
+                        message=msg,
+                        source="linter",
+                    )
+                )
+    except Exception:
+        pass
+
+    pr_risk = execute_calculate_risk(
+        diff_source=diff_source,
+        target_file=target_file,
+        findings=findings,
+        include_history=not no_history,
+    )
+
+    if output_format.lower() == "json":
+        click.echo(json.dumps(pr_risk.to_dict(), indent=2))
+        return
+
+    click.echo()
+    click.secho("=" * 65, fg="cyan", bold=True)
+    click.secho("  ⚡ " + __("GITPR LOCAL RISK ASSESSMENT"), fg="cyan", bold=True)
+    click.secho("=" * 65, fg="cyan", bold=True)
+    click.echo()
+
+    level_colors = {
+        RiskLevel.CRITICAL: "red",
+        RiskLevel.HIGH: "bright_red",
+        RiskLevel.MEDIUM: "yellow",
+        RiskLevel.LOW: "green",
+    }
+    badge_color = level_colors.get(pr_risk.level, "white")
+
+    click.echo("  " + __("Risk Level:") + "  ", nl=False)
+    click.secho(f"[{pr_risk.level.value.upper()}]", fg=badge_color, bold=True, nl=False)
+    click.echo("  |  " + __("Score:") + f" {pr_risk.score}/100 (v{pr_risk.analysis_version})")
+    click.echo(
+        f"  {pr_risk.total_changed_files} "
+        + __("file(s) changed")
+        + f", {pr_risk.total_changed_lines} "
+        + __("line(s) changed")
+    )
+    test_status_str = __("Detected") if pr_risk.tests_changed else __("None")
+    test_color = "green" if pr_risk.tests_changed else "yellow"
+    click.echo("  " + __("Test changes:") + " ", nl=False)
+    click.secho(test_status_str, fg=test_color, bold=True)
+    click.echo()
+
+    if pr_risk.evidence:
+        click.secho("🔍 " + __("Top Contributing Risk Factors:"), fg="cyan", bold=True)
+        for ev in pr_risk.evidence[:6]:
+            click.echo(f"  {format_evidence_line(ev)}")
+        click.echo()
+
+    if pr_risk.files:
+        click.secho("📁 " + __("Files by Risk Score:"), fg="cyan", bold=True)
+        for f in pr_risk.files:
+            f_color = level_colors.get(f.level, "white")
+            score_str = f"[{f.score:>4.1f}]".rjust(7)
+            click.secho(f"  {score_str} ", fg=f_color, bold=True, nl=False)
+            click.echo(f"{f.file_path} ({f.changed_lines} lines)")
+            if target_file and f.evidence:
+                for ev in f.evidence:
+                    click.echo(f"      {format_evidence_line(ev)}")
+        click.echo()
+
+    if pr_risk.warnings:
+        click.secho("⚠️ " + __("Notices:"), fg="yellow")
+        for w in pr_risk.warnings:
+            click.echo(f"  • {w}")
+        click.echo()
 
 
 def _env_flag(name, default="false"):

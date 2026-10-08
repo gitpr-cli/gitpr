@@ -1,0 +1,35 @@
+# GitPR Local Risk Scoring Configuration Template
+# Place in .gitpr/skill/gitpr.risk.yml to customize weights and paths
+
+risk:
+  enabled: true
+  include_in_review: true
+  analysis_version: "1.0"
+  thresholds:
+    low_max: 24
+    medium_max: 49
+    high_max: 79
+  weights:
+    critical_path: 25
+    security_sensitive: 25
+    database_migration: 20
+    infrastructure: 20
+    no_test_change: 15
+    historical_bugs: 20
+    historical_reverts: 10
+    high_churn: 15
+    high_coupling: 15
+    finding_blocker: 25
+    finding_critical: 15
+    finding_warning: 3
+    test_present: -10
+  critical_paths:
+    - "app/Http/Middleware/**"
+    - "app/Policies/**"
+    - "database/migrations/**"
+    - ".github/workflows/**"
+    - "**/auth/**"
+    - "**/security/**"
+    - "**/payment/**"
+    - "**/billing/**"
+

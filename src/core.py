@@ -904,6 +904,25 @@ def generate_pr_content(
             )
         )
 
+        if action_type in ("review", "fullreview"):
+            try:
+                from src.config import risk_scoring_in_review_enabled
+                if risk_scoring_in_review_enabled():
+                    from src.application.use_cases.calculate_risk import execute_calculate_risk
+                    from src.domain.risk.risk_explanation import format_ai_risk_context
+                    from src.review.diff_source import DiffOrigin, DiffSource
+
+                    is_remote = cache_scope.startswith("::diff-source::")
+                    r_source = DiffSource(
+                        origin=DiffOrigin.REMOTE_PR if is_remote else DiffOrigin.LOCAL,
+                        content=diff_text,
+                        identifier="remote_pr" if is_remote else "head",
+                    )
+                    r_risk = execute_calculate_risk(r_source, include_history=not is_remote)
+                    instrucao_sistema = instrucao_sistema + "\n\n" + format_ai_risk_context(r_risk)
+            except Exception:
+                pass
+
         if action_type == "filereview":
             prompt = (
                 __(
