@@ -12,29 +12,35 @@ import click
 from src.i18n import __
 
 
-def compose_review_content(content, linter_results):
+def compose_review_content(content, linter_results, risk_assessment_text=None):
     """Return *content* with the linter alert block prepended.
 
     Errors and warnings go into the same block, errors first — the report has
     never distinguished them visually. With no alerts the review is returned
     untouched, so the file of a clean run has no header at all.
+    When *risk_assessment_text* is provided, it is prepended above linter alerts.
 
     Kept separate from ``render_review_result`` because the published comment
     (src/review/remote_pr.py) must read exactly like the file: same alerts, same
     order, one implementation.
     """
+    sections = []
+    if risk_assessment_text and risk_assessment_text.strip():
+        sections.append(risk_assessment_text.strip() + "\n\n---")
+
     all_alerts = linter_results["errors"] + linter_results["warnings"]
-    if not all_alerts:
-        return content
+    if all_alerts:
+        header = __("## 🚨 Local Static Analysis Alerts (YAML Rules)\n\n")
+        for alert in all_alerts:
+            header += f"- {alert}\n"
+        header += __("\n---\n\n## 🤖 AI Code Review\n\n")
+        sections.append(header.rstrip())
 
-    header = __("## 🚨 Local Static Analysis Alerts (YAML Rules)\n\n")
-    for alert in all_alerts:
-        header += f"- {alert}\n"
-    header += __("\n---\n\n## 🤖 AI Code Review\n\n")
-    return header + content
+    sections.append(content)
+    return "\n\n".join(s for s in sections if s)
 
 
-def render_review_result(content, linter_results, output_filename):
+def render_review_result(content, linter_results, output_filename, risk_assessment_text=None):
     """Report the linter verdict, then write the composed review to disk.
 
     Returns the path written, or None when the write failed — the caller
@@ -56,7 +62,9 @@ def render_review_result(content, linter_results, output_filename):
             __("✅ Local Linter passed with no rule violations!"), fg="green"
         )
 
-    content = compose_review_content(content, linter_results)
+    content = compose_review_content(
+        content, linter_results, risk_assessment_text=risk_assessment_text
+    )
 
     try:
         with open(output_filename, "w", encoding="utf-8") as f:
