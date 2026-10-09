@@ -576,6 +576,16 @@ FIELDS = (
         kind=KIND_BOOL,
         default="true",
     ),
+    ConfigField(
+        key="GITPR_RISK_INCLUDE_IN_REVIEW",
+        label=__("Include Risk Assessment"),
+        description=__(
+            "Automatically appends deterministic local risk score and factor breakdown to code reviews (-r, -f, --review-pr)."
+        ),
+        category="review",
+        kind=KIND_BOOL,
+        default="true",
+    ),
     # ------------------------------------------------------------------- Issue
     ConfigField(
         key="OUTPUT_FILE_NAME_ISSUE",

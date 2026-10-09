@@ -145,6 +145,7 @@ Vous pouvez passer les *flags* suivants pour des actions spécifiques :
 * `gitpr tests generate` : **Générateur de tests unitaires.** Échafaude et génère automatiquement des suites de tests unitaires pour les fonctions et modules modifiés (pytest, jest, vitest, phpunit, pest).
 * `gitpr explain` : **Générateur de guide de revue (Reviewer Guide).** Produit un résumé architectural et une visite guidée du diff pour accélérer les revues de code humaines.
 * `gitpr review-pr <numéro_pr>` : **Revue de PR distante.** Récupère et effectue une revue de code complète assistée par IA sur une pull request distante sans nécessiter de checkout local.
+* `gitpr risk` : **Évaluation locale des risques pour les diffs.** Calcule un score de risque déterministe et explicable (0.0 à 100.0) et un badge (`LOW 🟢`, `MEDIUM 🟡`, `HIGH 🟠`, `CRITICAL 🔴`) à partir de signaux locaux du dépôt (chemins critiques, absence de tests, migrations, historique de bugs et constats statiques). Utilisez `--file <chemin>`, `--format json`, `--base <ref>` ou `--no-history`. Automatiquement inclus dans les revues de code (`GITPR_RISK_INCLUDE_IN_REVIEW=true`). 📖 [Documentation complète](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.fr_fr.md)
 * `--init` : **Assistant de configuration de forge SCM.** Guide pas à pas la configuration des identifiants et paramètres pour GitHub, GitLab, Bitbucket Cloud ou Azure DevOps. 📖 [Documentation complète](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/scm-multiforge.fr_fr.md)
 * `-c` ou `--commit` : Exécute un `git diff` local et affiche **uniquement le message de commit suggéré**.
 * `-r` ou `--review` : Effectue un **Code Review** détaillé des modifications locales.
@@ -216,6 +217,46 @@ gitpr --linter-setup
 L'assistant affiche des presets préconfigurés (PHPCS, ESLint, Stylelint, Semgrep, Gitleaks, Bandit — contrôlés à distance via `templates/gitpr.linter-presets.json`), vous guide avec la commande d'installation native (ex. : `npm install --save-dev eslint`) et injecte le bloc `external_linters` correct dans votre `.gitpr.linter.yml`.
 
 Chaque exécution — manuelle via `--linter` ou automatique avant les commits — consolide les Règles Regex et les Linters Externes dans un rapport Markdown unique enregistré dans `.gitpr/reports/linter/` (personnalisable via `OUTPUT_FILE_NAME_LINTER`). Le rapport n'est généré que lorsque des violations sont détectées — les exécutions propres ne créent aucun fichier.
+
+## ⚡ Évaluation locale des risques (gitpr risk)
+
+GitPR calcule un score de risque local, déterministe et explicable (de `0.0` à `100.0`) pour chaque fichier modifié individuellement ainsi que pour l'ensemble de la pull request. Il n'effectue aucun appel réseau, ne consomme aucun jeton d'IA et évalue les signaux du dépôt et de Git hors-ligne :
+
+* **Chemins critiques et sécurité (`+25`) :** Authentification, facturation, identifiants et modules opérationnels sensibles.
+* **Base de données et infrastructure (`+20`) :** Migrations, définitions de schéma, workflows CI/CD, Docker et configurations Kubernetes.
+* **Absence de tests (`+15`) :** Code de production exécutable modifié sans modifications correspondantes de tests dans le diff.
+* **Signaux d'historique (`+10` à `+20`) :** Fichiers associés à des corrections de bugs récentes, des réversions ou une forte rotation de commits.
+* **Constats :** Constats bloquants (`+25`) ou critiques (`+15`) signalés par les linters statiques ou les scanners de secrets.
+* **Présence de tests (`-10`) :** Crédit atténuant lorsque des fichiers de test sont ajoutés ou modifiés aux côtés du code.
+
+### Niveaux de risque et badges
+
+| Niveau | Plage de score | Badge | Signification |
+|---|---|---|---|
+| **LOW** | 0.0 – 24.0 | `LOW 🟢` | Modifications de routine avec faible probabilité de régression |
+| **MEDIUM** | 25.0 – 49.0 | `MEDIUM 🟡` | Modifications modérées nécessitant une vigilance normale en revue |
+| **HIGH** | 50.0 – 79.0 | `HIGH 🟠` | Modifications significatives touchant des zones critiques ou manquant de tests |
+| **CRITICAL** | 80.0 – 100.0 | `CRITICAL 🔴` | Forte exposition aux régressions, bloqueurs ou impacts architecturaux sensibles |
+
+### Formule d'agrégation (50 / 30 / 20)
+
+Le score agrégé de la PR combine :
+* **50%** : Score maximal d'un fichier individuel
+* **30%** : Moyenne pondérée des scores par lignes modifiées
+* **20%** : Score des constats critiques agrégés
+
+### Intégration dans les revues
+
+Lorsqu'activé (`GITPR_RISK_INCLUDE_IN_REVIEW=true` dans `~/.gitpr/.env`), GitPR ajoute automatiquement une section `## ⚡ Évaluation des risques` aux rapports de revue générés (`-r`, `-f`, `gitpr review-pr`) et oriente le prompt de revue IA vers les zones critiques.
+
+```bash
+gitpr risk                        # Calcule le risque pour le diff actuel
+gitpr risk --file src/auth.py     # Décompose le risque pour un fichier spécifique
+gitpr risk --format json          # Sortie JSON pour les pipelines CI/CD
+gitpr risk --base main            # Évalue par rapport à une référence git explicite
+```
+
+📖 **Documentation complète :** [docs/risk-scoring.fr_fr.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.fr_fr.md)
 
 ## 🤝 Signature de Co-auteur
 
@@ -469,6 +510,7 @@ Si vous souhaitez implémenter GitPR comme une barrière de qualité automatisé
 * [**Notes de version et changelog (gitpr release)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/release-notes.md) — Comment le sous-commande `gitpr release` génère le changelog / les notes de version d'un dépôt, suggère la prochaine version sémantique et publie les releases sur la forge.
 * [**Commande Fix (gitpr fix)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/fix-command.md) — Comment la sous-commande `gitpr fix` transforme les constats de la dernière revue en patches que vous lisez avant qu'ils ne touchent votre arbre, classe chacun par sécurité et annule un patch appliqué à la demande.
 * [**Commande Split (gitpr split)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/split-command.md) — Comment la sous-commande `gitpr split` lit un arbre de travail comportant plusieurs préoccupations, regroupe les hunks par intention avec l'IA et les transforme en commits atomiques ordonnés, sans jamais écrire dans vos fichiers.
+* [**Évaluation locale des risques (gitpr risk)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.fr_fr.md) — Comment la commande `gitpr risk` évalue les risques de régression, décompose les signaux (formule 50/30/20) et met en évidence les zones à haut risque dans les revues hors-ligne.
 
 ### Configuration et Infrastructure
 
