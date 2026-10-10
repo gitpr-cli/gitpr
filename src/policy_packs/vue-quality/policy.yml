@@ -1,0 +1,78 @@
+schema_version: 1
+name: gitpr/vue-quality
+version: 1.0.0
+description: >-
+  Quality gate for Vue 3 components: props and emits, reactive state, side
+  effects and cleanup, accessibility, loading and error states, oversized
+  components and component tests.
+min_gitpr_version: ">=1.3.0"
+license: LGPL-2.1
+authors:
+  - GitPR
+
+skills:
+  review:
+    additional_context: |
+      This is a Vue 3 codebase. Judge the component by its contract, not by how
+      the template reads.
+
+      1. Props and emits. A prop mutated inside the component is a bug, not a
+         shortcut — the parent owns it. An emit that is not declared in `emits`
+         leaks into the DOM as a native listener. Flag a prop whose value is
+         copied into local state at setup: the copy stops tracking the prop, and
+         the fix is to compute from it.
+      2. Reactivity. `reactive()` destructured loses reactivity; `ref` unwrapped
+         in a nested object too. Flag a `watch` on a property of a `reactive`
+         object without a getter — it never fires. Flag state derived from
+         another state and stored instead of computed.
+      3. Side effects and cleanup. Every listener, interval, timeout, observer and
+         subscription created in `setup` must be released in `onUnmounted` (or
+         `onScopeDispose`). Flag a `fetch` whose result is written to state with
+         no guard for the component having unmounted.
+      4. Async state. Every call that can fail needs three states: loading,
+         error and empty. Flag a component that renders the success path only —
+         a blank screen on failure is a bug the user sees.
+      5. Accessibility. A clickable `div` needs a role, a tabindex and a key
+         handler; an `img` needs `alt`; a form control needs a label. Flag a
+         colour-only state indicator.
+      6. Size. A component past roughly 300 lines is usually several components.
+         Say what should be extracted, not just that it is long.
+      7. Tests. Flag a behaviour change with no test touching the component, and
+         a test that asserts on implementation detail (internal state, class
+         names) rather than on what the user sees.
+
+  pr:
+    additional_context: |
+      Give visual or behavioural evidence where the change is user-facing: what
+      the user sees before and after. A component change with no evidence of how
+      it renders is unreviewable from the diff alone.
+
+  commit:
+    additional_context: |
+      Use Conventional Commits with a scope naming the component or the concern
+      (e.g. `fix(Button):`, `refactor(useCart):`).
+
+linter:
+  rules_file: linter.yml
+
+risk:
+  critical_paths:
+    - src/stores/**
+    - src/router/**
+    - src/plugins/**
+    - src/composables/**
+    - "**/*.config.js"
+    - "**/*.config.ts"
+  weights:
+    no_test_change: 15
+  test_patterns:
+    - tests/**
+    - src/**/__tests__/**
+    - "**/*.spec.js"
+    - "**/*.spec.ts"
+    - "**/*.test.js"
+    - "**/*.test.ts"
+
+protected_paths:
+  - src/router/**
+  - src/stores/**

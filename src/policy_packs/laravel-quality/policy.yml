@@ -1,0 +1,110 @@
+schema_version: 1
+name: gitpr/laravel-quality
+version: 1.0.0
+description: >-
+  Quality gate for Laravel applications: form requests, policies and gates,
+  transactions, N+1, reversible migrations, queues, idempotency and personal
+  data. Extends the PHP security baseline.
+min_gitpr_version: ">=1.3.0"
+license: LGPL-2.1
+authors:
+  - GitPR
+
+extends:
+  - name: gitpr/php-security
+    version: ">=1.0.0 <2.0.0"
+
+skills:
+  review:
+    additional_context: |
+      This is a Laravel application. Judge the diff against the framework's own
+      grain before judging it against general PHP taste.
+
+      1. Authorisation. Every route that reaches a model must be authorised:
+         a Policy, a Gate, a form request with `authorize()`, or an explicit
+         check. `$this->authorize()` called after the model was already loaded
+         and mutated is not authorisation — it is a log line. Implicit route
+         model binding is not authorisation either.
+      2. Mass assignment. `$guarded = []` and `Model::unguard()` make every
+         column assignable from a request. Flag them, and flag a controller that
+         passes `$request->all()` into `create()` or `update()`.
+      3. Transactions. A write touching more than one table, or a job or event
+         emitted after a write, belongs in `DB::transaction()`. Flag a job
+         dispatched inside a transaction that was not deferred — it can run
+         before the row it refers to is committed.
+      4. N+1. A relationship accessed inside a loop, a `->load()` that belongs in
+         the query, a missing `with()`. Name the relation and the loop;
+         "possible N+1" is not a finding.
+      5. Migrations. A migration's `down()` must reverse its `up()`. Flag a
+         dropColumn, a drop or a type change whose `down()` does not restore the
+         column, and flag a column dropped in the same release that still reads
+         it.
+      6. Queues and idempotency. A job that charges, sends or provisions must be
+         safe to run twice, because retries happen. Flag a job without a
+         uniqueness guard and a job whose payload is a whole model rather than
+         an identifier.
+      7. Logs and personal data. Flag a log line carrying a password, a token, a
+         full document number or a raw request body, and personal data returned
+         by an API resource without a stated reason for the field.
+
+  pr:
+    additional_context: |
+      The rollback plan names the migration or the job that has to be reversed
+      and how — "revert the deploy" is not a rollback plan for a change that
+      wrote data. The test evidence names the test that fails if the change is
+      reverted; "tests pass" is not evidence.
+
+  commit:
+    additional_context: |
+      Use Conventional Commits with a Laravel scope where one fits: auth,
+      models, http, console, queue, db. A migration and the code that uses it
+      belong in the same commit.
+
+linter:
+  rules_file: linter.yml
+
+pr:
+  required_sections:
+    - Business impact
+    - Technical implementation
+    - Risks
+    - Test evidence
+    - Rollback plan
+
+commit:
+  allowed_types:
+    - feat
+    - fix
+    - refactor
+    - perf
+    - test
+    - docs
+    - chore
+    - build
+    - ci
+
+risk:
+  critical_paths:
+    - app/Console/**
+    - app/Http/Controllers/**
+    - app/Http/Requests/**
+    - app/Jobs/**
+    - app/Models/**
+    - app/Policies/**
+    - app/Services/**
+    - database/migrations/**
+    - database/seeders/**
+    - routes/**
+  weights:
+    database_migration: 25
+    no_test_change: 20
+  test_patterns:
+    - tests/**
+    - "**/*Test.php"
+    - "**/*Cest.php"
+
+protected_paths:
+  - .env.example
+  - config/**
+  - database/migrations/**
+  - routes/**

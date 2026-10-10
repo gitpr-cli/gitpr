@@ -743,7 +743,23 @@ def get_skill_context(action_type="pr", quiet=False):
 
     ``quiet`` suppresses the terminal messages so flows that must keep stdout
     pure (e.g. ``--format json``) can still load the skill content.
+
+    The active policy pack, when there is one, contributes the additional
+    context it declares for ``action_type`` — appended *after* the local file, so
+    a repository reading its own `.gitpr/skill/.gitpr.review.md` first then hears
+    the pack refine it. The policy is read from the module-level global the
+    resolver published at boot; this function never parses a manifest.
     """
+    from src.domain.policy import get_active_policy
+
+    policy = get_active_policy()
+    policy_context = policy.skill_context_for(action_type)
+
+    if policy_context and not quiet:
+        click.secho(
+            __("🧭 Policy: {policy}", policy=policy.policy_tag()),
+            fg="blue",
+        )
 
     # Define which file to look for (the registry is also what the
     # configuration screen lists, so both can never drift apart)
@@ -774,7 +790,9 @@ def get_skill_context(action_type="pr", quiet=False):
                         ),
                         fg="blue",
                     )
-                return conteudo
+                return (
+                    f"{conteudo}\n\n{policy_context}" if policy_context else conteudo
+                )
         except Exception as e:
             if not quiet:
                 click.secho(
@@ -786,8 +804,9 @@ def get_skill_context(action_type="pr", quiet=False):
                     fg="yellow",
                 )
 
-    # Return empty if it does not exist
-    return ""
+    # The pack's context still has to reach the prompt when the repository has no
+    # skill file of its own — a pack is the whole reason the user configured one.
+    return policy_context
 
 
 def estimate_token_count(text):
@@ -875,6 +894,18 @@ def generate_pr_content(
 
     # Fetch the context from the file corresponding to the action (PR, Commit, or Review)
     skill_context = get_skill_context(action_type)
+
+    from src.domain.policy import get_active_policy
+
+    # What actually keys the cache: the caller's scope plus the policy's.
+    # The skill context travels in `instrucao_sistema`, a separate argument the
+    # MD5 never sees, so without this the pack's context would reach the model
+    # and the cache would still answer from the run before it was activated —
+    # the artefact would carry the policy's name over the previous policy's
+    # review. Empty without a pack, so no existing cache entry moves. Kept
+    # apart from `cache_scope` because that one is still read as the caller's
+    # own marker.
+    cache_key_scope = cache_scope + get_active_policy().cache_scope()
 
     # Task Complexity Definition (NEW)
     # Commits use faster/cheaper models. Reviews and PRs use advanced models.
@@ -999,7 +1030,7 @@ def generate_pr_content(
         pass  # Non-critical — never block the main flow for this metadata
 
     # TRY TO RETRIEVE FROM CACHE
-    cached_data = get_cached_response(action_folder, prompt + cache_scope)
+    cached_data = get_cached_response(action_folder, prompt + cache_key_scope)
     if cached_data:
         click.secho(__("⚡ Response retrieved from local cache."), fg="green", dim=True)
         from src.metrics import log_command_metric
@@ -1200,7 +1231,7 @@ def generate_pr_content(
         save_cached_response(
             action_folder,
             action_type,
-            prompt + cache_scope,
+            prompt + cache_key_scope,
             result_json,
             meta_raw=total_meta,
             reviewed_diff=diff_text if store_diff else None,

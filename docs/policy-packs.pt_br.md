@@ -1,0 +1,308 @@
+# Documentação Técnica: Policy Packs (`gitpr policy`)
+
+Um **Policy Pack** é um manifesto YAML versionável que carrega a política de qualidade inteira de um time — skills de review, regras de linter, overrides de severidade, caminhos críticos, pesos de risco e as convenções de PR/commit — num único arquivo que um repositório pode adotar, revisar e versionar junto com o próprio código. O `gitpr policy` registra *qual* pack o repositório segue e é a única coisa que decide *o que* esse pack muda.
+
+Até agora cada uma dessas superfícies era configurada em outro lugar: `.gitpr/skill/.gitpr.review.md`, `.gitpr/skill/.gitpr.linter.yml`, `.gitpr/skill/gitpr.risk.yml`, `~/.gitpr/.env`. Nada amarrava o conjunto, então "seguimos a política da Acme" era uma convenção, não algo que a ferramenta pudesse conferir. Com um pack, é uma linha num arquivo sob controle de versão.
+
+---
+
+## 1. Visão Geral
+
+Os Policy Packs atuam em três superfícies:
+
+1. **O grupo `gitpr policy`**: sete comandos para listar, validar, exibir, adotar, instalar, criar e abandonar uma política. `list`, `validate` e `show` apenas leem; `use`, `install`, `init` e `off` escrevem e perguntam antes de escrever.
+2. **Todo comando posterior no repositório**: com um pack ativo, `gitpr -r`, `gitpr -f`, `gitpr -c`, `gitpr` (descrição de PR), `gitpr -l` e `gitpr risk` rodam sob ele, sem que nenhum deles ganhe um argumento novo.
+3. **`.gitpr/policy.lock.yml`**: o arquivo que registra a decisão. Ele nomeia o pack, a versão, a origem e um checksum por pack, para que um colega obtenha a mesma política a partir do mesmo commit.
+
+### 1.1 Referência de Comandos
+
+```bash
+gitpr policy list                        # Os packs desta máquina e o que está em vigor
+gitpr policy validate gitpr/laravel-quality   # Schema, compatibilidade, skills, regras, dependências
+gitpr policy show                        # A política efetiva, com a origem de cada valor
+gitpr policy use acme/team-policy@1.0.0  # Fixa um pack, escrevendo .gitpr/policy.lock.yml
+gitpr policy init --stack laravel        # Sugere e ativa o pack oficial da stack
+gitpr policy install ./our-policy        # Copia um diretório local para ~/.gitpr/policies
+gitpr policy off                         # Deixa de seguir o pack
+```
+
+| Comando | Escreve | Descrição |
+|---|---|---|
+| **`list`** | — | O pack ativo (com seu grafo de dependências) e todo pack encontrado nesta máquina |
+| **`validate <caminho\|nome[@faixa]>`** | — | Valida um pack e reporta o que ele faz. Saída diferente de zero quando o pack é inválido, para o CI poder barrar |
+| **`show`** | — | A política efetiva em vigor, com a proveniência de cada campo e a ordem de precedência que a produziu |
+| **`use <nome>[@<versão>]`** | `.gitpr/policy.lock.yml` | Fixa um pack para este repositório. Substitui o pack que estivesse ativo |
+| **`init [--stack laravel\|vue\|php\|node]`** | `.gitpr/policy.lock.yml` | Detecta a stack a partir do projeto e ativa o pack oficial correspondente |
+| **`install <caminho> [--force]`** | `~/.gitpr/policies/` | Valida um pack num diretório local e o copia para o repositório de packs do usuário. Não há registry nem download |
+| **`off`** | remove `.gitpr/policy.lock.yml` | Deixa de seguir o pack. O pack e o arquivo de overrides são mantidos |
+
+Todo comando que escreve aceita `--yes`, que pula a confirmação mas **não** as verificações por trás dela. Sem terminal e sem `--yes`, um comando de escrita falha com a instrução em vez de travar num prompt que ninguém vai ler — é isso que torna o grupo seguro para ser chamado de um hook ou de um job de CI que esqueceu a flag.
+
+### 1.2 De onde um pack pode vir
+
+Três origens, procuradas nesta ordem:
+
+| Ordem | Origem | Local | `source` no lockfile |
+|---:|---|---|---|
+| 1 | O próprio repositório | `<repo>/.gitpr/policies/<nome>/` | `local_path` |
+| 2 | O repositório do usuário | `~/.gitpr/policies/<nome-achatado>/` | `installed` |
+| 3 | O que o GitPR entrega | `src/policy_packs/<nome>/` | `bundled` |
+
+Um pack instalado vive num diretório **achatado** — `acme/team-policy` é guardado como `acme__team-policy` — porque o namespace faz parte da identidade do pack, não do layout do sistema de arquivos. Um pack versionado dentro do repositório é encontrado por caminho, e é isso que permite a um time adotar uma política que ninguém instalou.
+
+Nada é baixado. Um pack é texto em disco; a resolução o lê, o hasheia e o compõe.
+
+---
+
+## 2. O Manifesto
+
+Um pack é um diretório com `policy.yml` e os assets que o manifesto declarar:
+
+```
+acme__team-policy/
+├── policy.yml          # o manifesto — o único arquivo obrigatório
+├── linter.yml          # declarado por linter.rules_file
+├── README.md           # viaja junto; faz parte do pack, não é lido por ninguém
+└── CHANGELOG.md
+```
+
+### 2.1 Schema
+
+O schema é **fechado**: uma chave desconhecida é erro, não aviso. Um erro de digitação como `test:` em vez de `tests:` precisa falhar alto, porque a alternativa é uma política que silenciosamente não faz nada enquanto seu nome continua aparecendo na saída.
+
+| Chave | Obrigatória | Tipo | Significado |
+|---|---|---|---|
+| `schema_version` | ✅ | int | Versão do schema do manifesto. Atualmente `1` |
+| `name` | ✅ | str | `namespace/nome`. Path traversal é recusado |
+| `version` | ✅ | str | A versão do próprio pack |
+| `min_gitpr_version` | ✅ | str | Faixa `SpecifierSet`, ex.: `">=1.3.0"`. Validada contra o GitPR em execução |
+| `description` | — | str | Texto livre, exibido por `policy list` |
+| `license` | — | str | Texto livre |
+| `authors` | — | list[str] | Texto livre |
+| `extends` | — | list | Dependências: `[{name, version}]`. `version` é uma faixa |
+| `skills` | — | map | `skills.<tipo>.additional_context` — texto anexado ao prompt daquela skill |
+| `linter` | — | map | `rules_file`, `severity_overrides` |
+| `risk` | — | map | `critical_paths`, `test_patterns`, `weights`, `thresholds` |
+| `pr` | — | map | `required_sections` |
+| `commit` | — | map | `allowed_types` |
+| `protected_paths` | — | list[str] | Declarado para o prompt, não imposto por nenhum motor |
+
+### 2.2 Um exemplo completo
+
+```yaml
+schema_version: 1
+name: acme/team-policy
+version: 1.0.0
+description: The Acme house rules for PHP services.
+min_gitpr_version: ">=1.3.0"
+license: MIT
+authors:
+  - Acme Platform
+
+extends:
+  - name: acme/base-policy
+    version: ">=1.0.0 <2.0.0"
+
+skills:
+  review:
+    additional_context: |
+      Money is an integer in minor units. A float in a monetary field is a bug
+      regardless of how it got there.
+
+linter:
+  rules_file: linter.yml
+  severity_overrides:
+    - rule_name: acme-no-float-money
+      level: warning
+      reason: the float check is advisory while the migration is in flight
+
+risk:
+  critical_paths:
+    - app/Services/**
+  test_patterns:
+    - spec/**
+  weights:
+    database_migration: 25
+
+pr:
+  required_sections:
+    - Business impact
+    - Rollback plan
+
+commit:
+  allowed_types:
+    - feat
+    - fix
+    - chore
+
+protected_paths:
+  - config/**
+```
+
+### 2.3 As seções
+
+**`skills`** — um bloco por tipo de skill. Os tipos válidos são os que o GitPR conhece: `commit`, `pr`, `review`, `filereview`, `blame`, `issue`, `release`, `fix`, `tests`, `explain`, `mentor`. Um tipo desconhecido é recusado no parsing; um pack não pode inventar uma skill, porque nada iria lê-la. O texto é concatenado com as contribuições dos outros packs e anexado ao prompt como instruções de sistema, e é por isso que ele também entra na chave de cache — veja a §4.3.
+
+**`linter.rules_file`** — o nome de um arquivo YAML de regras **dentro do diretório do pack**. Um caminho que escape do diretório é recusado, então um pack não pode apontar para `/etc/passwd` nem para um arquivo acima de si mesmo. As regras entram no catálogo por `name`, com as regras do próprio projeto vencendo as do pack.
+
+**`linter.severity_overrides`** — muda o nível de uma regra que já existe, depois de todo catálogo ter sido mesclado. `level` é `error` ou `warning`. **Rebaixar uma regra de `error` para `warning` exige um `reason`** — um override que enfraquece o portão é uma decisão que alguém tomou de propósito, e o motivo viaja com ele para o `policy validate`, o `policy show` e o relatório de review. Endurecer uma regra não precisa de justificativa. Um override que nomeia uma regra inexistente em qualquer lugar do catálogo final é **erro**: não fazer nada em silêncio deixaria o time acreditando que uma regra foi relaxada quando não foi.
+
+**`risk.critical_paths` / `risk.test_patterns`** — unidos entre packs, em ordem de precedência. `test_patterns` ensina ao motor de risco quais arquivos contam como teste no layout *deste* projeto (`spec/**`, `**/*Cest.php`), que é o que faz o `TEST_PRESENT` disparar num repositório cujo diretório de testes não se chama `test/` nem `tests/`.
+
+**`risk.weights` / `risk.thresholds`** — um valor único, não uma lista. Dois packs não relacionados por `extends` discordando do mesmo peso é **erro de validação**, nomeando os dois; uma dependência e seu dependente discordando é refinamento, e o dependente vence.
+
+**`pr.required_sections`, `commit.allowed_types`, `protected_paths`** — nada no código lê esses três. Eles existem para serem *ditos* ao modelo, e é por isso que são renderizados nos contextos das skills `pr` e `commit` como texto de prompt, em vez de ficarem como dado.
+
+### 2.4 `extends`
+
+Um pack pode depender de outros packs. O grafo é resolvido em **ordem topológica** — dependências primeiro, pack raiz por último — então os valores de uma dependência são aplicados antes dos do pack que se baseia neles. Um ciclo é recusado com a cadeia na mensagem, porque "há um ciclo" sem o caminho não é acionável.
+
+Um pack raiz por repositório. O `gitpr policy use` **substitui** a escolha anterior em vez de somar a ela; o grafo abaixo da raiz é alcançado por `extends`, o que mantém a escada de precedência uma linha em vez de uma rede.
+
+---
+
+## 3. Precedência
+
+Do mais baixo ao mais alto. Um valor com número maior sobrepõe um com número menor.
+
+| # | Camada | Escrito por |
+|---:|---|---|
+| 1 | Defaults internos do GitPR | o código |
+| 2 | Packs de dependência | `extends`, em ordem topológica |
+| 3 | O pack raiz | `.gitpr/policy.lock.yml` |
+| 4 | `.gitpr/policy.overrides.yml` | o repositório |
+| 5 | Configuração local do projeto | `.gitpr/skill/*`, `.gitpr.linter.yml` |
+| 6 | Flags de CLI | `--base`, `--provider`, … |
+| 7 | Variáveis de ambiente | `GITPR_*` |
+
+O catálogo do linter é mesclado na sua própria ordem, porque suas camadas não são as mesmas:
+
+**ruleset de segurança embutido → regras dos packs → regras do projeto → plugins globais → overrides de severidade**
+
+Os overrides de severidade são aplicados **por último**, contra o catálogo final, porque só ali o conjunto de nomes de regra conhecidos está completo — e é isso que permite que um override com erro de digitação falhe em vez de silenciosamente não fazer nada.
+
+### 3.1 O lockfile
+
+`gitpr policy use acme/team-policy@1.0.0` escreve:
+
+```yaml
+schema_version: 1
+root:
+  name: acme/team-policy
+  version: 1.0.0
+  source: installed
+  checksum: 4f449708ac83901bffb4275e8d6d7c880154022bca0382962519c2270cb1842f
+packs:
+  - name: acme/base-policy
+    version: 1.0.0
+    source: installed
+    checksum: 9c1f…
+  - name: acme/team-policy
+    version: 1.0.0
+    source: installed
+    checksum: 4f44…
+```
+
+O arquivo deve ser **commitado**. Um pack dentro do repositório também é registrado por um `path` relativo ao repositório, em POSIX, para que um colega o leia do mesmo lugar em vez de uma cópia própria; um pack do repositório do usuário é registrado só pelo nome, porque onde ele mora é um detalhe de máquina.
+
+### 3.2 Overrides
+
+`.gitpr/policy.overrides.yml` é o repositório falando de si mesmo, um nível abaixo das flags de CLI. Ele usa a forma `{add, remove}` para listas, então remover um caminho protegido ou uma seção obrigatória é uma linha num diff em vez de uma ausência:
+
+```yaml
+protected_paths:
+  add:
+    - legacy/**
+  remove:
+    - .env.example
+
+risk:
+  weights:
+    large_diff: 10
+```
+
+---
+
+## 4. Integridade e Comportamento em Falha
+
+### 4.1 O checksum
+
+O checksum de cada pack é SHA-256 sobre `policy.yml` mais todo asset declarado pelo manifesto, calculado quando o pack é ativado e reverificado a cada execução. Um asset editado é uma política diferente, e uma política diferente não foi a que o time acordou.
+
+Note que o checksum é byte a byte: um pack versionado dentro do repositório e reescrito pelo `core.autocrlf` no checkout vai abortar com mismatch. Um `gitpr policy use` sobre um pack com a cópia de trabalho normalizada em LF — ou um `.gitattributes` fixando o diretório do pack — resolve.
+
+### 4.2 As três abortagens
+
+A resolução **aborta** em vez de degradar em exatamente três casos:
+
+| Falha | Por que aborta |
+|---|---|
+| Um pack não está mais em disco | Suas regras sumiram; a saída ainda carregaria o rótulo da política |
+| Uma versão fixada desapareceu (após um upgrade, ou um `use` em outro lugar) | A versão que o time acordou não é a que rodaria |
+| Um checksum não confere mais | O conteúdo mudou desde a ativação |
+
+Manter metade da promessa é pior do que não mantê-la, porque o review, a saída do linter e o score de risco ainda alegariam rodar sob a política. Cada abortagem nomeia o pack, o que aconteceu e o comando que conserta.
+
+`strict=False` é a única escotilha de escape, e só os próprios comandos `gitpr policy` a usam — eles são a ferramenta que conserta um lockfile quebrado, então precisam poder rodar enquanto um está quebrado.
+
+### 4.3 Escopo de cache
+
+O GitPR cacheia respostas de IA por MD5 sobre o prompt. O contexto da skill é um **argumento separado** (`instrucao_sistema`) e não faz parte desse hash — então, sem uma correção, ativar um pack sobre um diff já cacheado não mudaria absolutamente nada, e o rótulo seria mentira.
+
+A correção é o escopo de cache. Com um pack ativo, `::policy::<nome>@<versão>::<checksum>` é anexado à chave de cache, o que significa que um pack ativado invalida as entradas afetadas e dois packs diferentes nunca compartilham uma resposta. Sem pack, o escopo é a string vazia, então nada muda.
+
+### 4.4 Garantias
+
+- **Sem rede, nunca**: um pack é local por design. A resolução lê um lockfile, hasheia arquivos e compõe texto.
+- **Sem execução arbitrária**: o `policy validate` não roda subprocesso nenhum, e a validação é offline e sem efeito colateral. Um pack é texto que outra pessoa escreveu, e o comando que o inspeciona não executa nada do que ele contém.
+- **Sem segredos num manifesto**: um manifesto que casa com uma das regras embutidas de detecção de segredo é recusado no parsing, usando o mesmo ruleset que o linter roda em vez de um segundo scanner que poderia divergir dele.
+
+---
+
+## 5. Configuração
+
+| Chave | Tipo | Padrão | Descrição |
+|---|---|---|---|
+| `GITPR_POLICY_ENABLED` | bool | `true` | Lê e aplica o lockfile. Desligar faz todo comando se comportar como se o repositório não tivesse pack, sem tocar no lockfile |
+| `GITPR_POLICY_CONTEXT_MAX_CHARACTERS` | int | `12000` | Teto de quanto contexto um pack pode adicionar a um prompt. Além dele, as contribuições são descartadas primeiro do pack de menor precedência e o descarte é reportado como aviso |
+
+Qual pack está ativo deliberadamente **não** é uma chave de configuração: ele pertence ao repositório, não à máquina, então vive no lockfile onde pode ser revisado e versionado junto com o código ao qual se aplica.
+
+---
+
+## 6. Packs Oficiais
+
+| Pack | Regras em cadeia | Para que serve |
+|---|---:|---|
+| `gitpr/php-security` | 8 | Baseline de segurança PHP: interpolação em SQL, `eval`, hashes de senha fracos, `unserialize` estrangeiro, includes dinâmicos, `extract()` a partir de input, CORS com curinga, cookies de sessão inseguros |
+| `gitpr/laravel-quality` | 7 (+8) | Portão de qualidade Laravel: autorização, mass assignment, transações, N+1, migrations reversíveis, filas, dados pessoais. **Estende `gitpr/php-security`** |
+| `gitpr/node-quality` | 7 | Serviços Node: promises flutuantes, validação de entrada, estados não tratados, higiene de dependências, configuração e segredos |
+| `gitpr/vue-quality` | 6 | Componentes Vue 3: props e emits, reatividade, limpeza de efeitos colaterais, estados assíncronos, acessibilidade, tamanho de componente |
+
+Cada um carrega contexto de review que um revisor genérico não tem (o que custa um `down()` que não reverte seu `up()`, por que um job disparado dentro de uma transação pode rodar antes de a linha ser commitada), caminhos críticos e padrões de teste para o seu layout, e convenções de PR/commit. São deliberadamente pequenos e opinativos: acrescentam o que os defaults ainda não cobrem, em vez de repeti-los.
+
+O `gitpr policy init` escolhe um a partir dos marcadores do próprio projeto — `composer.json` + `artisan` para Laravel, `package.json` + Vue para Vue, e assim por diante — do mais específico para o mais genérico.
+
+---
+
+## 7. Adotando uma Política num Time
+
+```bash
+# Uma pessoa, uma vez: valida e instala o pack
+gitpr policy install ./our-policy --yes
+
+# No repositório: fixa e commita a decisão
+gitpr policy use acme/team-policy@1.0.0
+git add .gitpr/policy.lock.yml && git commit -m "chore: adopt the Acme quality policy"
+
+# Todo mundo: nada a instalar se o pack está commitado com o repo
+gitpr policy show
+```
+
+Três formas de compartilhar uma política, conforme o quanto o time quer depender de uma máquina:
+
+- **Um pack dentro do repositório** (`.gitpr/policies/<nome>/`) — versionado com o código, sem passo de instalação, e o lockfile registra o caminho relativo. A melhor opção para uma política que é do próprio repositório.
+- **Um pack instalado** (`~/.gitpr/policies/`) — uma cópia para todos os repositórios da máquina. Cada colega o instala da mesma origem; o lockfile registra nome e versão.
+- **Um pack oficial** — lido direto do que o GitPR entrega. Nada a distribuir, e uma nova versão do GitPR pode trazer uma nova versão dele.
+
+O ciclo de vida do pack é separado do do GitPR: suba o `version` no manifesto e o checksum muda, o que é um diff no lockfile, o que é uma revisão. É esse o ponto de fixar a versão.

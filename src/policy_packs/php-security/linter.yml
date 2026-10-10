@@ -1,0 +1,69 @@
+# ==============================================================================
+# gitpr/php-security — static rules
+# ==============================================================================
+# These run on the ADDED lines of a diff, so each one has to be decidable from a
+# line of text alone. Anything needing to know what a variable holds belongs in
+# the review context of the manifest, not here.
+#
+# Levels follow the project contract: "error" blocks, "warning" informs. Rules
+# that a legitimate codebase can trip on a valid line are warnings — a linter
+# that cries wolf is one people learn to scroll past.
+# ==============================================================================
+
+rules:
+  - name: php-sql-raw-interpolation
+    level: "error"
+    extensions: ["php"]
+    regex: '\b(whereRaw|orderByRaw|selectRaw|havingRaw|groupByRaw)\s*\(\s*["''].*\$'
+    message: "🚨 Raw SQL fragment with a variable in {file_name} (line {line_number}). A binding's escaping does not apply inside a raw clause — use bindings instead."
+    ignore_comments: true
+
+  - name: php-eval
+    level: "error"
+    extensions: ["php"]
+    regex: '\beval\s*\('
+    message: "🚨 eval() in {file_name} (line {line_number}). It executes arbitrary code; there is no input you can validate well enough."
+    ignore_comments: true
+
+  - name: php-weak-password-hash
+    level: "error"
+    extensions: ["php"]
+    regex: '\b(md5|sha1)\s*\(\s*\$?[a-z_]*(password|passwd|pwd|senha)'
+    message: "🚨 Password hashed with md5/sha1 in {file_name} (line {line_number}). Use password_hash() with PASSWORD_DEFAULT."
+    ignore_comments: true
+
+  - name: php-unserialize-foreign
+    level: "warning"
+    extensions: ["php"]
+    regex: '\bunserialize\s*\('
+    message: "⚠️ unserialize() in {file_name} (line {line_number}). It instantiates whatever classes the payload names — prefer JSON unless the data never left your own storage."
+    ignore_comments: true
+
+  - name: php-dynamic-include
+    level: "warning"
+    extensions: ["php"]
+    regex: '\b(include|include_once|require|require_once)\s*\(?\s*\$'
+    message: "⚠️ Dynamic include in {file_name} (line {line_number}). If any part of that path comes from a request, it is a local file inclusion."
+    ignore_comments: true
+
+  - name: php-extract-from-input
+    level: "warning"
+    extensions: ["php"]
+    regex: '\bextract\s*\(\s*\$'
+    message: "⚠️ extract() in {file_name} (line {line_number}). It creates variables from attacker-controlled keys; assign explicitly instead."
+    ignore_comments: true
+
+  - name: php-cors-wildcard
+    level: "error"
+    extensions: ["php", "env", "yml", "yaml"]
+    regex: 'Access-Control-Allow-Origin.{0,24}\*'
+    message: "🚨 Wildcard CORS origin in {file_name} (line {line_number}). Name the origins you accept."
+    ignore_comments: true
+
+  - name: php-insecure-session-cookie
+    level: "warning"
+    extensions: ["php"]
+    require_paths: ["config/*"]
+    regex: '[''"]secure[''"]\s*=>\s*(false|env\(.*false)'
+    message: "⚠️ Session cookie without Secure in {file_name} (line {line_number}). Confirm this is the local-http profile and not what ships."
+    ignore_comments: true

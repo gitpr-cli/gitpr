@@ -71,6 +71,13 @@ DEFAULT_CRITICAL_PATTERNS = {
     ],
 }
 
+# Extra glob patterns that identify a test file, on top of the naming
+# conventions is_test_file() recognises by default. Empty here: the built-in
+# detection already covers the common shapes (tests/, test_*, *_test.py,
+# *.spec.ts, *Test.php), and a project only needs entries when its layout uses
+# a convention those rules miss. A policy pack sets them per stack.
+DEFAULT_TEST_PATTERNS: list[str] = []
+
 # Non-executable file extensions and patterns that must never trigger NO_TEST_CHANGE
 NON_EXECUTABLE_PATTERNS = [
     "*.md",
@@ -109,6 +116,7 @@ class RiskConfig:
         default_factory=lambda: {k: list(v) for k, v in DEFAULT_CRITICAL_PATTERNS.items()}
     )
     non_executable_patterns: list[str] = field(default_factory=lambda: list(NON_EXECUTABLE_PATTERNS))
+    test_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_TEST_PATTERNS))
 
 
 def resolve_risk_level(score: float, thresholds: dict[str, float] | None = None) -> RiskLevel:
@@ -154,8 +162,18 @@ def is_non_executable_file(path: str, non_exec_patterns: list[str] | None = None
     return any(matches_pattern(path, pat) for pat in patterns)
 
 
-def is_test_file(path: str) -> bool:
-    """Checks whether a path is a test file itself."""
+def is_test_file(path: str, test_patterns: list[str] | None = None) -> bool:
+    """Checks whether a path is a test file itself.
+
+    *test_patterns* adds glob patterns on top of the naming conventions below —
+    it never narrows them, so a project (or a policy pack) can teach the matcher
+    a layout it does not know without losing the conventions it does. Patterns
+    are checked first because a declared pattern is an explicit statement about
+    this repository, while the conventions are a guess about every repository.
+    """
+    if test_patterns and any(matches_pattern(path, pat) for pat in test_patterns):
+        return True
+
     normalized = path.replace("\\", "/").lower()
     base = os.path.basename(normalized)
     parts = normalized.split("/")
@@ -233,6 +251,9 @@ def load_risk_config(config_path: str | None = None) -> RiskConfig:
             cfg.critical_patterns[RiskSignal.CRITICAL_PATH] = [
                 str(p) for p in risk_data["critical_paths"]
             ]
+
+        if "test_patterns" in risk_data and isinstance(risk_data["test_patterns"], list):
+            cfg.test_patterns = [str(p) for p in risk_data["test_patterns"]]
     except Exception:
         # Fall back to default safely
         return RiskConfig()

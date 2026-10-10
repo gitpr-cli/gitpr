@@ -1,0 +1,75 @@
+schema_version: 1
+name: gitpr/php-security
+version: 1.0.0
+description: >-
+  Security baseline for PHP projects: input validation, parameterised queries,
+  output escaping, unsafe deserialisation, hardcoded credentials and production
+  misconfiguration.
+min_gitpr_version: ">=1.3.0"
+license: LGPL-2.1
+authors:
+  - GitPR
+
+skills:
+  review:
+    additional_context: |
+      Judge every change against these, in this order. Report a finding only
+      when the diff introduces or worsens it — this pack grades the change, not
+      the file it lands in.
+
+      1. Input validation. Every value reaching the application from a request,
+         a queue payload, an environment variable or a file is untrusted until
+         it is validated at the boundary. A validation that only checks the type
+         is not validation. Prefer an explicit allow-list over a deny-list.
+      2. SQL. A query built by interpolation, concatenation or sprintf is an
+         injection even when the interpolated value "comes from us". Named or
+         positional bindings only. Watch for whereRaw, orderByRaw, DB::raw and
+         select(DB::raw(...)), where a binding's escaping does not apply.
+      3. Output escaping. Flag a value echoed into HTML without escaping, and
+         flag an escape applied twice — it corrupts the data rather than
+         protecting it. In Blade, {{ }} escapes and {!! !!} does not.
+      4. Deserialisation. unserialize() on anything that travelled, eval,
+         variable functions fed from user data, and a class instantiated from a
+         request parameter.
+      5. Credentials. A secret committed to the repository is compromised even
+         if the next commit deletes it. Say so, and ask for rotation rather than
+         removal.
+      6. Production configuration. Debug on, verbose errors reaching a client,
+         permissive CORS, a cookie without Secure/HttpOnly/SameSite, directory
+         listing, or a file path assembled from user input.
+
+  pr:
+    additional_context: |
+      Give a section to security impact whenever the change touches the request
+      path, a query, authentication, authorisation, session handling or
+      configuration. When it does not, say so in one line rather than dropping
+      the section.
+
+linter:
+  rules_file: linter.yml
+  # Declaring a rule as merely a warning always has to say why: every
+  # "level: warning" in a pack is a decision somebody made on purpose, and the
+  # reason travels with the pack. Hardening to "error" needs no justification.
+  severity_overrides:
+    - rule_name: sec-generic-credential-assignment
+      level: "error"
+      reason: >-
+        Adopting this pack is a decision to hold the stronger gate. The embedded
+        ruleset ships this rule as a warning because in a general repository it
+        sees too many placeholders; in a pack a team opted into, a credential
+        assignment should stop the push.
+
+risk:
+  critical_paths:
+    - app/Http/Middleware/**
+    - app/Http/Requests/**
+    - app/Policies/**
+    - app/Providers/**
+    - config/**
+    - routes/**
+  weights:
+    security_sensitive: 30
+  test_patterns:
+    - tests/**
+    - "**/*Test.php"
+    - "**/*Cest.php"

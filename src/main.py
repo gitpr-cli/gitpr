@@ -11,6 +11,15 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
+# stderr needs the same: Python encodes it with backslashreplace, so an error
+# message carrying an emoji reached the console as a literal `❌` — worst
+# on the messages that matter most, the ones saying why a command refused to run.
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 # Internal module imports
 import subprocess
 
@@ -299,6 +308,37 @@ HELP_PRIORITY: dict[str, int] = {
     "no-suggest-reviewers": 21,
     "linter-setup": 22,
 }
+
+
+def _resolve_policy_or_die(announce=True):
+    """Resolves the repository's policy pack once, or refuses to run at all.
+
+    Every mode that produces review output calls this before it reads a skill
+    file, a linter rule or a risk weight. A pack that cannot be resolved — the
+    directory was removed, the pinned version vanished after an upgrade, an
+    asset was edited behind the checksum — aborts rather than degrading,
+    because the output would still carry the policy's name over rules that are
+    not its own.
+
+    *announce* is off for the MCP server, whose stdout is the JSON-RPC stream.
+    """
+    from src.application.use_cases.resolve_effective_policy import (
+        resolve_effective_policy,
+    )
+    from src.domain.policy import PolicyError
+
+    try:
+        policy = resolve_effective_policy()
+    except PolicyError as error:
+        click.secho(f"❌ {error}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from error
+
+    if announce and policy.is_active:
+        click.secho(
+            __("🧭 Policy: {policy}", policy=policy.policy_tag()),
+            fg="blue",
+        )
+    return policy
 
 
 # Native Click configuration to accept -h in addition to --help. The root is a
@@ -664,6 +704,13 @@ def cli(
 
     # MCP Server Mode — start stdio MCP server (handled before any interactive setup)
     if mcp:
+        # The MCP tools call the same review, linter and risk code as the CLI, so
+        # the pack has to be in force here too: without this the IDE would answer
+        # from the GitPR defaults while the terminal answered from the pack, about
+        # the same repository. The label is suppressed because stdout is the
+        # JSON-RPC stream and anything printed there corrupts it.
+        _resolve_policy_or_die(announce=False)
+
         from src.mcp_server import main as mcp_main
 
         mcp_main()
@@ -714,6 +761,17 @@ def cli(
         click.secho(__("📂 Uncommitted changes (no AI):"), fg="cyan", bold=True)
         _print_unstaged_summary(data, quiet=quiet)
         return
+
+    # Resolve the policy pack once, here — before the banner and before any
+    # prompt, linter rule or risk weight is read — and publish it to the
+    # module-level global those three consult. Every command below this line
+    # runs under it.
+    #
+    # `gitpr policy` is the exception. It is the set of commands that repairs a
+    # broken lockfile, so it must run *when resolution fails*; it reads the
+    # repository non-strictly and reports what it finds itself.
+    if ctx.invoked_subcommand != "policy":
+        _resolve_policy_or_die(announce=not quiet)
 
     # Silencia o banner se estiver no modo quiet ou via hook
     if not quiet and not hook:
@@ -3111,6 +3169,529 @@ def metrics_hook_event(event_name):
     log_command_metric(command=f"hook:{event_name}", status="fired", provider="git")
 
 
+# ============================================================
+# gitpr policy — the shared quality policy of a repository
+# ============================================================
+
+# Which bundled pack a stack suggests. The detector only looks at files that
+# are unambiguous on their own: a composer.json alone is a PHP project of no
+# particular framework, so it suggests php-security; artisan next to it makes it
+# Laravel. Keeping this list here rather than reusing the test-generation
+# framework detector keeps one question ("what is this repository") answered in
+# one place per feature that actually asks it.
+POLICY_STACKS = {
+    "laravel": ("gitpr/laravel-quality", ("artisan", "composer.json")),
+    "php": ("gitpr/php-security", ("composer.json",)),
+    "vue": ("gitpr/vue-quality", ("vue.config.js", "vite.config.js", "vite.config.ts")),
+    "node": ("gitpr/node-quality", ("package.json",)),
+}
+
+
+def _detect_policy_stack(repo_path=None):
+    """The stack a repository looks like, or None.
+
+    Order matters: Laravel is a PHP project and a Vue app is a Node project, so
+    the more specific marker is asked first. ``package.json`` returning node
+    after ``vue.config.js`` returned vue is the whole point of the ladder.
+    """
+    root = repo_path or os.getcwd()
+    for stack in ("laravel", "vue", "php", "node"):
+        pack, markers = POLICY_STACKS[stack]
+        if all(os.path.exists(os.path.join(root, marker)) for marker in markers):
+            return stack
+    # A Vue project built with Vite has no vue.config.js — the dependency is the
+    # only evidence there is, and reading it is cheaper than missing the pack.
+    package_json = os.path.join(root, "package.json")
+    if os.path.isfile(package_json):
+        try:
+            with open(package_json, "r", encoding="utf-8", errors="replace") as f:
+                if "vue" in f.read():
+                    return "vue"
+        except OSError:
+            pass
+    return None
+
+
+def _policy_error(error):
+    """Prints a policy failure the way every other command prints a failure."""
+    click.secho(f"❌ {error}", fg="red", err=True)
+    raise click.exceptions.Exit(1)
+
+
+def _policy_may_write(yes, quiet=False, hook=False, mcp=False):
+    """Whether a policy command is allowed to write, refusing rather than hanging.
+
+    ``--yes`` answers the question, and only the question: every check that
+    decides *whether* the write is legal has already run and is not skipped by
+    it. Without ``--yes`` and without a terminal there is nobody to answer, so
+    the command fails with the instruction instead of waiting on a prompt that
+    no one will ever see.
+
+    The refusal says "writes files" rather than "writes to the repository"
+    because ``install`` writes to the user's own pack store instead — and a
+    wrong destination in the message is worse than a vague one.
+    """
+    if yes:
+        return True
+    if not _may_ask_the_user(quiet=quiet, hook=hook, mcp=mcp):
+        click.secho(
+            __(
+                "❌ This command writes files and there is no terminal to "
+                "confirm it. Re-run it with --yes."
+            ),
+            fg="red",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
+    return False
+
+
+@cli.group(
+    "policy",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True,
+    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("policy-packs.md"),
+)
+@click.pass_context
+def policy_group(ctx):
+    """The shared quality policy this repository follows.
+
+    A policy pack is a versioned YAML manifest that carries skills, linter rules,
+    severity overrides, critical paths and risk weights for a whole stack. The
+    repository records the one it follows in .gitpr/policy.lock.yml, so the
+    choice is reviewed and versioned with the code it applies to.
+
+    `list`, `validate` and `show` only read. `use`, `install`, `init` and `off`
+    write to the repository and ask before they do.
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@policy_group.command(
+    "list",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Lists the packs available on this machine and the one in force."),
+)
+def policy_list():
+    from src.infrastructure.policy import discover_packs, read_lockfile
+
+    active = read_lockfile() or {}
+    active_root = (active.get("root") or {}).get("name")
+
+    click.secho(__("🔒 Active policy"), fg="cyan", bold=True)
+    if not active:
+        click.echo(__("  None. This repository runs on the GitPR defaults."))
+    else:
+        for pack in active.get("packs", []):
+            marker = "→" if pack.get("name") == active_root else " "
+            click.echo(
+                f"  {marker} {pack.get('name')}@{pack.get('version')} "
+                f"[{pack.get('source', '?')}]"
+            )
+        click.secho(
+            __("  Recorded in {path}", path=os.path.join(".gitpr", "policy.lock.yml")),
+            dim=True,
+        )
+
+    click.secho(__("\n📦 Available packs"), fg="cyan", bold=True)
+    packs = discover_packs()
+    if not packs:
+        click.secho(__("  No packs found."), fg="yellow")
+        return
+    labels = {
+        "local_path": __("project"),
+        "installed": __("installed"),
+        "bundled": __("bundled"),
+    }
+    for pack in packs:
+        source = labels.get(pack.source.value, pack.source.value)
+        if pack.error:
+            click.secho(
+                __(
+                    "  {name} [{source}] — unusable: {reason}",
+                    name=pack.name,
+                    source=source,
+                    reason=pack.error,
+                ),
+                fg="yellow",
+            )
+            continue
+        reference = pack.reference
+        click.echo(f"  {reference.name}@{reference.version} [{source}]")
+        if reference.path:
+            click.secho(f"      {reference.path}", dim=True)
+
+
+@policy_group.command(
+    "validate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Validates a pack: schema, compatibility, skills, dependencies and checksum."),
+)
+@click.argument("target", metavar="<pack-or-path>")
+def policy_validate(target):
+    from src.application.use_cases.validate_policy_pack import validate_policy_pack
+
+    report = validate_policy_pack(target)
+
+    def line(ok, text):
+        click.secho(f"  {'✅' if ok else '❌'} {text}", fg="green" if ok else "red")
+
+    click.secho(__("🔍 {target}", target=report["target"]), fg="cyan", bold=True)
+    if not report["ok"]:
+        for error in report["errors"]:
+            line(False, error)
+        raise click.exceptions.Exit(1)
+
+    pack = report["pack"]
+    click.echo(
+        __(
+            "{name}@{version} from {source}",
+            name=pack["name"],
+            version=pack["version"],
+            source=report["source"],
+        )
+    )
+    line(
+        True,
+        __(
+            "Schema {version} is valid, and compatible with GitPR {gitpr}.",
+            version=report["schema"]["schema_version"],
+            gitpr=report["schema"]["gitpr_version"],
+        ),
+    )
+
+    for skill in report["skills"]:
+        line(
+            True,
+            __(
+                "Skill {name}: {characters} characters of context.",
+                name=skill["name"],
+                characters=skill["characters"],
+            ),
+        )
+
+    linter = report["linter"]
+    line(
+        linter["rules_file_found"] or not linter["rules_file"],
+        __(
+            "Linter: {count} rule(s) from {packs}.",
+            count=linter["rules_count"],
+            packs=", ".join(linter["packs_contributing_rules"]) or __("none"),
+        ),
+    )
+    for override in linter["severity_overrides"]:
+        click.echo(
+            "    "
+            + __(
+                "{rule} → {level} (from {origin})",
+                rule=override["rule_name"],
+                level=override["level"],
+                origin=override["from"],
+            )
+        )
+        if override["reason"]:
+            click.secho(f"        {override['reason']}", dim=True)
+
+    for dependency in report["dependencies"]:
+        click.echo(
+            "    "
+            + __(
+                "depends on {name} {range}",
+                name=dependency["name"],
+                range=dependency["range"] or __("any version"),
+            )
+            + (
+                __(" (resolved to {version})", version=dependency["resolved"])
+                if dependency["resolved"]
+                else ""
+            )
+        )
+
+    click.echo(__("Checksum: {checksum}", checksum=pack["checksum"]))
+    for warning in report["warnings"]:
+        click.secho(f"  ⚠️ {warning}", fg="yellow")
+
+
+@policy_group.command(
+    "show",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Shows the policy in force, with the origin of every value."),
+)
+def policy_show():
+    from src.application.use_cases.resolve_effective_policy import (
+        resolve_effective_policy,
+    )
+
+    policy = resolve_effective_policy(strict=False, publish=False)
+    if not policy.is_active:
+        click.secho(
+            __("No policy pack is active in this repository."), fg="yellow"
+        )
+        for warning in policy.warnings:
+            click.secho(f"  ⚠️ {warning}", fg="yellow")
+        return
+
+    click.secho(
+        __("🧭 {policy}", policy=policy.policy_tag()), fg="cyan", bold=True
+    )
+
+    click.secho(__("\nPrecedence, lowest first:"), bold=True)
+    for position, pack in enumerate(policy.packs, start=1):
+        click.echo(
+            f"  {position}. {pack.name}@{pack.version} [{pack.source.value}]"
+        )
+    click.echo(f"  {' ' * len(str(len(policy.packs) + 1))}. policy.overrides.yml")
+
+    click.secho(__("\nEffective configuration:"), bold=True)
+    for key in sorted(policy.provenance):
+        origin = policy.provenance[key]
+        value = _policy_value(policy, key)
+        click.echo(f"  {key} = {value}")
+        click.secho(f"      ← {origin}", dim=True)
+
+    if policy.warnings:
+        click.secho(__("\nWarnings:"), bold=True)
+        for warning in policy.warnings:
+            click.secho(f"  ⚠️ {warning}", fg="yellow")
+
+
+def _policy_render(value, indent="      "):
+    """One provenance value as the few words a line can carry.
+
+    The linter catalogue is a list of rule dictionaries: printing it would put
+    fifteen rules with their regexes on one line and bury every other field, so
+    it is summarised by count and names. A context that is prose keeps its line
+    breaks, indented under its key.
+    """
+    if isinstance(value, (list, tuple)) and value and isinstance(value[0], dict):
+        names = [str(item["name"]) for item in value if isinstance(item, dict) and item.get("name")]
+        return __(
+            "{count} item(s): {names}", count=len(value), names=", ".join(names)
+        )
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
+    if value is None:
+        return ""
+    text = str(value)
+    if "\n" in text:
+        return f"\n{indent}".join(text.splitlines())
+    return text
+
+
+def _policy_value(policy, key):
+    """The composed value behind a provenance key, for `policy show`.
+
+    The provenance map keys are the dotted paths the composer writes as it goes,
+    so reading one back is a walk down the same path. A severity override is
+    answered by its level, because the level is the decision the line reports.
+    """
+    def walk(source, parts):
+        for part in parts:
+            if isinstance(source, dict):
+                source = source.get(part)
+            else:
+                return None
+        return source
+
+    for group, attribute in (
+        ("linter", "linter_config"),
+        ("risk", "risk_config"),
+        ("pr", "pr_config"),
+        ("commit", "commit_config"),
+    ):
+        if key == group or key.startswith(f"{group}."):
+            parts = key.split(".")
+            if group == "linter" and parts[1:2] == ["severity_overrides"]:
+                override = policy.severity_overrides.get(".".join(parts[2:]))
+                return override.level if override else "?"
+            return _policy_render(walk(getattr(policy, attribute), parts[1:]))
+
+    if key.startswith("skills."):
+        return _policy_render(policy.skill_context_for(key.split(".")[1]) or "")
+    if key == "protected_paths":
+        return _policy_render(policy.protected_paths)
+    return ""
+
+
+@policy_group.command(
+    "use",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Pins a pack for this repository, writing .gitpr/policy.lock.yml."),
+)
+@click.argument("reference", metavar="<name>[@<version>]")
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_use(reference, yes):
+    from src.application.use_cases.activate_policy_pack import (
+        activate_policy_pack,
+        build_lockfile,
+        describe_lockfile,
+    )
+    from src.domain.policy import PolicyError
+
+    try:
+        data = build_lockfile(reference)
+    except PolicyError as error:
+        _policy_error(error)
+
+    click.secho(
+        __("This repository will follow {summary}.", summary=describe_lockfile(data)),
+        fg="cyan",
+    )
+    for pack in data.get("packs", []):
+        click.echo(f"  {pack['name']}@{pack['version']} [{pack['source']}]")
+    click.echo(
+        __("Written to {path}", path=os.path.join(".gitpr", "policy.lock.yml"))
+    )
+
+    if not _policy_may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    try:
+        activate_policy_pack(reference)
+    except PolicyError as error:
+        _policy_error(error)
+    click.secho(__("✅ Policy activated."), fg="green", bold=True)
+
+
+@policy_group.command(
+    "off",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Stops following the pack, removing .gitpr/policy.lock.yml."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_off(yes):
+    from src.application.use_cases.activate_policy_pack import deactivate_policy_pack
+    from src.infrastructure.policy import lockfile_path
+
+    if not os.path.isfile(lockfile_path()):
+        click.secho(
+            __("No policy pack is active in this repository."), fg="yellow"
+        )
+        return
+    click.secho(
+        __(
+            "The pack and the overrides file are kept; only the lockfile is removed, "
+            "so every command returns to the GitPR defaults."
+        ),
+        fg="cyan",
+    )
+    if not _policy_may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    deactivate_policy_pack()
+    click.secho(__("✅ Policy deactivated."), fg="green", bold=True)
+
+
+@policy_group.command(
+    "install",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Copies a pack from a local directory into ~/.gitpr/policies."),
+)
+@click.argument("source", metavar="<path>", type=click.Path(exists=True, file_okay=False))
+@click.option(
+    "--force", is_flag=True, help=__("Replaces an installation that is already there.")
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_install(source, force, yes):
+    from src.application.use_cases.install_policy_pack import (
+        install_policy_pack,
+        load_source_pack,
+    )
+    from src.domain.policy import PolicyError
+    from src.infrastructure.policy import installed_pack_dir
+
+    try:
+        pack = load_source_pack(source)
+    except PolicyError as error:
+        _policy_error(error)
+
+    manifest = pack.manifest
+    click.secho(
+        __(
+            "{name}@{version} will be copied to {destination}.",
+            name=manifest.name,
+            version=manifest.version,
+            destination=installed_pack_dir(manifest.name),
+        ),
+        fg="cyan",
+    )
+    if not _policy_may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    try:
+        destination = install_policy_pack(source, overwrite=force)
+    except PolicyError as error:
+        _policy_error(error)
+    click.secho(
+        __("✅ Installed to {path}", path=destination), fg="green", bold=True
+    )
+
+
+@policy_group.command(
+    "init",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Suggest and activate the official pack for this project's stack."),
+)
+@click.option(
+    "--stack",
+    "stack",
+    metavar="<stack>",
+    help=__("laravel, vue, php or node. Detected from the project when omitted."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_init(stack, yes):
+    from src.application.use_cases.activate_policy_pack import (
+        activate_policy_pack,
+        build_lockfile,
+        describe_lockfile,
+    )
+    from src.domain.policy import PolicyError
+
+    if not stack:
+        stack = _detect_policy_stack()
+        if not stack:
+            click.secho(
+                __(
+                    "❌ Could not tell what this project is. Name the stack with "
+                    "--stack laravel|vue|php|node."
+                ),
+                fg="red",
+                err=True,
+            )
+            raise click.exceptions.Exit(1)
+        click.secho(__("Detected stack: {stack}", stack=stack), fg="cyan")
+
+    if stack not in POLICY_STACKS:
+        click.secho(
+            __(
+                "❌ Unknown stack {stack}. Choose one of: {known}.",
+                stack=stack,
+                known=", ".join(sorted(POLICY_STACKS)),
+            ),
+            fg="red",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
+
+    reference = POLICY_STACKS[stack][0]
+    try:
+        data = build_lockfile(reference)
+    except PolicyError as error:
+        _policy_error(error)
+
+    click.secho(
+        __("This repository will follow {summary}.", summary=describe_lockfile(data)),
+        fg="cyan",
+    )
+    for pack in data.get("packs", []):
+        click.echo(f"  {pack['name']}@{pack['version']} [{pack['source']}]")
+    if not _policy_may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    try:
+        activate_policy_pack(reference)
+    except PolicyError as error:
+        _policy_error(error)
+    click.secho(__("✅ Policy activated."), fg="green", bold=True)
+
+
 @cli.group(
     "tests",
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -3119,6 +3700,7 @@ def metrics_hook_event(event_name):
 def tests_group():
     """AI-powered test suite generation and scaffolding."""
     pass
+
 
 
 @tests_group.command(

@@ -1,0 +1,61 @@
+# ==============================================================================
+# gitpr/laravel-quality — static rules
+# ==============================================================================
+# Laravel-specific and decidable from a single line. Everything that needs to
+# know what a variable holds, or what the other 40 lines of the method do, lives
+# in the review context of the manifest instead.
+# ==============================================================================
+
+rules:
+  - name: laravel-env-outside-config
+    level: "error"
+    extensions: ["php"]
+    ignore_paths: ["config/*", "tests/*", "database/*"]
+    regex: '\benv\s*\(\s*[''"]'
+    message: "🚨 env() outside config/ in {file_name} (line {line_number}). Once the config is cached env() returns null — read it through config() and declare the key in a config file."
+    ignore_comments: true
+
+  - name: laravel-unguarded
+    level: "error"
+    extensions: ["php"]
+    regex: '\b(unguard|unguarded)\s*\(|guarded\s*=\s*\[\s*\]'
+    message: "🚨 Mass assignment left open in {file_name} (line {line_number}). Name the assignable columns in $fillable instead of guarding nothing."
+    ignore_comments: true
+
+  - name: laravel-request-all-to-model
+    level: "error"
+    extensions: ["php"]
+    regex: '\b(create|update|fill|forceFill|insert)\s*\(\s*\$request\s*->\s*all\s*\('
+    message: "🚨 $request->all() written straight to a model in {file_name} (line {line_number}). Use $request->validated() so only the fields the form request declared can land."
+    ignore_comments: true
+
+  - name: laravel-log-sensitive
+    level: "error"
+    extensions: ["php"]
+    regex: '\bLog::(debug|info|notice|warning|error|critical)\s*\(.*(password|passwd|senha|token|secret|api_key|authorization|cpf|credit_card)'
+    message: "🚨 A credential or personal datum is being logged in {file_name} (line {line_number}). Logs outlive the incident and are read by people who should not see it."
+    ignore_comments: true
+
+  - name: laravel-db-transaction-in-test
+    level: "warning"
+    extensions: ["php"]
+    require_paths: ["tests/*"]
+    regex: '\bDB::(transaction|beginTransaction|commit|rollBack)\b'
+    message: "⚠️ Manual transaction control in {file_name} (line {line_number}). RefreshDatabase already wraps each test; a second transaction can commit a row the suite expected to roll back."
+    ignore_comments: true
+
+  - name: laravel-migration-drop-column
+    level: "warning"
+    extensions: ["php"]
+    require_paths: ["database/migrations/*"]
+    regex: '->(dropColumn|dropIfExists|drop)\s*\('
+    message: "⚠️ Destructive migration operation in {file_name} (line {line_number}). Confirm down() restores it and that nothing in the current release still reads the column."
+    ignore_comments: true
+
+  - name: laravel-raw-response
+    level: "warning"
+    extensions: ["php"]
+    require_paths: ["app/Http/*"]
+    regex: '\b(dd|dump|var_dump|print_r|ray)\s*\('
+    message: "⚠️ Debug helper left in a controller in {file_name} (line {line_number}). It writes the payload to the response or to stdout."
+    ignore_comments: true

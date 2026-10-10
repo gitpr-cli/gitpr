@@ -288,7 +288,9 @@ def parse_diff_and_lint(
     comment about someone else's branch. Callers reviewing anything other than
     the local tree pass True.
     """
-    rules = load_linter_rules()
+    from src.domain.policy import get_active_policy
+
+    rules = load_linter_rules(get_active_policy())
     external_linters = [] if skip_external else load_external_linters()
     sast_config = {} if skip_external else load_sast_config()
     has_sast = any(c.get("enabled", False) for c in sast_config.values())

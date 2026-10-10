@@ -20,7 +20,8 @@ dependencies = [
     "pyyaml",
     "textual",
     "requests",
-    "mcp>=1.0.0"
+    "mcp>=1.0.0",
+    "packaging>=23.0"
 ]
 
 [project.scripts]
@@ -30,6 +31,13 @@ gitpr-mcp = "src.mcp_server:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["src", "src.*"]
+
+# The bundled policy packs are data, not code: the four directories under
+# src/policy_packs ship inside the wheel, and without this block a built package
+# would find no packs at all while the source tree found four. MANIFEST.in is
+# not used anywhere in this project, so there is one place to look.
+[tool.setuptools.package-data]
+"src.policy_packs" = ["**/*.yml", "**/*.yaml", "**/*.md"]
 
 [tool.setuptools.dynamic]
 version = {attr = "src.updater.__version__"}

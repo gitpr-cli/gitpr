@@ -193,6 +193,14 @@ CATEGORIES = (
         doc="split-command.md",
     ),
     Category(
+        "policy",
+        __("Policy Packs"),
+        __(
+            "A shared quality policy — skills, linter rules, severity and risk — applied to this repository."
+        ),
+        doc="policy-packs.md",
+    ),
+    Category(
         "scm",
         __("SCM / Forge"),
         __("GitHub, GitLab, Bitbucket and Azure DevOps connection."),
@@ -813,6 +821,30 @@ FIELDS = (
         category="split",
         kind=KIND_INT,
         default="50",
+    ),
+    # ------------------------------------------------------------- Policy Packs
+    # Which pack is active is NOT here: it belongs to the repository, and lives
+    # in .gitpr/policy.lock.yml so the choice can be reviewed and versioned with
+    # the code it applies to. These two are the machine-wide switches.
+    ConfigField(
+        key="GITPR_POLICY_ENABLED",
+        label=__("Policy Packs"),
+        description=__(
+            "Reads and applies the policy pack recorded in .gitpr/policy.lock.yml. Turning it off makes every command behave as if this repository had no pack, without touching the lockfile."
+        ),
+        category="policy",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_POLICY_CONTEXT_MAX_CHARACTERS",
+        label=__("Policy Context Budget"),
+        description=__(
+            "Ceiling, in characters, on how much context a pack may add to one prompt. Contributions beyond it are dropped from the lowest-precedence pack and reported as a warning."
+        ),
+        category="policy",
+        kind=KIND_INT,
+        default="12000",
     ),
     # --------------------------------------------------------------- SCM/Forge
     # The common settings stay ungrouped and always visible; the fields that
