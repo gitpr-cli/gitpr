@@ -13,6 +13,7 @@ openai = "*"
 textual = "*"
 requests = "*"
 mcp = "*"
+packaging = "*"
 
 [dev-packages]
 pytest = "*"

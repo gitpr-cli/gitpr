@@ -87,6 +87,12 @@ DEFAULT_CONFIG = {
     "GITPR_MENTOR_INCLUDE_ANALOGY": "true",
     # Risk scoring feature (gitpr risk, gitpr -r/--review risk assessment)
     "GITPR_RISK_INCLUDE_IN_REVIEW": "true",
+    # Policy packs (gitpr policy). Which pack is active is recorded per
+    # repository, in .gitpr/policy.lock.yml — not here. These two are the
+    # machine-wide switches: one turns the whole feature off for a user, the
+    # other caps what a pack may add to a prompt.
+    "GITPR_POLICY_ENABLED": "true",
+    "GITPR_POLICY_CONTEXT_MAX_CHARACTERS": "12000",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -698,10 +704,63 @@ def get_prompt_plugins():
     ]
 
 
-def load_linter_rules():
+def _merge_rule_layers(*layers):
+    """Unions rule *layers*, lowest precedence first — a rule redefined above wins.
+
+    A redefined rule keeps the position it first appeared in, so activating a pack
+    does not reshuffle the order the rules were already reported in; only genuinely
+    new names are appended. This is what keeps one alert from being emitted twice
+    for one name.
+    """
+    merged = []
+    index = {}
+    for layer in layers:
+        for rule in layer:
+            name = rule.get("name")
+            if name and name in index:
+                merged[index[name]] = rule
+            else:
+                if name:
+                    index[name] = len(merged)
+                merged.append(rule)
+    return merged
+
+
+def _apply_severity_overrides(rules, overrides):
+    """Applies a pack's ``severity_overrides`` to the merged catalogue.
+
+    Returns the names it could not resolve. It does not raise: the strict verdict
+    belongs to ``gitpr policy validate``, which runs with the developer watching
+    and can name the typo. At runtime the same override would otherwise turn
+    every command — including ``gitpr -c`` — into a crash, and the two commonest
+    reasons are legitimate: the rule belongs to the security ruleset the user
+    disabled, or to a linter plugin that is not installed on this machine.
+    """
+    by_name = {rule.get("name") for rule in rules}
+    unresolved = []
+    for name, override in overrides.items():
+        if name not in by_name:
+            unresolved.append(name)
+            continue
+        for rule in rules:
+            if rule.get("name") == name:
+                rule["level"] = override.level
+    return unresolved
+
+
+def load_linter_rules(policy=None):
     """
     Loads the static linter rules from the local project and global plugins.
     Returns a combined list of rules.
+
+    ``policy`` is the resolved ``EffectivePolicy``, or None for the behaviour
+    this function had before policy packs existed. The pack's rules enter as the
+    layer *under* the project file and the plugins — a pack is a shared default,
+    the repository's own ``.gitpr.linter.yml`` is the repository speaking about
+    itself — and *over* the embedded security ruleset, which is a GitPR internal
+    default a pack is entitled to redefine. The severity overrides apply last,
+    because they have to see the final catalogue to know whether their rule
+    survived.
     """
     rules = []
 
@@ -749,6 +808,7 @@ def load_linter_rules():
             )
 
     # 3. Security ruleset (embedded; opt-out via config)
+    security_rules = []
     if _env_bool_default_true("GITPR_LINTER_SECURITY"):
         load_dotenv(ENV_FILE)
         disabled = {
@@ -758,7 +818,39 @@ def load_linter_rules():
         }
         from src.security_ruleset import SECURITY_RULES
 
-        rules.extend(rule for rule in SECURITY_RULES if rule["name"] not in disabled)
+        security_rules = [rule for rule in SECURITY_RULES if rule["name"] not in disabled]
+        rules.extend(security_rules)
+
+    # 4. Policy pack rules, then 5. the pack's severity overrides.
+    if policy is not None and getattr(policy, "is_active", False):
+        pack_rules = [
+            rule
+            for rule in (policy.linter_config.get("rules") or [])
+            if isinstance(rule, dict) and rule.get("name")
+        ]
+        if pack_rules:
+            # The ladder, lowest precedence first: GitPR's embedded ruleset, the
+            # pack, the repository's own .gitpr.linter.yml, the global plugins.
+            # `rules` holds the middle and the top already, with the embedded
+            # ruleset appended — so it is lifted out and the pack slid under it.
+            # Rebuilding the list here is what keeps a pack able to redefine a
+            # sec-* rule while the repository stays able to redefine the pack.
+            project_layer = rules[: len(rules) - len(security_rules)]
+            rules = _merge_rule_layers(security_rules, pack_rules, project_layer)
+
+        # The overrides come last, against the catalogue they will actually meet.
+        if policy.severity_overrides:
+            unresolved = _apply_severity_overrides(rules, policy.severity_overrides)
+            for name in unresolved:
+                click.secho(
+                    __(
+                        "⚠️ Warning: the active policy sets a severity for rule {rule}, "
+                        "which is not in the linter configuration. Run 'gitpr policy show' "
+                        "to see the policy in force.",
+                        rule=name,
+                    ),
+                    fg="yellow",
+                )
 
     return rules
 
@@ -1015,6 +1107,43 @@ def get_fix_settings():
         ),
         "branch_name_template": template or "fix/gitpr-{datetime}",
     }
+
+
+def get_policy_settings():
+    """Returns the policy pack configuration as a flat dict.
+
+    Both keys are machine-wide on purpose. The pack a repository follows is not
+    configuration — it is a decision recorded in ``.gitpr/policy.lock.yml`` and
+    versioned with the code, so there is nothing to configure per repository.
+
+    ``enabled`` is the master switch, and it fails open the same way the secret
+    ruleset does: only an explicit false/0/no/off/n turns it off. With the
+    feature off every consumer sees the empty policy, which is byte for byte
+    what a repository with no lockfile sees, so the CLI goes back to its
+    pre-policy behaviour without the lockfile being deleted.
+
+    ``context_max_characters`` bounds what packs may add to a prompt. A pack is
+    text written by somebody else; without a ceiling, a pack that quotes a whole
+    style guide would push the diff out of the model's window.
+    """
+    from src.domain.policy.policy_resolver import DEFAULT_CONTEXT_MAX_CHARACTERS
+
+    return {
+        "enabled": _env_bool_default_true("GITPR_POLICY_ENABLED"),
+        "context_max_characters": _env_positive_int(
+            "GITPR_POLICY_CONTEXT_MAX_CHARACTERS", DEFAULT_CONTEXT_MAX_CHARACTERS
+        ),
+    }
+
+
+def policy_context_max_characters():
+    """The prompt budget a pack may spend, in characters."""
+    return get_policy_settings()["context_max_characters"]
+
+
+def policy_enabled():
+    """Whether policy packs are consulted at all on this machine."""
+    return get_policy_settings()["enabled"]
 
 
 def validate_github_token(token):

@@ -1,0 +1,82 @@
+schema_version: 1
+name: gitpr/node-quality
+version: 1.0.0
+description: >-
+  Quality gate for Node.js services: input validation, promise and async error
+  handling, dependency hygiene, secrets, environment configuration and tests.
+min_gitpr_version: ">=1.3.0"
+license: LGPL-2.1
+authors:
+  - GitPR
+
+skills:
+  review:
+    additional_context: |
+      This is a Node.js service. Most of what breaks in production here is an
+      error nobody awaited.
+
+      1. Async errors. Every promise is awaited, returned, or has a `.catch`.
+         Flag a floating promise, and flag an `async` function passed where a
+         callback is expected — its rejection becomes an unhandled rejection and
+         takes the process with it. Check that an error thrown inside a
+         `setTimeout`, an event handler or a middleware callback actually reaches
+         the error handler.
+      2. Input validation. A request body, a query parameter, a header, an
+         environment variable and a message payload are all untrusted. Validation
+         belongs at the boundary and must reject, not coerce silently. Flag
+         `parseInt` used as validation, and a value interpolated into a shell
+         command or a filesystem path.
+      3. Unhandled states. A `switch` on an enum without a `default`, a lookup by
+         key without a check for `undefined`, `JSON.parse` on foreign input
+         without a try. `?.` and `??` silence a check that should be a decision.
+      4. Dependencies. Flag a new dependency that duplicates one already in the
+         tree, one pinned to a range holding the door open across a major, and
+         one installed for something the standard library does now. A dependency
+         is a surface you now have to keep patched.
+      5. Configuration and secrets. Read configuration at startup, validate it,
+         and fail loudly — a missing variable discovered on the first request is
+         an outage. Flag a secret read from a file that is committed, a default
+         that is a real credential, and anything logged from `process.env`.
+      6. Tests. Flag a change with no test covering it, and a test that awaits
+         nothing and would pass against any implementation.
+
+  pr:
+    additional_context: |
+      Name the failure mode the change guards against and how it was reproduced.
+      A change to error handling or retry logic is only reviewable with the case
+      it was written for.
+
+  commit:
+    additional_context: |
+      Use Conventional Commits with a scope naming the module or the package
+      (e.g. `fix(http):`, `chore(deps):`). A dependency bump says which package
+      and across which major.
+
+linter:
+  rules_file: linter.yml
+
+risk:
+  critical_paths:
+    - src/config/**
+    - src/middleware/**
+    - src/auth/**
+    - src/db/**
+    - "**/package.json"
+    - "**/package-lock.json"
+    - Dockerfile
+    - "**/*.tf"
+  weights:
+    infrastructure: 25
+    no_test_change: 20
+  test_patterns:
+    - test/**
+    - tests/**
+    - "**/*.spec.js"
+    - "**/*.spec.ts"
+    - "**/*.test.js"
+    - "**/*.test.ts"
+
+protected_paths:
+  - src/config/**
+  - "**/package.json"
+  - Dockerfile

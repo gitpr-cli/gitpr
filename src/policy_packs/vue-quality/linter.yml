@@ -1,0 +1,50 @@
+# ==============================================================================
+# gitpr/vue-quality — static rules
+# ==============================================================================
+# Vue-specific and decidable from one line. Most of what this pack cares about —
+# whether a listener is cleaned up, whether an error state exists — needs the
+# component's full shape, and lives in the review context instead.
+# ==============================================================================
+
+rules:
+  - name: vue-debug-leftover
+    level: "error"
+    extensions: ["vue", "js", "ts"]
+    regex: 'console\.(log|debug)\s*\('
+    message: "🚨 console.log left in {file_name} (line {line_number}). Remove it or route it through the project's logger."
+    ignore_comments: true
+
+  - name: vue-v-html
+    level: "warning"
+    extensions: ["vue"]
+    regex: 'v-html\s*='
+    message: "⚠️ v-html in {file_name} (line {line_number}). It renders the value as HTML; if any part of it comes from a user, that is an XSS. Prefer interpolation."
+    ignore_comments: false
+
+  - name: vue-index-as-key
+    level: "warning"
+    extensions: ["vue"]
+    regex: ':key\s*=\s*["'']?(index|i|idx)\b'
+    message: "⚠️ Array index used as :key in {file_name} (line {line_number}). Reordering or removing an item makes Vue reuse the wrong element — use a stable id."
+    ignore_comments: false
+
+  - name: vue-v-for-without-key
+    level: "warning"
+    extensions: ["vue"]
+    regex: 'v-for\s*=\s*["''][^"'']*["''](?![^>]*:key)'
+    message: "⚠️ v-for without a :key in {file_name} (line {line_number}). Vue patches by position without one, which reuses the wrong node after a reorder."
+    ignore_comments: false
+
+  - name: vue-listener-without-cleanup-hint
+    level: "warning"
+    extensions: ["vue", "js", "ts"]
+    regex: 'addEventListener\s*\('
+    message: "⚠️ addEventListener in {file_name} (line {line_number}). Confirm the matching removeEventListener runs on unmount — a listener that outlives the component keeps it alive."
+    ignore_comments: true
+
+  - name: vue-raw-secret
+    level: "error"
+    extensions: ["vue", "js", "ts"]
+    regex: '(VITE_[A-Z_]*(SECRET|TOKEN|PASSWORD|KEY)|import\.meta\.env\.[A-Z_]*(SECRET|TOKEN|PASSWORD))'
+    message: "🚨 A secret is referenced from client code in {file_name} (line {line_number}). Anything bundled into the front end is public — keep it on the server."
+    ignore_comments: true

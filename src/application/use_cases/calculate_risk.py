@@ -4,6 +4,8 @@ import os
 from typing import Optional
 
 from src.diff_parser import split_patch_sections, summarize_patch
+from src.domain.policy import get_active_policy
+from src.domain.policy.policy_resolver import risk_config_from_policy
 from src.domain.risk.risk_calculator import calculate_file_risk, calculate_pull_request_risk
 from src.domain.risk.risk_rules import (
     RiskConfig,
@@ -35,8 +37,15 @@ def execute_calculate_risk(
 
     Never raises unhandled exceptions. Degrades gracefully if history or
     findings are not available.
+
+    The active policy pack refines the project's own risk settings — it adds
+    critical paths and test patterns, and may raise a weight — so it is applied
+    *on top of* what ``load_risk_config()`` produced rather than instead of it.
+    With no pack active, ``risk_config_from_policy`` hands back the very object
+    ``load_risk_config()`` returned, so this is the line the "no pack, no change"
+    property rests on.
     """
-    cfg = config or load_risk_config()
+    cfg = config or risk_config_from_policy(get_active_policy(), load_risk_config())
     warnings: list[str] = []
 
     sections = split_patch_sections(diff_source.content or "")
@@ -119,7 +128,9 @@ def execute_calculate_risk(
             signals_available.append(RiskSignal.LARGE_DIFF)
 
         # 3. Test matching
-        related_tests = find_related_test_files(file_path, all_changed_files, repo_path)
+        related_tests = find_related_test_files(
+            file_path, all_changed_files, repo_path, cfg.test_patterns
+        )
         if related_tests:
             pts = cfg.weights.get(RiskSignal.TEST_PRESENT, -10.0)
             evidence.append(
@@ -132,7 +143,7 @@ def execute_calculate_risk(
                 )
             )
             signals_available.append(RiskSignal.TEST_PRESENT)
-        elif requires_tests(file_path):
+        elif requires_tests(file_path, cfg.test_patterns):
             pts = cfg.weights.get(RiskSignal.NO_TEST_CHANGE, 15.0)
             evidence.append(
                 RiskEvidence(

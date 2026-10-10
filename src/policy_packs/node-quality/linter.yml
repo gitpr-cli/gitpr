@@ -1,0 +1,57 @@
+# ==============================================================================
+# gitpr/node-quality — static rules
+# ==============================================================================
+# Decidable from one line. Floating promises and missing error handlers are the
+# expensive ones and cannot be seen in a line — those live in the review context.
+# ==============================================================================
+
+rules:
+  - name: node-debug-leftover
+    level: "error"
+    extensions: ["js", "ts", "mjs", "cjs"]
+    regex: 'console\.(log|debug)\s*\('
+    message: "🚨 console.log left in {file_name} (line {line_number}). Use the project's logger so the line carries a level and a context."
+    ignore_comments: true
+
+  - name: node-eval
+    level: "error"
+    extensions: ["js", "ts", "mjs", "cjs"]
+    regex: '\b(eval|Function)\s*\(\s*[`"'']'
+    message: "🚨 eval/Function in {file_name} (line {line_number}). It compiles a string as code; no validation makes that safe."
+    ignore_comments: true
+
+  - name: node-shell-from-variable
+    level: "error"
+    extensions: ["js", "ts", "mjs", "cjs"]
+    regex: '(exec|execSync|spawn|spawnSync)\s*\(\s*[`"''].*\$\{'
+    message: "🚨 Shell command built from a variable in {file_name} (line {line_number}). Use spawn with an argument array, or the value ends up in the shell's syntax."
+    ignore_comments: true
+
+  - name: node-json-parse-unguarded
+    level: "warning"
+    extensions: ["js", "ts", "mjs", "cjs"]
+    regex: 'JSON\.parse\s*\(\s*(req\.|request\.|res\.|body|payload|message|input)'
+    message: "⚠️ JSON.parse on foreign input in {file_name} (line {line_number}). It throws on anything malformed — confirm a try/catch is right there."
+    ignore_comments: true
+
+  - name: node-tls-verification-off
+    level: "error"
+    extensions: ["js", "ts", "mjs", "cjs"]
+    regex: 'rejectUnauthorized\s*:\s*false|strictSSL\s*:\s*false|NODE_TLS_REJECT_UNAUTHORIZED\s*[:=]\s*[''"]?0'
+    message: "🚨 TLS verification disabled in {file_name} (line {line_number}). This makes every request to that host interceptable — fix the certificate instead."
+    ignore_comments: true
+
+  - name: node-process-env-in-log
+    level: "error"
+    extensions: ["js", "ts", "mjs", "cjs"]
+    regex: '(console|logger|log)\.\w+\([^)]*process\.env'
+    message: "🚨 process.env logged in {file_name} (line {line_number}). Name the single variable you meant to show, not the whole environment."
+    ignore_comments: true
+
+  - name: node-dependency-file
+    level: "warning"
+    extensions: ["json"]
+    require_paths: ["package.json"]
+    regex: '"(_name|_resolved)"'
+    message: "⚠️ npm metadata left in {file_name} (line {line_number}). It is regenerated on install and shows up as churn in every diff."
+    ignore_comments: false

@@ -514,3 +514,9 @@ Cada etapa deve ser um commit/PR isolado e revisável. Não começar por registr
 ## 16. Encaixe estratégico
 
 Policy Packs são a fundação do futuro plano Team: traduzem skills, linter, risco e convenções individuais em uma política de engenharia versionável, auditável e compartilhável. Nesta primeira versão devem permanecer locais/bundled e no tier Free/Community, porque o valor imediato é adoção e padronização dentro de repositórios. A monetização futura deve estar na colaboração: registry privado, sincronização organizacional, aprovação de mudanças, auditoria, dashboard e suporte — não no bloqueio do uso local de packs.
+
+## 17. Documentação
+
+1. Crie a sua documentação própria em docs/
+2. Adicione em README.md e em suas versões em outros idiomas
+3. Se alguma variável ambiente foi criada e utilizada nesta feature adicionar na interface de Configuração na seção correspondente ou crie nova

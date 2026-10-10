@@ -12,13 +12,15 @@ def find_related_test_files(
     file_path: str,
     all_changed_files: list[str],
     repo_path: Optional[str] = None,
+    test_patterns: Optional[list[str]] = None,
 ) -> list[str]:
     """Finds test files in *all_changed_files* that correspond to *file_path*.
 
     Matches by naming convention (e.g. ``src/foo.py`` <-> ``tests/test_foo.py``,
-    ``App/Services/Order.php`` <-> ``tests/Unit/OrderTest.php``).
+    ``App/Services/Order.php`` <-> ``tests/Unit/OrderTest.php``), plus any extra
+    glob *test_patterns* the project or its policy pack declares.
     """
-    if is_test_file(file_path) or is_non_executable_file(file_path):
+    if is_test_file(file_path, test_patterns) or is_non_executable_file(file_path):
         return []
 
     normalized_target = file_path.replace("\\", "/").strip().lower()
@@ -42,7 +44,7 @@ def find_related_test_files(
         norm_other = other_file.replace("\\", "/").strip().lower()
         if norm_other == normalized_target:
             continue
-        if not is_test_file(norm_other):
+        if not is_test_file(norm_other, test_patterns):
             continue
 
         other_base = os.path.basename(norm_other)
@@ -66,9 +68,9 @@ def find_related_test_files(
     return matched
 
 
-def requires_tests(file_path: str) -> bool:
+def requires_tests(file_path: str, test_patterns: Optional[list[str]] = None) -> bool:
     """Whether a modified file is executable production code that expects test coverage."""
-    if is_test_file(file_path):
+    if is_test_file(file_path, test_patterns):
         return False
     if is_non_executable_file(file_path):
         return False
