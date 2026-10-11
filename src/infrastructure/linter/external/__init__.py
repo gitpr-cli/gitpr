@@ -1,8 +1,8 @@
 """Package marker for external linter & SAST bridges."""
+from src.domain.finding.finding_types import NormalizedFinding
 from src.infrastructure.linter.external.base_bridge import (
     ExternalLinterBridge,
     ExternalLinterResult,
-    NormalizedFinding,
 )
 
 __all__ = ["ExternalLinterBridge", "ExternalLinterResult", "NormalizedFinding"]

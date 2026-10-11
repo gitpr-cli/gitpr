@@ -1114,6 +1114,43 @@ def review_remote_pr(pr_number: str, provider: str = "") -> str:
 
 
 # =============================================================================
+# Tools — Baseline
+# =============================================================================
+
+
+@mcp.tool(
+    description=__(
+        "Read the repository's technical baseline (.gitpr/baseline.json) and report "
+        "it: how many findings the record holds per status, the rules it repeats "
+        "most, the accepted debt with its owners and due dates, the late debt, and "
+        "whether the file's checksum still matches its content. Read-only — it never "
+        "runs the linter, never calls the AI and never writes: use it to answer "
+        "'what does this repository already know?' before reading a report."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True
+    ),
+)
+@_offload
+def get_baseline_status() -> str:
+    """Read the baseline of the current repository and summarise it."""
+    from src.application.use_cases.baseline_summary import baseline_summary
+
+    try:
+        return json.dumps(
+            baseline_summary(), ensure_ascii=False, default=str
+        )
+    except Exception as exc:
+        # A summary that cannot be assembled is not a repository without a
+        # baseline, and answering "nothing recorded" would be a wrong answer
+        # rather than a missing one.
+        traceback.print_exc(file=sys.stderr)
+        return json.dumps(
+            {"status": "error", "message": str(exc)}, ensure_ascii=False
+        )
+
+
+# =============================================================================
 # Tools — Usage Telemetry
 # =============================================================================
 
@@ -1415,6 +1452,22 @@ def get_skill_fix() -> str:
 )
 def get_linter_config() -> str:
     return _read_resource_file(".gitpr.linter.yml")
+
+
+@mcp.resource(
+    uri="baseline://summary",
+    name=__("Baseline Summary"),
+    description=__(
+        "The repository's technical baseline as JSON: counts per status, top rules, "
+        "accepted and overdue debt, and the checksum state."
+    ),
+    mime_type="application/json",
+)
+def get_baseline_summary() -> str:
+    """The same digest the get_baseline_status tool returns, as a resource."""
+    from src.application.use_cases.baseline_summary import baseline_summary
+
+    return json.dumps(baseline_summary(), ensure_ascii=False, default=str)
 
 
 # =============================================================================
@@ -1882,6 +1935,16 @@ def _build_tools_catalog() -> dict:
                 },
             },
             {
+                "name": "get_baseline_status",
+                "description": "Read the repository's technical baseline (.gitpr/baseline.json) and report it: how many findings the record holds per status, the rules it repeats most, the accepted debt with its owners and due dates, the late debt, and whether the file's checksum still matches its content. Read-only — it never runs the linter, never calls the AI and never writes.",
+                "parameters": {},
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                },
+            },
+            {
                 "name": "get_usage_metrics",
                 "description": "Read the local usage ledger of ~/.gitpr/metrics/telemetry.db: how many commands ran in the window, what they cost in tokens and money, which modules were touched, which providers did the work, and how the runs went (linter pass rate, map-reduce rate). Read-only — nothing is written, exported or deleted.",
                 "parameters": {
@@ -1968,6 +2031,12 @@ def _build_tools_catalog() -> dict:
                 "name": "Linter Configuration",
                 "description": "YAML rules for the static local linter.",
                 "mimeType": "text/yaml",
+            },
+            {
+                "uri": "baseline://summary",
+                "name": "Baseline Summary",
+                "description": "The repository's technical baseline as JSON: counts per status, top rules, accepted and overdue debt, and the checksum state.",
+                "mimeType": "application/json",
             },
             {
                 "uri": "prompt://list",
@@ -2143,6 +2212,7 @@ _TOOL_FUNCS = {
     "generate_issue": generate_issue.__wrapped__,
     "list_fix_candidates": list_fix_candidates.__wrapped__,
     "review_remote_pr": review_remote_pr.__wrapped__,
+    "get_baseline_status": get_baseline_status.__wrapped__,
     "get_usage_metrics": get_usage_metrics.__wrapped__,
 }
 

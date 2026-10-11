@@ -30,6 +30,7 @@ These tools only read local state — safe to call anytime, no confirmation need
 | `get_git_context` | ✅ | ✅ |
 | `analyze_diff` | ✅ | ✅ |
 | `run_linter` | ✅ | ✅ |
+| `get_baseline_status` | ✅ | ✅ |
 
 ### Tools with Side Effects (network calls)
 

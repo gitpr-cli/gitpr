@@ -33,6 +33,7 @@ confirmation nécessaire :
 | `get_git_context` | ✅ | ✅ |
 | `analyze_diff` | ✅ | ✅ |
 | `run_linter` | ✅ | ✅ |
+| `get_baseline_status` | ✅ | ✅ |
 
 ### Outils avec Effets Secondaires (appels réseau)
 

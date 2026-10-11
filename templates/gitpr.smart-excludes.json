@@ -33,6 +33,8 @@
         "*.pyo",
         ".DS_Store",
         "Thumbs.db",
-        ".gitpr/fix_history.json"
+        ".gitpr/fix_history.json",
+        ".gitpr/baseline.json",
+        ".gitpr/baseline.overrides.yml"
     ]
 }

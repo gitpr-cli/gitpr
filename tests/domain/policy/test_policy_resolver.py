@@ -43,6 +43,7 @@ def pack(
     pr=None,
     commit=None,
     protected_paths=(),
+    baseline=None,
 ):
     """A ``ResolvedPack`` built in memory, with only what a test names."""
     manifest = PolicyManifest(
@@ -64,6 +65,7 @@ def pack(
         pr=pr or {},
         commit=commit or {},
         protected_paths=list(protected_paths),
+        baseline=baseline or {},
     )
     return ResolvedPack(
         reference=PackReference(
@@ -583,6 +585,115 @@ class TestSeverityOverridesResolve(unittest.TestCase):
             )
 
         self.assertIn("a-rule, b-rule", str(caught.exception))
+
+
+class TestBaselineLayer(unittest.TestCase):
+    """The suppressions and debt a pack brings, as one in-memory layer.
+
+    This layer is never written into `.gitpr/baseline.json` — it is the pack's
+    opinion about findings, not the repository's record of them — so what has to
+    hold is that it composes completely, that each decision keeps the name of
+    the pack that declared it, and that two packs cannot disagree about one
+    finding in silence.
+    """
+
+    FINGERPRINT = "sha256:" + "b" * 64
+
+    def test_no_pack_leaves_the_layer_absent(self):
+        self.assertIsNone(compose_policy([pack("gitpr/root")]).baseline_overrides)
+
+    def test_a_declared_suppression_becomes_a_layer_entry(self):
+        policy = compose_policy(
+            [
+                pack(
+                    "gitpr/root",
+                    baseline={
+                        "suppressions": [
+                            {
+                                "scope": "rule",
+                                "rule_id": "warning-todo-fixme",
+                                "reason": "Noisy in legacy code.",
+                            }
+                        ]
+                    },
+                )
+            ]
+        )
+
+        layer = policy.baseline_overrides
+        self.assertEqual(len(layer.suppressions), 1)
+        self.assertEqual(layer.suppressions[0].rule_id, "warning-todo-fixme")
+        self.assertEqual(policy.provenance["baseline.suppressions"], "gitpr/root@1.0.0")
+
+    def test_a_dependency_keeps_its_own_name_in_the_origin(self):
+        """The layer is shown as `policy:<name>`, and a dependency is not the root."""
+        dependency = pack(
+            "gitpr/base",
+            baseline={
+                "suppressions": [
+                    {"scope": "rule", "rule_id": "from-base", "reason": "Base rule."}
+                ]
+            },
+        )
+        root = pack(
+            "gitpr/root",
+            dependencies=[("gitpr/base", "1.0.0")],
+            baseline={
+                "suppressions": [
+                    {"scope": "rule", "rule_id": "from-root", "reason": "Root rule."}
+                ]
+            },
+        )
+
+        policy = compose_policy([dependency, root])
+
+        origins = {item.rule_id: item.origin for item in policy.baseline_overrides.suppressions}
+        self.assertEqual(origins["from-base"], "policy:gitpr/base@1.0.0")
+        self.assertEqual(origins["from-root"], "policy:gitpr/root@1.0.0")
+        self.assertEqual(
+            policy.provenance["baseline.suppressions"], "gitpr/base@1.0.0, gitpr/root@1.0.0"
+        )
+
+    def test_two_packs_claiming_one_fingerprint_are_refused(self):
+        """Both would be applied to the same finding; there is no defensible pick."""
+        debt = {
+            "fingerprint": self.FINGERPRINT,
+            "owner": "platform",
+            "reason": "Migration planned.",
+        }
+
+        with self.assertRaises(PolicyError) as caught:
+            compose_policy(
+                [
+                    pack("gitpr/base", baseline={"accepted_debt": [debt]}),
+                    pack("gitpr/root", baseline={"accepted_debt": [dict(debt)]}),
+                ]
+            )
+
+        self.assertIn(self.FINGERPRINT, str(caught.exception))
+
+    def test_the_layer_reads_as_data_with_the_pack_that_declared_it(self):
+        """`gitpr policy show` prints this, so the origin travels with the entry."""
+        policy = compose_policy(
+            [
+                pack(
+                    "gitpr/root",
+                    baseline={
+                        "suppressions": [
+                            {"scope": "rule", "rule_id": "x", "reason": "Because."}
+                        ]
+                    },
+                )
+            ]
+        )
+
+        document = policy.to_dict()["baseline"]
+
+        self.assertEqual(document["suppressions"][0]["origin"], "policy:gitpr/root@1.0.0")
+        self.assertEqual(document["suppressions"][0]["reason"], "Because.")
+
+    def test_a_policy_without_the_block_serialises_it_as_nothing(self):
+        self.assertEqual(compose_policy([pack("gitpr/root")]).to_dict()["baseline"], {})
 
 
 class TestDescribeOrigin(unittest.TestCase):

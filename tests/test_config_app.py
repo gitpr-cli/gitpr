@@ -41,6 +41,16 @@ def sidebar_ids(app):
 
 class ConfigAppTestCase(unittest.TestCase):
     def setUp(self):
+        # Saving the screen calls load_dotenv(ENV_FILE, override=True) — right in
+        # the product, because the user has just edited the file — and ENV_FILE
+        # here is the seeded one, which carries GITPR_LANG=pt_br. Left alone, one
+        # save rewrites the whole process environment; a later suite that calls
+        # set_lang(os.getenv("GITPR_LANG")) then switches the interface to
+        # Portuguese and every English assertion after it fails (test_metrics.py
+        # did, five suites later). The environment is handed back as it was found.
+        environ_before = dict(os.environ)
+        self.addCleanup(self._restore_environ, environ_before)
+
         # Textual's CSS parser is chatty on stderr; keep the test output clean.
         self._tmpdir = tempfile.TemporaryDirectory()
         self.env_path = os.path.join(self._tmpdir.name, ".env")
@@ -62,6 +72,11 @@ class ConfigAppTestCase(unittest.TestCase):
 
     # Overridden by the credential tests; every other test accepts any key.
     probe_result = (True, "", "")
+
+    @staticmethod
+    def _restore_environ(snapshot):
+        os.environ.clear()
+        os.environ.update(snapshot)
 
     def _stub(self, target):
         if target.endswith("validate_ai_key"):

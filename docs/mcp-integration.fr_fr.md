@@ -92,6 +92,7 @@ donc les clés API fonctionnent sans invites interactives.
 | `run_linter` | Linter statique basé sur les règles du `.gitpr.linter.yml` |
 | `analyze_blame` | Git blame + classification IA (ORIGIN vs REFACTORING) |
 | `generate_issue` | Issue structurée à partir du diff, de l'historique ou du contexte blame |
+| `get_baseline_status` | Résumé du baseline technique : entrées par statut, règles les plus bruyantes, dette acceptée et échue, état du checksum (lecture seule — ne lance jamais le linter, n'écrit jamais) |
 
 ## Ressources Disponibles
 
@@ -105,6 +106,7 @@ donc les clés API fonctionnent sans invites interactives.
 | `skill://issue` | Instructions IA personnalisées pour la génération d'issues |
 | `skill://blame` | Instructions IA personnalisées pour l'analyse de blame |
 | `linter://config` | Règles YAML du linter (`.gitpr.linter.yml`) |
+| `baseline://summary` | Le résumé du baseline en JSON — la même réponse que renvoie la tool `get_baseline_status` |
 
 ### Templates de Prompt
 

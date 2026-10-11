@@ -429,7 +429,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Server stdout is monkey-patched to isolate the JSON-RPC stream from prints
 - Tools run on an `anyio` offload thread (`_offload`) to avoid blocking the event loop; if a tool hangs in the IDE, kill `gitpr-mcp.exe` and restart the editor
 
-**Tools (15):**
+**Tools (16):**
 
 | Tool | Action | Parameters |
 |------|--------|------------|
@@ -447,9 +447,10 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 | `generate_issue` | Structured issue (What/Why/Where/How) | `context_type`: `diff`/`history`/`blame` |
 | `list_fix_candidates` | Fix candidates of the last review: patch, classification, id (read-only) | `finding_id` |
 | `review_remote_pr` | AI review of a PR already open on the forge, fetched by number (read-only, never comments) | `pr_number`, `provider` |
+| `get_baseline_status` | The technical baseline as a digest: counts per status, top rules, suppressed and accepted debt with owners and due dates, late debt, checksum state (read-only — never runs the linter, never calls the AI, never writes) | — |
 | `get_usage_metrics` | The local usage ledger over a window: runs, cost per model, modules touched, providers, quality rates (read-only, no day shortcut — the caller names its own dates) | `repo`, `since`, `until` |
 
-**Resources (18):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame,release,fix}` (skill templates as Markdown), `linter://config` (YAML linter rules), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
+**Resources (19):** `skill://list` + `skill://{pr,commit,review,filereview,issue,blame,release,fix}` (skill templates as Markdown), `linter://config` (YAML linter rules), `baseline://summary` (the same digest the `get_baseline_status` tool returns, as JSON), `prompt://list` + `prompt://{review,commit,pr,linter,issue,blame,explore}` (MCP prompt templates)
 
 **Prompts (7):** Review PR, Generate Commit Message, Create PR Description, Run Code Linter, Create Issue from Diff, Trace Code Origin, Explore Project Context
 

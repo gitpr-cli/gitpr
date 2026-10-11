@@ -91,6 +91,7 @@ pelo que as chaves de API funcionam sem prompts interativos.
 | `run_linter` | Linter estático baseado nas regras do `.gitpr.linter.yml` |
 | `analyze_blame` | Git blame + classificação IA (ORIGIN vs REFACTORING) |
 | `generate_issue` | Issue estruturada a partir de diff, histórico ou contexto de blame |
+| `get_baseline_status` | Resumo do baseline técnico: entradas por estado, regras mais ruidosas, dívida aceite e vencida, estado do checksum (só leitura — nunca executa o linter, nunca grava) |
 
 ## Recursos Disponíveis
 
@@ -104,6 +105,7 @@ pelo que as chaves de API funcionam sem prompts interativos.
 | `skill://issue` | Instruções de IA personalizadas para geração de issues |
 | `skill://blame` | Instruções de IA personalizadas para análise de blame |
 | `linter://config` | Regras YAML do linter (`.gitpr.linter.yml`) |
+| `baseline://summary` | O resumo do baseline em JSON — a mesma resposta que a tool `get_baseline_status` devolve |
 
 ### Recursos de Prompts
 

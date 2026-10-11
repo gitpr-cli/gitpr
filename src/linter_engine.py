@@ -11,6 +11,8 @@ from src.config import (
     load_sast_config,
     get_linter_timeout,
 )
+from src.domain.baseline.baseline_fingerprint import snippet_hash
+from src.domain.finding.finding_types import NormalizedFinding
 from src.domain.linter.sast_finding_mapper import (
     format_finding_message,
     deduplicate_secret_findings,
@@ -51,8 +53,15 @@ def _is_rule_applicable(rule, current_file, file_extension):
     return True
 
 
-def _apply_rule(rule, code_line, line_number, current_file, alerts):
-    """Applies the rule's regex on the code line and records the alert if needed."""
+def _apply_rule(rule, code_line, line_number, current_file, alerts, findings=None):
+    """Applies the rule's regex on the code line and records the alert if needed.
+
+    ``findings`` is the structured side channel a baseline is built from: the
+    alert strings carry only what the rule's message template renders, and never
+    the rule's name, so a finding has to be recorded as data. The parameter is
+    optional and the alert lists are untouched by it, which is what keeps every
+    existing caller byte-for-byte identical.
+    """
     # Logic to ignore comments in code
     if rule.get("ignore_comments", False):
         comment_patterns = [r"^//", r"^#", r"^/\*", r"^\*"]
@@ -75,6 +84,21 @@ def _apply_rule(rule, code_line, line_number, current_file, alerts):
                 alerts["warnings"].append(message)
             else:
                 alerts["errors"].append(message)
+
+            if findings is not None:
+                findings.append(
+                    NormalizedFinding(
+                        severity="warning" if level == "warning" else "error",
+                        category=rule.get("category") or "lint",
+                        file_path=current_file,
+                        line_start=line_number,
+                        line_end=line_number,
+                        message=message,
+                        source="linter",
+                        rule_id=rule.get("name"),
+                        snippet_hash=snippet_hash(code_line),
+                    )
+                )
     except re.error as e:
         alerts["errors"].append(
             __(
@@ -186,8 +210,25 @@ def _checkstyle_file_matches(reported_path, target_path):
     )
 
 
+def external_alert_message(tool_name, message, file_path, line_number):
+    """The alert line an external linter's violation is reported as.
+
+    The template lives here and only here: the baseline reads a bridge finding
+    back into the alert it came from (a Checkstyle report names no rule, so the
+    rendered line is the only thing tying the two together), and a second copy
+    of this string would turn a cosmetic edit into a silent mismatch.
+    """
+    return f"🚨 [{tool_name}] {message} ({file_path}, Line {line_number})"
+
+
 def _collect_external_alerts(
-    external_linters, file_path, file_extension, alerts, allowed_lines=None
+    external_linters,
+    file_path,
+    file_extension,
+    alerts,
+    allowed_lines=None,
+    findings=None,
+    line_texts=None,
 ):
     """Runs every external linter matching *file_extension* against *file_path*.
 
@@ -196,6 +237,11 @@ def _collect_external_alerts(
     which previously leaked in whenever their line number happened to collide
     with an added line.  When *allowed_lines* is None (full-file mode) every
     line of the target file counts; otherwise only the diff's added lines do.
+
+    ``findings`` and ``line_texts`` are the baseline's side channel: a Checkstyle
+    report names no rule, only the message, so the linter's own name is what
+    identifies a finding here, and the line's digest comes from the text the
+    engine already parsed (the tool reports locations, never content).
     """
     for ext_linter in external_linters:
         if file_extension not in ext_linter.get("extensions", []):
@@ -213,11 +259,85 @@ def _collect_external_alerts(
             if allowed_lines is not None and err["line"] not in allowed_lines:
                 continue
 
-            msg = f"🚨 [{ext_linter.get('name', 'External linter')}] {err['message']} ({file_path}, Line {err['line']})"
+            msg = external_alert_message(
+                ext_linter.get("name", "External linter"),
+                err["message"],
+                file_path,
+                err["line"],
+            )
             if err["severity"] == "warning":
                 alerts["warnings"].append(msg)
             else:
                 alerts["errors"].append(msg)
+
+            if findings is not None:
+                # Line 0 is what Checkstyle reports for a file-level violation
+                # (file length, header missing) — kept as it arrived rather than
+                # bent into line 1, which would name a line nobody violated.
+                findings.append(
+                    NormalizedFinding(
+                        severity="warning" if err["severity"] == "warning" else "error",
+                        category="lint",
+                        file_path=file_path,
+                        line_start=err["line"],
+                        line_end=err["line"],
+                        message=err["message"],
+                        source="external",
+                        rule_id=ext_linter.get("name"),
+                        snippet_hash=_line_snippet(line_texts, file_path, err["line"]),
+                    )
+                )
+
+
+def _normalize_lint_path(file_path):
+    """The key *file_path* is looked up under, in the baseline's own spelling."""
+    return (file_path or "").replace("\\", "/").lower()
+
+
+def _line_snippet(line_texts, file_path, line_number):
+    """The digest of the offending line, or None when the text is not at hand.
+
+    Only the digest is ever kept: the line may hold a credential, and a baseline
+    is a file meant to be committed.
+    """
+    if not line_texts:
+        return None
+    text = line_texts.get((_normalize_lint_path(file_path), line_number))
+    return snippet_hash(text) if text is not None else None
+
+
+def _fill_snippet_hashes(findings, line_texts):
+    """Gives each bridge finding the digest of the line it points at.
+
+    The bridges run a tool against files on disk and hand back locations, never
+    content, so the digest comes from the diff this module already parsed. It is
+    what makes editing a secret in place a new finding instead of the same one.
+    """
+    for finding in findings:
+        if finding.snippet_hash is None:
+            finding.snippet_hash = _line_snippet(
+                line_texts, finding.file_path, finding.line_start
+            )
+
+
+def _drop_merged_findings(findings, alerts):
+    """Removes the rule findings whose alert a SAST merge consumed.
+
+    A merge means one detection that two tools agree on, so it has to leave one
+    finding behind. The regex side is dropped because its alert is gone from the
+    report: keeping it would put the same line twice in a baseline, and the
+    second entry would point at an alert nobody can see.
+
+    Only ``source="linter"`` findings are candidates — their ``message`` *is* the
+    alert string. A bridge finding is not alert-backed (its alert is a decorated
+    rendering), so it is never matched here and never dropped by accident.
+    """
+    surviving = set(alerts["errors"]) | set(alerts["warnings"])
+    findings[:] = [
+        finding
+        for finding in findings
+        if finding.source != "linter" or finding.message in surviving
+    ]
 
 
 def _run_sast_bridges(target_files, repo_path=".", diff_only=True, allowed_lines_by_file=None):
@@ -274,7 +394,12 @@ def _run_sast_bridges(target_files, repo_path=".", diff_only=True, allowed_lines
 
 
 def parse_diff_and_lint(
-    diff_text, is_full_file=False, file_path=None, skip_external=False, repo_path="."
+    diff_text,
+    is_full_file=False,
+    file_path=None,
+    skip_external=False,
+    repo_path=".",
+    findings_out=None,
 ):
     """
     Analyzes the git diff OR a full file and applies the rules defined in .gitpr.linter.yml.
@@ -287,6 +412,11 @@ def parse_diff_and_lint(
     whatever the user happens to have checked out, and publishing that as a
     comment about someone else's branch. Callers reviewing anything other than
     the local tree pass True.
+
+    ``findings_out``, when given a list, is filled with the same alerts as
+    structured findings — rule name, file, line, digest of the line — which is
+    what a baseline fingerprints. The returned dictionary does not depend on it:
+    a caller that passes nothing gets exactly the alerts it got before.
     """
     from src.domain.policy import get_active_policy
 
@@ -299,6 +429,10 @@ def parse_diff_and_lint(
         return {"errors": [], "warnings": []}
 
     alerts = {"errors": [], "warnings": []}
+    # (normalized path, line) -> the line's text, kept only for the digest of a
+    # finding: the alert strings never carry the content, and the SAST bridges
+    # report locations for files they read themselves.
+    line_texts = {}
 
     lines = diff_text.split("\n")
 
@@ -318,10 +452,12 @@ def parse_diff_and_lint(
             if not code_line:
                 continue
 
+            line_texts[(_normalize_lint_path(current_file), i)] = code_line
+
             for rule in rules:
                 if not _is_rule_applicable(rule, current_file, file_extension):
                     continue
-                _apply_rule(rule, code_line, i, current_file, alerts)
+                _apply_rule(rule, code_line, i, current_file, alerts, findings_out)
 
         # External linters audit the whole file here: with no diff to intersect,
         # every violation the linter reports for this file is in scope.
@@ -332,6 +468,8 @@ def parse_diff_and_lint(
                 file_extension,
                 alerts,
                 allowed_lines=None,
+                findings=findings_out,
+                line_texts=line_texts,
             )
 
         # SAST Bridges full-file execution
@@ -344,10 +482,16 @@ def parse_diff_and_lint(
             )
             alerts["warnings"].extend(sast_warnings)
 
+            if findings_out is not None:
+                _fill_snippet_hashes(sast_findings, line_texts)
+
             # Deduplicate regex secret alerts vs SAST findings
             cleaned_alerts, merged_findings = deduplicate_secret_findings(alerts, sast_findings)
             alerts["errors"] = cleaned_alerts["errors"]
             alerts["warnings"] = cleaned_alerts["warnings"]
+
+            if findings_out is not None:
+                _drop_merged_findings(findings_out, alerts)
 
             for finding in merged_findings:
                 msg = format_finding_message(finding)
@@ -355,6 +499,9 @@ def parse_diff_and_lint(
                     alerts["errors"].append(msg)
                 else:
                     alerts["warnings"].append(msg)
+
+            if findings_out is not None:
+                findings_out.extend(merged_findings)
 
         log_local_metric(
             command="linter",
@@ -388,6 +535,16 @@ def parse_diff_and_lint(
                 line_number = int(match.group(1)) - 1
             continue
 
+        if line.startswith(" "):
+            # Context exists on both sides, so the new-side counter moves over it.
+            # Only additions used to advance the counter, which reported every
+            # addition after the first context line with a number below its real
+            # one — and the report, the review and the diff's own numbering all
+            # disagreed with it. (A removed line is the old side: it moves nothing,
+            # which is why '-' needs no branch here.)
+            line_number += 1
+            continue
+
         if line.startswith("+") and not line.startswith("+++"):
             line_number += 1
             code_line = line[1:].strip()
@@ -396,11 +553,12 @@ def parse_diff_and_lint(
                 continue
 
             modified_files[current_file].append(line_number)
+            line_texts[(_normalize_lint_path(current_file), line_number)] = code_line
 
             for rule in rules:
                 if not _is_rule_applicable(rule, current_file, file_extension):
                     continue
-                _apply_rule(rule, code_line, line_number, current_file, alerts)
+                _apply_rule(rule, code_line, line_number, current_file, alerts, findings_out)
 
     # Cross-reference with External Linters (only lines added in the current diff)
     if external_linters and modified_files:
@@ -413,6 +571,8 @@ def parse_diff_and_lint(
                 f_ext,
                 alerts,
                 allowed_lines=set(modified_lines),
+                findings=findings_out,
+                line_texts=line_texts,
             )
 
     # SAST Bridges diff execution
@@ -429,10 +589,16 @@ def parse_diff_and_lint(
         )
         alerts["warnings"].extend(sast_warnings)
 
+        if findings_out is not None:
+            _fill_snippet_hashes(sast_findings, line_texts)
+
         # Deduplicate regex secret alerts vs SAST findings
         cleaned_alerts, merged_findings = deduplicate_secret_findings(alerts, sast_findings)
         alerts["errors"] = cleaned_alerts["errors"]
         alerts["warnings"] = cleaned_alerts["warnings"]
+
+        if findings_out is not None:
+            _drop_merged_findings(findings_out, alerts)
 
         for finding in merged_findings:
             msg = format_finding_message(finding)
@@ -440,6 +606,9 @@ def parse_diff_and_lint(
                 alerts["errors"].append(msg)
             else:
                 alerts["warnings"].append(msg)
+
+        if findings_out is not None:
+            findings_out.extend(merged_findings)
 
     log_local_metric(
         command="linter",
@@ -449,6 +618,19 @@ def parse_diff_and_lint(
         mode="diff",
     )
     return alerts
+
+
+def lint_findings(diff_text, **kwargs):
+    """The structured findings of a lint run — what a baseline fingerprints.
+
+    A thin wrapper over ``parse_diff_and_lint``: it opens the findings channel and
+    returns it, dropping the alert strings the report is built from. Both views
+    come from one run, so a call site that needs the alerts as well passes
+    ``findings_out`` to the linter directly instead of linting twice.
+    """
+    findings = []
+    parse_diff_and_lint(diff_text, findings_out=findings, **kwargs)
+    return findings
 
 
 def generate_linter_report_content(alerts):

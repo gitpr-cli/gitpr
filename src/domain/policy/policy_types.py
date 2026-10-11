@@ -128,6 +128,11 @@ class PolicyManifest:
     pr: dict[str, Any] = field(default_factory=dict)
     commit: dict[str, Any] = field(default_factory=dict)
     protected_paths: list[str] = field(default_factory=list)
+    # The `baseline:` block, as the validated data that goes back through
+    # `parse_overrides` when the packs are composed into one layer. Kept as data
+    # here so this module stays a value type with no dependency on the baseline
+    # domain; see policy_resolver.compose_policy for where it becomes one.
+    baseline: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -155,6 +160,11 @@ class EffectivePolicy:
     pr_config: dict[str, Any] = field(default_factory=dict)
     commit_config: dict[str, Any] = field(default_factory=dict)
     protected_paths: list[str] = field(default_factory=list)
+    # The suppressions and accepted debt the packs declare, as one layer of the
+    # classification. It is read from memory and never written into
+    # `.gitpr/baseline.json`: a pack's opinion is not the repository's record,
+    # and `baseline unsuppress` has to be able to say so.
+    baseline_overrides: Any = None
     provenance: dict[str, str] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
 
@@ -190,6 +200,26 @@ class EffectivePolicy:
         policy = self.enabled_skills.get(skill_name)
         return (policy.additional_context or "") if policy else ""
 
+    def baseline_dict(self) -> dict[str, Any]:
+        """The packs' baseline layer as data, for `gitpr policy show`.
+
+        Each entry carries the pack it came from, which is what lets the display
+        answer "who decided this?" — and is why this document is a report rather
+        than something `parse_overrides` reads back: the key that names the pack
+        is not part of the file schema.
+        """
+        layer = self.baseline_overrides
+        if layer is None or layer.is_empty():
+            return {}
+        return {
+            "suppressions": [
+                dict(item.to_dict(), origin=item.origin) for item in layer.suppressions
+            ],
+            "accepted_debt": [
+                dict(item.to_dict(), origin=item.origin) for item in layer.accepted_debt
+            ],
+        }
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "packs": [p.to_dict() for p in self.packs],
@@ -201,6 +231,7 @@ class EffectivePolicy:
             "pr_config": self.pr_config,
             "commit_config": self.commit_config,
             "protected_paths": list(self.protected_paths),
+            "baseline": self.baseline_dict(),
             "provenance": dict(self.provenance),
             "warnings": list(self.warnings),
         }

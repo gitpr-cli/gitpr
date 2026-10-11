@@ -111,6 +111,129 @@ class TestClosedSchema(unittest.TestCase):
             parse_manifest(manifest(risk={"critical_pathes": ["**/db/**"]}))
 
 
+class TestBaselineBlock(unittest.TestCase):
+    """The `baseline:` block, and the validation it may not go around.
+
+    A pack shipping suppressions is the feature's whole point for a team that
+    standardises a legacy gate — and the one place it could quietly undo the
+    auditability the suppressions exist for. So the entries are put through the
+    very validators a hand-edited `baseline.overrides.yml` goes through, and the
+    failure is reported with the pack, the half and the index.
+    """
+
+    FINGERPRINT = "sha256:" + "a" * 64
+
+    def test_a_block_with_a_suppression_and_debt_parses(self):
+        parsed = parse_manifest(
+            manifest(
+                baseline={
+                    "suppressions": [
+                        {
+                            "scope": "rule",
+                            "rule_id": "warning-todo-fixme",
+                            "reason": "Noisy rule in legacy code.",
+                        }
+                    ],
+                    "accepted_debt": [
+                        {
+                            "fingerprint": self.FINGERPRINT,
+                            "owner": "platform",
+                            "reason": "Migration planned.",
+                            "due_date": "2026-12-31",
+                        }
+                    ],
+                }
+            )
+        )
+
+        self.assertEqual(len(parsed.baseline["suppressions"]), 1)
+        self.assertEqual(len(parsed.baseline["accepted_debt"]), 1)
+        suppression = parsed.baseline["suppressions"][0]
+        self.assertEqual(suppression["scope"], "rule")
+        self.assertEqual(suppression["rule_id"], "warning-todo-fixme")
+
+    def test_a_pack_without_the_block_carries_nothing(self):
+        self.assertEqual(parse_manifest(manifest()).baseline, {})
+
+    def test_an_unknown_key_in_the_block_is_refused(self):
+        with self.assertRaises(PolicyError) as caught:
+            parse_manifest(manifest(baseline={"suppression": []}))
+
+        self.assertIn("suppression", str(caught.exception))
+
+    def test_a_suppression_without_a_reason_is_refused(self):
+        """The rule that makes a suppression auditable has no exemption for packs."""
+        with self.assertRaises(PolicyError) as caught:
+            parse_manifest(
+                manifest(baseline={"suppressions": [{"scope": "rule", "rule_id": "x"}]})
+            )
+
+        message = str(caught.exception)
+        self.assertIn("reason", message)
+        self.assertIn("acme/team-policy", message)
+        self.assertIn("#1", message)
+
+    def test_debt_nobody_owns_is_refused(self):
+        with self.assertRaises(PolicyError) as caught:
+            parse_manifest(
+                manifest(
+                    baseline={
+                        "accepted_debt": [
+                            {"fingerprint": self.FINGERPRINT, "reason": "Later."}
+                        ]
+                    }
+                )
+            )
+
+        self.assertIn("owner", str(caught.exception))
+
+    def test_a_debt_with_an_impossible_due_date_is_refused(self):
+        """A deadline nobody can read is a deadline nobody can be held to."""
+        with self.assertRaises(PolicyError) as caught:
+            parse_manifest(
+                manifest(
+                    baseline={
+                        "accepted_debt": [
+                            {
+                                "fingerprint": self.FINGERPRINT,
+                                "owner": "platform",
+                                "reason": "Migration planned.",
+                                "due_date": "31/12/2026",
+                            }
+                        ]
+                    }
+                )
+            )
+
+        message = str(caught.exception)
+        self.assertIn("due_date", message)
+        self.assertIn("acme/team-policy", message)
+
+    def test_an_unknown_scope_is_refused(self):
+        with self.assertRaises(PolicyError):
+            parse_manifest(
+                manifest(
+                    baseline={
+                        "suppressions": [
+                            {"scope": "everything", "reason": "Let it all through."}
+                        ]
+                    }
+                )
+            )
+
+    def test_a_block_that_is_not_a_mapping_is_refused(self):
+        with self.assertRaises(PolicyError) as caught:
+            parse_manifest(manifest(baseline=["all of it"]))
+
+        self.assertIn("mapping", str(caught.exception))
+
+    def test_a_half_that_is_not_a_list_is_refused(self):
+        with self.assertRaises(PolicyError) as caught:
+            parse_manifest(manifest(baseline={"suppressions": {"scope": "rule"}}))
+
+        self.assertIn("list", str(caught.exception))
+
+
 class TestSkillNames(unittest.TestCase):
     """A pack configures skills GitPR ships; it cannot invent one."""
 

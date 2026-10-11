@@ -91,6 +91,7 @@ de API funcionan sin prompts interactivos.
 | `run_linter` | Linter estático basado en reglas de `.gitpr.linter.yml` |
 | `analyze_blame` | Git blame + clasificación IA (ORIGIN vs REFACTORING) |
 | `generate_issue` | Issue estructurada a partir de diff, historial o contexto de blame |
+| `get_baseline_status` | Resumen del baseline técnico: entradas por estado, reglas más ruidosas, deuda aceptada y vencida, estado del checksum (solo lectura — nunca ejecuta el linter, nunca escribe) |
 
 ## Recursos Disponibles
 
@@ -104,6 +105,7 @@ de API funcionan sin prompts interactivos.
 | `skill://issue` | Instrucciones de IA personalizadas para generación de issues |
 | `skill://blame` | Instrucciones de IA personalizadas para análisis de blame |
 | `linter://config` | Reglas YAML del linter (`.gitpr.linter.yml`) |
+| `baseline://summary` | El resumen del baseline en JSON — la misma respuesta que devuelve la tool `get_baseline_status` |
 
 ### Plantillas de Prompt
 
