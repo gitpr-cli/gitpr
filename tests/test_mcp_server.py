@@ -8,7 +8,9 @@ import inspect
 import io
 import json
 import os
+import shutil
 import sys
+import tempfile
 import threading
 import unittest
 from unittest.mock import patch, MagicMock
@@ -18,6 +20,10 @@ import click
 # Import after patching checks — the mcp_server module does not call
 # _patch_output() at import time (only inside main()), so importing is safe.
 from src import mcp_server
+from src.application.use_cases.create_baseline import build_manifest
+from src.domain.baseline import set_active_baseline, snippet_hash
+from src.domain.finding.finding_types import NormalizedFinding
+from src.domain.policy import set_active_policy
 from src.fix.apply_fix import FixError
 from src.fix.patch_provenance import (
     FindingRef,
@@ -25,6 +31,7 @@ from src.fix.patch_provenance import (
     PatchProvenance,
     PatchSafety,
 )
+from src.infrastructure.baseline.local_baseline_repository import write_manifest
 
 
 def _call_tool(fn, *args, **kwargs):
@@ -668,6 +675,120 @@ class TestRemoteReviewTool(unittest.TestCase):
         pipeline.assert_not_called()
 
 
+class TestBaselineStatusTool(unittest.TestCase):
+    """The baseline as an IDE agent reads it: one call, no run, no write.
+
+    The tool adds nothing to the answer — `baseline_summary` is where the facts
+    are — so what is pinned here is the MCP layer's own promise: a JSON document
+    on the wire, an error *reported* instead of raised into the JSON-RPC stream,
+    and a baseline file that is still byte for byte what it was after the call.
+    """
+
+    def setUp(self):
+        self.repo = tempfile.mkdtemp(prefix="gitpr_mcp_baseline_")
+        self.addCleanup(shutil.rmtree, self.repo, ignore_errors=True)
+        self._chdir(self.repo)
+
+        # No configured path: the record resolves against the working directory,
+        # which is how the server sees the repository it was started in.
+        env = patch.dict(
+            os.environ,
+            {
+                "GITPR_BASELINE_ENABLED": "true",
+                "GITPR_BASELINE_PATH": "",
+                "GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES": "true",
+            },
+        )
+        env.start()
+        self.addCleanup(env.stop)
+        for reset in (set_active_baseline, set_active_policy):
+            self.addCleanup(reset, None)
+
+    def _chdir(self, target):
+        previous = os.getcwd()
+        os.chdir(target)
+        self.addCleanup(os.chdir, previous)
+
+    def _write_baseline(self, count=2):
+        """Two findings of one rule, recorded the way `baseline create` would."""
+        findings = [
+            NormalizedFinding(
+                severity="error",
+                category="security",
+                file_path=f"src/module_{index}.py",
+                line_start=10 + index,
+                line_end=10 + index,
+                message="AWS access key in source.",
+                source="linter",
+                rule_id="sec-aws-key",
+                snippet_hash=snippet_hash("AWS_KEY = 'AKIAIOSFODNN7EXAMPLE'"),
+            )
+            for index in range(count)
+        ]
+        write_manifest(build_manifest(findings, repo_path=self.repo), self.repo)
+        return findings
+
+    def _path(self):
+        return os.path.join(self.repo, ".gitpr", "baseline.json")
+
+    def _read(self):
+        with open(self._path(), "r", encoding="utf-8", errors="replace") as handle:
+            return handle.read()
+
+    def test_the_tool_answers_with_the_records_digest(self):
+        """Counts, top rules and the checksum state, as one parseable document."""
+        self._write_baseline()
+
+        result = json.loads(_call_tool(mcp_server.get_baseline_status))
+
+        self.assertEqual(result["status"], "success")
+        self.assertTrue(result["exists"])
+        self.assertTrue(result["usable"])
+        self.assertEqual(result["checksum"], "ok")
+        self.assertEqual(result["total"], 2)
+        self.assertEqual(result["counts"]["existing"], 2)
+        self.assertEqual(result["rules"], [{"rule_id": "sec-aws-key", "count": 2}])
+
+    def test_the_resource_answers_the_same_digest(self):
+        """The tool and the resource are one reading, so they cannot disagree."""
+        self._write_baseline()
+
+        resource = json.loads(mcp_server.get_baseline_summary())
+        tool = json.loads(_call_tool(mcp_server.get_baseline_status))
+
+        self.assertEqual(resource, tool)
+
+    def test_a_repository_with_no_baseline_is_an_answer_not_an_error(self):
+        """Absence is the common case for a new repository, and it is not a failure."""
+        result = json.loads(_call_tool(mcp_server.get_baseline_status))
+
+        self.assertEqual(result["status"], "success")
+        self.assertFalse(result["exists"])
+        self.assertEqual(result["total"], 0)
+        self.assertEqual(result["checksum"], "absent")
+
+    def test_a_failure_is_reported_and_never_raised(self):
+        """The JSON-RPC stream has no room for a traceback."""
+        with patch(
+            "src.application.use_cases.baseline_summary.baseline_summary",
+            side_effect=RuntimeError("boom"),
+        ):
+            result = json.loads(_call_tool(mcp_server.get_baseline_status))
+
+        self.assertEqual(result["status"], "error")
+        self.assertIn("boom", result["message"])
+
+    def test_the_call_leaves_the_record_untouched(self):
+        """Read-only means read-only: the file, and its neighbours, are untouched."""
+        self._write_baseline()
+        before = self._read()
+
+        _call_tool(mcp_server.get_baseline_status)
+
+        self.assertEqual(self._read(), before)
+        self.assertFalse(os.path.exists(self._path() + ".tmp"))
+
+
 class TestResources(unittest.TestCase):
     """Tests for MCP resources (skill templates)."""
 
@@ -699,6 +820,7 @@ class TestResources(unittest.TestCase):
             mcp_server.get_skill_release,
             mcp_server.get_skill_fix,
             mcp_server.get_linter_config,
+            mcp_server.get_baseline_summary,
         ]
         for fn in funcs:
             self.assertTrue(callable(fn), f"{fn} should be callable")
@@ -800,7 +922,7 @@ class TestToolsCatalog(unittest.TestCase):
             self.assertTrue(tool["description"], f"Tool '{tool['name']}' has empty description")
 
     def test_catalog_has_all_expected_tools(self):
-        """Catalog includes all 15 registered tools."""
+        """Catalog includes all 16 registered tools."""
         catalog = mcp_server._build_tools_catalog()
         tool_names = {t["name"] for t in catalog["tools"]}
         expected = {
@@ -819,6 +941,7 @@ class TestToolsCatalog(unittest.TestCase):
             "list_fix_candidates",
             "review_remote_pr",
             "get_usage_metrics",
+            "get_baseline_status",
         }
         missing = expected - tool_names
         extra = tool_names - expected
@@ -833,6 +956,13 @@ class TestToolsCatalog(unittest.TestCase):
             self.assertIn("name", resource)
             self.assertIn("description", resource)
             self.assertIn("mimeType", resource)
+
+    def test_the_baseline_resource_is_catalogued(self):
+        """The summary is a resource too, so an agent can watch it instead of calling."""
+        catalog = mcp_server._build_tools_catalog()
+        uris = {resource["uri"] for resource in catalog["resources"]}
+
+        self.assertIn("baseline://summary", uris)
 
     def test_catalog_prompts_have_required_fields(self):
         """Every prompt has name and description."""
@@ -955,10 +1085,10 @@ class TestWriteRealStdout(unittest.TestCase):
 class TestToolRegistry(unittest.TestCase):
     """Tests for _get_tool_registry and _TOOL_FUNCS."""
 
-    def test_registry_has_all_15_tools(self):
-        """_get_tool_registry returns all 15 tools."""
+    def test_registry_has_all_16_tools(self):
+        """_get_tool_registry returns all 16 tools."""
         registry = mcp_server._get_tool_registry()
-        self.assertEqual(len(registry), 15)
+        self.assertEqual(len(registry), 16)
 
     def test_every_tool_has_func(self):
         """Every tool in the registry has a callable 'func'."""
@@ -1233,7 +1363,7 @@ class TestOffloadDecorator(unittest.TestCase):
 
 
 def _get_expected_tool_names():
-    """Return the set of all 12 tool names expected in the registry."""
+    """Return the set of all 16 tool names expected in the registry."""
     return {
         "get_git_context",
         "analyze_diff",
@@ -1247,6 +1377,10 @@ def _get_expected_tool_names():
         "run_linter",
         "analyze_blame",
         "generate_issue",
+        "list_fix_candidates",
+        "review_remote_pr",
+        "get_usage_metrics",
+        "get_baseline_status",
     }
 
 

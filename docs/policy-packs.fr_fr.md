@@ -80,6 +80,7 @@ Le schema est **fermé** : une clé inconnue est une erreur, pas un avertissemen
 | `license` | — | str | Texte libre |
 | `authors` | — | list[str] | Texte libre |
 | `extends` | — | list | Dépendances : `[{name, version}]`. `version` est une plage |
+| `baseline` | — | map | `suppressions`, `accepted_debt` — les décisions que le pack apporte au baseline, en mémoire seulement |
 | `skills` | — | map | `skills.<type>.additional_context` — texte attaché au prompt de cette skill |
 | `linter` | — | map | `rules_file`, `severity_overrides` |
 | `risk` | — | map | `critical_paths`, `test_patterns`, `weights`, `thresholds` |
@@ -135,6 +136,17 @@ commit:
     - fix
     - chore
 
+baseline:
+  suppressions:
+    - scope: rule
+      rule_id: acme-no-float-money
+      reason: The float check is advisory while the migration is in flight.
+  accepted_debt:
+    - fingerprint: "sha256:9f2c…"
+      owner: acme-platform
+      reason: Scheduled for the payments rewrite.
+      due_date: 2026-12-31
+
 protected_paths:
   - config/**
 ```
@@ -158,6 +170,37 @@ protected_paths:
 Un pack peut dépendre d'autres packs. Le graphe est résolu en **ordre topologique** — dépendances d'abord, pack racine en dernier — donc les valeurs d'une dépendance sont appliquées avant celles du pack qui s'appuie sur elles. Un cycle est refusé avec la chaîne dans le message, car « il y a un cycle » sans le chemin n'est pas actionnable.
 
 Un pack racine par dépôt. `gitpr policy use` **remplace** le choix précédent au lieu de s'y ajouter ; le graphe sous la racine s'atteint par `extends`, ce qui garde l'échelle de précédence linéaire plutôt qu'en réseau.
+
+### 2.5 `baseline`
+
+Un pack peut porter les suppressions et la dette acceptée que sa stack connaît déjà, pour qu'adopter le pack et adopter le baseline soient une seule décision au lieu de deux :
+
+```yaml
+baseline:
+  suppressions:
+    - scope: rule
+      rule_id: acme-no-float-money
+      reason: The float check is advisory while the migration is in flight.
+  accepted_debt:
+    - fingerprint: "sha256:9f2c…"
+      owner: acme-platform
+      reason: Scheduled for the payments rewrite.
+      due_date: 2026-12-31
+```
+
+Les deux moitiés ont la **même forme et les mêmes quatre portées** que `.gitpr/baseline.overrides.yml` — `finding`, `line`, `file`, `rule` — et passent par les **mêmes validateurs** : un pack qui déclarerait une suppression sans motif, ou une dette acceptée que personne n'assume, serait un moyen de contourner l'auditabilité pour laquelle le baseline existe. Un pack n'achète pas une règle plus faible en la déclarant dans un autre fichier. Le bloc est fermé comme le reste du manifeste : une clé inconnue est une erreur, et un échec nomme le pack, la moitié et l'index de l'entrée, parce que c'est ce que `gitpr policy validate` imprime.
+
+Trois propriétés séparent cette couche des fichiers du dépôt lui-même :
+
+| | Bloc du pack | `.gitpr/baseline.json` / `.overrides.yml` |
+|---|---|---|
+| **Où il vit** | En mémoire, pendant la classification | Sur disque, commité |
+| **Origine affichée** | `policy:<nom>@<version>`, par entrée — la décision d'une dépendance nomme la dépendance, pas la racine | `local` |
+| **Écrit par une exécution** | Jamais. Rien d'un pack n'atteint le fichier de baseline | `baseline create`, `update`, `suppress` |
+
+`gitpr baseline unsuppress` ne peut donc pas en retirer une : il dit quel pack la porte, et la réponse est une modification du pack, pas du dépôt. Rien n'est téléchargé pour lire le bloc — le pack est déjà du texte sur disque, couvert par le checksum du lockfile comme tout autre champ qu'il déclare, donc le baseline d'un pack ne peut pas être modifié sans que le checksum s'en aperçoive.
+
+Un pack qui utilise ce bloc devrait déclarer un `min_gitpr_version` incluant la version avec laquelle il a été écrit : un GitPR plus ancien lit le manifeste, ne connaît pas la clé et refuse le pack entier, au lieu d'appliquer une politique à moitié silencieusement absente.
 
 ---
 

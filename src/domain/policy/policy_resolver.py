@@ -309,6 +309,7 @@ def compose_policy(
     skill_contexts: dict[str, list[tuple[str, str]]] = {}
     scalar_owner: dict[str, tuple[str, Any]] = {}
     rule_catalogue: list[dict] = []
+    baseline_layer: list[tuple[str, str, dict[str, Any]]] = []
 
     def claim_scalar(key: str, value: Any, tag: str, name: str, declared: str) -> bool:
         """Records a scalar, refusing a disagreement between unrelated packs."""
@@ -428,8 +429,22 @@ def compose_policy(
                 policy.provenance.get("protected_paths"), tag
             )
 
+        # --- baseline (suppressions and accepted debt the pack brings) --------
+        # Collected here and composed below, so the merged document goes through
+        # `parse_overrides` once. That is what refuses a duplicate fingerprint
+        # two packs would otherwise each consider their own.
+        for half in ("suppressions", "accepted_debt"):
+            for item in manifest.baseline.get(half, []):
+                baseline_layer.append((half, tag, item))
+            if manifest.baseline.get(half):
+                policy.provenance[f"baseline.{half}"] = _join_provenance(
+                    policy.provenance.get(f"baseline.{half}"), tag
+                )
+
     if rule_catalogue:
         policy.linter_config["rules"] = _merge_rule_catalogue(rule_catalogue)
+
+    policy.baseline_overrides = _compose_baseline(baseline_layer)
 
     # --- conventions said as prompt context -----------------------------------
     # required_sections, allowed_types and protected_paths are read by no engine:
@@ -510,6 +525,49 @@ def _join_provenance(existing: str | None, tag: str) -> str:
     if tag in existing.split(", "):
         return existing
     return f"{existing}, {tag}"
+
+
+def _compose_baseline(
+    contributions: list[tuple[str, str, dict[str, Any]]],
+) -> Any:
+    """The packs' baseline blocks as one layer, each entry stamped with its pack.
+
+    Parsed in a single pass through ``parse_overrides`` — the very validator a
+    hand-edited ``baseline.overrides.yml`` goes through — so a duplicate
+    fingerprint between two packs is refused here rather than resolved by
+    whichever pack happened to come last. The origin is written per entry, from
+    the pack that declared it: the layer is displayed as ``policy:<name>``, and
+    a dependency's decision shown as the root's would misserve the one surface
+    that exists to attribute.
+    """
+    if not contributions:
+        return None
+
+    from src.domain.baseline import BaselineError, parse_overrides
+
+    document: dict[str, list[dict[str, Any]]] = {"suppressions": [], "accepted_debt": []}
+    origins: dict[str, list[str]] = {"suppressions": [], "accepted_debt": []}
+    for half, tag, item in contributions:
+        document[half].append(item)
+        origins[half].append(f"policy:{tag}")
+
+    try:
+        layer = parse_overrides(document)
+    except BaselineError as error:
+        raise PolicyError(
+            __(
+                "The baseline block of these packs cannot be applied: {error}",
+                error=error,
+            )
+        ) from error
+
+    for half, items in (
+        ("suppressions", layer.suppressions),
+        ("accepted_debt", layer.accepted_debt),
+    ):
+        for entry, origin in zip(items, origins[half]):
+            entry.origin = origin
+    return layer
 
 
 def _apply_overrides(

@@ -1,7 +1,7 @@
 """Mapping, normalization, and deduplication of SAST and secret findings."""
 
 import re
-from src.infrastructure.linter.external.base_bridge import NormalizedFinding
+from src.domain.finding.finding_types import NormalizedFinding
 
 
 def format_finding_message(finding: NormalizedFinding) -> str:
@@ -70,6 +70,10 @@ def deduplicate_secret_findings(
                 message=f"{f.message} (Confirmed by Gitleaks + Static Regex)",
                 source="gitleaks+regex",
                 rule_id=f.rule_id,
+                # The digest travels with the merge: confirmation by a second
+                # tool must not change a finding's identity in the baseline.
+                snippet_hash=f.snippet_hash,
+                rule_version=f.rule_version,
             )
             merged_sast_findings.append(merged_finding)
         else:

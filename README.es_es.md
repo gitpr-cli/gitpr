@@ -147,6 +147,7 @@ Puedes pasar las siguientes *flags* para acciones específicas:
 * `gitpr review-pr <pr_number>`: **Revisión de Pull Request Remoto.** Obtiene y revisa un pull request abierto directamente en la forge (GitHub, GitLab, Bitbucket, Azure DevOps) sin necesidad de checkout local de la rama. Usa `--post-comment` para publicar la revisión como comentario en la PR. 📖 [Documentación completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/review-pr.md)
 * `gitpr risk`: **Puntuación de Riesgo Local para Diffs.** Calcula una puntuación de riesgo determinista y explicable (0.0 a 100.0) e insignia (`LOW 🟢`, `MEDIUM 🟡`, `HIGH 🟠`, `CRITICAL 🔴`) mediante señales locales del repositorio (rutas críticas, pruebas faltantes, migraciones, historial de bugs y hallazgos estáticos). Usa `--file <ruta>`, `--format json`, `--base <ref>` o `--no-history`. Automáticamente incluido en revisiones de código (`GITPR_RISK_INCLUDE_IN_REVIEW=true`). 📖 [Documentación completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.es_es.md)
 * `gitpr policy`: **Política de calidad compartida por el repositorio.** Adopta un **Policy Pack** YAML versionable — skills de revisión, reglas de linter, overrides de severidad, rutas críticas, pesos de riesgo y convenciones de PR/commit — y registra la elección en `.gitpr/policy.lock.yml`, así que la revisión, el linter y la puntuación de riesgo pasan a ejecutarse bajo la misma política, con un checksum por pack. `list`, `validate`, `show`, `use`, `init`, `install`, `off`. 📖 [Documentación completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/policy-packs.es_es.md)
+* `gitpr baseline`: **Baseline y supresiones auditables para la adopción en legado.** Registra en `.gitpr/baseline.json` los hallazgos que el repositorio ya tiene, así que cada ejecución clasifica cada hallazgo como `new`, `existing`, `resolved`, `ignored` o `accepted_debt` — y **solo `new` bloquea**. Toda supresión lleva un motivo, y la deuda aceptada lleva un responsable y un plazo opcional. `create`, `show`, `validate`, `update`, `suppress`, `unsuppress`. 📖 [Documentación completa](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/baseline-suppressions.es_es.md)
 * `-c` o `--commit`: Ejecuta un `git diff` local y muestra **solo el mensaje de commit sugerido**.
 * `-r` o `--review`: Realiza un **Code Review** detallado de los cambios locales.
 * `-f` o `--fullreview`: Realiza un **Code Review Completo** analizando todos los cambios desde la rama remota.
@@ -258,6 +259,34 @@ gitpr risk --base main            # Evalúa respecto a una referencia git explí
 ```
 
 📖 **Documentación completa:** [docs/risk-scoring.es_es.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.es_es.md)
+
+## 🧾 Adopción en legado: baseline y supresiones auditables (gitpr baseline)
+
+Adoptar GitPR en un repositorio que ya carga cientos de hallazgos es el momento en que la herramienta resulta menos útil: el portón falla en problemas que nadie introdujo en este cambio, y las alternativas son apagarlo o gastar un sprint corrigiendo código que nadie está tocando. Un **baseline** es el registro de lo que el repositorio ya tiene, commiteado en Git, para que cada ejecución clasifique lo que encuentra en lugar de partir de cero.
+
+```bash
+gitpr baseline create                    # Registra los hallazgos del diff actual
+gitpr baseline show                      # Los hallazgos, las decisiones y los recuentos
+gitpr baseline validate                  # Todo defecto del archivo — exit 1 en cualquiera
+gitpr baseline update                    # Registra el diff de hoy de nuevo, conservando decisiones
+gitpr baseline suppress <id> --reason "…"    # Una decisión sobre un hallazgo
+gitpr baseline unsuppress <id>           # Deshace una decisión
+```
+
+Una supresión no es un filtro silencioso: lleva un **motivo**, un autor y una fecha, y la deuda aceptada lleva un **responsable** y un **plazo** opcional. `--scope finding|line|file|rule` amplía una decisión más allá de un hallazgo, y todo lo más amplio que un hallazgo vive en `.gitpr/baseline.overrides.yml`, donde se revisa junto con el código. Un checksum sobre el registro detecta una edición hecha fuera de GitPR — `gitpr baseline validate` nombra la divergencia en lugar de aplicar el archivo. Un **Policy Pack** puede llevar un bloque `baseline:` propio, aplicado en memoria y atribuido al pack.
+
+Cuatro variables en `~/.gitpr/.env`, también editables desde `gitpr config` en la sección **Baseline**:
+
+| Clave | Por defecto | Efecto |
+|---|---|---|
+| `GITPR_BASELINE_ENABLED` | `true` | `false` → ninguna ejecución lee el baseline: el comportamiento de todas las versiones anteriores, byte a byte |
+| `GITPR_BASELINE_PATH` | *(vacío)* | `.gitpr/baseline.json`; una ruta relativa se resuelve desde la raíz del repositorio |
+| `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH` | `true` | Un checksum divergente vuelve el registro inutilizable: los flujos que bloquean lo rechazan y salen con código distinto de cero |
+| `GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES` | `true` | `false` → `.gitpr/baseline.overrides.yml` no se lee |
+
+Solo un hallazgo de nivel `error` con status `new` sale con código distinto de cero, y solo los hallazgos `new` puntúan en el riesgo — todo lo demás llega al informe de riesgo como evidencia de cero puntos con su status. El baseline nunca se envía a la IA, y ninguna entrada guarda código ni secreto: el archivo se commitea, así que solo se conserva un digest de la línea ofensora.
+
+📖 **Documentación completa:** [docs/baseline-suppressions.es_es.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/baseline-suppressions.es_es.md)
 
 ## 🤝 Firma de Coautoría
 
@@ -512,6 +541,7 @@ Si deseas implementar GitPR como una barrera de calidad automatizada en tu equip
 * [**Comando Split (gitpr split)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/split-command.md) — Cómo el subcomando `gitpr split` lee un árbol de trabajo con varias preocupaciones, agrupa los hunks por intención con IA y los convierte en commits atómicos ordenados, sin escribir nunca en tus archivos.
 * [**Puntuación de Riesgo Local (gitpr risk)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.es_es.md) — Cómo el comando `gitpr risk` evalúa riesgos de regresión, descompone señales (fórmula 50/30/20) y resalta áreas de alto riesgo en revisiones de código offline.
 * [**Policy Packs (gitpr policy)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/policy-packs.es_es.md) — Cómo un repositorio adopta un Policy Pack versionable que transporta skills, reglas de linter, overrides de severidad, rutas críticas y pesos de riesgo en conjunto, la escalera de precedencia que combina los packs, el lockfile que el equipo commitea y los tres fallos que abortan en lugar de degradar en silencio.
+* [**Baseline y Supresiones Auditables (gitpr baseline)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/baseline-suppressions.es_es.md) — Cómo un repositorio legado registra los hallazgos que ya tiene, cómo cada ejecución los clasifica como `new`, `existing`, `resolved`, `ignored` o `accepted_debt`, por qué solo `new` bloquea, qué hashea el fingerprint y qué deja fuera a propósito, los cuatro escopos de una supresión, el checksum que detecta una edición manual y el bloque `baseline:` que un Policy Pack puede llevar.
 
 ### Configuración e Infraestructura
 

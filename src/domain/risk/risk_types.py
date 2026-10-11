@@ -28,6 +28,11 @@ class RiskSignal(str, Enum):
     FINDING_BLOCKER = "finding_blocker"
     FINDING_CRITICAL = "finding_critical"
     FINDING_WARNING = "finding_warning"
+    # A finding the baseline already knew about. It carries no weight on purpose:
+    # the status is the answer to "does this count against the change?", and the
+    # evidence exists so the report can say so out loud instead of dropping the
+    # finding from the breakdown. See `baseline_gate.informational_evidence`.
+    BASELINE_FINDING = "baseline_finding"
     NEW_FILE = "new_file"
     SIGNAL_UNAVAILABLE = "signal_unavailable"
 

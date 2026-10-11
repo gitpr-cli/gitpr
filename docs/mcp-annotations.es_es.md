@@ -33,6 +33,7 @@ momento, sin necesidad de confirmación:
 | `get_git_context` | ✅ | ✅ |
 | `analyze_diff` | ✅ | ✅ |
 | `run_linter` | ✅ | ✅ |
+| `get_baseline_status` | ✅ | ✅ |
 
 ### Herramientas con Efectos Colaterales (llamadas de red)
 

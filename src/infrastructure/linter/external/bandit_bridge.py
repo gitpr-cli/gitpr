@@ -2,10 +2,10 @@
 
 import json
 import os
+from src.domain.finding.finding_types import NormalizedFinding
 from src.infrastructure.linter.external.base_bridge import (
     ExternalLinterBridge,
     ExternalLinterResult,
-    NormalizedFinding,
 )
 
 

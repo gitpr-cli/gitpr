@@ -91,6 +91,7 @@ interactive prompts.
 | `run_linter` | Static linter against `.gitpr.linter.yml` rules |
 | `analyze_blame` | Git blame + AI classification (ORIGIN vs REFACTORING) |
 | `generate_issue` | Structured issue from diff, history, or blame context |
+| `get_baseline_status` | Technical baseline digest: entries per status, noisiest rules, accepted and overdue debt, checksum state (read-only — never runs the linter, never writes) |
 
 ## Available Resources
 
@@ -104,6 +105,7 @@ interactive prompts.
 | `skill://issue` | Custom issue generation AI instructions |
 | `skill://blame` | Custom blame analysis AI instructions |
 | `linter://config` | YAML linter rules (`.gitpr.linter.yml`) |
+| `baseline://summary` | The baseline digest as JSON — the same answer the `get_baseline_status` tool returns |
 
 ### Prompt Resources
 

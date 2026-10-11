@@ -59,6 +59,12 @@ class ReviewRemotePrResult:
     ``warnings`` collects what the user should know but that did not stop the
     run: files dropped by the smart excludes, a diff large enough to trigger
     map-reduce.
+
+    ``compared`` is the run's findings read against the repository's baseline,
+    or an empty list when there is none. It travels to the caller because the
+    caller is what renders the risk section and the terminal line — the
+    annotation of the alerts themselves already happened here, where the
+    published comment is composed.
     """
 
     pr_number: int
@@ -68,6 +74,7 @@ class ReviewRemotePrResult:
     linter_results: dict
     warnings: list = field(default_factory=list)
     comment_posted: bool = False
+    compared: list = field(default_factory=list)
 
 
 def _ai_provider_label(provider):
@@ -122,10 +129,23 @@ def review_remote_pr(
     ``ScmProviderError`` only when this module cannot say something more useful
     about them.
     """
+    from src.application.use_cases.baseline_gate import (
+        alert_status_index,
+        annotate_alerts,
+        classify_findings_for_gate,
+        load_baseline,
+    )
     from src.core import generate_pr_content, get_smart_exclude_patterns
     from src.linter_engine import parse_diff_and_lint
 
     provider_label = getattr(scm_provider, "name", "") or "This forge"
+
+    # Before the network, before the AI: the repository's baseline, resolved
+    # here because `gitpr review-pr` is a subcommand and a subcommand never runs
+    # the root callback the local flows resolve theirs in. A file that cannot be
+    # applied stops the run with the instruction that repairs it — reviewing
+    # against a baseline that answers for nothing is not a service.
+    gate = load_baseline(required=True)
 
     # 1. Capability gate — the cheapest possible rejection, before the network.
     if not getattr(scm_provider, "supports_reviewable_diff", False):
@@ -218,7 +238,7 @@ def review_remote_pr(
 
     # 5. Smart excludes. git applies these as pathspecs on every local diff; a
     #    diff from the API never passes through git, so they run here instead.
-    warnings = []
+    warnings = list(gate.warnings)
     diff_text, dropped = filter_excluded_sections(
         raw_diff, get_smart_exclude_patterns()
     )
@@ -271,7 +291,17 @@ def review_remote_pr(
 
     # 8. Linter. The external bridge runs binaries against files on disk, which
     #    here would be whatever the user has checked out — not this PR.
-    linter_results = parse_diff_and_lint(diff_text, skip_external=True)
+    linted = []
+    linter_results = parse_diff_and_lint(diff_text, skip_external=True, findings_out=linted)
+
+    # 8b. The baseline's verdict on those findings, written onto the alerts
+    #     before anything renders them — the file, the terminal and the comment
+    #     are composed from this same dict further down.
+    compared = (
+        classify_findings_for_gate(linted, gate) if gate.is_active and linted else []
+    )
+    if compared:
+        linter_results = annotate_alerts(linter_results, alert_status_index(compared))
 
     chunk_count = _chunk_count(diff_text)
     if chunk_count > 1:
@@ -301,6 +331,7 @@ def review_remote_pr(
         linter_results=linter_results,
         warnings=warnings,
         comment_posted=comment_posted,
+        compared=compared,
     )
 
 

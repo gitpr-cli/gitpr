@@ -80,10 +80,12 @@ _TOP_LEVEL_KEYS = {
     "pr",
     "commit",
     "protected_paths",
+    "baseline",
 }
 _SKILL_KEYS = {"additional_context"}
 _LINTER_KEYS = {"rules_file", "severity_overrides"}
 _OVERRIDE_KEYS = {"rule_name", "level", "reason"}
+_BASELINE_KEYS = {"suppressions", "accepted_debt"}
 _EXTENDS_KEYS = {"name", "version"}
 _RISK_KEYS = {"critical_paths", "weights", "thresholds", "test_patterns"}
 _PR_KEYS = {"required_sections"}
@@ -420,6 +422,62 @@ def _parse_scalar_block(
     return parsed
 
 
+def _parse_baseline(data: dict, pack: str) -> dict[str, list[dict[str, Any]]]:
+    """The ``baseline:`` block: the suppressions and debt a pack brings with it.
+
+    Validated by the very validators a hand-edited ``baseline.overrides.yml``
+    goes through, and not by a second implementation of the same rules: a pack
+    that could declare a suppression without a reason, or accepted debt nobody
+    owns, would be a way around the auditability the feature exists for. The
+    failure is re-raised as a ``PolicyError`` naming the pack, the half and the
+    index, because that is what ``gitpr policy validate`` prints.
+
+    The entries are returned as data, not as the domain's own types: composing
+    the layer — and refusing a duplicate fingerprint between two packs — is the
+    resolver's job, and it does it through the same ``parse_overrides``.
+    """
+    block = data.get("baseline")
+    if block is None:
+        return {}
+    if not isinstance(block, dict):
+        _fail(__("Pack {pack}: 'baseline' must be a mapping.", pack=pack), pack)
+    _check_unknown(block, _BASELINE_KEYS, "baseline", pack)
+
+    from src.domain.baseline import BaselineError, validate_debt, validate_suppression
+
+    parsed: dict[str, list[dict[str, Any]]] = {}
+    for key, validator in (
+        ("suppressions", validate_suppression),
+        ("accepted_debt", validate_debt),
+    ):
+        items = block.get(key)
+        if items is None:
+            continue
+        if not isinstance(items, list):
+            _fail(
+                __("Pack {pack}: baseline.{half} must be a list.", pack=pack, half=key),
+                pack,
+            )
+        entries: list[dict[str, Any]] = []
+        for index, item in enumerate(items, start=1):
+            try:
+                entries.append(validator(item).to_dict())
+            except BaselineError as error:
+                _fail(
+                    __(
+                        "Pack {pack}: baseline.{half} #{index}: {error}",
+                        pack=pack,
+                        half=key,
+                        index=index,
+                        error=error,
+                    ),
+                    pack,
+                )
+        if entries:
+            parsed[key] = entries
+    return parsed
+
+
 def _parse_additive_block(block: Any, where: str) -> dict[str, list[str]]:
     """An ``{add: [...], remove: [...]}`` pair, with either half optional."""
     if not isinstance(block, dict):
@@ -632,4 +690,5 @@ def parse_manifest(
         pr=_parse_scalar_block(data, "pr", _PR_KEYS, ("required_sections",), name),
         commit=_parse_scalar_block(data, "commit", _COMMIT_KEYS, ("allowed_types",), name),
         protected_paths=protected_paths,
+        baseline=_parse_baseline(data, name),
     )

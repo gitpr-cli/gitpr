@@ -33,6 +33,7 @@ momento, sem necessidade de confirmação:
 | `get_git_context` | ✅ | ✅ |
 | `analyze_diff` | ✅ | ✅ |
 | `run_linter` | ✅ | ✅ |
+| `get_baseline_status` | ✅ | ✅ |
 
 ### Ferramentas com Efeitos Colaterais (chamadas de rede)
 

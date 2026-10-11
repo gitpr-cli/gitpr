@@ -6,19 +6,9 @@ import os
 import shutil
 import subprocess
 
-
-@dataclass
-class NormalizedFinding:
-    """Standardized finding model used across all GitPR SAST & linter tools."""
-
-    severity: str  # "error" | "warning" | "info"
-    category: str
-    file_path: str
-    line_start: int
-    line_end: int
-    message: str
-    source: str  # "semgrep" | "gitleaks" | "bandit" | etc.
-    rule_id: str | None = None
+# Re-export: the canonical model lives in the domain layer. This import path is
+# kept so existing consumers keep working.
+from src.domain.finding.finding_types import NormalizedFinding  # noqa: F401
 
 
 @dataclass

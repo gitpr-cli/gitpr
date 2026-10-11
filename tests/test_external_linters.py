@@ -255,7 +255,8 @@ class TestDiffCrossReference(unittest.TestCase):
             }
         ]
 
-        # Added lines are tracked in order: +const → line 1, +console.log → line 2
+        # Added lines are tracked by the file's own numbering: +const → line 1,
+        # the context line holds 2, +console.log → line 3
         diff_text = (
             "+++ b/src/app.js\n"
             "@@ -1,5 +1,6 @@\n"
@@ -264,12 +265,12 @@ class TestDiffCrossReference(unittest.TestCase):
             "+console.log(x)\n"
         )
 
-        # line 3 is a legacy error NOT touched by this diff — must be ignored
+        # line 4 is a legacy error NOT touched by this diff — must be ignored
         xml_output = (
             '<checkstyle><file name="src/app.js">'
             '<error line="1" severity="error" message="Semicolon required"/>'
-            '<error line="2" severity="warning" message="console not allowed"/>'
-            '<error line="3" severity="error" message="Legacy issue"/>'
+            '<error line="3" severity="warning" message="console not allowed"/>'
+            '<error line="4" severity="error" message="Legacy issue"/>'
             "</file></checkstyle>"
         )
 
@@ -280,7 +281,7 @@ class TestDiffCrossReference(unittest.TestCase):
         self.assertEqual(len(result["errors"]), 1)
         self.assertIn("Line 1", result["errors"][0])
         self.assertEqual(len(result["warnings"]), 1)
-        self.assertIn("Line 2", result["warnings"][0])
+        self.assertIn("Line 3", result["warnings"][0])
 
     @patch("src.linter_engine.load_linter_rules", return_value=[])
     @patch("src.linter_engine.load_external_linters")

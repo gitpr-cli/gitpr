@@ -341,6 +341,62 @@ def _resolve_policy_or_die(announce=True):
     return policy
 
 
+def _resolve_baseline_or_die(required=False):
+    """Resolves the repository's baseline, or refuses to run on one it cannot apply.
+
+    Called right after the policy pack, and for the same reason: both decide how
+    the rest of the run reads a finding. *required* is the whole difference — a
+    flow that enforces the baseline (the linter, the review, the full review, the
+    file audit, the remote pull request) stops when the file cannot be applied,
+    because classifying every legacy finding as `new` and handing that back as a
+    verdict is worse than not running at all. Every other flow passes nothing,
+    reads nothing, and prints nothing: `-c`, the PR flows, blame, the issue
+    flows, chat, release, split and fix behave exactly as they did before this
+    feature existed.
+
+    Nothing is announced here. The line §8.4 asks for is the counts line printed
+    once the findings *have* been classified, and a file that is read but says
+    nothing about this diff has nothing worth a terminal line.
+    """
+    from src.application.use_cases.baseline_gate import load_baseline
+    from src.domain.baseline import BaselineError
+
+    try:
+        gate = load_baseline(required=required)
+    except BaselineError as error:
+        click.secho(f"❌ {error}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from error
+
+    # stderr: `risk --format json` is read by machine, and a notice about the
+    # baseline belongs beside the document, never inside it.
+    for warning in gate.warnings:
+        click.secho(f"⚠️ {warning}", fg="yellow", err=True)
+    return gate
+
+
+def _classify_with_baseline(gate, findings):
+    """This run's findings read against the baseline, or [] when there is none.
+
+    The empty list is the answer both for a flow that has no baseline and for
+    one that found nothing: an inactive gate is never asked to classify, so no
+    call site has to tell the two apart before calling.
+    """
+    if not gate.is_active or not findings:
+        return []
+    from src.application.use_cases.baseline_gate import classify_findings_for_gate
+
+    return classify_findings_for_gate(findings, gate)
+
+
+def _print_baseline_line(compared, quiet=False):
+    """The one-line summary §8.4 asks for, printed only when there is one."""
+    from src.application.use_cases.baseline_gate import status_line
+
+    line = status_line(compared) if compared else ""
+    if line and not quiet:
+        click.secho(f"🧾 {line}", fg="blue", dim=True)
+
+
 # Native Click configuration to accept -h in addition to --help. The root is a
 # group so `gitpr release` (ADR-002) exists as a subcommand: without one, the
 # callback below routes to the legacy ~29-flag dispatch unchanged.
@@ -773,6 +829,14 @@ def cli(
     if ctx.invoked_subcommand != "policy":
         _resolve_policy_or_die(announce=not quiet)
 
+    # …and the baseline beside it, resolved once per run and before any finding
+    # is produced. The three flows named here are the ones that *enforce* it: on
+    # a file that cannot be applied they stop rather than report. Everything
+    # else in this file gets an inactive gate and never touches the disk.
+    baseline_gate = _resolve_baseline_or_die(
+        required=bool(linter or review or fullreview or input)
+    )
+
     # Silencia o banner se estiver no modo quiet ou via hook
     if not quiet and not hook:
         print_banner()
@@ -791,9 +855,33 @@ def cli(
                 click.secho(__("✅ Nothing to validate (empty diff)."), fg="green")
             return
 
-        linter_results = parse_diff_and_lint(diff_text)
+        # One lint, two views: the alert strings the report has always been
+        # built from, and the structured findings beside them. Only a baseline
+        # reads the second one, and a run without a baseline never looks at it.
+        linted = []
+        linter_results = parse_diff_and_lint(diff_text, findings_out=linted)
         has_warnings = len(linter_results["warnings"]) > 0
         has_errors = len(linter_results["errors"]) > 0
+
+        compared = _classify_with_baseline(baseline_gate, linted)
+        # No baseline, or nothing to classify: every error blocks, exactly as it
+        # always has. With one, only the errors *this change* introduced do — a
+        # legacy tree that baselined its findings can go green.
+        blocking = has_errors
+        if compared:
+            from src.application.use_cases.baseline_gate import (
+                alert_status_index,
+                annotate_alerts,
+                blocking_errors,
+            )
+
+            # The statuses are written onto the alerts themselves, so the
+            # report, the console and the TUI tell one story about one finding.
+            linter_results = annotate_alerts(
+                linter_results, alert_status_index(compared)
+            )
+            blocking = bool(blocking_errors(compared))
+        _print_baseline_line(compared, quiet=quiet)
 
         # 1. Generate and save the Markdown report (only when violations are found)
         if has_warnings or has_errors:
@@ -832,25 +920,35 @@ def cli(
             linter_warnings=len(linter_results.get("warnings", [])),
         )
 
-        # 2. Display TUI if there are blocking errors and NOT in a hook/quiet mode
-        if has_errors:
-            if not quiet and not hook:
-                from src.ui.linter_app import LinterApp
+        # 2. Display TUI if there are errors and NOT in a hook/quiet mode. Every
+        #    error is still shown, baselined ones included, carrying their
+        #    status in front — hiding a legacy error would be the reviewers'
+        #    problem, not the baseline's.
+        if has_errors and not quiet and not hook:
+            from src.ui.linter_app import LinterApp
 
-                app = LinterApp(alerts=linter_results)
-                app.run()
-            else:
-                # Hook safety: print to the terminal only
-                click.secho(
-                    __(
-                        "\n🚨 Validation failed! Found {count} critical error(s):",
-                        count=len(linter_results["errors"]),
-                    ),
-                    fg="red",
-                    bold=True,
-                )
-                for alert in linter_results["errors"]:
-                    click.echo(f"  - {alert}")
+            app = LinterApp(alerts=linter_results)
+            app.run()
+        elif blocking:
+            # Hook safety: print to the terminal only. Only when the run is
+            # actually failing: the sentence says "validation failed", and with
+            # a baseline every error in the diff can be a known one.
+            click.secho(
+                __(
+                    "\n🚨 Validation failed! Found {count} critical error(s):",
+                    count=len(linter_results["errors"]),
+                ),
+                fg="red",
+                bold=True,
+            )
+            for alert in linter_results["errors"]:
+                click.echo(f"  - {alert}")
+
+        # The exit code follows the baseline: an error the repository recorded
+        # does not fail the run, one this change introduced does. With no
+        # baseline `blocking` is `has_errors`, which is the `sys.exit(1)` every
+        # version before this one took here.
+        if blocking:
             sys.exit(1)
 
         # 3. Warning processing (best-practice advisories only)
@@ -869,7 +967,10 @@ def cli(
                 __("\n✅ Code approved with warnings. The commit will proceed."),
                 fg="green",
             )
-        elif not quiet:
+        elif not quiet and not has_errors:
+            # `has_errors` is what keeps the sentence true: with a baseline a
+            # diff can carry errors that do not fail the run, and the line above
+            # has just listed them. Without one, `blocking` already exited.
             click.secho(
                 __("\n✅ Clean code! No violations found by the local Linter."),
                 fg="green",
@@ -1434,16 +1535,38 @@ def cli(
             )
 
         # Run the Linter. If "filereview", enable full-file mode.
+        linted = []
         if action_type == "filereview":
             linter_results = parse_diff_and_lint(
-                diff_text, is_full_file=True, file_path=input
+                diff_text, is_full_file=True, file_path=input, findings_out=linted
             )
         else:
-            linter_results = parse_diff_and_lint(diff_text)
+            linter_results = parse_diff_and_lint(diff_text, findings_out=linted)
+
+        # The statuses reach the report file, the console and the risk section
+        # from this one classification. A review has never exited non-zero over
+        # a finding, and a baseline does not change that — it changes what a
+        # reader is told about one.
+        compared = _classify_with_baseline(baseline_gate, linted)
+        if compared:
+            from src.application.use_cases.baseline_gate import (
+                alert_status_index,
+                annotate_alerts,
+            )
+
+            linter_results = annotate_alerts(
+                linter_results, alert_status_index(compared)
+            )
+        _print_baseline_line(compared, quiet=quiet)
 
         risk_section = None
         if action_type in ("review", "fullreview") and risk_scoring_in_review_enabled():
             try:
+                from src.application.use_cases.baseline_gate import (
+                    attach_informational_evidence,
+                    new_findings,
+                    status_line,
+                )
                 from src.application.use_cases.calculate_risk import execute_calculate_risk
                 from src.domain.risk.risk_explanation import format_risk_review_section
                 from src.review.diff_source import DiffOrigin, DiffSource
@@ -1453,8 +1576,17 @@ def cli(
                     content=diff_text,
                     identifier="head",
                 )
-                r_risk = execute_calculate_risk(r_diff_source)
+                # With a baseline the score is this change's alone: the legacy
+                # findings travel as zero-weight evidence instead of raising it.
+                r_risk = execute_calculate_risk(
+                    r_diff_source, findings=new_findings(compared) if compared else None
+                )
+                if compared:
+                    attach_informational_evidence(r_risk, compared)
                 risk_section = format_risk_review_section(r_risk)
+                line = status_line(compared) if compared else ""
+                if line:
+                    risk_section = f"**{line}**\n\n{risk_section}"
             except Exception:
                 risk_section = None
 
@@ -2496,8 +2628,15 @@ def review_pr(pr_number, ai_provider, post_comment):
 
     Nothing is published on the forge unless --post-comment is given.
     """
+    from src.domain.baseline import BaselineError
     from src.infrastructure.scm.base import ScmProviderError
     from src.review.remote_pr import ReviewPrError, review_remote_pr
+
+    # A subcommand never runs the root callback, so the pack has to be resolved
+    # here or this flow would lint and score from the defaults while the
+    # terminal answered from the pack — about the same repository. The baseline
+    # is resolved inside the use case, before its first network call.
+    _resolve_policy_or_die()
 
     provider, repo_ref = _resolve_scm_context()
     if not provider or not repo_ref:
@@ -2510,6 +2649,9 @@ def review_pr(pr_number, ai_provider, post_comment):
             pr_number, provider, repo_ref, active_provider, post_comment
         )
     except ReviewPrError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+    except BaselineError as exc:
         click.secho(f"❌ {exc}", fg="red", err=True)
         raise click.exceptions.Exit(1) from exc
     except ScmProviderError as exc:
@@ -2532,14 +2674,32 @@ def review_pr(pr_number, ai_provider, post_comment):
         current_time,
     )
 
+    compared = getattr(result, "compared", None) or []
+    _print_baseline_line(compared)
+
     risk_section = None
     if risk_scoring_in_review_enabled() and result.diff_source:
         try:
+            from src.application.use_cases.baseline_gate import (
+                attach_informational_evidence,
+                new_findings,
+                status_line,
+            )
             from src.application.use_cases.calculate_risk import execute_calculate_risk
             from src.domain.risk.risk_explanation import format_risk_review_section
 
-            r_risk = execute_calculate_risk(result.diff_source)
+            # Same reading as the local review: with a baseline the score is
+            # this pull request's own findings, and the rest of what the linter
+            # saw travels as evidence worth nothing.
+            r_risk = execute_calculate_risk(
+                result.diff_source, findings=new_findings(compared) if compared else None
+            )
+            if compared:
+                attach_informational_evidence(r_risk, compared)
             risk_section = format_risk_review_section(r_risk)
+            line = status_line(compared) if compared else ""
+            if line:
+                risk_section = f"**{line}**\n\n{risk_section}"
         except Exception:
             risk_section = None
 
@@ -3212,14 +3372,19 @@ def _detect_policy_stack(repo_path=None):
     return None
 
 
-def _policy_error(error):
-    """Prints a policy failure the way every other command prints a failure."""
+def _command_error(error):
+    """Prints a domain failure the way every other command prints a failure.
+
+    Shared by the policy and baseline groups: a domain error is already a
+    sentence written for the user, so both only have to decide where it goes —
+    stderr — and what the process says about it — nothing, then exit 1.
+    """
     click.secho(f"❌ {error}", fg="red", err=True)
     raise click.exceptions.Exit(1)
 
 
-def _policy_may_write(yes, quiet=False, hook=False, mcp=False):
-    """Whether a policy command is allowed to write, refusing rather than hanging.
+def _may_write(yes, quiet=False, hook=False, mcp=False):
+    """Whether a command that writes to the record is allowed to, refusing rather than hanging.
 
     ``--yes`` answers the question, and only the question: every check that
     decides *whether* the write is legal has already run and is not skipped by
@@ -3393,6 +3558,21 @@ def policy_validate(target):
         if override["reason"]:
             click.secho(f"        {override['reason']}", dim=True)
 
+    baseline = report["baseline"]
+    if baseline["suppressions"] or baseline["accepted_debt"]:
+        # Said with the counts and nothing else: the entries themselves are in
+        # `gitpr baseline show`, where they can be read against the findings they
+        # silence — a suppression listed here would be a decision out of context.
+        line(
+            True,
+            __(
+                "Baseline: {suppressions} suppression(s) and {debt} accepted debt(s) "
+                "come with this pack.",
+                suppressions=len(baseline["suppressions"]),
+                debt=len(baseline["accepted_debt"]),
+            ),
+        )
+
     for dependency in report["dependencies"]:
         click.echo(
             "    "
@@ -3507,6 +3687,15 @@ def _policy_value(policy, key):
                 return override.level if override else "?"
             return _policy_render(walk(getattr(policy, attribute), parts[1:]))
 
+    if key.startswith("baseline."):
+        # Named by rule — or by fingerprint for debt, which covers one finding
+        # and has no rule to be named after. The reason and the origin are in
+        # `gitpr baseline show`, one command away from the finding itself.
+        entries = policy.baseline_dict().get(key.split(".", 1)[1], [])
+        return _policy_render(
+            [item.get("rule_id") or item.get("fingerprint") or "?" for item in entries]
+        )
+
     if key.startswith("skills."):
         return _policy_render(policy.skill_context_for(key.split(".")[1]) or "")
     if key == "protected_paths":
@@ -3532,7 +3721,7 @@ def policy_use(reference, yes):
     try:
         data = build_lockfile(reference)
     except PolicyError as error:
-        _policy_error(error)
+        _command_error(error)
 
     click.secho(
         __("This repository will follow {summary}.", summary=describe_lockfile(data)),
@@ -3544,12 +3733,12 @@ def policy_use(reference, yes):
         __("Written to {path}", path=os.path.join(".gitpr", "policy.lock.yml"))
     )
 
-    if not _policy_may_write(yes):
+    if not _may_write(yes):
         click.confirm(__("Proceed?"), abort=True, default=False)
     try:
         activate_policy_pack(reference)
     except PolicyError as error:
-        _policy_error(error)
+        _command_error(error)
     click.secho(__("✅ Policy activated."), fg="green", bold=True)
 
 
@@ -3575,7 +3764,7 @@ def policy_off(yes):
         ),
         fg="cyan",
     )
-    if not _policy_may_write(yes):
+    if not _may_write(yes):
         click.confirm(__("Proceed?"), abort=True, default=False)
     deactivate_policy_pack()
     click.secho(__("✅ Policy deactivated."), fg="green", bold=True)
@@ -3602,7 +3791,7 @@ def policy_install(source, force, yes):
     try:
         pack = load_source_pack(source)
     except PolicyError as error:
-        _policy_error(error)
+        _command_error(error)
 
     manifest = pack.manifest
     click.secho(
@@ -3614,12 +3803,12 @@ def policy_install(source, force, yes):
         ),
         fg="cyan",
     )
-    if not _policy_may_write(yes):
+    if not _may_write(yes):
         click.confirm(__("Proceed?"), abort=True, default=False)
     try:
         destination = install_policy_pack(source, overwrite=force)
     except PolicyError as error:
-        _policy_error(error)
+        _command_error(error)
     click.secho(
         __("✅ Installed to {path}", path=destination), fg="green", bold=True
     )
@@ -3675,7 +3864,7 @@ def policy_init(stack, yes):
     try:
         data = build_lockfile(reference)
     except PolicyError as error:
-        _policy_error(error)
+        _command_error(error)
 
     click.secho(
         __("This repository will follow {summary}.", summary=describe_lockfile(data)),
@@ -3683,13 +3872,887 @@ def policy_init(stack, yes):
     )
     for pack in data.get("packs", []):
         click.echo(f"  {pack['name']}@{pack['version']} [{pack['source']}]")
-    if not _policy_may_write(yes):
+    if not _may_write(yes):
         click.confirm(__("Proceed?"), abort=True, default=False)
     try:
         activate_policy_pack(reference)
     except PolicyError as error:
-        _policy_error(error)
+        _command_error(error)
     click.secho(__("✅ Policy activated."), fg="green", bold=True)
+
+
+def _baseline_settings():
+    """The `GITPR_BASELINE_*` keys, read once per command."""
+    from src.config import get_baseline_settings
+
+    return get_baseline_settings()
+
+
+def _baseline_file(settings):
+    """`GITPR_BASELINE_PATH`, or None to mean `.gitpr/baseline.json`.
+
+    The empty string is not a filename, and None is how every reader in the
+    repository spells "use the default" — so the conversion happens here, once,
+    rather than in each command.
+    """
+    return settings["path"] or None
+
+
+def _suppression_scopes():
+    """The four scopes, taken from the enum that defines them.
+
+    Called while the module is imported, because `click.Choice` reads its
+    arguments at decoration time — which is why the import is inside it.
+    """
+    from src.domain.baseline import SuppressionScope
+
+    return [scope.value for scope in SuppressionScope]
+
+
+def _baseline_entry_or_die(identifier, settings):
+    """The entry an id names, resolved without writing anything.
+
+    A prompt has to describe the decision it is about to record, and an
+    auditable suppression whose subject is invisible is not one. The resolution
+    is the same one the use case performs — same prefix rule, same refusal of a
+    resolved entry, same strictness about the file — done once more so the
+    question can name the finding.
+    """
+    from src.domain.baseline import (
+        BaselineError,
+        BaselineStatus,
+        resolve_fingerprint_prefix,
+    )
+    from src.infrastructure.baseline.local_baseline_repository import read_baseline
+
+    snapshot = read_baseline(None, _baseline_file(settings))
+    if not snapshot.exists:
+        raise BaselineError(
+            __(
+                "There is no baseline in this repository — run "
+                "'gitpr baseline create' first."
+            ),
+            path=snapshot.path,
+        )
+    if not snapshot.is_usable:
+        raise BaselineError(
+            __(
+                "{path} cannot be read: {problem} Run 'gitpr baseline update "
+                "--recompute' to rebuild it from the working tree.",
+                path=snapshot.path,
+                problem=snapshot.first_problem(),
+            ),
+            path=snapshot.path,
+        )
+
+    manifest = snapshot.manifest
+    fingerprint = resolve_fingerprint_prefix(
+        identifier, [entry.fingerprint for entry in manifest.entries]
+    )
+    entry = manifest.entry_for(fingerprint)
+    if entry.status is BaselineStatus.RESOLVED:
+        raise BaselineError(
+            __(
+                "{fingerprint} was resolved — {path} in {file} is not in the tree "
+                "any more, so there is nothing to decide about it.",
+                fingerprint=fingerprint,
+                path=entry.file_path,
+                file=entry.rule_id or entry.category,
+            )
+        )
+    return snapshot, entry
+
+
+def _short_fingerprint(fingerprint):
+    """The id a person copies out of `show` and pastes into `suppress`."""
+    return fingerprint if len(fingerprint) <= 19 else fingerprint[:19]
+
+
+def _entry_line(entry, applied=None):
+    """One entry as a line: its id, its rule, where it is, and its status."""
+    status = applied.status.value if applied else entry.status.value
+    identity = entry.rule_id or f"category:{entry.category}"
+    location = f"{entry.file_path}:{entry.line_start}"
+    return f"{_short_fingerprint(entry.fingerprint)}  {identity}  {location}  [{status}]"
+
+
+def _decision_note(entry, applied):
+    """Why a decision was made, where it lives, and who signed it."""
+    if applied is None:
+        return ""
+    from src.domain.baseline import ORIGIN_ENTRY
+
+    parts = [applied.reason, applied.scope.value, applied.origin]
+    if applied.origin == ORIGIN_ENTRY:
+        if entry.suppressed_by:
+            parts.append(__("by {author}", author=entry.suppressed_by))
+        if entry.suppressed_at:
+            parts.append(entry.suppressed_at)
+    if applied.owner:
+        parts.append(__("owner {owner}", owner=applied.owner))
+    if applied.due_date:
+        parts.append(__("due {due}", due=applied.due_date))
+    return " · ".join(part for part in parts if part)
+
+
+def _baseline_warning(warning):
+    """A baseline notice, printed beside the document rather than inside it."""
+    click.secho(f"⚠️ {warning}", fg="yellow", err=True)
+
+
+def _baseline_json(payload):
+    import json
+
+    click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+def _is_json(output_format):
+    return str(output_format).lower() == "json"
+
+
+def _baseline_status_counts(entries, overrides):
+    """One count per persisted status, each entry read through the overrides."""
+    from src.domain.baseline import BaselineStatus, status_of_entry
+
+    counts = {status.value: 0 for status in BaselineStatus}
+    for entry in entries:
+        applied = status_of_entry(entry, overrides)
+        status = applied.status if applied is not None else entry.status
+        counts[status.value] += 1
+    return counts
+
+
+def _counts_summary(counts):
+    """`9 existing, 2 ignored` — the statuses that have something to say."""
+    from src.domain.baseline import BaselineStatus
+
+    parts = [
+        f"{counts.get(status.value, 0)} {status.value}"
+        for status in BaselineStatus
+        if counts.get(status.value)
+    ]
+    return ", ".join(parts)
+
+
+@cli.group(
+    "baseline",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True,
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("baseline-suppressions.md"),
+)
+@click.pass_context
+def baseline_group(ctx):
+    """The findings this repository already knows about.
+
+    A baseline is committed with the code and classifies every finding the
+    linter or the review raises as `new`, `existing`, `resolved`, `ignored` or
+    `accepted_debt`. Only `new` blocks, so a legacy tree can adopt GitPR without
+    a first run that is red for reasons nobody in this change caused.
+
+    `show` and `validate` only read. `create`, `update`, `suppress` and
+    `unsuppress` write to .gitpr/baseline.json and ask before they do.
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@baseline_group.command(
+    "create",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Records the findings of the current diff as the baseline."),
+)
+@click.option(
+    "--refresh",
+    is_flag=True,
+    help=__("Reviews the diff again instead of reusing the cached review."),
+)
+@click.option(
+    "--base",
+    "base_ref",
+    metavar="<ref>",
+    default=None,
+    help=__("Records the diff against this ref instead of the working tree."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+def baseline_create(refresh, base_ref, yes, output_format):
+    """Writes the baseline this repository starts from.
+
+    Over an existing file this replaces the record, so the prompt says which
+    decisions that would drop: `update` is the command that keeps them.
+    """
+    from src.application.use_cases.create_baseline import create_baseline
+    from src.domain.baseline import BaselineError
+    from src.infrastructure.baseline.local_baseline_repository import (
+        baseline_path,
+        read_manifest_raw,
+    )
+
+    settings = _baseline_settings()
+    configured = _baseline_file(settings)
+    path = baseline_path(None, configured)
+
+    if not _is_json(output_format):
+        previous, problems = read_manifest_raw(None, configured)
+        if previous is None:
+            click.secho(
+                __("A baseline will be written to {path}.", path=path), fg="cyan"
+            )
+        else:
+            click.secho(
+                __(
+                    "The baseline at {path} will be replaced by what this diff shows.",
+                    path=path,
+                ),
+                fg="cyan",
+            )
+            decided = [
+                entry
+                for entry in previous.entries
+                if entry.suppressed or entry.is_debt()
+            ]
+            if decided:
+                click.secho(
+                    __(
+                        "⚠️ {count} suppression(s) or accepted debt(s) would be "
+                        "dropped — 'gitpr baseline update' keeps them.",
+                        count=len(decided),
+                    ),
+                    fg="yellow",
+                )
+        for problem in problems:
+            _baseline_warning(problem)
+        click.echo(
+            __(
+                "Findings come from the linter on this diff, plus the AI findings of "
+                "the last review of the same diff (--refresh reviews it again)."
+            )
+        )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        run = create_baseline(refresh=refresh, base=base_ref, configured_path=configured)
+    except BaselineError as error:
+        _command_error(error)
+
+    if _is_json(output_format):
+        _baseline_json(
+            {
+                "path": run.path,
+                "created": run.created,
+                "written": run.written,
+                "ai_findings": run.ai_findings,
+                "counts": run.counts,
+                "warnings": run.warnings,
+            }
+        )
+        return
+
+    click.secho(__("✅ Baseline written to {path}", path=run.path), fg="green", bold=True)
+    click.echo(f"🧾 {__('Baseline: {counts}', counts=_counts_summary(run.counts))}")
+    if run.ai_findings:
+        click.echo(
+            __(
+                "   {count} finding(s) came from the AI review and carry no rule id.",
+                count=run.ai_findings,
+            )
+        )
+    for warning in run.warnings:
+        _baseline_warning(warning)
+
+
+@baseline_group.command(
+    "show",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Shows what the baseline records and what was decided about it."),
+)
+@click.option(
+    "--status",
+    "status_filter",
+    type=click.Choice(
+        ["existing", "ignored", "accepted_debt", "resolved"], case_sensitive=False
+    ),
+    default=None,
+    help=__("Lists only the findings in this status."),
+)
+@click.option(
+    "--rule",
+    "rule_filter",
+    metavar="<rule-id>",
+    default=None,
+    help=__("Lists only the findings of this rule (or category:<name>)."),
+)
+@click.option(
+    "--file",
+    "file_filter",
+    metavar="<path>",
+    default=None,
+    help=__("Lists only the findings in this path — a glob is accepted."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+def baseline_show(status_filter, rule_filter, file_filter, output_format):
+    """Reads the baseline, with the override layers already applied.
+
+    Without a filter it lists the findings that carry a decision — the part
+    worth auditing — and counts the rest.
+    """
+    import fnmatch
+
+    from src.domain.baseline import (
+        BaselineError,
+        overdue_decisions,
+        status_of_entry,
+    )
+    from src.infrastructure.baseline.local_baseline_repository import (
+        read_baseline,
+        read_overrides,
+    )
+
+    settings = _baseline_settings()
+    snapshot = read_baseline(None, _baseline_file(settings))
+    if not snapshot.exists:
+        _command_error(
+            BaselineError(
+                __(
+                    "There is no baseline to show at {path} — create one with "
+                    "'gitpr baseline create'.",
+                    path=snapshot.path,
+                ),
+                path=snapshot.path,
+            )
+        )
+    if not snapshot.is_usable:
+        # Showing a file the gate would refuse would answer for a record nobody
+        # is judged against; `validate` is the command that says what is wrong
+        # with it, so this one points there instead of guessing.
+        _command_error(
+            BaselineError(
+                __(
+                    "{path} cannot be read: {problem} Run 'gitpr baseline validate' "
+                    "for every problem it has, or 'gitpr baseline update --recompute' "
+                    "to rebuild it.",
+                    path=snapshot.path,
+                    problem=snapshot.first_problem(),
+                ),
+                path=snapshot.path,
+            )
+        )
+
+    try:
+        overrides, _ = read_overrides(None)
+    except BaselineError:
+        overrides = None
+    # The pack's block is part of what silences a finding, so it is part of what
+    # this shows: a decision the reader cannot see is a decision nobody audits.
+    overrides = _with_pack_layers(overrides)
+
+    filtered = [
+        entry
+        for entry in snapshot.manifest.entries
+        if _kept(entry, status_filter, rule_filter, file_filter, overrides)
+    ]
+    counts = _baseline_status_counts(snapshot.manifest.entries, overrides)
+    late = overdue_decisions(snapshot.manifest.entries, overrides)
+
+    if _is_json(output_format):
+        _baseline_json(
+            {
+                "path": snapshot.path,
+                "exists": True,
+                "usable": True,
+                "schema_version": snapshot.manifest.schema_version,
+                "fingerprint_version": snapshot.manifest.fingerprint_version,
+                "gitpr_version": snapshot.manifest.gitpr_version,
+                "policy_name": snapshot.manifest.policy_name,
+                "policy_version": snapshot.manifest.policy_version,
+                "created_at": snapshot.manifest.created_at,
+                "updated_at": snapshot.manifest.updated_at,
+                "problems": snapshot.problems,
+                "counts": counts,
+                "overdue": [entry.fingerprint for entry, _applied in late],
+                "entries": [entry.to_dict() for entry in filtered],
+            }
+        )
+        for problem in snapshot.problems:
+            _baseline_warning(problem)
+        return
+
+    click.secho(f"🔎 {__('Baseline')} {snapshot.path}", fg="cyan", bold=True)
+    click.echo(
+        "   "
+        + __(
+            "schema {schema} · fingerprints {fingerprints} · GitPR {version}",
+            schema=snapshot.manifest.schema_version,
+            fingerprints=snapshot.manifest.fingerprint_version,
+            version=snapshot.manifest.gitpr_version or "?",
+        )
+    )
+    tag = _manifest_policy_tag(snapshot.manifest)
+    click.echo(
+        "   "
+        + __(
+            "created {created} · updated {updated}",
+            created=(snapshot.manifest.created_at or "?")[:10],
+            updated=(snapshot.manifest.updated_at or "?")[:10],
+        )
+        + (f" · policy {tag}" if tag else "")
+    )
+    click.echo(
+        "   "
+        + __(
+            "{total} finding(s): {counts}",
+            total=len(snapshot.manifest.entries),
+            counts=_counts_summary(counts) or __("none"),
+        )
+    )
+    for problem in snapshot.problems:
+        _baseline_warning(problem)
+    for entry, applied in late:
+        _baseline_warning(
+            __(
+                "{fingerprint} in {path} is past its due date ({due}) — owner {owner}.",
+                fingerprint=_short_fingerprint(entry.fingerprint),
+                path=entry.file_path,
+                due=applied.due_date,
+                owner=applied.owner,
+            )
+        )
+    if status_filter or rule_filter or file_filter:
+        click.secho(__("Matching findings"), fg="cyan")
+        if not filtered:
+            click.echo("  " + __("Nothing in the baseline matches that filter."))
+            return
+        for entry in filtered:
+            applied = status_of_entry(entry, overrides)
+            click.echo(f"  {_entry_line(entry, applied)}")
+            note = _decision_note(entry, applied)
+            if note:
+                click.echo(f"      {note}")
+        return
+
+    # No filter: the decisions are what a reader came for. The rest is already
+    # counted above, and a list of every `existing` finding belongs in the file.
+    decided = [
+        (entry, status_of_entry(entry, overrides))
+        for entry in snapshot.manifest.entries
+    ]
+    decided = [(entry, applied) for entry, applied in decided if applied is not None]
+    if not decided:
+        return
+    click.secho(__("Decisions recorded"), fg="cyan")
+    for entry, applied in decided:
+        click.echo(f"  {_entry_line(entry, applied)}")
+        click.echo(f"      {_decision_note(entry, applied)}")
+
+
+@baseline_group.command(
+    "validate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Checks the baseline and the overrides for defects, or names them."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+def baseline_validate(output_format):
+    """Reports every problem the file can have, and exits non-zero on any.
+
+    A file that is missing counts as a problem here, unlike everywhere else in
+    GitPR: this command is asked whether the record is sound, and "there is no
+    record" is not a sound one. Overdue accepted debt is a problem for the same
+    reason — the classification warns about it and never fails on it, but a
+    deadline that has passed is exactly what an audit is looking for.
+    """
+    from src.domain.baseline import BaselineError, overdue_decisions
+    from src.infrastructure.baseline.local_baseline_repository import (
+        read_baseline,
+        read_overrides,
+    )
+
+    settings = _baseline_settings()
+    # The strict reader, whatever `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH`
+    # says: that setting decides whether a divergent file is *applied*, and this
+    # command exists to judge the file itself.
+    snapshot = read_baseline(None, _baseline_file(settings))
+    problems = list(snapshot.problems)
+
+    if not snapshot.exists:
+        problems.insert(
+            0,
+            __(
+                "There is no baseline at {path} — create one with "
+                "'gitpr baseline create'.",
+                path=snapshot.path,
+            ),
+        )
+
+    late = []
+    try:
+        layers = _with_pack_layers(read_overrides(None)[0])
+    except BaselineError as error:
+        # The overrides file is not readable, so its deadlines cannot be checked
+        # either — the problem below says so, and the entry's own are still read.
+        problems.append(str(error))
+        layers = _with_pack_layers(None)
+
+    if snapshot.is_usable:
+        late = overdue_decisions(snapshot.manifest.entries, layers)
+        for entry, applied in late:
+            problems.append(
+                __(
+                    "Accepted debt in {path}:{line} is past its due date ({due}) — "
+                    "owner {owner}.",
+                    path=entry.file_path,
+                    line=entry.line_start,
+                    due=applied.due_date,
+                    owner=applied.owner,
+                )
+            )
+
+    valid = not problems
+    if _is_json(output_format):
+        _baseline_json(
+            {
+                "path": snapshot.path,
+                "exists": snapshot.exists,
+                "usable": snapshot.is_usable,
+                "valid": valid,
+                "overdue": [entry.fingerprint for entry, _applied in late],
+                "problems": problems,
+            }
+        )
+        if not valid:
+            raise click.exceptions.Exit(1)
+        return
+
+    click.secho(f"🔎 {__('Validating')} {snapshot.path}", fg="cyan", bold=True)
+    for problem in problems:
+        click.secho(f"❌ {problem}", fg="red")
+    if valid:
+        click.secho(__("✅ The baseline is sound."), fg="green", bold=True)
+        return
+    click.secho(
+        __("❌ {count} problem(s) found.", count=len(problems)), fg="red", bold=True
+    )
+    raise click.exceptions.Exit(1)
+
+
+@baseline_group.command(
+    "update",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Moves the baseline forward over the current diff, keeping decisions."),
+)
+@click.option(
+    "--recompute",
+    is_flag=True,
+    help=__("Reads and rewrites a file the fingerprint version no longer matches."),
+)
+@click.option(
+    "--base",
+    "base_ref",
+    metavar="<ref>",
+    default=None,
+    help=__("Moves the baseline over the diff against this ref instead of the working tree."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def baseline_update(recompute, base_ref, yes):
+    """Keeps what the entry already knows and records what this diff changed.
+
+    An entry seen again keeps its first_seen date and its decision, one whose
+    file the diff touched and whose finding is gone is stamped resolved, and one
+    in a file the diff never touched is left alone. A checksum that diverged
+    stops it: `--recompute` is the deliberate way past that.
+    """
+    from src.application.use_cases.create_baseline import update_baseline
+    from src.domain.baseline import BaselineError
+    from src.infrastructure.baseline.local_baseline_repository import (
+        baseline_path,
+        read_baseline,
+    )
+
+    settings = _baseline_settings()
+    configured = _baseline_file(settings)
+    path = baseline_path(None, configured)
+
+    snapshot = read_baseline(None, configured)
+    if not snapshot.exists:
+        click.secho(
+            __("There is no baseline at {path} yet — this run will create one.", path=path),
+            fg="cyan",
+        )
+    elif not snapshot.is_usable and not recompute:
+        _command_error(
+            BaselineError(
+                __(
+                    "The baseline on disk cannot be updated in place: {problem} Review "
+                    "the file, then run 'gitpr baseline update --recompute' to accept "
+                    "what is in it.",
+                    problem=snapshot.first_problem(),
+                ),
+                path=snapshot.path,
+            )
+        )
+    else:
+        click.secho(
+            __("The baseline at {path} will be moved forward over this diff.", path=path),
+            fg="cyan",
+        )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        run = update_baseline(
+            recompute=recompute, base=base_ref, configured_path=configured
+        )
+    except BaselineError as error:
+        _command_error(error)
+
+    for warning in run.warnings:
+        _baseline_warning(warning)
+    if not run.written:
+        click.secho(__("Nothing was written."), fg="yellow")
+        return
+    click.secho(__("✅ Baseline updated at {path}", path=run.path), fg="green", bold=True)
+    click.echo(f"🧾 {__('Baseline: {counts}', counts=_counts_summary(run.counts))}")
+
+
+@baseline_group.command(
+    "suppress",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Records why a finding is not work this change has to do."),
+)
+@click.argument("finding_id", metavar="<finding-id>")
+@click.option(
+    "--reason",
+    required=True,
+    help=__("Why the finding is being silenced. Required."),
+)
+@click.option(
+    "--scope",
+    type=click.Choice(_suppression_scopes(), case_sensitive=False),
+    default="finding",
+    help=__("How wide the decision reaches: one finding, a line range, a file, a rule."),
+)
+@click.option(
+    "--debt", is_flag=True, help=__("Records accepted debt with an owner instead of a suppression.")
+)
+@click.option("--owner", metavar="<owner>", help=__("Who owns the debt. Required with --debt."))
+@click.option(
+    "--due-date",
+    "due_date",
+    metavar="<YYYY-MM-DD>",
+    help=__("When the debt should be gone. Optional, and a passed date is a warning."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def baseline_suppress(finding_id, reason, scope, debt, owner, due_date, yes):
+    """A decision about one finding, or about everything a rule or file raises.
+
+    A `finding` scope is written on the entry in .gitpr/baseline.json; the wider
+    scopes go to .gitpr/baseline.overrides.yml, where they reach findings that
+    have no entry yet — which is the point of asking for them.
+    """
+    from src.application.use_cases.suppress_finding import suppress_finding
+    from src.domain.baseline import BaselineError, SuppressionScope
+
+    settings = _baseline_settings()
+    try:
+        _, entry = _baseline_entry_or_die(finding_id, settings)
+    except BaselineError as error:
+        _command_error(error)
+
+    click.secho(__("Decision about {line}", line=_entry_line(entry)), fg="cyan")
+    if debt:
+        click.secho(
+            __(
+                "Accepted debt, owned by {owner}: \"{reason}\"",
+                owner=owner or __("nobody (--owner is required)"),
+                reason=reason,
+            ),
+            fg="cyan",
+        )
+        if due_date:
+            click.echo("   " + __("Due {due}.", due=due_date))
+    else:
+        click.secho(
+            __(
+                "Suppression with '{scope}' scope: \"{reason}\"",
+                scope=str(scope).lower(),
+                reason=reason,
+            ),
+            fg="cyan",
+        )
+        if str(scope).lower() != "finding":
+            click.secho(
+                __(
+                    "It is written to .gitpr/baseline.overrides.yml and covers every "
+                    "finding that rule raises there, not only this one."
+                ),
+                fg="yellow",
+            )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        result = suppress_finding(
+            finding_id,
+            reason=reason,
+            scope=SuppressionScope(scope.lower()),
+            debt=debt,
+            owner=owner,
+            due_date=due_date,
+            configured_path=_baseline_file(settings),
+        )
+    except BaselineError as error:
+        _command_error(error)
+
+    for warning in result.warnings:
+        _baseline_warning(warning)
+    click.secho(
+        __(
+            "✅ {what} recorded in {path}",
+            what=__("Accepted debt") if result.is_debt else __("Suppression"),
+            path=result.path,
+        ),
+        fg="green",
+        bold=True,
+    )
+
+
+@baseline_group.command(
+    "unsuppress",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Takes back a decision recorded about a finding."),
+)
+@click.argument("finding_id", metavar="<finding-id>")
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def baseline_unsuppress(finding_id, yes):
+    """Removes the decision, leaving the finding in the baseline as `existing`.
+
+    A wider suppression that also covers the finding is reported, never removed:
+    it is a statement about a rule, a file or a range, and taking it back here
+    would un-silence every other finding it covers.
+    """
+    from src.application.use_cases.suppress_finding import unsuppress_finding
+    from src.domain.baseline import BaselineError, ORIGIN_ENTRY, status_of_entry
+    from src.infrastructure.baseline.local_baseline_repository import read_overrides
+
+    settings = _baseline_settings()
+    try:
+        _, entry = _baseline_entry_or_die(finding_id, settings)
+    except BaselineError as error:
+        _command_error(error)
+
+    try:
+        overrides, _ = read_overrides(None)
+    except BaselineError as error:
+        _command_error(error)
+    applied = status_of_entry(entry, _with_pack_layers(overrides))
+    if applied is None:
+        _command_error(
+            BaselineError(
+                __(
+                    "{fingerprint} carries no decision in the baseline — there is "
+                    "nothing to take back.",
+                    fingerprint=_short_fingerprint(entry.fingerprint),
+                )
+            )
+        )
+
+    click.secho(
+        __(
+            "Taking back the decision about {line}: {note}",
+            line=_entry_line(entry, applied),
+            note=_decision_note(entry, applied),
+        ),
+        fg="cyan",
+    )
+    if applied.origin == ORIGIN_ENTRY and entry.suppressed:
+        click.secho(
+            __("The finding stays in the baseline as 'existing'."), fg="cyan"
+        )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        result = unsuppress_finding(
+            finding_id, configured_path=_baseline_file(settings)
+        )
+    except BaselineError as error:
+        _command_error(error)
+
+    click.secho(
+        __("✅ Removed {removed} from {path}", removed=", ".join(result.removed), path=result.path),
+        fg="green",
+        bold=True,
+    )
+    for warning in result.warnings:
+        _baseline_warning(warning)
+
+
+def _manifest_policy_tag(manifest):
+    """`name@version` of the pack the baseline was written under, or ""."""
+    if not manifest.policy_name:
+        return ""
+    if not manifest.policy_version:
+        return manifest.policy_name
+    return f"{manifest.policy_name}@{manifest.policy_version}"
+
+
+def _with_pack_layers(overrides):
+    """The repository's decisions plus the active pack's, or None when unreadable."""
+    from src.application.use_cases.baseline_gate import pack_layers
+    from src.domain.baseline import apply_overrides
+
+    pack = pack_layers()
+    if pack is None:
+        return overrides
+    return apply_overrides(overrides, pack=pack)
+
+
+def _kept(entry, status_filter, rule_filter, file_filter, overrides):
+    """Whether an entry survives the three filters `show` accepts."""
+    import fnmatch
+
+    from src.domain.baseline import normalize_path, status_of_entry
+
+    if rule_filter:
+        identity = entry.rule_id or entry.identity()
+        if rule_filter not in (entry.rule_id, identity):
+            return False
+    if file_filter:
+        pattern = normalize_path(file_filter)
+        path = normalize_path(entry.file_path)
+        if not (fnmatch.fnmatch(path, pattern) or pattern in path):
+            return False
+    if status_filter:
+        applied = status_of_entry(entry, overrides)
+        current = applied.status if applied is not None else entry.status
+        if current.value != str(status_filter).lower():
+            return False
+    return True
 
 
 @cli.group(
@@ -4048,9 +5111,14 @@ def risk(target_file, output_format, base_ref, no_history):
     from src.core import SMART_EXCLUDES
     from src.domain.risk.risk_explanation import format_evidence_line
     from src.domain.risk.risk_types import RiskLevel
-    from src.infrastructure.linter.external.base_bridge import NormalizedFinding
-    from src.linter_engine import parse_diff_and_lint
+    from src.domain.finding.finding_types import NormalizedFinding
+    from src.linter_engine import lint_findings, parse_diff_and_lint
     from src.review.diff_source import DiffOrigin, DiffSource
+
+    # A subcommand never runs the root callback, so the baseline is resolved
+    # here — and `required` because a risk score is a verdict: one built on a
+    # file that cannot be applied answers for findings it never read.
+    baseline_gate = _resolve_baseline_or_die(required=True)
 
     if base_ref:
         cmd = ["git", "diff", "-U1", "-w", "-M", "-B", base_ref, "--"] + SMART_EXCLUDES
@@ -4092,31 +5160,46 @@ def risk(target_file, output_format, base_ref, no_history):
             )
         return
 
+    # I8: with a baseline the regex below could not match anything anyway. A
+    # rendered alert carries neither the rule name nor the digest of the line,
+    # and both are part of a fingerprint — so the legacy path would hand the
+    # score findings that classify as `new` forever. The structured findings the
+    # engine hands over are the same linter, the same rules and the same diff,
+    # and they are what the baseline can answer for.
     findings = []
-    try:
-        alerts = parse_diff_and_lint(diff_text, skip_external=True)
-        loc_pattern = re.compile(
-            r"in\s+([^\s\(\)]+)\s+\(Line\s+(\d+)\)|\(([^\s\(\)]+),\s+Line\s+(\d+)\)",
-            re.IGNORECASE,
+    compared = []
+    if baseline_gate.is_active:
+        from src.application.use_cases.baseline_gate import new_findings
+
+        compared = _classify_with_baseline(
+            baseline_gate, lint_findings(diff_text, skip_external=True)
         )
-        for sev, msgs in (("error", alerts.get("errors", [])), ("warning", alerts.get("warnings", []))):
-            for msg in msgs:
-                m = loc_pattern.search(msg)
-                f_path = (m.group(1) or m.group(3)) if m else ""
-                line_no = int(m.group(2) or m.group(4)) if m else 1
-                findings.append(
-                    NormalizedFinding(
-                        severity=sev,
-                        category="security" if ("secret" in msg.lower() or "security" in msg.lower()) else "lint",
-                        file_path=f_path,
-                        line_start=line_no,
-                        line_end=line_no,
-                        message=msg,
-                        source="linter",
+        findings = new_findings(compared)
+    else:
+        try:
+            alerts = parse_diff_and_lint(diff_text, skip_external=True)
+            loc_pattern = re.compile(
+                r"in\s+([^\s\(\)]+)\s+\(Line\s+(\d+)\)|\(([^\s\(\)]+),\s+Line\s+(\d+)\)",
+                re.IGNORECASE,
+            )
+            for sev, msgs in (("error", alerts.get("errors", [])), ("warning", alerts.get("warnings", []))):
+                for msg in msgs:
+                    m = loc_pattern.search(msg)
+                    f_path = (m.group(1) or m.group(3)) if m else ""
+                    line_no = int(m.group(2) or m.group(4)) if m else 1
+                    findings.append(
+                        NormalizedFinding(
+                            severity=sev,
+                            category="security" if ("secret" in msg.lower() or "security" in msg.lower()) else "lint",
+                            file_path=f_path,
+                            line_start=line_no,
+                            line_end=line_no,
+                            message=msg,
+                            source="linter",
+                        )
                     )
-                )
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     pr_risk = execute_calculate_risk(
         diff_source=diff_source,
@@ -4124,6 +5207,17 @@ def risk(target_file, output_format, base_ref, no_history):
         findings=findings,
         include_history=not no_history,
     )
+
+    # Zero points, by definition: what the baseline already knew about does not
+    # count against this change. It is still written onto the file it belongs
+    # to, so the report can say "legacy, suppressed by alice, due 2026-12-31"
+    # where a run without it would look like it never found anything.
+    if compared:
+        from src.application.use_cases.baseline_gate import (
+            attach_informational_evidence,
+        )
+
+        attach_informational_evidence(pr_risk, compared)
 
     if output_format.lower() == "json":
         click.echo(json.dumps(pr_risk.to_dict(), indent=2))
@@ -4134,6 +5228,8 @@ def risk(target_file, output_format, base_ref, no_history):
     click.secho("  ⚡ " + __("GITPR LOCAL RISK ASSESSMENT"), fg="cyan", bold=True)
     click.secho("=" * 65, fg="cyan", bold=True)
     click.echo()
+
+    _print_baseline_line(compared)
 
     level_colors = {
         RiskLevel.CRITICAL: "red",

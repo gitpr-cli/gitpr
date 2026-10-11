@@ -201,6 +201,14 @@ CATEGORIES = (
         doc="policy-packs.md",
     ),
     Category(
+        "baseline",
+        __("Baseline"),
+        __(
+            "Pre-existing findings recorded once, so only what this change introduces is new."
+        ),
+        doc="baseline-suppressions.md",
+    ),
+    Category(
         "scm",
         __("SCM / Forge"),
         __("GitHub, GitLab, Bitbucket and Azure DevOps connection."),
@@ -845,6 +853,50 @@ FIELDS = (
         category="policy",
         kind=KIND_INT,
         default="12000",
+    ),
+    # ---------------------------------------------------------------- Baseline
+    # The record belongs to the repository (.gitpr/baseline.json and
+    # .gitpr/baseline.overrides.yml), so nothing here says which baseline is in
+    # force — only how this machine treats the one it finds.
+    ConfigField(
+        key="GITPR_BASELINE_ENABLED",
+        label=__("Baseline"),
+        description=__(
+            "Reads and applies the baseline recorded in .gitpr/baseline.json. Turning it off makes every command behave as if this repository had no baseline, without touching the file."
+        ),
+        category="baseline",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_BASELINE_PATH",
+        label=__("Baseline Path"),
+        description=__(
+            "Where the baseline lives. Leave it empty for .gitpr/baseline.json; a relative path is resolved against the repository root."
+        ),
+        category="baseline",
+        kind=KIND_PATH,
+        default="",
+    ),
+    ConfigField(
+        key="GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH",
+        label=__("Require Checksum Match"),
+        description=__(
+            "Refuses a baseline whose checksum does not match its content, which is how an edit made outside GitPR is caught. With it off the file is applied and the divergence is still reported."
+        ),
+        category="baseline",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES",
+        label=__("Allow Local Overrides"),
+        description=__(
+            "Reads .gitpr/baseline.overrides.yml, the second and more easily edited place a suppression may live. With it off, the decisions written in the baseline file stand alone."
+        ),
+        category="baseline",
+        kind=KIND_BOOL,
+        default="true",
     ),
     # --------------------------------------------------------------- SCM/Forge
     # The common settings stay ungrouped and always visible; the fields that

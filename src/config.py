@@ -93,6 +93,16 @@ DEFAULT_CONFIG = {
     # other caps what a pack may add to a prompt.
     "GITPR_POLICY_ENABLED": "true",
     "GITPR_POLICY_CONTEXT_MAX_CHARACTERS": "12000",
+    # Baseline and suppressions (gitpr baseline). The record itself is per
+    # repository, in .gitpr/baseline.json — these four are the machine-wide
+    # switches. `enabled` off means no run ever reads the file, which is the
+    # pre-feature behaviour byte for byte; `require_checksum_match` guards the
+    # one thing the file cannot prove about itself, that nobody edited it
+    # outside GitPR.
+    "GITPR_BASELINE_ENABLED": "true",
+    "GITPR_BASELINE_PATH": "",
+    "GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH": "true",
+    "GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES": "true",
 }
 
 # Fallbacks used when the .env value is missing or not a positive number.
@@ -1107,6 +1117,41 @@ def get_fix_settings():
         ),
         "branch_name_template": template or "fix/gitpr-{datetime}",
     }
+
+
+def get_baseline_settings():
+    """Returns the technical baseline configuration as a flat dict.
+
+    ``enabled`` is the master switch and fails open the way the policy and the
+    secret ruleset do: only an explicit false/0/no/off/n turns it off. With the
+    feature off, ``load_baseline`` reads nothing at all and every consumer
+    behaves exactly as it did before baselines existed.
+
+    ``require_checksum_match`` guards the one thing a file cannot prove about
+    itself — that nobody edited it outside GitPR. Turning it off is the
+    repository saying it trusts its review process more than the digest; the
+    file is then applied with the divergence still reported, never hidden.
+
+    ``allow_local_overrides`` off means ``.gitpr/baseline.overrides.yml`` is not
+    read: a team can keep the decisions in the baseline file alone while a
+    stricter environment forbids the second, more easily edited file.
+    """
+    load_dotenv(ENV_FILE)
+    return {
+        "enabled": _env_bool_default_true("GITPR_BASELINE_ENABLED"),
+        "path": (os.getenv("GITPR_BASELINE_PATH") or "").strip(),
+        "require_checksum_match": _env_bool_default_true(
+            "GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH"
+        ),
+        "allow_local_overrides": _env_bool_default_true(
+            "GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES"
+        ),
+    }
+
+
+def baseline_enabled():
+    """Whether the baseline is consulted at all on this machine."""
+    return get_baseline_settings()["enabled"]
 
 
 def get_policy_settings():

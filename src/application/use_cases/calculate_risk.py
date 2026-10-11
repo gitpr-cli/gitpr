@@ -20,7 +20,7 @@ from src.domain.risk.risk_types import (
 )
 from src.infrastructure.git.risk_history_reader import read_file_git_history
 from src.infrastructure.git.test_matcher import find_related_test_files, requires_tests
-from src.infrastructure.linter.external.base_bridge import NormalizedFinding
+from src.domain.finding.finding_types import NormalizedFinding
 from src.review.diff_source import DiffOrigin, DiffSource
 
 

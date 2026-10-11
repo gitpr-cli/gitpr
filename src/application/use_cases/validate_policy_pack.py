@@ -74,6 +74,7 @@ def _blank_report(target: str) -> dict[str, Any]:
         "commit": {},
         "protected_paths": [],
         "dependencies": [],
+        "baseline": {"suppressions": [], "accepted_debt": []},
         "errors": [],
         "warnings": [],
     }
@@ -178,6 +179,13 @@ def validate_policy_pack(target: str, repo_path: str | None = None) -> dict[str,
     report["protected_paths"] = list(manifest.protected_paths)
     report["pr"] = dict(manifest.pr)
     report["commit"] = dict(manifest.commit)
+    # Reported, not re-checked: reaching this line means `parse_manifest`
+    # accepted the block, which is where the entries went through the same
+    # validators a hand-edited `baseline.overrides.yml` does.
+    report["baseline"] = {
+        "suppressions": list(manifest.baseline.get("suppressions", [])),
+        "accepted_debt": list(manifest.baseline.get("accepted_debt", [])),
+    }
     report["risk"] = {
         key: value for key, value in manifest.risk.items() if not key.startswith("_")
     }

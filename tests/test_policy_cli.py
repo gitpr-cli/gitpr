@@ -48,6 +48,28 @@ RULES = """rules:
     extensions: ["*"]
 """
 
+# A fingerprint is a literal here because a pack has no finding to compute one
+# from — it can only name a finding the repository already knows.
+FINGERPRINT = "sha256:" + "a" * 64
+
+# A pack that also carries decisions: the block a team standardising a legacy
+# gate ships with the rules that gate it.
+BASELINE_MANIFEST = (
+    MANIFEST
+    + """baseline:
+  suppressions:
+    - scope: rule
+      rule_id: acme-no-float-money
+      reason: "Money is an integer in minor units; the rule is a transition aid."
+  accepted_debt:
+    - fingerprint: "%s"
+      owner: platform
+      reason: "Migration planned for the next quarter."
+      due_date: "2026-12-31"
+"""
+    % FINGERPRINT
+)
+
 
 class PolicyCliTestCase(unittest.TestCase):
     """A throwaway repository, a throwaway pack store, and a runner."""
@@ -138,6 +160,34 @@ class TestWriteGuard(PolicyCliTestCase):
         self.assertEqual(result.exit_code, 1)
         self.assertEqual(os.listdir(self.store), [])
 
+    def test_install_refuses_debt_nobody_owns(self):
+        """Installing is the first moment a pack's decisions could reach a machine."""
+        self.make_source_pack(
+            manifest=MANIFEST
+            + "baseline:\n"
+            "  accepted_debt:\n"
+            '    - fingerprint: "%s"\n'
+            '      reason: "Somebody will get to it."\n' % FINGERPRINT
+        )
+
+        result = self.run_policy("install", self.source, "--yes")
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("owner", result.output)
+        self.assertEqual(os.listdir(self.store), [])
+
+    def test_show_names_the_pack_that_brought_the_baseline_block(self):
+        """In force means in force: the decisions travel with the pack that declares them."""
+        self.make_source_pack(manifest=BASELINE_MANIFEST)
+        self.run_policy("install", self.source, "--yes")
+        self.run_policy("use", "acme/team-policy", "--yes")
+
+        result = self.run_policy("show")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("baseline.suppressions = acme-no-float-money", result.output)
+        self.assertIn("← acme/team-policy@1.0.0", result.output)
+
 
 class TestReading(PolicyCliTestCase):
     """The three commands that only read."""
@@ -168,6 +218,42 @@ class TestReading(PolicyCliTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("gitpr/laravel-quality@1.0.0 from bundled", result.output)
         self.assertIn("Checksum:", result.output)
+
+    def test_validate_reports_the_baseline_block_a_pack_brings(self):
+        """A pack that standardises a legacy gate says so, and says it in counts.
+
+        Counted rather than listed on purpose: a suppression is a decision about
+        a finding, and read without that finding it is evidence of nothing.
+        `gitpr baseline show` is where the entries are read, against the findings
+        they silence.
+        """
+        self.write("policy.yml", BASELINE_MANIFEST)
+        self.write("linter.yml", RULES)
+
+        result = self.run_policy("validate", self.repo)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn(
+            "Baseline: 1 suppression(s) and 1 accepted debt(s)", result.output
+        )
+
+    def test_validate_refuses_a_suppression_with_no_reason(self):
+        """Packs are another door into the record, and it is kept shut the same way."""
+        self.write(
+            "policy.yml",
+            MANIFEST
+            + "baseline:\n"
+            "  suppressions:\n"
+            "    - scope: rule\n"
+            "      rule_id: acme-no-float-money\n",
+        )
+
+        result = self.run_policy("validate", self.repo)
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("reason", result.output)
+        # The pack, so the author knows which manifest to open.
+        self.assertIn("acme/team-policy", result.output)
 
     def test_validate_of_a_broken_pack_fails_so_a_ci_run_can_gate_on_it(self):
         """The failure is the answer, and the answer is a non-zero exit."""

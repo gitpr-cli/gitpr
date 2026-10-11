@@ -56,6 +56,18 @@ _FALLBACK_SMART_EXCLUDES = [
 
 SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.smart-excludes.json"
 
+# What the review prompt shows the model as its envelope. `findings` is the
+# optional second half: the prose is what the report renders, and this array is
+# the same review in the shape a baseline can fingerprint. Optional is exact —
+# a review that comes back as `{"review": "..."}` alone is still a review, and
+# the parser treats it that way. It mirrors the `gitpr fix` envelope, minus the
+# patch, because a review points at a problem and does not repair it.
+REVIEW_FINDINGS_JSON = (
+    '{"review": "...", "findings": [{"file_path": "path/as/in/the/diff", '
+    '"line_start": 0, "line_end": 0, "severity": "error|warning", '
+    '"category": "security|lint|review", "message": "..."}]}'
+)
+
 # Documentation file extensions excluded from AI diffs to avoid wasting tokens
 # on prose/markup. Changed doc paths are still reported as metadata.
 # The pattern list is managed remotely (templates/gitpr.docs-smart-excludes.json).
@@ -966,7 +978,7 @@ def generate_pr_content(
             prompt = (
                 __(
                     "Generate ONLY a JSON object in the format {json_format} pointing out errors and improvements for this diff:\n",
-                    json_format='{"review": "..."}',
+                    json_format=REVIEW_FINDINGS_JSON,
                 )
                 + f"{diff_text}"
             )
