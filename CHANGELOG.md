@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.4.0] - 2026-10-12
+
+### Summary
+This release marks version 1.4.0 and brings significant improvements for reviewing and tracking code changes. You can now persistently suppress known warnings across both the CLI and review workflows, and apply configurable policy packs with multi-language support. Risk evaluation for changes and reviews is now deterministic, delivering consistent and predictable results, while a new mentoring mode helps explain code reviews in a more educational style, ideal for early-career developers. Telemetry history has been migrated to a more robust and reliable local storage, and release notes are now linked and anchored to the changelog, making it easier to track what has changed. The documentation has also been updated to reflect all these new features.
+
+### ✨ Features
+- add baseline suppressions with CLI, MCP and PR support ([8450186](https://github.com/gitpr-cli/gitpr/commit/84501867ef98a7b44ead0495842665874cd376bf)) · 2026-10-10
+- add policy packs with CLI, i18n and tests ([4d42d56](https://github.com/gitpr-cli/gitpr/commit/4d42d56736e857c91385ec49da1e98a79286a12d)) · 2026-10-10
+- add deterministic risk scoring for diffs and reviews ([c46440f](https://github.com/gitpr-cli/gitpr/commit/c46440f9a0b94a8303dd69231cfd97a7de8c8227)) · 2026-10-08
+- add junior mentor mode for code review explanations ([57c5140](https://github.com/gitpr-cli/gitpr/commit/57c51400bb3362f65ff2ed398df018b77a3a3569)) · 2026-10-07
+- replace JSON telemetry with SQLite ledger ([811651f](https://github.com/gitpr-cli/gitpr/commit/811651f040b80db3250d91e377f4c1cb5f27ac59)) — metrics · 2026-09-29
+- add linked release notes anchored on the changelog ([c561664](https://github.com/gitpr-cli/gitpr/commit/c561664916900e46e06eba920da558a810ba1b1b)) · 2026-09-23
+
+### 📚 Documentation
+- update docs files ([e1cfb11](https://github.com/gitpr-cli/gitpr/commit/e1cfb11bca4c420b76810d983c17869f5746fc20)) · 2026-10-09
+- update docs files ([4380ce8](https://github.com/gitpr-cli/gitpr/commit/4380ce82818d84bec727f2bef98c9c446a596f89)) · 2026-09-24
+- update docs files ([64a406f](https://github.com/gitpr-cli/gitpr/commit/64a406f4d02274d6f5576be9bc727ae644f768f1)) · 2026-09-24
+
+### 🔧 Chores
+- bump version to 1.4.0 and update lang/scripts versions ([af35270](https://github.com/gitpr-cli/gitpr/commit/af352702ff60abbf7b4ebc9f8c2ed574377611fa)) · 2026-10-12
+
+**Contributors:** [@natanfiuza](https://github.com/natanfiuza)
+
 ## [1.3.0] - 2026-09-23
 
 ### SUmmary
