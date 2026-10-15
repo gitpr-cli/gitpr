@@ -1,5 +1,5 @@
-name: 'GitPR AI Code Review'
-description: 'Automates Code Review and Linter on Pull Requests using Artificial Intelligence (Gemini/DeepSeek).'
+name: 'GitPR Unified CI Check'
+description: 'Automates Code Review, Linter, Secrets, Risk, and Baseline in CI using AI (Gemini/DeepSeek) and produces SARIF/JSON/JUnit reports.'
 author: 'Natan Fiuza'
 branding:
   icon: 'git-pull-request'
@@ -12,7 +12,32 @@ inputs:
     default: 'gemini'
   api-key:
     description: 'API key for the chosen AI'
-    required: true
+    required: false
+    default: ''
+  format:
+    description: 'Artifact format: sarif, json, or junit'
+    required: false
+    default: 'sarif'
+  output:
+    description: 'Path for output artifact'
+    required: false
+    default: 'gitpr-results.sarif'
+  fail-on:
+    description: 'Minimum severity causing failure (info, warning, error, critical, blocker)'
+    required: false
+    default: 'error'
+  no-ia:
+    description: 'Disable AI review (run linter, secrets, risk, and baseline only)'
+    required: false
+    default: 'false'
+  baseline:
+    description: 'Path to custom baseline JSON manifest'
+    required: false
+    default: ''
+  policy:
+    description: 'Policy Pack identifier (e.g. security-strict@1.0.0)'
+    required: false
+    default: ''
 
 runs:
   using: "composite"
@@ -26,22 +51,22 @@ runs:
       shell: bash
       run: pip install gitpr-cli
 
-    - name: Run Static Linter (Fails Fast)
-      shell: bash
-      run: gitpr --linter
-
-    - name: Run AI Code Review
+    - name: Run GitPR Unified CI Check
       shell: bash
       env:
         DEFAULT_AI_PROVIDER: ${{ inputs.provider }}
         GEMINI_API_KEY: ${{ inputs.provider == 'gemini' && inputs.api-key || '' }}
         DEEPSEEK_API_KEY: ${{ inputs.provider == 'deepseek' && inputs.api-key || '' }}
       run: |
-        gitpr --fullreview
-
-        # Optional: Print the review result directly into the GitHub Action summary
-        REVIEW_FILE=$(ls *_PR_FULLREVIEW.txt 2>/dev/null | head -n 1)
-        if [ -f "$REVIEW_FILE" ]; then
-          echo "## 🤖 GitPR Code Review" >> $GITHUB_STEP_SUMMARY
-          cat "$REVIEW_FILE" >> $GITHUB_STEP_SUMMARY
+        ARGS=("--format" "${{ inputs.format }}" "--output" "${{ inputs.output }}" "--fail-on" "${{ inputs.fail-on }}")
+        if [ "${{ inputs.no-ia }}" = "true" ]; then
+          ARGS+=("--no-ia")
         fi
+        if [ -n "${{ inputs.baseline }}" ]; then
+          ARGS+=("--baseline" "${{ inputs.baseline }}")
+        fi
+        if [ -n "${{ inputs.policy }}" ]; then
+          ARGS+=("--policy" "${{ inputs.policy }}")
+        fi
+
+        gitpr check "${ARGS[@]}"
