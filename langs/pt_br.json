@@ -1601,5 +1601,17 @@
   "✅ Removed {removed} from {path}": "✅ Removido {removed} de {path}",
   "✅ The baseline is sound.": "✅ O baseline está íntegro.",
   "✅ {what} recorded in {path}": "✅ {what} registrado em {path}",
-  "❌ {count} problem(s) found.": "❌ {count} problema(s) encontrado(s)."
+  "❌ {count} problem(s) found.": "❌ {count} problema(s) encontrado(s).",
+  "Base git reference for diff comparison (e.g. origin/main).": "Referência git base para comparação do diff (ex.: origin/main).",
+  "Output artifact format (sarif, json, junit).": "Formato do artefato de saída (sarif, json, junit).",
+  "Path to write output artifact file.": "Caminho para gravar o arquivo do artefato de saída.",
+  "Minimum finding severity that causes exit code 1.": "Severidade mínima de apontamento que causa código de saída 1.",
+  "Disables AI review for faster, zero-cost CI checks.": "Desabilita revisão de IA para verificações de CI mais rápidas e sem custo.",
+  "Restricts AI review only to files identified as high risk.": "Restringe a revisão de IA apenas a arquivos identificados como alto risco.",
+  "Path to baseline JSON manifest.": "Caminho para o manifesto JSON de baseline.",
+  "Pin an explicit Policy Pack for this run.": "Fixa um Policy Pack explícito para esta execução.",
+  "Artifact written to {path} ({format}) with exit code {code}": "Artefato gravado em {path} ({format}) com código de saída {code}",
+  "No API key configured for {provider} — skipping AI code review.": "Nenhuma chave de API configurada para {provider} — ignorando revisão de código por IA.",
+  "The baseline at {path} could not be loaded (checksum mismatch or corrupt).": "O baseline em {path} não pôde ser carregado (divergência de checksum ou corrompido).",
+  "Execution exceeded deadline of {timeout}s.": "A execução excedeu o limite de tempo de {timeout}s."
 }

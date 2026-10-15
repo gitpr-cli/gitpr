@@ -5736,5 +5736,136 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
     )
 
 
+@cli.command(
+    "check",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("check-ci.md"),
+)
+@click.option(
+    "--base",
+    "base",
+    metavar="<ref>",
+    default=None,
+    help=__("Base git reference for diff comparison (e.g. origin/main)."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["sarif", "json", "junit"], case_sensitive=False),
+    default=None,
+    help=__("Output artifact format (sarif, json, junit)."),
+)
+@click.option(
+    "-o",
+    "--output",
+    "output_path",
+    metavar="<path>",
+    default=None,
+    help=__("Path to write output artifact file."),
+)
+@click.option(
+    "--fail-on",
+    "fail_on",
+    type=click.Choice(
+        ["info", "warning", "error", "minor", "major", "critical", "blocker"],
+        case_sensitive=False,
+    ),
+    default=None,
+    help=__("Minimum finding severity that causes exit code 1."),
+)
+@click.option(
+    "--no-ia",
+    is_flag=True,
+    default=None,
+    help=__("Disables AI review for faster, zero-cost CI checks."),
+)
+@click.option(
+    "--ia-only-high-risk",
+    is_flag=True,
+    default=None,
+    help=__("Restricts AI review only to files identified as high risk."),
+)
+@click.option(
+    "--baseline",
+    "baseline_path",
+    metavar="<path>",
+    default=None,
+    help=__("Path to baseline JSON manifest."),
+)
+@click.option(
+    "--policy",
+    "policy",
+    metavar="<name>@<version>",
+    default=None,
+    help=__("Pin an explicit Policy Pack for this run."),
+)
+def check(
+    base,
+    output_format,
+    output_path,
+    fail_on,
+    no_ia,
+    ia_only_high_risk,
+    baseline_path,
+    policy,
+):
+    """Unified CI check command: linter, secrets, optional AI, risk, and baseline."""
+    from src.application.use_cases.run_check import execute_check
+    from src.domain.check.check_config import load_check_config
+    from src.domain.check.check_output import format_check_output, write_check_output
+
+    cli_args = {
+        "base": base,
+        "format": output_format,
+        "output": output_path,
+        "fail_on": fail_on,
+        "no_ia": no_ia,
+        "ia_only_high_risk": ia_only_high_risk,
+        "baseline": baseline_path,
+        "policy": policy,
+    }
+    cli_args = {k: v for k, v in cli_args.items() if v is not None}
+
+    config = load_check_config(cli_args)
+    result = execute_check(config)
+
+    formatted = format_check_output(result)
+
+    if config.output_path:
+        write_check_output(formatted, config.output_path)
+        click.echo(
+            __(
+                "Artifact written to {path} ({format}) with exit code {code}",
+                path=config.output_path,
+                format=result.output_format.value,
+                code=result.exit_code,
+            ),
+            file=sys.stderr,
+        )
+    else:
+        sys.stdout.write(formatted)
+        if not formatted.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    for w in result.warnings:
+        click.echo(f"⚠️ {w}", file=sys.stderr)
+
+    from src.metrics import log_command_metric
+
+    log_command_metric(
+        command="check",
+        status="success" if result.exit_code == 0 else "failed",
+        exit_code=result.exit_code,
+        findings_total=result.summary.total,
+        findings_errors=result.summary.errors,
+    )
+
+    sys.exit(result.exit_code)
+
+
 if __name__ == "__main__":
     cli()
