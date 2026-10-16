@@ -1,0 +1,16 @@
+{
+  "displayName": "GitPR — Commit IA, Code Review, Publicação de PR e Check",
+  "description": "Thin client MCP para o GitPR CLI: gere mensagens Conventional Commits, execute code reviews com IA, publique Pull Requests e veja diagnósticos no painel Problems.",
+  "cmd.commit": "Commit (Gerar Mensagem)",
+  "cmd.review": "Review (Alterações Locais)",
+  "cmd.fullReview": "Full Review (Contra Branch Base)",
+  "cmd.reviewMentor": "Review (Modo Mentor Júnior)",
+  "cmd.generatePr": "Gerar Rascunho de PR",
+  "cmd.generatePrExplain": "Gerar Rascunho de PR (com Guia do Revisor)",
+  "cmd.publishPr": "Publicar PR a partir do Rascunho Ativo",
+  "cmd.check": "Check (Diagnósticos Unificados de Linter e Segurança)",
+  "cfg.mcpCommand": "Executável usado para iniciar o servidor MCP do GitPR (padrão: gitpr-mcp).",
+  "cfg.mcpArgs": "Argumentos adicionais passados ao executável do servidor MCP.",
+  "cfg.provider": "Sobrescrita opcional do provedor de IA (gemini, deepseek, ollama). Vazio herda do ~/.gitpr/.env.",
+  "cfg.checkUseAI": "Ativa revisão por IA dentro do GitPR: Check. Desativado por padrão para manter a verificação rápida e sem custo de tokens no editor."
+}

@@ -1,0 +1,87 @@
+name: Editor Extension (VS Code & Cursor)
+
+on:
+  pull_request:
+    paths:
+      - "extensions/**"
+      - ".github/workflows/extension.yml"
+  push:
+    tags:
+      - "ext-v*"
+
+jobs:
+  build-and-test:
+    name: Build, Test & Package VSIX
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install gitpr-cli (editable)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: extensions/vscode/package-lock.json
+
+      - name: Install extension dependencies
+        working-directory: extensions/vscode
+        run: npm install
+
+      - name: Compile and run tests
+        working-directory: extensions/vscode
+        run: npm test
+
+      - name: Package VSIX
+        working-directory: extensions/vscode
+        run: npm run package
+
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitpr-vscode-vsix
+          path: extensions/vscode/*.vsix
+
+  publish:
+    name: Publish to VS Code Marketplace & Open VSX
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/ext-v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gitpr-vscode-vsix
+          path: extensions/vscode
+
+      - name: Publish to VS Code Marketplace
+        if: env.VSCE_PAT != ''
+        working-directory: extensions/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx @vscode/vsce publish --packagePath *.vsix -p "$VSCE_PAT"
+
+      - name: Publish to Open VSX (Cursor)
+        if: env.OVSX_PAT != ''
+        working-directory: extensions/vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx ovsx publish *.vsix -p "$OVSX_PAT"

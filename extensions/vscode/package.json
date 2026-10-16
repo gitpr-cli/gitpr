@@ -1,0 +1,151 @@
+{
+  "name": "gitpr",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.1.0",
+  "publisher": "natanfiuza",
+  "license": "LGPL-2.1-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/natanfiuza/gitpr.git"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "pull-request",
+    "code-review",
+    "mcp",
+    "ai",
+    "gitpr"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "l10n": "./l10n",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitpr.commit",
+        "title": "%cmd.commit%",
+        "category": "GitPR",
+        "icon": "$(git-commit)"
+      },
+      {
+        "command": "gitpr.review",
+        "title": "%cmd.review%",
+        "category": "GitPR",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "gitpr.fullReview",
+        "title": "%cmd.fullReview%",
+        "category": "GitPR",
+        "icon": "$(search-view-icon)"
+      },
+      {
+        "command": "gitpr.reviewMentor",
+        "title": "%cmd.reviewMentor%",
+        "category": "GitPR",
+        "icon": "$(mortar-board)"
+      },
+      {
+        "command": "gitpr.generatePr",
+        "title": "%cmd.generatePr%",
+        "category": "GitPR",
+        "icon": "$(git-pull-request-create)"
+      },
+      {
+        "command": "gitpr.generatePrExplain",
+        "title": "%cmd.generatePrExplain%",
+        "category": "GitPR",
+        "icon": "$(book)"
+      },
+      {
+        "command": "gitpr.publishPr",
+        "title": "%cmd.publishPr%",
+        "category": "GitPR",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "gitpr.check",
+        "title": "%cmd.check%",
+        "category": "GitPR",
+        "icon": "$(shield)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "gitpr.publishPr",
+          "when": "editorLangId == markdown",
+          "group": "navigation"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "gitpr.commit",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "GitPR",
+      "properties": {
+        "gitpr.mcpCommand": {
+          "type": "string",
+          "default": "gitpr-mcp",
+          "description": "%cfg.mcpCommand%"
+        },
+        "gitpr.mcpArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "%cfg.mcpArgs%"
+        },
+        "gitpr.provider": {
+          "type": "string",
+          "enum": [
+            "",
+            "gemini",
+            "deepseek",
+            "ollama"
+          ],
+          "default": "",
+          "description": "%cfg.provider%"
+        },
+        "gitpr.check.useAI": {
+          "type": "boolean",
+          "default": false,
+          "description": "%cfg.checkUseAI%"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "npm run compile && mocha ./out/test/**/*.test.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.26.0",
+    "mocha": "^10.4.0",
+    "typescript": "^5.4.5"
+  }
+}

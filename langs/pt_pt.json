@@ -1613,5 +1613,7 @@
   "Artifact written to {path} ({format}) with exit code {code}": "Artefacto gravado em {path} ({format}) com código de saída {code}",
   "No API key configured for {provider} — skipping AI code review.": "Nenhuma chave de API configurada para {provider} — a ignorar a revisão de código por IA.",
   "The baseline at {path} could not be loaded (checksum mismatch or corrupt).": "O baseline em {path} não pôde ser carregado (discrepância de checksum ou corrompido).",
-  "Execution exceeded deadline of {timeout}s.": "A execução excedeu o limite de tempo de {timeout}s."
+  "Execution exceeded deadline of {timeout}s.": "A execução excedeu o limite de tempo de {timeout}s.",
+  "Cannot publish a Pull Request from a detached HEAD or empty branch.": "Não é possível publicar um Pull Request a partir de um HEAD destacado ou ramo vazio.",
+  "Current branch has not been pushed to the remote. Push your branch first and try again.": "O ramo atual ainda não foi enviado para o remote. Faça push do seu ramo primeiro e tente novamente."
 }

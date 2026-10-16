@@ -591,12 +591,14 @@ def generate_commit_message(
 def review_code(
     provider: str = "",
     diff_text: str = "",
+    mentor: bool = False,
 ) -> str:
     """AI code review of local (uncommitted) changes.
 
     Args:
         provider: Override AI provider (gemini, deepseek, ollama).
         diff_text: Optional diff text. If empty, auto-detects from git.
+        mentor: If True, appends didactic Junior Mentor explanations for review findings.
     """
     from src.core import generate_pr_content, get_git_diff
 
@@ -618,10 +620,15 @@ def review_code(
     )
 
     if result and "review" in result:
+        review_text = result["review"]
+        if mentor:
+            review_text = _append_mentor_to_review(
+                review_text, "review", diff_text, active_provider
+            )
         return json.dumps(
             {
                 "status": "success",
-                "review": result["review"],
+                "review": review_text,
             },
             ensure_ascii=False,
         )
@@ -635,6 +642,29 @@ def review_code(
     )
 
 
+def _append_mentor_to_review(
+    review_text: str, action_type: str, diff_text: str, active_provider: str
+) -> str:
+    """Appends pedagogical mentor explanations to a review when mentor=True."""
+    from src.application.use_cases.generate_mentor_explanation import explain_review
+
+    synthetic_record = {
+        "response": {"review": review_text},
+        "diff": diff_text,
+        "action_type": action_type,
+    }
+    run = _safe_call(
+        explain_review,
+        record=synthetic_record,
+        finding_id=None,
+        ai_provider=active_provider,
+        quiet=True,
+    )
+    if run and getattr(run, "markdown", ""):
+        return f"{review_text.rstrip()}\n\n---\n\n{run.markdown}"
+    return review_text
+
+
 @mcp.tool(
     description=__(
         "Perform a full AI code review comparing the entire current "
@@ -645,11 +675,12 @@ def review_code(
     ),
 )
 @_offload
-def full_review(provider: str = "") -> str:
+def full_review(provider: str = "", mentor: bool = False) -> str:
     """AI code review of all changes since origin/main.
 
     Args:
         provider: Override AI provider (gemini, deepseek, ollama).
+        mentor: If True, appends didactic Junior Mentor explanations for review findings.
     """
     from src.core import generate_pr_content, get_git_full_diff
 
@@ -669,10 +700,15 @@ def full_review(provider: str = "") -> str:
     )
 
     if result and "review" in result:
+        review_text = result["review"]
+        if mentor:
+            review_text = _append_mentor_to_review(
+                review_text, "fullreview", diff_text, active_provider
+            )
         return json.dumps(
             {
                 "status": "success",
-                "review": result["review"],
+                "review": review_text,
             },
             ensure_ascii=False,
         )
@@ -697,11 +733,12 @@ def full_review(provider: str = "") -> str:
     ),
 )
 @_offload
-def generate_pr_description(provider: str = "") -> str:
+def generate_pr_description(provider: str = "", explain: bool = False) -> str:
     """Generate a full PR description from the branch diff.
 
     Args:
         provider: Override AI provider (gemini, deepseek, ollama).
+        explain: If True, appends the Reviewer Guide ('Explain my PR') section.
     """
     from src.core import generate_pr_content, get_git_full_diff
 
@@ -719,11 +756,25 @@ def generate_pr_description(provider: str = "") -> str:
     result = _safe_call(generate_pr_content, "pr", "pr", diff_text, active_provider)
 
     if result:
+        pr_desc = result.get("pr_description", "")
+        if explain:
+            from src.application.use_cases.generate_pr_explanation import (
+                generate_pr_explanation,
+            )
+
+            explanation = _safe_call(
+                generate_pr_explanation,
+                diff_text,
+                ai_provider=active_provider,
+                quiet=True,
+            )
+            if explanation and getattr(explanation, "markdown", ""):
+                pr_desc = f"{pr_desc.rstrip()}\n\n---\n\n{explanation.markdown}"
         return json.dumps(
             {
                 "status": "success",
                 "commit_message": result.get("commit_message", ""),
-                "pr_description": result.get("pr_description", ""),
+                "pr_description": pr_desc,
             },
             ensure_ascii=False,
         )
@@ -1230,6 +1281,188 @@ def get_usage_metrics(repo: str = "", since: str = "", until: str = "") -> str:
                 "Rows of source 'cache_backfill' were reconstructed from the AI "
                 "cache and count distinct prompts, not executions."
             ),
+        },
+        ensure_ascii=False,
+    )
+
+
+# =============================================================================
+# Tools — Unified Check & PR Publishing (Editor Extension / Agent Contract)
+# =============================================================================
+
+
+@mcp.tool(
+    description=__(
+        "Run the unified GitPR check pipeline (linter, external bridges, secret "
+        "scanning, risk scoring, baseline classification, and optional AI review) "
+        "and return the structured JSON check envelope with findings, file paths, "
+        "line numbers, and severities."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=True, destructiveHint=False, idempotentHint=True
+    ),
+)
+@_offload
+def run_check(
+    fail_on: str = "",
+    base: str = "",
+    no_ia: bool = True,
+) -> str:
+    """Execute gitpr check and return its structured JSON envelope.
+
+    Args:
+        fail_on: Minimum severity threshold (info, warning, error). Empty uses GITPR_CHECK_FAIL_ON or error.
+        base: Base git ref for diff comparison (e.g. origin/main). Empty uses GITPR_CHECK_BASE or auto-detects.
+        no_ia: When True (default for interactive editor checks), skips AI review to keep latency low.
+    """
+    import time
+    from src.application.use_cases.run_check import execute_check
+    from src.domain.check.check_config import load_check_config
+    from src.domain.check.check_output import format_json_envelope
+    from src.infrastructure.ci.masking import mask_sensitive_text
+    from src.metrics import log_local_metric
+
+    start_ms = time.monotonic()
+    cli_overrides: dict = {
+        "format": "json",
+        "no_ia": bool(no_ia),
+    }
+    if fail_on and fail_on.strip():
+        cli_overrides["fail_on"] = fail_on.strip()
+    if base and base.strip():
+        cli_overrides["base"] = base.strip()
+
+    try:
+        cfg = load_check_config(cli_args=cli_overrides)
+        result = execute_check(cfg)
+        envelope = format_json_envelope(result)
+        duration_ms = int((time.monotonic() - start_ms) * 1000)
+        log_local_metric(
+            command="mcp:check",
+            status=envelope.get("status", "success"),
+            provider="local" if cfg.no_ia else _resolve_provider(""),
+            duration_ms=duration_ms,
+        )
+        return json.dumps(envelope, ensure_ascii=False)
+    except Exception as exc:
+        duration_ms = int((time.monotonic() - start_ms) * 1000)
+        log_local_metric(
+            command="mcp:check",
+            status="error",
+            provider="local",
+            duration_ms=duration_ms,
+        )
+        traceback.print_exc(file=sys.stderr)
+        return json.dumps(
+            {
+                "status": "error",
+                "exit_code": 2,
+                "message": mask_sensitive_text(str(exc)),
+                "findings": [],
+            },
+            ensure_ascii=False,
+        )
+
+
+@mcp.tool(
+    description=__(
+        "Publish a Pull Request to the configured SCM forge (GitHub, GitLab, "
+        "Bitbucket, or Azure DevOps) using the provided title and body. Never "
+        "commits or pushes automatically; returns structured status: success, "
+        "needs_push, already_exists, auth_required, or error."
+    ),
+    annotations=ToolAnnotations(
+        readOnlyHint=False, destructiveHint=False, idempotentHint=False
+    ),
+)
+@_offload
+def publish_pull_request(
+    title: str,
+    body: str,
+    base: str = "",
+    draft: bool = False,
+) -> str:
+    """Publish a Pull Request to the forge with explicit user-confirmed title and body.
+
+    Args:
+        title: Pull Request title.
+        body: Pull Request Markdown body.
+        base: Target base branch (e.g. main). Empty uses PR_DEFAULT_BASE or auto-detects.
+        draft: Whether to create the Pull Request as a draft.
+    """
+    import time
+    from src.application.use_cases.publish_pull_request import (
+        publish_pull_request_use_case,
+    )
+    from src.branding.badge_builder import attach_pr_badge
+    from src.core import get_base_branch, get_current_branch, get_git_full_diff
+    from src.infrastructure.ci.masking import mask_sensitive_text
+    from src.metrics import log_local_metric
+
+    start_ms = time.monotonic()
+    scm_provider, repo_ref, error = _resolve_scm_target()
+    if error or scm_provider is None or repo_ref is None:
+        duration_ms = int((time.monotonic() - start_ms) * 1000)
+        log_local_metric(
+            command="mcp:publish_pr",
+            status="error",
+            provider="local",
+            duration_ms=duration_ms,
+        )
+        return json.dumps(
+            {
+                "status": "error",
+                "message": mask_sensitive_text(
+                    error or __("Remote repository not identified.")
+                ),
+            },
+            ensure_ascii=False,
+        )
+
+    head_branch = _safe_call(get_current_branch) or ""
+    target_base = (
+        base.strip()
+        if base and base.strip()
+        else (os.getenv("PR_DEFAULT_BASE") or _safe_call(get_base_branch) or "main")
+    )
+
+    pr_data = {"commit_message": title, "pr_description": body}
+    try:
+        diff_text = _safe_call(get_git_full_diff) or ""
+        if diff_text:
+            attach_pr_badge(pr_data, diff_text)
+    except Exception:
+        pass
+
+    outcome = publish_pull_request_use_case(
+        provider=scm_provider,
+        repo_ref=repo_ref,
+        title=title,
+        description=pr_data["pr_description"],
+        source_branch=head_branch,
+        target_branch=target_base,
+        draft=bool(draft),
+        check_remote_state=True,
+    )
+
+    duration_ms = int((time.monotonic() - start_ms) * 1000)
+    log_local_metric(
+        command="mcp:publish_pr",
+        status=outcome.status,
+        provider=scm_provider.name,
+        duration_ms=duration_ms,
+    )
+
+    return json.dumps(
+        {
+            "status": outcome.status,
+            "url": outcome.url,
+            "number": outcome.number,
+            "provider": outcome.provider,
+            "source_branch": outcome.source_branch,
+            "target_branch": outcome.target_branch,
+            "http_status": outcome.http_status,
+            "message": mask_sensitive_text(outcome.message),
         },
         ensure_ascii=False,
     )
@@ -1810,6 +2043,11 @@ def _build_tools_catalog() -> dict:
                         "required": False,
                         "description": "Optional diff text. If empty, auto-detects from git.",
                     },
+                    "mentor": {
+                        "type": "boolean",
+                        "required": False,
+                        "description": "If true, appends didactic Junior Mentor explanations for review findings.",
+                    },
                 },
                 "annotations": {
                     "readOnlyHint": False,
@@ -1826,6 +2064,11 @@ def _build_tools_catalog() -> dict:
                         "required": False,
                         "description": "AI provider override: gemini, deepseek, or ollama.",
                     },
+                    "mentor": {
+                        "type": "boolean",
+                        "required": False,
+                        "description": "If true, appends didactic Junior Mentor explanations for review findings.",
+                    },
                 },
                 "annotations": {
                     "readOnlyHint": False,
@@ -1841,6 +2084,11 @@ def _build_tools_catalog() -> dict:
                         "type": "string",
                         "required": False,
                         "description": "AI provider override: gemini, deepseek, or ollama.",
+                    },
+                    "explain": {
+                        "type": "boolean",
+                        "required": False,
+                        "description": "If true, appends the Reviewer Guide ('Explain my PR') section.",
                     },
                 },
                 "annotations": {
@@ -1968,6 +2216,63 @@ def _build_tools_catalog() -> dict:
                     "readOnlyHint": True,
                     "destructiveHint": False,
                     "idempotentHint": True,
+                },
+            },
+            {
+                "name": "run_check",
+                "description": "Run the unified GitPR check pipeline (linter, external bridges, secret scanning, risk scoring, baseline classification, and optional AI review) and return the structured JSON check envelope with findings, file paths, line numbers, and severities.",
+                "parameters": {
+                    "fail_on": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Minimum severity threshold (info, warning, error). Empty uses GITPR_CHECK_FAIL_ON or error.",
+                    },
+                    "base": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Base git ref for diff comparison (e.g. origin/main). Empty uses GITPR_CHECK_BASE or auto-detects.",
+                    },
+                    "no_ia": {
+                        "type": "boolean",
+                        "required": False,
+                        "description": "When true (default for interactive editor checks), skips AI review to keep latency low.",
+                    },
+                },
+                "annotations": {
+                    "readOnlyHint": True,
+                    "destructiveHint": False,
+                    "idempotentHint": True,
+                },
+            },
+            {
+                "name": "publish_pull_request",
+                "description": "Publish a Pull Request to the configured SCM forge (GitHub, GitLab, Bitbucket, or Azure DevOps) using the provided title and body. Never commits or pushes automatically; returns structured status: success, needs_push, already_exists, auth_required, or error.",
+                "parameters": {
+                    "title": {
+                        "type": "string",
+                        "required": True,
+                        "description": "Pull Request title.",
+                    },
+                    "body": {
+                        "type": "string",
+                        "required": True,
+                        "description": "Pull Request Markdown body.",
+                    },
+                    "base": {
+                        "type": "string",
+                        "required": False,
+                        "description": "Target base branch (e.g. main). Empty uses PR_DEFAULT_BASE or auto-detects.",
+                    },
+                    "draft": {
+                        "type": "boolean",
+                        "required": False,
+                        "description": "Whether to create the Pull Request as a draft.",
+                    },
+                },
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
                 },
             },
         ],
@@ -2214,6 +2519,8 @@ _TOOL_FUNCS = {
     "review_remote_pr": review_remote_pr.__wrapped__,
     "get_baseline_status": get_baseline_status.__wrapped__,
     "get_usage_metrics": get_usage_metrics.__wrapped__,
+    "run_check": run_check.__wrapped__,
+    "publish_pull_request": publish_pull_request.__wrapped__,
 }
 
 

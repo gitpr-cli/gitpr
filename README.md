@@ -439,6 +439,8 @@ Once configured, use natural language in your editor's AI chat:
 | `analyze_unstaged_diff` | Unstaged diff only (working tree vs index) |
 | `list_fix_candidates` | Fix candidates of the last review: patch, classification, id (read-only) |
 | `review_remote_pr` | AI review of a pull request already open on the forge, fetched by number (read-only) |
+| `run_check` | Structured CI/Editor quality gate returning normalized findings and pass/fail status |
+| `publish_pull_request` | Publish or update a Pull Request on the remote forge from title and body |
 
 ### Direct CLI Invocation
 
@@ -458,6 +460,8 @@ gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_li
 This is useful for scripting, CI/CD pipelines, and one-off queries where you don't need a persistent MCP server. JSON output goes to stdout; all diagnostic messages go to stderr — safe for piping.
 
 📖 **Full documentation:** [docs/mcp-integration.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-integration.md) — available in 5 languages (EN, PT-BR, PT-PT, ES, FR).
+
+> 🧩 **Official VS Code & Cursor Extension** — Prefer native editor commands, SCM toolbar buttons, and inline `Problems` diagnostics? Install the thin-client extension in [`extensions/vscode/`](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/editor-extension.md), powered by `gitpr-mcp`.
 
 > 💬 **MCP Prompts** — GitPR also exposes 7 pre-defined message templates (prompts) for common flows like "Review PR", "Generate Commit Message", and "Create Issue from Diff". See the [MCP Prompts guide](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-prompts.md) for the full list.
 
@@ -551,6 +555,7 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 
 ### Configuration & Infrastructure
 
+* [**Editor Extension (VS Code & Cursor)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/editor-extension.md) — Thin-client VSIX extension driving `gitpr-mcp` over stdio for SCM commit generation, Markdown code reviews, two-step PR publishing, and inline `Problems` diagnostics.
 * [**Interactive Configuration TUI (gitpr config)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/config-tui.md) — Master-detail terminal interface to view, edit, and validate settings in `~/.gitpr/.env`.
 * [**Multi-Forge SCM Integration**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/scm-multiforge.md) — Unified SCM provider layer for GitHub, GitLab, Bitbucket Cloud, and Azure DevOps with `--init` wizard.
 * [**Suggested Reviewers**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/suggested-reviewers.md) — Automatic reviewer suggestion via Git blame of added lines mapped to forge logins.
