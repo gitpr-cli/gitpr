@@ -435,6 +435,8 @@ Una vez configurado, usa lenguaje natural en el chat de IA de tu editor:
 | `generate_issue` | Issue estructurada a partir de diff, historial o blame |
 | `list_unstaged_files` | Cambios no commiteados categorizados (nuevos/modificados/eliminados) |
 | `analyze_unstaged_diff` | Diff solo unstaged (working tree vs index) |
+| `run_check` | Puerta de calidad estructurada para CI/Editor devolviendo hallazgos normalizados y estado |
+| `publish_pull_request` | Publica o actualiza un Pull Request en la forge remota a partir de título y cuerpo |
 
 ### Invocación Directa por CLI
 
@@ -454,6 +456,8 @@ gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_li
 Ideal para scripts, pipelines de CI/CD y consultas puntuales donde no necesitas un servidor MCP persistente. La salida JSON va a stdout; todos los mensajes de diagnóstico van a stderr — seguro para pipe.
 
 📖 **Documentación completa:** [docs/mcp-integration.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-integration.md) — disponible en 5 idiomas (EN, PT-BR, PT-PT, ES, FR).
+
+> 🧩 **Extensión Oficial para VS Code y Cursor** — ¿Prefieres comandos nativos en el editor, botones en la barra de Source Control y diagnósticos inline en la pestaña `Problems`? Instala la extensión thin-client en [`extensions/vscode/`](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/editor-extension.es_es.md), impulsada por `gitpr-mcp`.
 
 > 💬 **MCP Prompts** — GitPR también expone 7 plantillas de mensaje predefinidas (prompts) para flujos comunes como "Revisar PR", "Generar Mensaje de Commit" y "Crear Issue desde el Diff". Consulta la [guía de MCP Prompts](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-prompts.md) para la lista completa.
 
@@ -546,6 +550,7 @@ Si deseas implementar GitPR como una barrera de calidad automatizada en tu equip
 
 ### Configuración e Infraestructura
 
+* [**Extensión para Editores (VS Code y Cursor)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/editor-extension.es_es.md) — Extensión VSIX thin-client que invoca `gitpr-mcp` por stdio para generación de commits en Source Control, code reviews en Markdown, publicación de PR en dos pasos y diagnósticos inline en la pestaña `Problems`.
 * [**Pantalla de Configuración Interactiva (gitpr config)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/config-tui.es_es.md) — Interfaz de terminal master-detail para ver, editar y validar configuraciones en `~/.gitpr/.env`.
 * [**Integración Multi-Forge SCM**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/scm-multiforge.es_es.md) — Capa unificada de proveedores SCM para GitHub, GitLab, Bitbucket Cloud y Azure DevOps con asistente `--init`.
 * [**Revisores Sugeridos**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/suggested-reviewers.es_es.md) — Sugerencia automática de revisores vía Git blame de las líneas añadidas mapeadas a usuarios de la forge.

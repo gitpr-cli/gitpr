@@ -1,0 +1,16 @@
+{
+  "displayName": "GitPR — AI Commit, Code Review, PR Publisher & CI Check",
+  "description": "Thin MCP client for GitPR CLI: generate Conventional Commits, run AI code reviews, publish Pull Requests, and inspect unified check diagnostics.",
+  "cmd.commit": "Commit (Generate Message)",
+  "cmd.review": "Review (Local Changes)",
+  "cmd.fullReview": "Full Review (Against Base Branch)",
+  "cmd.reviewMentor": "Review (Junior Mentor Mode)",
+  "cmd.generatePr": "Generate PR Draft",
+  "cmd.generatePrExplain": "Generate PR Draft (with Reviewer Guide)",
+  "cmd.publishPr": "Publish PR from Active Draft",
+  "cmd.check": "Check (Unified Linter & Security Diagnostics)",
+  "cfg.mcpCommand": "Executable used to launch the GitPR MCP server (default: gitpr-mcp).",
+  "cfg.mcpArgs": "Additional CLI arguments passed to the MCP server executable.",
+  "cfg.provider": "Optional AI provider override (gemini, deepseek, ollama). Leave empty to inherit ~/.gitpr/.env.",
+  "cfg.checkUseAI": "Enable AI code review inside GitPR: Check. Disabled by default to keep interactive editor checks fast and token-free."
+}

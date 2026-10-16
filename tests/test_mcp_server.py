@@ -922,7 +922,7 @@ class TestToolsCatalog(unittest.TestCase):
             self.assertTrue(tool["description"], f"Tool '{tool['name']}' has empty description")
 
     def test_catalog_has_all_expected_tools(self):
-        """Catalog includes all 16 registered tools."""
+        """Catalog includes all 18 registered tools."""
         catalog = mcp_server._build_tools_catalog()
         tool_names = {t["name"] for t in catalog["tools"]}
         expected = {
@@ -942,6 +942,8 @@ class TestToolsCatalog(unittest.TestCase):
             "review_remote_pr",
             "get_usage_metrics",
             "get_baseline_status",
+            "run_check",
+            "publish_pull_request",
         }
         missing = expected - tool_names
         extra = tool_names - expected
@@ -1085,10 +1087,10 @@ class TestWriteRealStdout(unittest.TestCase):
 class TestToolRegistry(unittest.TestCase):
     """Tests for _get_tool_registry and _TOOL_FUNCS."""
 
-    def test_registry_has_all_16_tools(self):
-        """_get_tool_registry returns all 16 tools."""
+    def test_registry_has_all_18_tools(self):
+        """_get_tool_registry returns all 18 tools."""
         registry = mcp_server._get_tool_registry()
-        self.assertEqual(len(registry), 16)
+        self.assertEqual(len(registry), 18)
 
     def test_every_tool_has_func(self):
         """Every tool in the registry has a callable 'func'."""
@@ -1363,7 +1365,7 @@ class TestOffloadDecorator(unittest.TestCase):
 
 
 def _get_expected_tool_names():
-    """Return the set of all 16 tool names expected in the registry."""
+    """Return the set of all 18 tool names expected in the registry."""
     return {
         "get_git_context",
         "analyze_diff",
@@ -1381,7 +1383,179 @@ def _get_expected_tool_names():
         "review_remote_pr",
         "get_usage_metrics",
         "get_baseline_status",
+        "run_check",
+        "publish_pull_request",
     }
+
+
+class TestEditorExtensionMcpTools(unittest.TestCase):
+    """Tests for the MCP tools and parameters used by the Editor Extension."""
+
+    @patch("src.metrics.log_local_metric")
+    @patch("src.application.use_cases.run_check.execute_check")
+    def test_run_check_returns_json_envelope_and_logs_metric(
+        self, mock_exec, mock_metric
+    ):
+        """run_check returns the structured JSON envelope and records mcp:check."""
+        from src.domain.check.check_types import (
+            CheckFinding,
+            CheckOutputFormat,
+            CheckResult,
+            CheckSeverity,
+            CheckSummary,
+        )
+
+        mock_exec.return_value = CheckResult(
+            findings=[
+                CheckFinding(
+                    fingerprint="fp-1",
+                    rule_id="no-console",
+                    category="style",
+                    file_path="src/app.py",
+                    line_start=12,
+                    line_end=12,
+                    severity=CheckSeverity.WARNING,
+                    source="linter",
+                    message="Found token ghp_1234567890abcdefghijklmnopqrstuvwxyz in log",
+                    suggestion="Remove secret",
+                    baseline_status="new",
+                )
+            ],
+            exit_code=0,
+            fail_on=CheckSeverity.ERROR,
+            output_format=CheckOutputFormat.JSON,
+            output_path=None,
+            summary=CheckSummary(total=1, countable=1, warnings=1, new=1),
+            analysis_version="0.0.37",
+        )
+
+        raw = _call_tool(mcp_server.run_check, fail_on="error", base="origin/main", no_ia=True)
+        payload = json.loads(raw)
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["exit_code"], 0)
+        self.assertEqual(len(payload["findings"]), 1)
+        self.assertEqual(payload["findings"][0]["file_path"], "src/app.py")
+        self.assertEqual(payload["findings"][0]["line_start"], 12)
+        self.assertNotIn("ghp_1234567890abcdefghijklmnopqrstuvwxyz", payload["findings"][0]["message"])
+        mock_metric.assert_called_once()
+        self.assertEqual(mock_metric.call_args.kwargs["command"], "mcp:check")
+
+    @patch("src.metrics.log_local_metric")
+    @patch("src.mcp_server._resolve_scm_target")
+    @patch("src.core.get_current_branch", return_value="feat/ext")
+    @patch("src.core.get_base_branch", return_value="main")
+    @patch("src.core.get_git_full_diff", return_value="")
+    def test_publish_pull_request_needs_push(
+        self, _mock_diff, _mock_base, _mock_head, mock_scm, mock_metric
+    ):
+        """publish_pull_request returns needs_push when branch is not on origin."""
+        import src.application.use_cases.publish_pull_request  # noqa: F401
+
+        provider = MagicMock()
+        provider.name = "github"
+        provider.token = "tok"
+        provider.check_existing_pull_request.return_value = None
+        repo_ref = MagicMock()
+        mock_scm.return_value = (provider, repo_ref, "")
+
+        with patch(
+            "src.application.use_cases.publish_pull_request._branch_needs_push",
+            return_value=True,
+        ):
+            raw = _call_tool(
+                mcp_server.publish_pull_request,
+                title="feat: add extension",
+                body="## Summary\nDetails",
+                base="main",
+                draft=False,
+            )
+
+        payload = json.loads(raw)
+        self.assertEqual(payload["status"], "needs_push")
+        provider.create_pull_request.assert_not_called()
+        mock_metric.assert_called_once()
+        self.assertEqual(mock_metric.call_args.kwargs["command"], "mcp:publish_pr")
+
+    @patch("src.metrics.log_local_metric")
+    @patch("src.mcp_server._resolve_scm_target")
+    @patch("src.core.get_current_branch", return_value="feat/ext")
+    @patch("src.core.get_base_branch", return_value="main")
+    @patch("src.core.get_git_full_diff", return_value="")
+    def test_publish_pull_request_masks_secrets_on_error(
+        self, _mock_diff, _mock_base, _mock_head, mock_scm, _mock_metric
+    ):
+        """publish_pull_request masks tokens in forge error messages."""
+        import src.application.use_cases.publish_pull_request  # noqa: F401
+        from src.infrastructure.scm import ScmProviderError
+
+        provider = MagicMock()
+        provider.name = "github"
+        provider.token = "tok"
+        provider.check_existing_pull_request.return_value = None
+        provider.create_pull_request.side_effect = ScmProviderError(
+            "github", 500, "Failed with token ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+        )
+        repo_ref = MagicMock()
+        mock_scm.return_value = (provider, repo_ref, "")
+
+        with patch(
+            "src.application.use_cases.publish_pull_request._branch_needs_push",
+            return_value=False,
+        ):
+            raw = _call_tool(
+                mcp_server.publish_pull_request,
+                title="feat: add extension",
+                body="## Summary\nDetails",
+            )
+
+        payload = json.loads(raw)
+        self.assertEqual(payload["status"], "error")
+        self.assertNotIn("ghp_1234567890abcdefghijklmnopqrstuvwxyz", payload["message"])
+
+    @patch("src.application.use_cases.generate_mentor_explanation.explain_review")
+    @patch("src.core.generate_pr_content")
+    @patch("src.core.get_git_diff")
+    def test_review_code_mentor_parameter_only(self, mock_diff, mock_gen, mock_mentor):
+        """review_code appends mentor section only when mentor=True is passed."""
+        mock_diff.return_value = "+x = 1"
+        mock_gen.return_value = {"review": "Base review"}
+        mentor_run = MagicMock()
+        mentor_run.markdown = "## Junior Mentor\nExplanation"
+        mock_mentor.return_value = mentor_run
+
+        res_default = json.loads(_call_tool(mcp_server.review_code))
+        self.assertEqual(res_default["review"], "Base review")
+        mock_mentor.assert_not_called()
+
+        res_mentor = json.loads(_call_tool(mcp_server.review_code, mentor=True))
+        self.assertIn("## Junior Mentor", res_mentor["review"])
+        mock_mentor.assert_called_once()
+
+    @patch("src.application.use_cases.generate_pr_explanation.generate_pr_explanation")
+    @patch("src.core.generate_pr_content")
+    @patch("src.core.get_git_full_diff")
+    def test_generate_pr_description_explain_parameter_only(
+        self, mock_diff, mock_gen, mock_explain
+    ):
+        """generate_pr_description appends Reviewer Guide only when explain=True."""
+        mock_diff.return_value = "+x = 1"
+        mock_gen.return_value = {
+            "commit_message": "feat: x",
+            "pr_description": "PR body",
+        }
+        exp_obj = MagicMock()
+        exp_obj.markdown = "## Reviewer Guide\nWalkthrough"
+        mock_explain.return_value = exp_obj
+
+        res_default = json.loads(_call_tool(mcp_server.generate_pr_description))
+        self.assertEqual(res_default["pr_description"], "PR body")
+        mock_explain.assert_not_called()
+
+        res_explain = json.loads(
+            _call_tool(mcp_server.generate_pr_description, explain=True)
+        )
+        self.assertIn("## Reviewer Guide", res_explain["pr_description"])
+        mock_explain.assert_called_once()
 
 
 if __name__ == "__main__":

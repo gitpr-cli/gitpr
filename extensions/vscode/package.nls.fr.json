@@ -1,0 +1,16 @@
+{
+  "displayName": "GitPR — Commit IA, Revue de Code, Publication de PR et Check",
+  "description": "Client léger MCP pour GitPR CLI : générez des messages Conventional Commits, lancez des revues de code IA, publiez des Pull Requests et inspectez les diagnostics.",
+  "cmd.commit": "Commit (Générer le Message)",
+  "cmd.review": "Review (Modifications Locales)",
+  "cmd.fullReview": "Full Review (Contre la Branche de Base)",
+  "cmd.reviewMentor": "Review (Mode Mentor Junior)",
+  "cmd.generatePr": "Générer un Brouillon de PR",
+  "cmd.generatePrExplain": "Générer un Brouillon de PR (avec Guide du Relecteur)",
+  "cmd.publishPr": "Publier la PR depuis le Brouillon Actif",
+  "cmd.check": "Check (Diagnostics Unifiés Linter et Sécurité)",
+  "cfg.mcpCommand": "Exécutable utilisé pour lancer le serveur MCP GitPR (défaut : gitpr-mcp).",
+  "cfg.mcpArgs": "Arguments supplémentaires passés à l'exécutable du serveur MCP.",
+  "cfg.provider": "Fournisseur d'IA optionnel (gemini, deepseek, ollama). Vide hérite de ~/.gitpr/.env.",
+  "cfg.checkUseAI": "Active la revue IA dans GitPR : Check. Désactivé par défaut pour garder des vérifications rapides et sans jetons dans l'éditeur."
+}

@@ -5614,10 +5614,12 @@ def _resolve_scm_context():
 
 def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename):
     """Publish PR directly to the forge without TUI (for --no-edit mode)."""
+    from src.application.use_cases.publish_pull_request import (
+        format_recommended_commit_body,
+        publish_pull_request_use_case,
+    )
     from src.core import get_current_branch
     from src.infrastructure.scm import (
-        PullRequestRequest,
-        ScmProviderError,
         provider_display_name,
         provider_is_github,
     )
@@ -5627,14 +5629,7 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
     commit_msg = pr_data.get("commit_message", "")
     pr_body = pr_data.get("pr_description", "")
 
-    full_body = (
-        __("**Recommended Commit Message:**\n")
-        + "```text\n"
-        + f"{commit_msg}\n"
-        + "```\n\n---\n\n"
-        + pr_body
-    )
-
+    full_body = format_recommended_commit_body(commit_msg, pr_body)
     head_branch = get_current_branch()
 
     # This path publishes a body the user never saw, so it says what went into
@@ -5657,18 +5652,19 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
             fg="cyan",
         )
 
-    try:
-        result = provider.create_pull_request(
-            repo_ref,
-            PullRequestRequest(
-                title=commit_msg,
-                description=full_body,
-                source_branch=head_branch,
-                target_branch=target_base,
-            ),
-        )
-    except ScmProviderError as e:
-        if e.http_status == 401:
+    outcome = publish_pull_request_use_case(
+        provider=provider,
+        repo_ref=repo_ref,
+        title=commit_msg,
+        description=full_body,
+        source_branch=head_branch,
+        target_branch=target_base,
+        draft=False,
+        check_remote_state=False,
+    )
+
+    if outcome.status != "success":
+        if outcome.http_status == 401:
             if github_flow:
                 click.secho(
                     __(
@@ -5689,8 +5685,8 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
             click.secho(
                 __(
                     "❌ GitHub API Error ({code}): {msg}",
-                    code=e.http_status,
-                    msg=e.message,
+                    code=outcome.http_status,
+                    msg=outcome.message,
                 ),
                 fg="red",
             )
@@ -5699,14 +5695,14 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
                 __(
                     "❌ {provider} API Error ({code}): {msg}",
                     provider=label,
-                    code=e.http_status,
-                    msg=e.message,
+                    code=outcome.http_status,
+                    msg=outcome.message,
                 ),
                 fg="red",
             )
         return
 
-    pr_url = result.url
+    pr_url = outcome.url
     if github_flow:
         click.secho(
             __("✅ PR successfully created on GitHub:\n👉 {pr_url}", pr_url=pr_url),

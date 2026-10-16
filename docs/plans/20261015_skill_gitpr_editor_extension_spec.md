@@ -219,3 +219,10 @@ Cada etapa deve ser um commit/PR isolado e revisável. Não começar por JetBrai
 ## 11. Encaixe estratégico
 
 Extensão de editor é o canal de descoberta que o CLI/MCP sozinhos não entregam: usuários que nunca abririam um terminal descobrem o GitPR pela loja de extensões. Nesta primeira versão deve permanecer no tier Free/Community, porque o valor imediato é adoção e descoberta. A monetização futura deve estar na colaboração: skills oficiais, suporte SLA, dashboards agregados — não no bloqueio do uso local da extensão.
+
+
+## 12. Documentação
+
+1. Crie a sua documentação própria em docs/, e em todos os idiomas
+2. Adicione em README.md e em suas versões em outros idiomas
+3. Se alguma variável ambiente foi criada e utilizada nesta feature adicionar na interface de Configuração na seção correspondente ou crie nova
