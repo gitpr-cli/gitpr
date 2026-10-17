@@ -11,7 +11,7 @@ REGRAS DE COMMIT
 
 REGRAS DE PULL REQUEST (PR)
 1. OBJETIVIDADE: O resumo deve explicar o "porquê" da mudança, não apenas traduzir o código.
-2. ESTRUTURA EXIGIDA: O texto do PR deve conter ".gitpr.commit.md": "gitpr.commit.md",as seções: "🎯 Resumo", "🛠️ Mudanças Técnicas" (em lista) e "⚠️ Impacto/Avisos" (destacando mudanças em banco de dados, envs ou dependências).
+2. ESTRUTURA EXIGIDA: O texto do PR deve conter as seções: "🎯 Resumo", "🛠️ Mudanças Técnicas" (em lista) e "⚠️ Impacto/Avisos" (destacando mudanças em banco de dados, envs ou dependências).
 
 FORMATO DE SAIDA (Estrito)
 - ZERO saudações, introduções ou elogios. Responda apenas com o JSON estruturado.
