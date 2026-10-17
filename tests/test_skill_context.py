@@ -62,6 +62,29 @@ class TestGetSkillContext:
         get_skill_context("release")
         assert "found and loaded" in capsys.readouterr().out
 
+    CORRUPTED_PR_SKILL = (
+        '2. ESTRUTURA EXIGIDA: O texto do PR deve conter '
+        '".gitpr.commit.md": "gitpr.commit.md",as seções: "🎯 Resumo"'
+    )
+
+    def test_pr_skill_strips_the_corrupted_template_artifact(self, tmp_path):
+        # Installs that downloaded the corrupted pt_br template keep the file:
+        # the loader must clean the prompt without touching it on disk.
+        skill_file = self._write_skill(
+            tmp_path, ".gitpr.pr.md", self.CORRUPTED_PR_SKILL
+        )
+
+        content = get_skill_context("pr", quiet=True)
+
+        assert '".gitpr.commit.md"' not in content
+        assert "deve conter as seções" in content
+        assert skill_file.read_text(encoding="utf-8") == self.CORRUPTED_PR_SKILL
+
+    def test_artifact_guard_does_not_touch_other_actions(self, tmp_path):
+        self._write_skill(tmp_path, ".gitpr.commit.md", self.CORRUPTED_PR_SKILL)
+
+        assert get_skill_context("commit", quiet=True) == self.CORRUPTED_PR_SKILL
+
 
 class TestRegistryMatchesTheLoader:
     """The registry in config.py is the one source for both the loader and the

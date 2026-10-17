@@ -794,6 +794,10 @@ def get_skill_context(action_type="pr", quiet=False):
         try:
             with open(file_to_load, "r", encoding="utf-8") as f:
                 conteudo = f.read()
+                # The corrupted fragment is unambiguous, so it is safe to strip
+                # from the prompt without editing the user's skill file.
+                if action_type == "pr" and _CORRUPTED_PR_SKILL_ARTIFACT in conteudo:
+                    conteudo = conteudo.replace(_CORRUPTED_PR_SKILL_ARTIFACT, "")
                 if not quiet:
                     click.secho(
                         __(
@@ -1279,6 +1283,12 @@ def generate_pr_content(
 
 
 _SKILL_BASE_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/"
+
+# Accidental paste that shipped in templates/gitpr.pr.pt_br.md: the model read it
+# as required PR content and echoed it into pr_description. Kept here so installs
+# that already downloaded the corrupted skill are corrected on read — downloads
+# never overwrite an existing .gitpr/skill/ file.
+_CORRUPTED_PR_SKILL_ARTIFACT = '".gitpr.commit.md": "gitpr.commit.md",'
 
 # Template languages that actually ship a gitpr.release.* variant (English has
 # no suffix). Other CURRENT_LANG values must not attempt a download.

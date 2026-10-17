@@ -234,6 +234,8 @@ pipenv run twine upload dist/*
 > - `{task_name}`: a short descriptive name using only lowercase letters, numbers, and underscores (e.g. `create_gemini_md`, `update_mcp_server`).
 > 
 > Create parent directories (`docs/gemini/reports/{branch}/`) if they do not exist.
+> Whenever an implementation plan is generated, it must be saved to `docs/gemini/plans/{branch}/{current_date}_{branch}_{planname}.md`, where `{current_date}` must be replaced with the current date (`YYYY-MM-DD` format), `{branch}` must be replaced with the current branch, and `{planname}` must be a short description of the plan, with no spaces or special characters, using only lowercase letters separated by underscores.
+
 
 ### When starting a task
 1. **Read the context:** Check `GEMINI.md`, relevant files, current diff

@@ -290,6 +290,7 @@ pipenv run twine upload dist/*
 
 This report is **mandatory** at the end of every implementation task — not just for the user, but as historical development documentation.
 It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname}.md`, where `{current_date}` is today's date (`YYYY-MM-DD` format), `{branch}` is the current branch, and `{taskname}` is a short task description (only lowercase letters, numbers, and underscores, no spaces or special characters). Create the `docs/claude-code/reports/` folder if it doesn't exist.
+- Whenever an implementation plan is generated, it must be saved to `docs/claude-code/plans/{branch}/{current_date}_{branch}_{planname}.md`, where `{current_date}` must be replaced with the current date (`YYYY-MM-DD` format), `{branch}` must be replaced with the current branch, and `{planname}` must be a short description of the plan, with no spaces or special characters, using only lowercase letters separated by underscores.
 
 ## Project-specific notes
 
