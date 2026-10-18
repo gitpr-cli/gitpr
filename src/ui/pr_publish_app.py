@@ -393,19 +393,23 @@ class CommitProgressScreen(ModalScreen):
 
     BAR_WIDTH = 30
 
-    def __init__(self, work_callback=None, initial_status="", **kwargs):
+    def __init__(self, work_callback=None, initial_status="", title=None, **kwargs):
         super().__init__(**kwargs)
         self._finished = False
         self.result = None
         self._work_callback = work_callback
         self._initial_status = initial_status
+        self._title = title
         self._anim_pos = 0
         self._anim_dir = 1
         self._anim_timer = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="progress_dialog"):
-            yield Static(__("📦 Processing commit..."), classes="progress_title")
+            yield Static(
+                self._title or __("📦 Processing commit..."),
+                classes="progress_title",
+            )
             yield Static(_build_bar(0, 1), id="progress_anim_line")
             yield Static(self._initial_status, id="progress_status")
             with Horizontal(id="progress_buttons"):
@@ -440,14 +444,16 @@ class CommitProgressScreen(ModalScreen):
         """Update the status label below the animation."""
         self.query_one("#progress_status", Static).update(message)
 
-    def mark_finished(self):
-        """Stop animation, fill bar, show close button."""
+    def mark_finished(self, show_close=True):
+        """Stop animation, fill bar, and optionally show the close button."""
         self._finished = True
         if self._anim_timer:
             self._anim_timer.stop()
         self.query_one("#progress_anim_line", Static).update(
             "▐" + "█" * self.BAR_WIDTH + "▌"
         )
+        if not show_close:
+            return
         btn = self.query_one("#btn_close", Button)
         btn.display = True
         btn.focus()
@@ -727,6 +733,7 @@ class PrPublishApp(App):
         self._commit_no_verify = False
         self._pending_commit_msg = ""
         self._progress_screen = None
+        self._merge_progress_screen = None
         self._log_path = _init_publish_log()
 
         repo_display = self.repo_info if self.repo_info else __("Local Repository")
@@ -1507,7 +1514,7 @@ class PrPublishApp(App):
             try:
                 self.provider.merge_pull_request(self.repo_ref, pr_number)
                 self._log("Merge result: ok=True")
-                self.call_from_thread(self._on_merge_success, pr_url)
+                self.call_from_thread(self._on_merge_success, pr_number, pr_url)
             except ScmProviderError as e:
                 self._log(
                     f"Merge result: ok=False, status={e.http_status}, "
@@ -1519,23 +1526,66 @@ class PrPublishApp(App):
                     {"message": e.message},
                     e.http_status,
                 )
+            except Exception as e:
+                # An unexpected provider bug must reach the user too, otherwise
+                # the daemon thread dies silently and the modal never finishes.
+                self._log(f"Merge result: ok=False, unexpected error={e}")
+                self.call_from_thread(
+                    self._on_merge_failure, pr_url, {"message": str(e)}, 0
+                )
 
-        import threading
+        def _start_merge():
+            import threading
 
-        threading.Thread(target=_merge, daemon=True).start()
+            threading.Thread(target=_merge, daemon=True).start()
 
-    def _on_merge_success(self, pr_url):
+        # The worker starts from the screen's on_mount timer, so the modal is
+        # mounted before a fast success/failure callback touches its widgets.
+        self._merge_progress_screen = CommitProgressScreen(
+            work_callback=_start_merge,
+            title=__("🔄 Merging Pull Request..."),
+            initial_status=__(
+                "🔄 Merging PR #{number} on {provider}...",
+                number=pr_number,
+                provider=provider_display_name(self.provider),
+            ),
+        )
+        self.push_screen(self._merge_progress_screen)
+
+    def _on_merge_success(self, pr_number, pr_url):
         """Called on main thread after successful merge."""
         self.final_action = "merged"
         self.final_message = __(
             "✅ PR merged successfully:\n👉 {pr_url}",
             pr_url=pr_url,
         )
+
+        screen = self._merge_progress_screen
+        if screen is None or self.screen is not screen:
+            # The progress modal was dismissed while the merge ran.
+            self._merge_progress_screen = None
+            self._prompt_open_browser(pr_url)
+            return
+
+        screen.add_log(__("✅ PR #{number} merged successfully!", number=pr_number))
+        screen.mark_finished(show_close=False)
+        self.set_timer(1.2, lambda: self._finish_merge_success(pr_url))
+
+    def _finish_merge_success(self, pr_url):
+        """Dismiss the merge progress modal (if still shown) and continue."""
+        screen = self._merge_progress_screen
+        if screen is not None and self.screen is screen:
+            self.pop_screen()
+        self._merge_progress_screen = None
         self._prompt_open_browser(pr_url)
 
     def _on_merge_failure(self, pr_url, data, status):
         """Called on main thread after failed merge."""
         self.final_action = "merge_failed"
+        screen = self._merge_progress_screen
+        if screen is not None and self.screen is screen:
+            self.pop_screen()
+        self._merge_progress_screen = None
         msg = data.get("message", __("Unknown error"))
 
         # Special handling for merge conflicts (HTTP 405)
