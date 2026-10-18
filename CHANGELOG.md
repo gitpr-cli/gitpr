@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.4.1] - 2026-10-18
+
+### Summary
+This 1.4.1 release brings a language pack update and a series of improvements focused on user experience and integration with development workflows. The merge process now displays a progress modal with localized messages, providing clear feedback on the operation's status. Context loading has been made more robust: corrupted artifacts no longer cause failures and are automatically discarded. A VS Code extension and new MCP tools for checking and publishing pull requests have also been added, expanding editor integration capabilities. For teams using continuous integration, there is a new unified check command that generates reports in multiple formats, making it easier for different tools to consume the results. Finally, the changelog documentation has been updated to reflect these changes.
+
+### ✨ Features
+- add merge progress modal with i18n feedback ([8557125](https://github.com/gitpr-cli/gitpr/commit/8557125561bf1baab3b380b4bdae8a8b19db5f0d)) · 2026-10-18
+- add VS Code extension and MCP check/publish tools ([b6382b5](https://github.com/gitpr-cli/gitpr/commit/b6382b5f7e05df162a99b6b0a9f27edfa558191f)) · 2026-10-16
+- add gitpr check unified CI command with SARIF/JSON/JUnit output ([a50f21c](https://github.com/gitpr-cli/gitpr/commit/a50f21c835a717a9933138939356b93634f42a5f)) · 2026-10-15
+
+### 🐛 Bug Fixes
+- strip corrupted PR skill artifact when loading context ([525a1ec](https://github.com/gitpr-cli/gitpr/commit/525a1ecf8309f8888fdb055ab76da9455e860176)) · 2026-10-17
+
+### 📚 Documentation
+- update changelog file ([fc9d400](https://github.com/gitpr-cli/gitpr/commit/fc9d4007cf61c02195ec837bb6024d1d06f874fb)) · 2026-10-12
+
+### 🔧 Chores
+- bump version to 1.4.1 and lang to v0.0.35 ([46c25c1](https://github.com/gitpr-cli/gitpr/commit/46c25c137b0a71c33cdccdbf650a0c20077564ff)) · 2026-10-18
+
+### 📦 Other Changes
+- update changelog file ([1abb1b5](https://github.com/gitpr-cli/gitpr/commit/1abb1b5cde042025174407edb534a4ee0aaed601)) · 2026-10-12
+
+**Contributors:** [@natanfiuza](https://github.com/natanfiuza)
+
 ## [1.4.0] - 2026-10-12
 
 ### Summary
