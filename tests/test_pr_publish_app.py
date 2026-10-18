@@ -22,6 +22,7 @@ from src.reviewer_resolution import ResolvedReviewer
 from src.ui.pr_publish_app import (
     CommitConfirmScreen,
     CommitMessageScreen,
+    CommitProgressScreen,
     ErrorScreen,
     NoticeScreen,
     PrPublishApp,
@@ -51,6 +52,15 @@ class _ModalHostApp(App):
 def _run(coro_factory):
     """Runs an async test body on a fresh event loop."""
     asyncio.run(coro_factory())
+
+
+async def _wait_until(pilot, predicate, timeout=5.0):
+    """Poll the app between pauses until *predicate* becomes true."""
+    for _ in range(int(timeout / 0.05)):
+        if predicate():
+            return
+        await pilot.pause(0.05)
+    raise AssertionError("timed out waiting for condition")
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -574,16 +584,29 @@ class _Recorder:
         attach_raises=None,
         attach_raises_for=(),
         attach_silently_ignores=(),
+        merge_raises=None,
+        merge_block=None,
     ):
         self.name = name
         self.calls = []
         self.attach_raises = attach_raises
         self.attach_raises_for = set(attach_raises_for)
         self.attach_silently_ignores = set(attach_silently_ignores)
+        self.merge_raises = merge_raises
+        self.merge_block = merge_block
+        self.merge_started = threading.Event()
 
     def create_pull_request(self, repo, req):
         self.calls.append(("create",))
         return SimpleNamespace(url="https://example.com/repo/pull/9", number=9)
+
+    def merge_pull_request(self, repo, pr_id, strategy="merge", timeout=15):
+        self.calls.append(("merge", pr_id))
+        self.merge_started.set()
+        if self.merge_block is not None:
+            self.merge_block.wait(5)
+        if self.merge_raises:
+            raise self.merge_raises
 
     def update_pull_request(self, repo, pr_id, **kwargs):
         self.calls.append(("update", pr_id))
@@ -920,5 +943,224 @@ class TestReviewerAttach:
             assert recorder.calls == [("create",), ("attach", 9, ["bob"])]
             assert "GitHub rejected this reviewer" in app.final_message
             assert "Review cannot be requested" in app.final_message
+
+        _run(run)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# CommitProgressScreen — generic title + optional close button
+# ═══════════════════════════════════════════════════════════════════
+
+
+class TestCommitProgressScreen:
+    def test_default_title_still_says_processing_commit(self):
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}):
+                screen = CommitProgressScreen()
+                app = _ModalHostApp(screen)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    title = screen.query_one(".progress_title", Static)
+                    assert "Processing commit" in str(title.render())
+
+        _run(run)
+
+    def test_custom_title_is_rendered(self):
+        async def run():
+            screen = CommitProgressScreen(title="🔄 Merging Pull Request...")
+            app = _ModalHostApp(screen)
+            async with app.run_test(size=(100, 30)) as pilot:
+                await pilot.pause()
+                title = screen.query_one(".progress_title", Static)
+                assert str(title.render()) == "🔄 Merging Pull Request..."
+
+        _run(run)
+
+    def test_mark_finished_shows_close_by_default(self):
+        """The commit flows rely on the default: finished means closable."""
+
+        async def run():
+            screen = CommitProgressScreen()
+            app = _ModalHostApp(screen)
+            async with app.run_test(size=(100, 30)) as pilot:
+                await pilot.pause()
+                screen.mark_finished()
+                await pilot.pause()
+                assert screen._finished is True
+                assert screen.query_one("#btn_close", Button).display is True
+
+        _run(run)
+
+    def test_mark_finished_without_close_leaves_button_hidden(self):
+        """Auto-dismissed flows (merge success) must not offer a Close click."""
+
+        async def run():
+            screen = CommitProgressScreen()
+            app = _ModalHostApp(screen)
+            async with app.run_test(size=(100, 30)) as pilot:
+                await pilot.pause()
+                screen.mark_finished(show_close=False)
+                await pilot.pause()
+                assert screen._finished is True
+                bar = screen.query_one("#progress_anim_line", Static)
+                assert str(bar.render()) == "▐" + "█" * screen.BAR_WIDTH + "▌"
+                assert screen.query_one("#btn_close", Button).display is False
+
+        _run(run)
+
+
+# ═══════════════════════════════════════════════════════════════════
+# Merge flow — animated feedback while the forge call runs
+# ═══════════════════════════════════════════════════════════════════
+
+MERGE_URL = "https://example.com/repo/pull/9"
+
+
+class TestMergeProgress:
+    def test_merge_runs_behind_animated_progress_modal(self, tmp_path):
+        gate = threading.Event()
+        recorder = _Recorder(merge_block=gate)
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}), patch(
+                "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+            ):
+                app = _make_app(tmp_path / "out.md", provider=recorder)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app._do_merge(9, MERGE_URL)
+                    await _wait_until(pilot, recorder.merge_started.is_set)
+                    screen = app._merge_progress_screen
+                    assert isinstance(screen, CommitProgressScreen)
+                    assert app.screen is screen
+                    title = screen.query_one(".progress_title", Static)
+                    status = screen.query_one("#progress_status", Static)
+                    assert "Merging Pull Request" in str(title.render())
+                    assert "Merging PR #9 on GitHub" in str(status.render())
+                    gate.set()
+                    await _wait_until(pilot, lambda: app.final_action == "merged")
+
+        _run(run)
+
+    def test_merge_success_shows_status_then_opens_browser_prompt(self, tmp_path):
+        recorder = _Recorder()
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}), patch(
+                "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+            ):
+                app = _make_app(tmp_path / "out.md", provider=recorder)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app._do_merge(9, MERGE_URL)
+                    await _wait_until(pilot, lambda: app.final_action == "merged")
+                    screen = app._merge_progress_screen
+                    assert app.screen is screen
+                    status = screen.query_one("#progress_status", Static)
+                    assert "merged successfully" in str(status.render())
+                    assert screen.query_one("#btn_close", Button).display is False
+                    await _wait_until(
+                        pilot,
+                        lambda: isinstance(app.screen, CommitConfirmScreen),
+                        timeout=3,
+                    )
+                    assert app.screen._title_text == "🔗 Open in Browser"
+                    assert "PR merged successfully" in app.final_message
+
+        _run(run)
+
+    def test_auto_merge_path_shows_the_same_progress_modal(self, tmp_path):
+        gate = threading.Event()
+        recorder = _Recorder(merge_block=gate)
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}), patch(
+                "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+            ):
+                app = _make_app(tmp_path / "out.md", provider=recorder)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app._after_attach_continue(9, MERGE_URL, [], True)
+                    await _wait_until(pilot, recorder.merge_started.is_set)
+                    assert isinstance(
+                        app._merge_progress_screen, CommitProgressScreen
+                    )
+                    assert app.screen is app._merge_progress_screen
+                    gate.set()
+                    await _wait_until(pilot, lambda: app.final_action == "merged")
+
+        _run(run)
+
+    def test_merge_conflict_dismisses_progress_and_shows_existing_failure_modal(
+        self, tmp_path
+    ):
+        recorder = _Recorder(
+            merge_raises=ScmProviderError("github", 405, "conflict")
+        )
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}), patch(
+                "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+            ):
+                app = _make_app(tmp_path / "out.md", provider=recorder)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app._do_merge(9, MERGE_URL)
+                    await _wait_until(
+                        pilot, lambda: app.final_action == "merge_failed"
+                    )
+                    assert isinstance(app.screen, CommitConfirmScreen)
+                    assert app.screen._title_text == "❌ Merge Conflict"
+                    assert app._merge_progress_screen is None
+
+        _run(run)
+
+    def test_unexpected_merge_exception_is_reported_as_failure(self, tmp_path):
+        recorder = _Recorder(merge_raises=RuntimeError("boom"))
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}), patch(
+                "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+            ):
+                app = _make_app(tmp_path / "out.md", provider=recorder)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app._do_merge(9, MERGE_URL)
+                    await _wait_until(
+                        pilot, lambda: app.final_action == "merge_failed"
+                    )
+                    assert isinstance(app.screen, CommitConfirmScreen)
+                    assert app.screen._title_text == "❌ Merge Failed"
+                    assert "boom" in app.screen._message_text
+                    assert app._merge_progress_screen is None
+
+        _run(run)
+
+    def test_merge_finishing_after_progress_dismissed_still_opens_browser_prompt(
+        self, tmp_path
+    ):
+        gate = threading.Event()
+        recorder = _Recorder(merge_block=gate)
+
+        async def run():
+            with patch("src.i18n.TRANSLATIONS", {}), patch(
+                "src.ui.pr_publish_app.get_current_branch", return_value="feat/x"
+            ):
+                app = _make_app(tmp_path / "out.md", provider=recorder)
+                async with app.run_test(size=(100, 30)) as pilot:
+                    await pilot.pause()
+                    app._do_merge(9, MERGE_URL)
+                    await _wait_until(pilot, recorder.merge_started.is_set)
+                    app.pop_screen()
+                    await pilot.pause()
+                    gate.set()
+                    await _wait_until(
+                        pilot,
+                        lambda: isinstance(app.screen, CommitConfirmScreen),
+                        timeout=3,
+                    )
+                    assert app.screen._title_text == "🔗 Open in Browser"
+                    assert app.final_action == "merged"
+                    assert app._merge_progress_screen is None
 
         _run(run)
