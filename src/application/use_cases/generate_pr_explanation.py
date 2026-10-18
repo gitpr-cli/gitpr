@@ -1,8 +1,10 @@
 import json
+import sys
 from src.ai_providers import call_ai_model
 from src.config import get_ai_provider, get_api_key, get_api_model
 from src.core import get_skill_context
 from src.domain.pr.explain_section_builder import PrExplanation, parse_explain_payload
+from src.i18n import __
 
 
 def generate_pr_explanation(
@@ -25,13 +27,20 @@ def generate_pr_explanation(
     provider = ai_provider or get_ai_provider()
     api_key = get_api_key(provider)
     if not api_key:
+        print(
+            __(
+                "❌ No API key configured for {provider}. Generate one with --install.",
+                provider=provider,
+            ),
+            file=sys.stderr,
+        )
         return PrExplanation(
-            what_changes="No API key configured.",
-            why_it_changes="No API key configured.",
+            what_changes="",
+            why_it_changes="",
             reviewer_focus_points=[],
-            regression_risk="No API key configured.",
+            regression_risk="",
             has_sufficient_evidence=False,
-            markdown="⚠️ No API key configured for AI provider.",
+            markdown="",
         )
 
     api_model = get_api_model(provider, task_complexity="advanced")

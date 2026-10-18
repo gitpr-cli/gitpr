@@ -259,7 +259,7 @@ HELP_MAP: dict[str, dict[str, str]] = {
         ),
     },
     "explain": {
-        "url": get_doc_url("pull-request-publication.md"),
+        "url": get_doc_url("explain-pr.md"),
         "title": __("Reviewer Guide (--explain / gitpr explain)"),
         "description": __(
             "Generates a concise reviewer-centric summary (What changes, Why it changes, Where to focus, and Regression risk)."
@@ -295,6 +295,7 @@ HELP_PRIORITY: dict[str, int] = {
     "fullreview": 8,
     "review": 9,
     "mentor": 9,
+    "explain": 9,
     "risk": 10,
     "input": 11,
     "history": 12,
@@ -557,7 +558,7 @@ def _print_baseline_line(compared, quiet=False):
 )
 @click.option(
     "--explain",
-    "explain_flag",
+    "explain",
     is_flag=True,
     help=__(
         "Includes the Reviewer Guide section ('Explain my PR') in the Pull Request description."
@@ -636,7 +637,7 @@ def cli(
     base,
     no_publish,
     no_edit,
-    explain_flag,
+    explain,
     mentor_flag,
     plugins,
     status,
@@ -1604,7 +1605,7 @@ def cli(
     pr_desc_body = data.get("pr_description", __("No detailed description."))
 
     from src.config import explain_enabled_by_default
-    if explain_flag or explain_enabled_by_default():
+    if explain or explain_enabled_by_default():
         from src.application.use_cases.generate_pr_explanation import generate_pr_explanation
         click.secho("🧐 " + __("Generating Reviewer Guide (Explain my PR)..."), fg="cyan", dim=True)
         explanation = generate_pr_explanation(diff_text, ai_provider=active_provider, quiet=True)
@@ -4759,6 +4760,10 @@ def _kept(entry, status_filter, rule_filter, file_filter, overrides):
     "tests",
     context_settings={"help_option_names": ["-h", "--help"]},
     invoke_without_command=False,
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("tests-generate.md"),
 )
 def tests_group():
     """AI-powered test suite generation and scaffolding."""
@@ -4769,6 +4774,10 @@ def tests_group():
 @tests_group.command(
     "generate",
     context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("tests-generate.md"),
 )
 @click.option(
     "--file",
@@ -4824,8 +4833,8 @@ def tests_generate(target_file, finding_id, framework_override, apply_flag, ai_p
                 f"Finding: {cand.finding.id} - {cand.finding.message}\n"
                 f"File: {cand.finding.file_path}:{cand.finding.line_start}-{cand.finding.line_end}\n"
                 f"Severity: {cand.finding.severity} | Category: {cand.finding.category}\n"
-                f"Suggested Test: {cand.finding.suggested_test}\n"
-                f"Diff:\n{cand.diff or '(No diff available)'}"
+                f"Suggested Test: {cand.suggested_test}\n"
+                f"Diff:\n{cand.diff_unified or '(No diff available)'}"
             )
         except Exception as e:
             click.secho(f"⚠️ {e}", fg="yellow")
@@ -4936,7 +4945,7 @@ def tests_generate(target_file, finding_id, framework_override, apply_flag, ai_p
     epilog="\b\n"
     + __(">> Full documentation:")
     + "\n"
-    + get_doc_url("pull-request-publication.md"),
+    + get_doc_url("explain-pr.md"),
 )
 @click.option(
     "--provider",
