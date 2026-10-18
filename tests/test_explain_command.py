@@ -1,4 +1,3 @@
-import json
 from unittest.mock import patch
 from click.testing import CliRunner
 from src.main import cli
@@ -8,12 +7,13 @@ from src.main import cli
 @patch("src.application.use_cases.generate_pr_explanation.get_api_key", return_value="fake-key")
 @patch("src.core.get_git_diff", return_value="diff --git a/src/core.py b/src/core.py\n+def new_feature(): pass")
 def test_cli_explain_standalone_success(mock_diff, mock_key, mock_ai):
-    mock_ai.return_value = json.dumps({
+    # call_ai_model returns a parsed dict, not a JSON string.
+    mock_ai.return_value = {
         "what_changes": "Adds new feature helper in core.",
         "why_it_changes": "Simplifies helper lookup.",
         "reviewer_focus_points": [{"description": "Verify function return type", "file_path": "src/core.py"}],
         "regression_risk": "Low.",
-    })
+    }
 
     runner = CliRunner()
     result = runner.invoke(cli, ["explain"])
@@ -32,4 +32,24 @@ def test_cli_explain_empty_diff(mock_diff):
     result = runner.invoke(cli, ["explain"])
     assert result.exit_code != 0
     assert "No diff found" in result.output
+
+
+@patch("src.application.use_cases.generate_pr_explanation.get_api_key", return_value=None)
+@patch("src.core.get_git_diff", return_value="diff --git a/x b/x\n+change")
+def test_cli_explain_without_api_key_fails(mock_diff, mock_key):
+    runner = CliRunner()
+    result = runner.invoke(cli, ["explain"])
+
+    assert result.exit_code == 1
+    assert "No API key configured" in result.output
+    assert "REVIEWER GUIDE (Explain My PR)" not in result.output
+
+
+def test_cli_contextual_help_for_explain():
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-h", "--explain"])
+
+    assert result.exit_code == 0
+    assert "Reviewer Guide (--explain / gitpr explain)" in result.output
+    assert "/docs/explain-pr" in result.output
 

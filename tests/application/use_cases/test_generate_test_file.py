@@ -22,11 +22,12 @@ def test_validate_test_syntax_python_invalid():
 @patch("src.application.use_cases.generate_test_file.get_api_key", return_value="dummy-key")
 def test_generate_test_file_dry_run(mock_key, mock_ai, tmp_path):
     (tmp_path / "pytest.ini").write_text("[pytest]", encoding="utf-8")
-    mock_ai.return_value = json.dumps({
+    # call_ai_model returns a parsed dict, not a JSON string.
+    mock_ai.return_value = {
         "content": "def test_example():\n    assert 1 == 1\n",
         "covered_scenarios": ["Scenario 1: Simple calculation"],
         "warnings": [],
-    })
+    }
 
     target = TestGenerationTarget(
         source_type="file",
@@ -52,11 +53,11 @@ def test_generate_test_file_dry_run(mock_key, mock_ai, tmp_path):
 @patch("src.application.use_cases.generate_test_file.get_api_key", return_value="dummy-key")
 def test_generate_test_file_apply(mock_key, mock_ai, tmp_path):
     (tmp_path / "pytest.ini").write_text("[pytest]", encoding="utf-8")
-    mock_ai.return_value = json.dumps({
+    mock_ai.return_value = {
         "content": "def test_created():\n    assert True\n",
         "covered_scenarios": ["Creation test"],
         "warnings": [],
-    })
+    }
 
     target = TestGenerationTarget(
         source_type="file",
@@ -73,4 +74,27 @@ def test_generate_test_file_apply(mock_key, mock_ai, tmp_path):
     dest = tmp_path / "tests" / "test_dummy.py"
     assert dest.exists()
     assert dest.read_text(encoding="utf-8") == "def test_created():\n    assert True\n"
+
+
+@patch("src.application.use_cases.generate_test_file.call_ai_model")
+@patch("src.application.use_cases.generate_test_file.get_api_key", return_value="dummy-key")
+def test_generate_test_file_accepts_raw_json_string(mock_key, mock_ai, tmp_path):
+    """Legacy/cached responses may still arrive as a JSON string."""
+    (tmp_path / "pytest.ini").write_text("[pytest]", encoding="utf-8")
+    mock_ai.return_value = json.dumps({
+        "content": "def test_legacy():\n    assert True\n",
+        "covered_scenarios": ["Legacy string response"],
+        "warnings": [],
+    })
+
+    target = TestGenerationTarget(
+        source_type="file",
+        file_path="src/legacy.py",
+        diff_content="+legacy",
+    )
+
+    result = generate_test_file(target=target, repo_path=str(tmp_path), apply=False)
+
+    assert "def test_legacy" in result.content
+    assert result.covered_scenarios == ["Legacy string response"]
 

@@ -67,17 +67,36 @@ def build_explain_markdown(
     return "\n".join(lines).strip()
 
 
-def parse_explain_payload(raw_json_or_text: str) -> PrExplanation:
-    """Parses raw AI output into a PrExplanation object."""
-    if not raw_json_or_text or not raw_json_or_text.strip():
-        return PrExplanation(
-            what_changes="",
-            why_it_changes="",
-            reviewer_focus_points=[],
-            regression_risk="",
-            has_sufficient_evidence=False,
-            markdown="",
-        )
+def _as_text(value: object) -> str:
+    """Normalizes an AI JSON field to a string (None becomes empty)."""
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else str(value)
+
+
+def _empty_explanation() -> PrExplanation:
+    """Explanation for an empty diff or an empty AI payload."""
+    return PrExplanation(
+        what_changes="",
+        why_it_changes="",
+        reviewer_focus_points=[],
+        regression_risk="",
+        has_sufficient_evidence=False,
+        markdown="",
+    )
+
+
+def parse_explain_payload(raw_json_or_text: dict | str | None) -> PrExplanation:
+    """Parses AI output into a PrExplanation object.
+
+    The provider layer returns a parsed dict (``call_ai_model``), while raw
+    strings still reach this function from callers and tests; both are
+    accepted. A string that is not valid JSON is treated as raw prose.
+    """
+    if not raw_json_or_text:
+        return _empty_explanation()
+    if isinstance(raw_json_or_text, str) and not raw_json_or_text.strip():
+        return _empty_explanation()
 
     what = ""
     why = ""
@@ -86,24 +105,34 @@ def parse_explain_payload(raw_json_or_text: str) -> PrExplanation:
     has_evidence = True
 
     try:
-        data = json.loads(raw_json_or_text)
-        what = data.get("what_changes", "")
-        why = data.get("why_it_changes", "")
-        risk = data.get("regression_risk", "")
-        for raw_pt in data.get("reviewer_focus_points", []):
-            if isinstance(raw_pt, dict):
-                focus_points.append(
-                    ReviewerFocusPoint(
-                        description=raw_pt.get("description", ""),
-                        file_path=raw_pt.get("file_path"),
-                        related_line=raw_pt.get("related_line"),
+        if isinstance(raw_json_or_text, dict):
+            data = raw_json_or_text
+        else:
+            data = json.loads(raw_json_or_text)
+        if not isinstance(data, dict):
+            raise ValueError("Explanation payload is not a JSON object")
+
+        what = _as_text(data.get("what_changes"))
+        why = _as_text(data.get("why_it_changes"))
+        risk = _as_text(data.get("regression_risk"))
+        raw_points = data.get("reviewer_focus_points") or []
+        if isinstance(raw_points, list):
+            for raw_pt in raw_points:
+                if isinstance(raw_pt, dict):
+                    file_path = raw_pt.get("file_path")
+                    related_line = raw_pt.get("related_line")
+                    focus_points.append(
+                        ReviewerFocusPoint(
+                            description=_as_text(raw_pt.get("description")),
+                            file_path=file_path if isinstance(file_path, str) and file_path else None,
+                            related_line=related_line if isinstance(related_line, int) else None,
+                        )
                     )
-                )
-            elif isinstance(raw_pt, str):
-                focus_points.append(ReviewerFocusPoint(description=raw_pt))
+                elif isinstance(raw_pt, str):
+                    focus_points.append(ReviewerFocusPoint(description=raw_pt))
     except Exception:
         # Fallback if raw text returned
-        what = raw_json_or_text.strip()
+        what = raw_json_or_text.strip() if isinstance(raw_json_or_text, str) else ""
         why = __("[FILL: Please explain the motivation for these changes]")
         has_evidence = False
 

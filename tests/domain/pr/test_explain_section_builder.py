@@ -51,6 +51,41 @@ def test_parse_explain_payload_valid_json():
     assert "## 🧐 Reviewer Guide" in explanation.markdown
 
 
+def test_parse_explain_payload_accepts_provider_dict():
+    # call_ai_model returns a parsed dict, not a JSON string.
+    payload = {
+        "what_changes": "Added caching for user permissions.",
+        "why_it_changes": "Reduces DB queries on hot endpoints.",
+        "reviewer_focus_points": [
+            {"description": "Check cache invalidation on role update", "file_path": "src/roles.py", "related_line": 80}
+        ],
+        "regression_risk": "Stale permissions if cache invalidation fails.",
+    }
+
+    explanation = parse_explain_payload(payload)
+
+    assert explanation.what_changes == "Added caching for user permissions."
+    assert explanation.reviewer_focus_points[0].related_line == 80
+    assert explanation.has_sufficient_evidence is True
+    assert "## 🧐 Reviewer Guide" in explanation.markdown
+
+
+def test_parse_explain_payload_normalizes_none_fields():
+    payload = {
+        "what_changes": None,
+        "why_it_changes": None,
+        "reviewer_focus_points": None,
+        "regression_risk": None,
+    }
+
+    explanation = parse_explain_payload(payload)
+
+    assert explanation.what_changes == ""
+    assert explanation.why_it_changes == ""
+    assert explanation.reviewer_focus_points == []
+    assert explanation.regression_risk == ""
+
+
 def test_parse_explain_payload_placeholder_detection():
     raw_payload = json.dumps({
         "what_changes": "Updated database columns.",

@@ -185,16 +185,28 @@ def generate_test_file(
             warnings=warnings,
         )
 
-    # 6. Parse AI JSON
+    # 6. Parse AI JSON (call_ai_model returns a parsed dict; raw strings are
+    # still accepted for compatibility with cached and legacy responses)
     test_code = ""
     covered_scenarios = []
-    try:
-        data = json.loads(ai_raw)
-        test_code = data.get("content", "")
-        covered_scenarios = data.get("covered_scenarios", [])
-        if "warnings" in data and isinstance(data["warnings"], list):
-            warnings.extend(data["warnings"])
-    except Exception:
+    data = ai_raw if isinstance(ai_raw, dict) else None
+    if data is None and isinstance(ai_raw, str):
+        try:
+            data = json.loads(ai_raw)
+        except Exception:
+            data = None
+
+    if isinstance(data, dict):
+        test_code = data.get("content") or ""
+        if not isinstance(test_code, str):
+            test_code = str(test_code)
+        raw_scenarios = data.get("covered_scenarios") or []
+        if isinstance(raw_scenarios, list):
+            covered_scenarios = [str(sc) for sc in raw_scenarios]
+        raw_warnings = data.get("warnings")
+        if isinstance(raw_warnings, list):
+            warnings.extend(str(w) for w in raw_warnings)
+    elif isinstance(ai_raw, str):
         # If response wasn't strict JSON, use clean raw text
         test_code = ai_raw.strip()
         if test_code.startswith("```"):
@@ -205,6 +217,14 @@ def generate_test_file(
                 lines = lines[:-1]
             test_code = "\n".join(lines).strip()
         covered_scenarios.append("Generated from raw model output")
+    else:
+        warnings.append("AI model returned an unsupported response.")
+        return GeneratedTest(
+            scaffold=scaffold,
+            content="",
+            covered_scenarios=[],
+            warnings=warnings,
+        )
 
     # 7. Validate Syntax
     is_valid, syn_err = validate_test_syntax(test_code, detected_fw)
