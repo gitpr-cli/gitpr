@@ -34,7 +34,7 @@ gitpr demo
 ```
 
 > **Guided Tour:** Six screens walking through a real example — the diff, the commit message, the code review and the pull request description — with the answers recorded once and replayed. Add `--no-tui` for plain text, `--scenario security-issue` for the other example.  
-> 📖 **Full Documentation:** [https://gitpr.natanfiuza.dev.br/docs/demo?lang=en_us](https://gitpr.natanfiuza.dev.br/docs/demo?lang=en_us)
+> 📖 **Full Documentation:** [https://gitpr.natanfiuza.dev.br/docs/demo](https://gitpr.natanfiuza.dev.br/docs/demo)
 
 ### **3. Initializing in a Repository**
 
@@ -45,7 +45,7 @@ gitpr --install
 ```
 
 > **Guided Setup:** Guided configuration that downloads skill templates, installs Git Hooks, configures MCP for your editors, and verifies the API key for your AI provider.  
-> 📖 **Full Documentation:** [https://gitpr.natanfiuza.dev.br/docs/install-wizard?lang=en_us](https://gitpr.natanfiuza.dev.br/docs/install-wizard?lang=en_us)
+> 📖 **Full Documentation:** [https://gitpr.natanfiuza.dev.br/docs/install-wizard](https://gitpr.natanfiuza.dev.br/docs/install-wizard)
 
 ## **🛠️ Technologies and Libraries Used**
 
@@ -103,7 +103,7 @@ Pytest will automatically detect files inside the `tests/` folder and display a 
 ```
 *Note: Your configuration will be securely saved in the `~/.gitpr/.env` file.*
 
-*Note (updates): GitPR is distributed exclusively through PyPI. On every run it checks whether a newer version has been published, and when one exists it **blocks the execution** and asks you to run `pip install --upgrade gitpr-cli`. See [auto-update.md](docs/auto-update.md).*
+*Note (updates): GitPR is distributed exclusively through PyPI. On every run it checks whether a newer version has been published, and when one exists it **blocks the execution** and asks you to run `pip install --upgrade gitpr-cli`. See [gitpr.natanfiuza.dev.br/docs/auto-update](https://gitpr.natanfiuza.dev.br/docs/auto-update).*
 
 > **🔒 Security Note:** GitPR CLI uses symmetric encryption (Fernet). Your API key is stored as a hash in the `.env` file, and the master key for decryption is automatically generated in `~/.gitpr/secret.key`. **Never share your secret.key file.**
 
@@ -137,20 +137,20 @@ The tool will sync with the remote (`git fetch`), compare your changes with the 
 ### **Advanced Options and Commands**
 You can pass the following *flags* for specific actions:
 
-* `gitpr demo`: **Guided tour** over an example diff that ships with the tool — the commit message, the code review and the pull request description, produced by the real pipeline on a recorded example. Needs no API key, no Git repository and no connection, which makes it the first thing to run on a new machine. Use `--scenario <name>` for another example, `--lang <code>` for another language, `--no-tui` for plain text. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.md)
-* `gitpr badge`: **Adoption badge for your README.** Prints the Markdown snippet — `--readme` prints only the line, `--style` picks the shields.io style (`flat`, `flat-square`, `for-the-badge`). Nothing is written to your README. Published pull requests carry a badge of their own, with the linter counts of the diff; `GITPR_BADGE=false` turns it off. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/badge.md)
-* `gitpr config`: **Interactive configuration screen.** Opens a master-detail TUI to view, edit, search, and validate all settings stored in `~/.gitpr/.env` (with secret encryption and live validation). 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/config-tui.md)
-* `gitpr release`: **Changelog and Release Notes generator.** Scans commits since the previous version, categorizes them according to Conventional Commits, suggests a semantic version bump, generates an AI executive summary, and optionally publishes the release to your forge. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/release-notes.md)
-* `gitpr fix [<finding_id>]`: **Review findings patch application & rollback.** Turns findings from the last code review (`gitpr -r`) into safe, reviewable unified diffs. Includes safety classification (`safe`, `review_required`, `experimental`), `--all-safe` batching, `--force` validation, and `--rollback <patch-id>`. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/fix-command.md)
-* `gitpr split`: **Atomic commit splitter.** Reads uncommitted working tree changes, groups hunks by intent using AI, and proposes ordered atomic commits without altering your working tree files (`--dry-run`, `--apply`). 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/split-command.md)
-* `gitpr tests generate`: **AI test suite generation & scaffolding.** Analyzes your diff, a target file (`--file`), or a review finding (`--finding`) and generates complete, executable test suites (supporting pytest, jest, vitest, phpunit, pest). Use `--apply` to write to disk. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/tests-generate.md)
-* `gitpr mentor [<finding_id>]`: **Junior Mentor Pedagogical Explanations.** Breaks down code review findings with educational context ("why this matters", real-world analogy, guided questions, and key takeaway) to foster growth and mentor developers. Works standalone over the latest review findings or with `--finding <id>`. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mentor-mode.md)
-* `gitpr explain`: **Reviewer Guide generator.** Generates a concise summary explaining what changed, why it changed, where reviewers should focus, and potential regression risks. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/explain-pr.md)
-* `gitpr review-pr <pr_number>`: **Remote Pull Request review.** Fetches and reviews an open pull request directly from the forge (GitHub, GitLab, Bitbucket, Azure DevOps) without checking out the branch locally. Use `--post-comment` to post the review directly to the PR. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/review-pr.md)
-* `gitpr risk`: **Local Risk Scoring for Diffs.** Computes a deterministic, explainable risk score (0.0 to 100.0) and badge (`LOW 🟢`, `MEDIUM 🟡`, `HIGH 🟠`, `CRITICAL 🔴`) using local repository signals (critical paths, missing tests, migrations, bug history, and static findings). Use `--file <path>`, `--format json`, `--base <ref>`, or `--no-history`. Automatically included in code reviews (`GITPR_RISK_INCLUDE_IN_REVIEW=true`). 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.md)
-* `gitpr policy`: **Shared quality policy for the repository.** Adopts a versioned YAML **Policy Pack** — review skills, linter rules, severity overrides, critical paths, risk weights and PR/commit conventions — and records the choice in `.gitpr/policy.lock.yml`, so the review, the linter and the risk score all run under the same policy, with a checksum per pack. `list`, `validate`, `show`, `use`, `init`, `install`, `off`. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/policy-packs.md)
-* `gitpr baseline`: **Baseline and auditable suppressions for legacy adoption.** Records the findings a repository already has in `.gitpr/baseline.json`, so a run classifies every finding as `new`, `existing`, `resolved`, `ignored` or `accepted_debt` and **only `new` blocks**. Every suppression carries a reason, and accepted debt carries an owner and an optional deadline. `create`, `show`, `validate`, `update`, `suppress`, `unsuppress`. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/baseline-suppressions.md)
-* `gitpr check`: **Unified CI check command.** Consolidates static linter, secret scanning, external bridges (Semgrep, Gitleaks, Bandit), optional AI code review, risk scoring, and baseline into a single CI pipeline command. Emits machine-readable artifacts in **SARIF 2.1.0**, **JSON**, or **JUnit XML** with deterministic exit codes (`0`, `1`, `2`). 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/check-ci.md)
+* `gitpr demo`: **Guided tour** over an example diff that ships with the tool — the commit message, the code review and the pull request description, produced by the real pipeline on a recorded example. Needs no API key, no Git repository and no connection, which makes it the first thing to run on a new machine. Use `--scenario <name>` for another example, `--lang <code>` for another language, `--no-tui` for plain text. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/demo)
+* `gitpr badge`: **Adoption badge for your README.** Prints the Markdown snippet — `--readme` prints only the line, `--style` picks the shields.io style (`flat`, `flat-square`, `for-the-badge`). Nothing is written to your README. Published pull requests carry a badge of their own, with the linter counts of the diff; `GITPR_BADGE=false` turns it off. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/badge)
+* `gitpr config`: **Interactive configuration screen.** Opens a master-detail TUI to view, edit, search, and validate all settings stored in `~/.gitpr/.env` (with secret encryption and live validation). 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/config-tui)
+* `gitpr release`: **Changelog and Release Notes generator.** Scans commits since the previous version, categorizes them according to Conventional Commits, suggests a semantic version bump, generates an AI executive summary, and optionally publishes the release to your forge. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/release-notes)
+* `gitpr fix [<finding_id>]`: **Review findings patch application & rollback.** Turns findings from the last code review (`gitpr -r`) into safe, reviewable unified diffs. Includes safety classification (`safe`, `review_required`, `experimental`), `--all-safe` batching, `--force` validation, and `--rollback <patch-id>`. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/fix-command)
+* `gitpr split`: **Atomic commit splitter.** Reads uncommitted working tree changes, groups hunks by intent using AI, and proposes ordered atomic commits without altering your working tree files (`--dry-run`, `--apply`). 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/split-command)
+* `gitpr tests generate`: **AI test suite generation & scaffolding.** Analyzes your diff, a target file (`--file`), or a review finding (`--finding`) and generates complete, executable test suites (supporting pytest, jest, vitest, phpunit, pest). Use `--apply` to write to disk. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/tests-generate)
+* `gitpr mentor [<finding_id>]`: **Junior Mentor Pedagogical Explanations.** Breaks down code review findings with educational context ("why this matters", real-world analogy, guided questions, and key takeaway) to foster growth and mentor developers. Works standalone over the latest review findings or with `--finding <id>`. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/mentor-mode)
+* `gitpr explain`: **Reviewer Guide generator.** Generates a concise summary explaining what changed, why it changed, where reviewers should focus, and potential regression risks. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/explain-pr)
+* `gitpr review-pr <pr_number>`: **Remote Pull Request review.** Fetches and reviews an open pull request directly from the forge (GitHub, GitLab, Bitbucket, Azure DevOps) without checking out the branch locally. Use `--post-comment` to post the review directly to the PR. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/review-pr)
+* `gitpr risk`: **Local Risk Scoring for Diffs.** Computes a deterministic, explainable risk score (0.0 to 100.0) and badge (`LOW 🟢`, `MEDIUM 🟡`, `HIGH 🟠`, `CRITICAL 🔴`) using local repository signals (critical paths, missing tests, migrations, bug history, and static findings). Use `--file <path>`, `--format json`, `--base <ref>`, or `--no-history`. Automatically included in code reviews (`GITPR_RISK_INCLUDE_IN_REVIEW=true`). 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/risk-scoring)
+* `gitpr policy`: **Shared quality policy for the repository.** Adopts a versioned YAML **Policy Pack** — review skills, linter rules, severity overrides, critical paths, risk weights and PR/commit conventions — and records the choice in `.gitpr/policy.lock.yml`, so the review, the linter and the risk score all run under the same policy, with a checksum per pack. `list`, `validate`, `show`, `use`, `init`, `install`, `off`. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/policy-packs)
+* `gitpr baseline`: **Baseline and auditable suppressions for legacy adoption.** Records the findings a repository already has in `.gitpr/baseline.json`, so a run classifies every finding as `new`, `existing`, `resolved`, `ignored` or `accepted_debt` and **only `new` blocks**. Every suppression carries a reason, and accepted debt carries an owner and an optional deadline. `create`, `show`, `validate`, `update`, `suppress`, `unsuppress`. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/baseline-suppressions)
+* `gitpr check`: **Unified CI check command.** Consolidates static linter, secret scanning, external bridges (Semgrep, Gitleaks, Bandit), optional AI code review, risk scoring, and baseline into a single CI pipeline command. Emits machine-readable artifacts in **SARIF 2.1.0**, **JSON**, or **JUnit XML** with deterministic exit codes (`0`, `1`, `2`). 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/check-ci)
 * `-c` or `--commit`: Runs a local `git diff` and displays **only the suggested commit message**.
 * `-r` or `--review`: Performs a detailed **Code Review** of local changes. Use with `--mentor` to append pedagogical mentoring explanations for each finding.
 * `-f` or `--fullreview`: Performs a **Full Code Review** analyzing all changes since the remote branch. Use with `--mentor` to append pedagogical mentoring explanations.
@@ -159,14 +159,14 @@ You can pass the following *flags* for specific actions:
 * `--lang <code>`: Forces the interface language for this execution (e.g.: `en_us`, `pt_br`). Overrides `GITPR_LANG` in `.env` without persisting the change.
 * `-ch` or `--chat`: Opens the **Interactive Pair Programming Chat** — a TUI terminal where the AI sees your current diff and maintains a contextual conversation. Features memory per branch, slash commands (`/explain`, `/tests`, `/optimize`, `/clear`), auto-patching (F5), diff refresh (F2), and session export (F6).
 * `-l` or `--linter`: Runs **only the local static linter** (no AI calls). Ideal for use in CI/CD pipelines to block non-compliant code.
-* `--status`: Lists uncommitted file changes categorized as **new**, **modified**, and **deleted** — fast, no AI, no network. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-status.md)
-* `--no-unstaged-check`: Skips the unstaged files verification before AI processing for a single invocation. Equivalent to `GITPR_SKIP_UNSTAGED_CHECK=true` for one run. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-status.md)
-* `--no-suggest-reviewers`: Disables the suggested reviewers computation in the interactive PR publisher (default ON). 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/suggested-reviewers.md)
-* `--explain`: Includes the Reviewer Guide section ("Explain my PR") in the Pull Request description. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/explain-pr.md)
-* `--init`: **Interactive SCM forge wizard.** Detects the repository's forge (GitHub, GitLab, Bitbucket Cloud, Azure DevOps), configures the provider, and stores the access token encrypted. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/scm-multiforge.md)
-* `--linter-setup`: **Interactive external linter wizard.** Guides you through installing and configuring external linters (ESLint, PHPCS, Stylelint) as a Checkstyle XML bridge. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/linter-regras-customizadas.md)
+* `--status`: Lists uncommitted file changes categorized as **new**, **modified**, and **deleted** — fast, no AI, no network. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/git-status)
+* `--no-unstaged-check`: Skips the unstaged files verification before AI processing for a single invocation. Equivalent to `GITPR_SKIP_UNSTAGED_CHECK=true` for one run. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/git-status)
+* `--no-suggest-reviewers`: Disables the suggested reviewers computation in the interactive PR publisher (default ON). 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/suggested-reviewers)
+* `--explain`: Includes the Reviewer Guide section ("Explain my PR") in the Pull Request description. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/explain-pr)
+* `--init`: **Interactive SCM forge wizard.** Detects the repository's forge (GitHub, GitLab, Bitbucket Cloud, Azure DevOps), configures the provider, and stores the access token encrypted. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/scm-multiforge)
+* `--linter-setup`: **Interactive external linter wizard.** Guides you through installing and configuring external linters (ESLint, PHPCS, Stylelint) as a Checkstyle XML bridge. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/linter-regras-customizadas)
 * `--mcp`: Starts GitPR as an **MCP server** (Model Context Protocol) on stdio transport. Enables integration with VS Code, Cursor, Claude Desktop, and other MCP-compatible editors — exposing all GitPR AI capabilities as 16 annotated tools, 19 resources, and 7 pre-built prompts directly inside your IDE. Also available as the standalone `gitpr-mcp` command.
-* `--plugins`: Lists all **globally installed plugins** — custom linter packs from `~/.gitpr/plugins/linter/` and MCP prompt templates from `~/.gitpr/plugins/prompts/`. These plugins apply across all your projects without duplication. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/plugins-system.md)
+* `--plugins`: Lists all **globally installed plugins** — custom linter packs from `~/.gitpr/plugins/linter/` and MCP prompt templates from `~/.gitpr/plugins/prompts/`. These plugins apply across all your projects without duplication. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/plugins-system)
 * `--install`: **Interactive Setup Wizard.** Runs a guided 4-step setup: downloads skill templates, installs Git hooks, configures MCP for detected editors, and checks/requests your AI provider API key. Each step asks for confirmation before proceeding.
 * `-ih` or `--installhooks`: Automatically installs **local Git Hooks** (`pre-commit` and `prepare-commit-msg`) in your repository.
 * `-s` or `--skill`: Creates the AI context template files (`.gitpr.commit.md`, `.gitpr.pr.md`, `.gitpr.review.md`, `.gitpr.filereview.md`, `.gitpr.issue.md`, `.gitpr.blame.md`) and the Linter (`.gitpr.linter.yml`) inside `.gitpr/skill/`.
@@ -174,7 +174,7 @@ You can pass the following *flags* for specific actions:
   * **New Code Issue (`gitpr -is`):** Reads the current `git diff`. **Why use:** Ideal for quickly documenting the task you just finished programming, before committing.
   * **Epic/Release Issue (`gitpr -is -ht`):** Reads the full history of the current branch (Git Log + PR Cache). **Why use:** Ideal for generating consolidated documentation of an entire release or a large *feature* that took several days/commits to complete.
   * **Archaeological/Technical Debt Issue (`gitpr -is -b file:lines`):** Reads the timeline of a specific business rule. **Why use:** Ideal for documenting technical debt, explaining how a legacy code block evolved and why it needs to be refactored.
-* **PR Publisher (default):** Running `gitpr` generates the PR description with AI, saves the `.md` file to `.gitpr/reports/pr_desc/`, and opens an interactive terminal interface (TUI) to review, edit, and publish the Pull Request directly to GitHub, GitLab, Bitbucket, or Azure DevOps via REST API. Before generation, it checks for unstaged files, calculates suggested reviewers, and offers a modal to manage them. Use `--no-publish` to save only the PR file locally without opening the publisher, or `--no-edit` to auto-commit pending changes (with lint validation), auto-push, and publish immediately — handling existing PR updates, optional auto-merge, and clear error feedback when merge conflicts occur. Use `--base <branch>` to change the target branch. 📖 [Full docs](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.md)
+* **PR Publisher (default):** Running `gitpr` generates the PR description with AI, saves the `.md` file to `.gitpr/reports/pr_desc/`, and opens an interactive terminal interface (TUI) to review, edit, and publish the Pull Request directly to GitHub, GitLab, Bitbucket, or Azure DevOps via REST API. Before generation, it checks for unstaged files, calculates suggested reviewers, and offers a modal to manage them. Use `--no-publish` to save only the PR file locally without opening the publisher, or `--no-edit` to auto-commit pending changes (with lint validation), auto-push, and publish immediately — handling existing PR updates, optional auto-merge, and clear error feedback when merge conflicts occur. Use `--base <branch>` to change the target branch. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/pull-request-publication)
 * `-h` or `--help`: Shows the general help with all options. Use together with another flag for **contextual help** (e.g.: `gitpr -h --issue`, `gitpr -h --linter`) with a direct link to the detailed documentation of each feature.
 * `-u` or `--update`: Checks the latest version of GitPR on PyPI and shows how to update it (Auto-Updater).
 
@@ -186,7 +186,7 @@ You can pass the following *flags* for specific actions:
 
 When your diff is too large for a single AI call (over ~90k estimated tokens), GitPR automatically splits it into batches by file, asks the AI for a technical summary of each part (Map), and unifies everything into the final commit message, review, or PR description (Reduce). No flags needed — it activates on demand and shows the progress in the console.
 
-📚 Full documentation: [docs/map-reduce-diff.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/map-reduce-diff.md)
+📚 Full documentation: [gitpr.natanfiuza.dev.br/docs/map-reduce-diff](https://gitpr.natanfiuza.dev.br/docs/map-reduce-diff)
 
 ## 🛡️ Local Linter (Static Analysis & Security)
 
@@ -261,7 +261,7 @@ gitpr risk --format json          # Output JSON for CI/CD pipelines
 gitpr risk --base main            # Evaluate against specific git base ref
 ```
 
-📖 **Full documentation:** [docs/risk-scoring.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.md)
+📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/risk-scoring](https://gitpr.natanfiuza.dev.br/docs/risk-scoring)
 
 ## 🧾 Adopting GitPR in a Legacy Repository (gitpr baseline)
 
@@ -289,7 +289,7 @@ Four variables in `~/.gitpr/.env`, also editable through `gitpr config` in the s
 
 Only a `new` error-level finding exits non-zero, and only `new` findings carry risk points — everything else reaches the risk report as zero-point evidence with its status. The baseline is never sent to the AI, and no entry stores code or a secret: the file is committed, so only a digest of the offending line is kept.
 
-📖 **Full documentation:** [docs/baseline-suppressions.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/baseline-suppressions.md)
+📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/baseline-suppressions](https://gitpr.natanfiuza.dev.br/docs/baseline-suppressions)
 
 ## 🤝 Co-Author Signature
 
@@ -301,7 +301,7 @@ Co-Authored-By: Gitpr-cli <gitpr@natanfiuza.dev.br>
 
 The trailer is appended programmatically (never by the AI) in all flows: console suggestion (`gitpr -c`), the `prepare-commit-msg` hook, auto-commit (`--no-edit`), the PR publication TUI, and the MCP `generate_commit_message` tool. It is idempotent — never duplicated when the message already contains it — and is hidden from the TUI edit screen, injected only when the commit is executed.
 
-📖 **Full documentation:** [docs/commit-message-ia.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/commit-message-ia.md)
+📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/commit-message-ia](https://gitpr.natanfiuza.dev.br/docs/commit-message-ia)
 
 ## 🏷️ Pull Request Badge
 
@@ -317,7 +317,7 @@ For your own README there is a static badge. `gitpr badge --readme` prints the l
 
 [![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
 
-📖 **Full documentation:** [docs/badge.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/badge.md)
+📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/badge](https://gitpr.natanfiuza.dev.br/docs/badge)
 
 ## 🧠 Multi-Model Architecture (AI-Agnostic)
 
@@ -353,7 +353,7 @@ GitPR automatically detects your system language and displays messages in your n
 
 To force a specific language, set `GITPR_LANG=pt_br` or `GITPR_LANG=en` in `~/.gitpr/.env`.
 
-> 📖 **Full developer guide:** [docs/i18n_explanation.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/i18n_explanation.md) — architecture, usage patterns, circular import precautions, and how to add new languages.
+> 📖 **Full developer guide:** [gitpr.natanfiuza.dev.br/docs/i18n_explanation](https://gitpr.natanfiuza.dev.br/docs/i18n_explanation) — architecture, usage patterns, circular import precautions, and how to add new languages.
 
 ## 🔄 Hook Scripts Versioning & Auto-Sync
 
@@ -411,7 +411,7 @@ gitpr-mcp --install auto      # Auto-detect and install for all found
 The installer creates the config directory if needed, merges with any existing
 config (never overwrites other servers), and is safe to run multiple times.
 
-> Manual setup is also supported — see [docs/mcp-integration.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-integration.md)
+> Manual setup is also supported — see [gitpr.natanfiuza.dev.br/docs/mcp-integration](https://gitpr.natanfiuza.dev.br/docs/mcp-integration)
 > for the JSON config format for each editor.
 
 Once configured, use natural language in your editor's AI chat:
@@ -459,11 +459,11 @@ gitpr-mcp --tool analyze_blame --tool-args '{"file_path":"src/main.py","start_li
 
 This is useful for scripting, CI/CD pipelines, and one-off queries where you don't need a persistent MCP server. JSON output goes to stdout; all diagnostic messages go to stderr — safe for piping.
 
-📖 **Full documentation:** [docs/mcp-integration.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-integration.md) — available in 5 languages (EN, PT-BR, PT-PT, ES, FR).
+📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/mcp-integration](https://gitpr.natanfiuza.dev.br/docs/mcp-integration) — available in 5 languages (EN, PT-BR, PT-PT, ES, FR).
 
-> 🧩 **Official VS Code & Cursor Extension** — Prefer native editor commands, SCM toolbar buttons, and inline `Problems` diagnostics? Install the thin-client extension in [`extensions/vscode/`](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/editor-extension.md), powered by `gitpr-mcp`.
+> 🧩 **Official VS Code & Cursor Extension** — Prefer native editor commands, SCM toolbar buttons, and inline `Problems` diagnostics? Install the thin-client extension in [`extensions/vscode/`](https://gitpr.natanfiuza.dev.br/docs/editor-extension), powered by `gitpr-mcp`.
 
-> 💬 **MCP Prompts** — GitPR also exposes 7 pre-defined message templates (prompts) for common flows like "Review PR", "Generate Commit Message", and "Create Issue from Diff". See the [MCP Prompts guide](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-prompts.md) for the full list.
+> 💬 **MCP Prompts** — GitPR also exposes 7 pre-defined message templates (prompts) for common flows like "Review PR", "Generate Commit Message", and "Create Issue from Diff". See the [MCP Prompts guide](https://gitpr.natanfiuza.dev.br/docs/mcp-prompts) for the full list.
 
 ## 🎯 Smart Excludes (Token Optimization)
 
@@ -497,7 +497,7 @@ GitPR automatically removes non-code files from your `git diff` before sending t
 
 Add framework-specific build artifacts, generated folders, or any pattern that only applies to this project. The file is safe to commit — your team gets the same exclusions.
 
-> 📖 **Full documentation:** [docs/smart-excludes.md](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/smart-excludes.md) — available in 5 languages (EN, PT-BR, PT-PT, FR, ES).
+> 📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/smart-excludes](https://gitpr.natanfiuza.dev.br/docs/smart-excludes) — available in 5 languages (EN, PT-BR, PT-PT, FR, ES).
 
 ## 📁 Output Directory Structure
 
@@ -525,51 +525,51 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 
 ### Chat & Interactive Features
 
-* [**🧠 Interactive Chat (Pair Programming)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/understanding_chat_functionality.md) — How to use the AI chat with memory, slash commands, auto-patch, and session export.
+* [**🧠 Interactive Chat (Pair Programming)**](https://gitpr.natanfiuza.dev.br/docs/understanding_chat_functionality) — How to use the AI chat with memory, slash commands, auto-patch, and session export.
 
 ### DevOps & CI/CD
 
-* [**Local Git Hooks (Shift-Left)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/git-hooks-locais.md) — How to use `gitpr --installhooks` to create guardrails on the developer's machine and use AI to automatically write commit messages.
-* [**Hook Scripts Versioning & Auto-Sync**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/hooks-versioning.md) — How the automatic versioning and i18n-aware synchronization system keeps your Git hooks up to date.
-* [**Customizable Static Linter**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/linter-regras-customizadas.md) — How to create validation rules in `.gitpr.linter.yml`, bridge external linters (ESLint, PHPCS, Stylelint), and generate Markdown reports for CI/CD and pre-commit hooks.
-* [**CI/CD Integration (GitHub Actions)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/github-ci-linter.md) — How to run GitPR in the pipeline to block "Merge" of PRs with violations.
+* [**Local Git Hooks (Shift-Left)**](https://gitpr.natanfiuza.dev.br/docs/git-hooks-locais) — How to use `gitpr --installhooks` to create guardrails on the developer's machine and use AI to automatically write commit messages.
+* [**Hook Scripts Versioning & Auto-Sync**](https://gitpr.natanfiuza.dev.br/docs/hooks-versioning) — How the automatic versioning and i18n-aware synchronization system keeps your Git hooks up to date.
+* [**Customizable Static Linter**](https://gitpr.natanfiuza.dev.br/docs/linter-regras-customizadas) — How to create validation rules in `.gitpr.linter.yml`, bridge external linters (ESLint, PHPCS, Stylelint), and generate Markdown reports for CI/CD and pre-commit hooks.
+* [**CI/CD Integration (GitHub Actions)**](https://gitpr.natanfiuza.dev.br/docs/github-ci-linter) — How to run GitPR in the pipeline to block "Merge" of PRs with violations.
 
 ### Core Features
 
-* [**Guided Tour (gitpr demo)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/demo.md) — How the `gitpr demo` subcommand walks through the commit message, the code review and the pull request description over a recorded example, with no API key, no repository and no network.
-* [**Pull Request Badge**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/badge.md) — What the badge GitPR attaches to published pull requests says, where it is attached, when it is left out, and how to print the static one for your own README.
-* [**Pull Request (Default Mode)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pr-descricao-padrao.md) — Complete flow for generating PR descriptions without flags.
-* [**Pull Request Publisher TUI**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/pull-request-publication.md) — How to review and publish Pull Requests directly to GitHub from the terminal.
-* [**AI Code Review**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/code-review-ia.md) — Guide to review modes (`--review`, `--fullreview`), file auditing (`--input`) and remote pull request review (`gitpr review-pr`).
-* [**Remote Pull Request Review (gitpr review-pr)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/review-pr.md) — How the `gitpr review-pr` subcommand reviews a pull request that is already open on the forge, fetching its diff from the API without checking out its branch.
-* [**AI Commit Messages**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/commit-message-ia.md) — How to generate messages in the Conventional Commits standard and integrate with Git Hooks.
-* [**Issue Generation and TUI Interface**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/issue-tui-help.md) — How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
-* [**Code Archaeologist (Git Blame)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/blame-arqueologo.md) — How to trace the origin of business rules with `git blame` and AI.
-* [**Skills and Templates System**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/skill-template.md) — How to customize AI behavior with `.gitpr.*.md` files.
-* [**Release Notes & Changelog (gitpr release)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/release-notes.md) — How the `gitpr release` subcommand generates the changelog / release notes of a repository from the delta of the previous version, links every commit, pull request and contributor, suggests the next semantic version and publishes releases on the forge.
-* [**Fix Command (gitpr fix)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/fix-command.md) — How the `gitpr fix` subcommand turns the findings of the last review into patches you read before they touch your tree, classifies each one by safety, and undoes an applied patch on demand.
-* [**Split Command (gitpr split)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/split-command.md) — How the `gitpr split` subcommand reads a working tree holding several concerns, groups the hunks by intent with AI, and turns them into ordered atomic commits without ever writing to your files.
-* [**Local Risk Scoring (gitpr risk)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/risk-scoring.md) — How the `gitpr risk` command evaluates regression risk, decomposes signals (50/30/20 formula), and highlights high-risk areas in code reviews offline.
-* [**Policy Packs (gitpr policy)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/policy-packs.md) — How a repository adopts a versioned Policy Pack that carries skills, linter rules, severity overrides, critical paths and risk weights together, the precedence ladder that combines packs, the lockfile the team commits, and the three failures that abort instead of silently degrading.
-* [**Baseline & Auditable Suppressions (gitpr baseline)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/baseline-suppressions.md) — How a legacy repository records the findings it already has, how a run classifies them as `new`, `existing`, `resolved`, `ignored` or `accepted_debt`, why only `new` blocks, what the fingerprint hashes and what it deliberately leaves out, the four scopes of a suppression, the checksum that catches a hand edit, and the `baseline:` block a Policy Pack may carry.
+* [**Guided Tour (gitpr demo)**](https://gitpr.natanfiuza.dev.br/docs/demo) — How the `gitpr demo` subcommand walks through the commit message, the code review and the pull request description over a recorded example, with no API key, no repository and no network.
+* [**Pull Request Badge**](https://gitpr.natanfiuza.dev.br/docs/badge) — What the badge GitPR attaches to published pull requests says, where it is attached, when it is left out, and how to print the static one for your own README.
+* [**Pull Request (Default Mode)**](https://gitpr.natanfiuza.dev.br/docs/pr-descricao-padrao) — Complete flow for generating PR descriptions without flags.
+* [**Pull Request Publisher TUI**](https://gitpr.natanfiuza.dev.br/docs/pull-request-publication) — How to review and publish Pull Requests directly to GitHub from the terminal.
+* [**AI Code Review**](https://gitpr.natanfiuza.dev.br/docs/code-review-ia) — Guide to review modes (`--review`, `--fullreview`), file auditing (`--input`) and remote pull request review (`gitpr review-pr`).
+* [**Remote Pull Request Review (gitpr review-pr)**](https://gitpr.natanfiuza.dev.br/docs/review-pr) — How the `gitpr review-pr` subcommand reviews a pull request that is already open on the forge, fetching its diff from the API without checking out its branch.
+* [**AI Commit Messages**](https://gitpr.natanfiuza.dev.br/docs/commit-message-ia) — How to generate messages in the Conventional Commits standard and integrate with Git Hooks.
+* [**Issue Generation and TUI Interface**](https://gitpr.natanfiuza.dev.br/docs/issue-tui-help) — How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
+* [**Code Archaeologist (Git Blame)**](https://gitpr.natanfiuza.dev.br/docs/blame-arqueologo) — How to trace the origin of business rules with `git blame` and AI.
+* [**Skills and Templates System**](https://gitpr.natanfiuza.dev.br/docs/skill-template) — How to customize AI behavior with `.gitpr.*.md` files.
+* [**Release Notes & Changelog (gitpr release)**](https://gitpr.natanfiuza.dev.br/docs/release-notes) — How the `gitpr release` subcommand generates the changelog / release notes of a repository from the delta of the previous version, links every commit, pull request and contributor, suggests the next semantic version and publishes releases on the forge.
+* [**Fix Command (gitpr fix)**](https://gitpr.natanfiuza.dev.br/docs/fix-command) — How the `gitpr fix` subcommand turns the findings of the last review into patches you read before they touch your tree, classifies each one by safety, and undoes an applied patch on demand.
+* [**Split Command (gitpr split)**](https://gitpr.natanfiuza.dev.br/docs/split-command) — How the `gitpr split` subcommand reads a working tree holding several concerns, groups the hunks by intent with AI, and turns them into ordered atomic commits without ever writing to your files.
+* [**Local Risk Scoring (gitpr risk)**](https://gitpr.natanfiuza.dev.br/docs/risk-scoring) — How the `gitpr risk` command evaluates regression risk, decomposes signals (50/30/20 formula), and highlights high-risk areas in code reviews offline.
+* [**Policy Packs (gitpr policy)**](https://gitpr.natanfiuza.dev.br/docs/policy-packs) — How a repository adopts a versioned Policy Pack that carries skills, linter rules, severity overrides, critical paths and risk weights together, the precedence ladder that combines packs, the lockfile the team commits, and the three failures that abort instead of silently degrading.
+* [**Baseline & Auditable Suppressions (gitpr baseline)**](https://gitpr.natanfiuza.dev.br/docs/baseline-suppressions) — How a legacy repository records the findings it already has, how a run classifies them as `new`, `existing`, `resolved`, `ignored` or `accepted_debt`, why only `new` blocks, what the fingerprint hashes and what it deliberately leaves out, the four scopes of a suppression, the checksum that catches a hand edit, and the `baseline:` block a Policy Pack may carry.
 
 ### Configuration & Infrastructure
 
-* [**Editor Extension (VS Code & Cursor)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/editor-extension.md) — Thin-client VSIX extension driving `gitpr-mcp` over stdio for SCM commit generation, Markdown code reviews, two-step PR publishing, and inline `Problems` diagnostics.
-* [**Interactive Configuration TUI (gitpr config)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/config-tui.md) — Master-detail terminal interface to view, edit, and validate settings in `~/.gitpr/.env`.
-* [**Multi-Forge SCM Integration**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/scm-multiforge.md) — Unified SCM provider layer for GitHub, GitLab, Bitbucket Cloud, and Azure DevOps with `--init` wizard.
-* [**Suggested Reviewers**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/suggested-reviewers.md) — Automatic reviewer suggestion via Git blame of added lines mapped to forge logins.
-* [**Usage Telemetry & Audit Log**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/usage-log.md) — Local invocation logging and audit history for tracking CLI executions.
-* [**Install Wizard**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/install-wizard.md) — Step-by-step guided setup for configuring GitPR in a new project.
-* [**AI Providers**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/providers-ia.md) — Configuration and selection between Google Gemini, DeepSeek, and Ollama.
-* [**Auto-Updater**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/auto-update.md) — How GitPR's automatic update and the mandatory update block work.
-* [**Architecture**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/ARCHITECTURE.md) — Project architecture, design patterns, and technical stack overview.
-* [**GitHub Token (PAT) Integration and Security**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/github-pat-integration.md) — Understand how GitPR creates issues directly in the repository with authentication.
-* [**Internationalization (i18n)**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/i18n_explanation.md) — Architecture, usage patterns, and how to add new languages.
-* [**MCP Integration**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-integration.md) — Connect GitPR to VS Code, Cursor, and Claude Desktop via Model Context Protocol.
-* [**MCP Prompts**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-prompts.md) — Pre-built message templates (7 prompts, 35 language variants) for common GitPR workflows in your editor's AI chat.
-* [**MCP Tool Annotations**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/mcp-annotations.md) — IDE integration hints (`readOnlyHint`, `destructiveHint`) for smarter UI behavior and safer tool execution.
-* [**Metrics & Telemetry**](https://github.com/gitpr-cli/gitpr.git/blob/main/docs/metricas-telemetria.md) — Local offline analytics for team usage metrics, exportable CSV reports, and interactive TUI dashboard.
+* [**Editor Extension (VS Code & Cursor)**](https://gitpr.natanfiuza.dev.br/docs/editor-extension) — Thin-client VSIX extension driving `gitpr-mcp` over stdio for SCM commit generation, Markdown code reviews, two-step PR publishing, and inline `Problems` diagnostics.
+* [**Interactive Configuration TUI (gitpr config)**](https://gitpr.natanfiuza.dev.br/docs/config-tui) — Master-detail terminal interface to view, edit, and validate settings in `~/.gitpr/.env`.
+* [**Multi-Forge SCM Integration**](https://gitpr.natanfiuza.dev.br/docs/scm-multiforge) — Unified SCM provider layer for GitHub, GitLab, Bitbucket Cloud, and Azure DevOps with `--init` wizard.
+* [**Suggested Reviewers**](https://gitpr.natanfiuza.dev.br/docs/suggested-reviewers) — Automatic reviewer suggestion via Git blame of added lines mapped to forge logins.
+* [**Usage Telemetry & Audit Log**](https://gitpr.natanfiuza.dev.br/docs/usage-log) — Local invocation logging and audit history for tracking CLI executions.
+* [**Install Wizard**](https://gitpr.natanfiuza.dev.br/docs/install-wizard) — Step-by-step guided setup for configuring GitPR in a new project.
+* [**AI Providers**](https://gitpr.natanfiuza.dev.br/docs/providers-ia) — Configuration and selection between Google Gemini, DeepSeek, and Ollama.
+* [**Auto-Updater**](https://gitpr.natanfiuza.dev.br/docs/auto-update) — How GitPR's automatic update and the mandatory update block work.
+* [**Architecture**](https://gitpr.natanfiuza.dev.br/docs/ARCHITECTURE) — Project architecture, design patterns, and technical stack overview.
+* [**GitHub Token (PAT) Integration and Security**](https://gitpr.natanfiuza.dev.br/docs/github-pat-integration) — Understand how GitPR creates issues directly in the repository with authentication.
+* [**Internationalization (i18n)**](https://gitpr.natanfiuza.dev.br/docs/i18n_explanation) — Architecture, usage patterns, and how to add new languages.
+* [**MCP Integration**](https://gitpr.natanfiuza.dev.br/docs/mcp-integration) — Connect GitPR to VS Code, Cursor, and Claude Desktop via Model Context Protocol.
+* [**MCP Prompts**](https://gitpr.natanfiuza.dev.br/docs/mcp-prompts) — Pre-built message templates (7 prompts, 35 language variants) for common GitPR workflows in your editor's AI chat.
+* [**MCP Tool Annotations**](https://gitpr.natanfiuza.dev.br/docs/mcp-annotations) — IDE integration hints (`readOnlyHint`, `destructiveHint`) for smarter UI behavior and safer tool execution.
+* [**Metrics & Telemetry**](https://gitpr.natanfiuza.dev.br/docs/metricas-telemetria) — Local offline analytics for team usage metrics, exportable CSV reports, and interactive TUI dashboard.
 
 ## ⚡ Local Cache System (Quota Savings)
 
