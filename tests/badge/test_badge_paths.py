@@ -59,9 +59,11 @@ def _publish(pr_data, tmp_path):
 
     def create_pull_request(repo_ref, request):
         captured["request"] = request
-        return SimpleNamespace(url="https://example.com/pr/1")
+        return SimpleNamespace(url="https://example.com/pr/1", number=1)
 
-    provider = SimpleNamespace(name="github", create_pull_request=create_pull_request)
+    provider = SimpleNamespace(
+        name="github", token="ghp_fake", create_pull_request=create_pull_request
+    )
 
     with patch("src.core.get_current_branch", return_value="feat/x"):
         with patch("click.confirm", return_value=False):
@@ -100,6 +102,7 @@ class TestTheTuiPublisher:
                 area = app.query_one("#pr_body", TextArea)
 
                 assert BADGE in area.text
+                await pilot.exit(None)
 
         asyncio.run(run())
 
