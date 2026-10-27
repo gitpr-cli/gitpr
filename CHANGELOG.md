@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.2] - 2026-10-27
+
+### Summary
+This 1.4.2 release fixes a silent failure when GitPR read the branch diff of a repository holding legacy non-UTF-8 (Latin-1) content. A single invalid byte killed the subprocess reader thread, the diff came back empty, and the run reported "no new code found" instead of the branch changes. Every git call captured as text now decodes as UTF-8 with replacement, and the pull request, review and commit flows now exit non-zero when the diff cannot be computed instead of pretending the branch is empty.
+
+### 🐛 Bug Fixes
+- decode git output as UTF-8 with replacement so legacy Latin-1 content no longer breaks the diff
+- fail the pull request, review and commit flows when the diff cannot be computed
+
 ## [1.4.1] - 2026-10-18
 
 ### Summary

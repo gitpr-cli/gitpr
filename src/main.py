@@ -1318,10 +1318,18 @@ def cli(
 
         try:
             git_user = subprocess.run(
-                ["git", "config", "user.name"], capture_output=True, text=True
+                ["git", "config", "user.name"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             ).stdout.strip()
             git_email = subprocess.run(
-                ["git", "config", "user.email"], capture_output=True, text=True
+                ["git", "config", "user.email"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
             ).stdout.strip()
         except Exception:
             git_user, git_email = "Dev", "dev@local"
@@ -1441,8 +1449,17 @@ def cli(
         click.secho(__("🚀 Starting pull request generation..."), fg="cyan")
         diff_text = get_git_full_diff()
 
+    # A git failure is not an empty diff. get_git_full_diff()/get_git_diff()
+    # return None when git fails; folding that into "no new code found" hides it.
+    # Exit non-zero so scripts can tell the two apart. Hook mode fails open: a
+    # non-zero prepare-commit-msg hook makes git abort the user's commit.
+    if diff_text is None:
+        if hook:
+            return
+        raise click.exceptions.Exit(1)
+
     # CRITICAL: Warn the user before exiting if there are no changes
-    if not diff_text or not diff_text.strip():
+    if not diff_text.strip():
         click.secho(
             __(
                 "\n⚠️ No new code found. Make some changes or check your branch before running the command.\n"

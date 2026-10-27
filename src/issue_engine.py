@@ -20,7 +20,12 @@ def get_github_repo_info():
     """Extracts the owner/repo format from git remote -v."""
     try:
         result = subprocess.run(
-            ["git", "remote", "-v"], capture_output=True, text=True, check=True
+            ["git", "remote", "-v"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
         )
 
         # Search for patterns like git@github.com:owner/repo.git or https://github.com/owner/repo.git

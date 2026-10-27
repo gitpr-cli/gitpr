@@ -1443,6 +1443,8 @@ def get_base_branch():
             capture_output=True,
             stdin=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         # The return is something like 'refs/remotes/origin/main', so we get the last part
@@ -1467,6 +1469,9 @@ def get_git_full_diff():
             check=True,
             capture_output=True,
             stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
 
         base_branch = get_base_branch()
@@ -1477,6 +1482,8 @@ def get_git_full_diff():
             capture_output=True,
             stdin=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         ancestor_hash = merge_base_res.stdout.strip()
@@ -1499,6 +1506,7 @@ def get_git_full_diff():
             stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
+            errors="replace",
             check=True,
         )
         return result.stdout
@@ -2043,6 +2051,8 @@ def get_branch_history_text():
             capture_output=True,
             stdin=subprocess.DEVNULL,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             check=True,
         )
         ancestor_hash = merge_base_res.stdout.strip()
@@ -2060,6 +2070,7 @@ def get_branch_history_text():
             stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
+            errors="replace",
             check=True,
         )
         git_log = git_log_res.stdout.strip()
