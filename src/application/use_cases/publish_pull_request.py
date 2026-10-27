@@ -129,20 +129,20 @@ def publish_pull_request_use_case(
             message=__("PR description must not be empty."),
         )
 
-    if not getattr(provider, "token", ""):
-        return PublishPrOutcome(
-            status="auth_required",
-            provider=provider.name,
-            source_branch=source_branch,
-            target_branch=target_branch,
-            http_status=401,
-            message=__(
-                "{provider} token is not configured. Run 'gitpr' in a terminal to authenticate.",
-                provider=label,
-            ),
-        )
-
     if check_remote_state:
+        if not getattr(provider, "token", ""):
+            return PublishPrOutcome(
+                status="auth_required",
+                provider=provider.name,
+                source_branch=source_branch,
+                target_branch=target_branch,
+                http_status=401,
+                message=__(
+                    "{provider} token is not configured. Run 'gitpr' in a terminal to authenticate.",
+                    provider=label,
+                ),
+            )
+
         try:
             existing: Optional[PullRequestResult] = provider.check_existing_pull_request(
                 repo_ref, source_branch
@@ -254,10 +254,12 @@ def publish_pull_request_use_case(
             message=mask_sensitive_text(str(exc)),
         )
 
+    pr_url = getattr(result, "url", "")
+    pr_number = getattr(result, "number", 0)
     return PublishPrOutcome(
         status="success",
-        url=result.url,
-        number=result.number,
+        url=pr_url,
+        number=pr_number,
         provider=provider.name,
         source_branch=source_branch,
         target_branch=target_branch,
@@ -265,6 +267,6 @@ def publish_pull_request_use_case(
         message=__(
             "PR successfully created on {provider}: {pr_url}",
             provider=label,
-            pr_url=result.url,
+            pr_url=pr_url,
         ),
     )
