@@ -21,10 +21,20 @@ def get_git_user_info():
     """Recupera o nome e email configurados no git local."""
     try:
         name = subprocess.run(
-            ["git", "config", "user.name"], capture_output=True, text=True, check=True
+            ["git", "config", "user.name"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
         ).stdout.strip()
         email = subprocess.run(
-            ["git", "config", "user.email"], capture_output=True, text=True, check=True
+            ["git", "config", "user.email"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
         ).stdout.strip()
         return name, email
     except subprocess.CalledProcessError:
