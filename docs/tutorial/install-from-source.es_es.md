@@ -72,7 +72,7 @@ y compara dos versiones:
 
 | Versión | De dónde viene |
 | --- | --- |
-| Remota | `https://pypi.org/pypi/gitpr-cli/json`, con caché de 24h en `~/.gitpr/update_cache.json` |
+| Remota | `https://pypi.org/pypi/gitpr-cli/json`, con caché de 1h (TTL móvil) en `~/.gitpr/update_cache.json`; `gitpr -u` siempre consulta PyPI |
 | Local | `__version__`, al principio de `src/updater.py` |
 
 La ejecución se bloquea cuando la versión remota es **mayor** que la local. La
@@ -143,11 +143,11 @@ protección contra comportamiento que ya se corrigió upstream.
 
 Cuatro detalles que conviene conocer antes de depender de ella:
 
-- **Cualquier valor no vacío desactiva la comprobación** — incluidos `0`, `false`
-  y `no`. La variable se lee como una bandera simple
-  (`bool(os.environ.get(..., "").strip())`), no se interpreta como booleano. Solo
-  un valor vacío o con únicamente espacios mantiene la comprobación activada.
-  Definir `GITPR_SKIP_UPDATE_CHECK=` por lo tanto **no hace nada**.
+- **Solo los valores explícitamente verdaderos desactivan la comprobación** —
+  `1`, `true`, `yes`, `on` y `y` (sin distinguir mayúsculas, ignorando espacios
+  alrededor). `0`, `false`, `no`, `off`, `n`, un valor vacío y cualquier valor no
+  reconocido mantienen la comprobación activada: la variable se interpreta como
+  booleano, no como una bandera simple.
 - **No es una clave de `DEFAULT_CONFIG`.** No aparece en la TUI de configuración
   y no la crea el asistente de instalación — tienes que añadir la línea a
   `~/.gitpr/.env` a mano.
@@ -160,8 +160,10 @@ Cuatro detalles que conviene conocer antes de depender de ella:
   GITPR_SKIP_UPDATE_CHECK=1 gitpr -c
   ```
 
-- **Para volver a activar la comprobación**, borra la línea de `~/.gitpr/.env`
-  (o sobrescríbela con un valor vacío) y reinicia GitPR.
+- **Para volver a activar la comprobación**, define la línea como
+  `GITPR_SKIP_UPDATE_CHECK=0` (o bórrala) y reinicia GitPR. Un export `0` en la
+  shell gana para ese único comando, porque `load_dotenv` no sobrescribe una
+  variable que ya existe en el entorno.
 
 ---
 
@@ -177,11 +179,17 @@ No toda invocación pasa por el portero. La comprobación se omite para:
 | `-u` / `--update` | Es justamente el comando que explica cómo actualizar |
 | `-h --<flag>` | Ayuda contextual |
 | `--help` / `--version` | Click resuelve ambos antes de que se ejecute el cuerpo del comando |
-| **Cualquier subcomando** | `gitpr fix`, `gitpr review-pr`, `gitpr release`, `gitpr init` se despachan antes del portero |
-| Offline | Cuando la versión remota es desconocida, la ejecución continúa — un usuario offline nunca puede quedar encerrado fuera de un comando que no puede arreglar |
+| **Subcomandos en una ejecución no interactiva** | `gitpr fix`, `gitpr review-pr`, `gitpr release`, … con stdin o stdout fuera de un terminal (CI, tuberías, cron): la puerta del subcomando solo se activa cuando la ejecución puede preguntar al usuario |
+| Ayuda de subcomando | `gitpr <subcomando> -h` / `--help` debe poder leerse siempre |
+| Offline | Cuando la versión remota es desconocida — sin internet, una pre-release para una instalación estable o una versión que no se puede interpretar — la ejecución continúa; un usuario offline nunca puede quedar encerrado fuera de un comando que no puede arreglar |
 
-En un checkout bloqueado, por lo tanto, `gitpr -u` y los subcomandos siguen
-siendo utilizables para diagnóstico, incluso sin la variable de entorno.
+En un checkout bloqueado, por lo tanto, `gitpr -u` sigue siendo siempre
+utilizable para diagnóstico; los subcomandos interactivos se bloquean, mientras
+que los mismos subcomandos siguen siendo utilizables desde scripts, CI y otras
+ejecuciones no interactivas. La variable `GITPR_SKIP_UPDATE_CHECK` sigue siendo
+la salida para el desarrollo local. Las invocaciones por flags
+(`gitpr --status`, `gitpr -c`, …) mantienen el comportamiento original y se
+bloquean independientemente de que haya un terminal.
 
 ---
 
