@@ -1,25 +1,38 @@
-import urllib.request
 import json
 import os
-import click
+import tempfile
 from datetime import datetime
+
+import click
+from packaging.version import InvalidVersion, Version
 
 # Current version of your local executable (Update this on every new build!)
 # ── Must stay ABOVE the i18n import: i18n.py lazily imports __lang_version__
 #     from here, and pyproject.toml reads __version__ via setuptools attr:.
-__version__ = "1.4.2"  # GitPR current version
+__version__ = "1.4.3"  # GitPR current version
 __lang_version__ = "v0.0.35"  # Language dictionary version control
 __scripts_version__ = (
     "v0.0.4"  # Git Hook scripts version control (independent from __lang_version__)
 )
 
 from src.i18n import __
+from src.net import bounded_urlopen
 
 PYPI_API_URL = "https://pypi.org/pypi/gitpr-cli/json"
 
+# How long a PyPI answer is trusted before the next check goes back online.
+# A rolling window, not the local calendar day: a release published after the
+# first run of the day used to stay invisible until midnight.
+UPDATE_CACHE_TTL_SECONDS = 3600
+
+# Wall-clock ceiling for the PyPI fetch, DNS resolution included.
+UPDATE_FETCH_HARD_TIMEOUT = 3.0
+
 # Environment switch used to mute the mandatory update check (test harness and
-# offline automation). Read as a plain flag: any non-empty value disables it.
+# offline automation). Parsed as a strict boolean: only _SKIP_TRUTHY_VALUES
+# disable it, so `GITPR_SKIP_UPDATE_CHECK=false` still checks.
 SKIP_UPDATE_CHECK_ENV = "GITPR_SKIP_UPDATE_CHECK"
+_SKIP_TRUTHY_VALUES = ("1", "true", "yes", "on", "y")
 
 
 def get_gitpr_dir():
@@ -32,53 +45,171 @@ def get_update_cache_file():
     return os.path.join(get_gitpr_dir(), "update_cache.json")
 
 
-def parse_version(version_str):
-    """Converts 'v0.1.0' or '0.1.0' into a tuple (0, 1, 0) for version math."""
-    clean_version = version_str.lower().replace("v", "")
+def _coerce_version(value):
+    """Parses *value* as a PEP 440 version, or returns None when it is not one."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    # packaging rejects a leading "v"; the old helper stripped every "v" in the
+    # string, which corrupted suffixes such as 1.2.3-dev.
+    if text[:1] in ("v", "V"):
+        text = text[1:]
+    if not text:
+        return None
     try:
-        return tuple(map(int, clean_version.split(".")))
-    except ValueError:
-        return (0, 0, 0)
+        return Version(text)
+    except InvalidVersion:
+        return None
+
+
+def parse_version(version_str):
+    """Converts 'v0.1.0' or '0.1.0' into a tuple (0, 1, 0) for version math.
+
+    Kept for compatibility with outside callers. The tuple is lossy for
+    pre/post/dev markers, so the update gate itself compares Version objects
+    through _is_newer() instead.
+    """
+    parsed = _coerce_version(version_str)
+    return parsed.release if parsed is not None else (0, 0, 0)
 
 
 def is_update_check_disabled():
     """Returns True when the update check must be muted for this execution."""
-    return bool(os.environ.get(SKIP_UPDATE_CHECK_ENV, "").strip())
+    value = os.environ.get(SKIP_UPDATE_CHECK_ENV, "")
+    return value.strip().lower() in _SKIP_TRUTHY_VALUES
 
 
-def get_latest_remote_version():
-    """Fetches the latest version published on PyPI, with a daily cache."""
-    cache_file = get_update_cache_file()
-    today = datetime.now().strftime("%Y-%m-%d")
+def _cache_is_fresh(cache_data, now=None):
+    """Whether *cache_data* carries a timestamp inside the freshness window.
 
-    # Try to read from cache to avoid slowing down the user's terminal
-    if os.path.exists(cache_file):
+    A timestamp in the future (the clock moved backwards) counts as stale, so
+    a clock jump can never freeze the cache on an old answer indefinitely.
+    """
+    checked_at = cache_data.get("checked_at")
+    if not isinstance(checked_at, str):
+        return False
+    try:
+        written_at = datetime.fromisoformat(checked_at)
+        current = datetime.now() if now is None else now
+        age = (current - written_at).total_seconds()
+    except (TypeError, ValueError):
+        # Not a valid timestamp, or a timezone-aware stamp this cache never writes.
+        return False
+    return 0 <= age < UPDATE_CACHE_TTL_SECONDS
+
+
+def _read_cached_version(cache_file):
+    """Returns the cached PyPI version while it is still fresh, else "".
+
+    Only the current schema is read: a document from the former calendar-day
+    cache has no ``checked_at`` and therefore counts as expired.
+    """
+    try:
+        with open(cache_file, "r", encoding="utf-8", errors="replace") as f:
+            cache_data = json.load(f)
+    except Exception:
+        return ""
+
+    if not isinstance(cache_data, dict) or not _cache_is_fresh(cache_data):
+        return ""
+
+    version = cache_data.get("version")
+    if isinstance(version, str) and version.strip():
+        return version.strip()
+    return ""
+
+
+def _write_cached_version(cache_file, version):
+    """Writes the cache atomically; the caller treats a failure as non-fatal."""
+    folder = os.path.dirname(cache_file)
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+
+    payload = {"checked_at": datetime.now().isoformat(), "version": version}
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=folder or ".",
+        prefix=".update-cache-",
+        suffix=".tmp",
+        delete=False,
+    )
+    try:
+        with handle:
+            json.dump(payload, handle)
+        os.replace(handle.name, cache_file)
+    except Exception:
         try:
-            with open(cache_file, "r", encoding="utf-8", errors="replace") as f:
-                cache_data = json.load(f)
-            if cache_data.get("date") == today:
-                return cache_data.get("version", "")
-        except Exception:
+            os.unlink(handle.name)
+        except OSError:
             pass
+        raise
 
-    # Fetch from Web if cache expired
-    latest_version = ""
+
+def _fetch_pypi_version():
+    """Returns the version published on PyPI, or "" when it cannot be read."""
+    raw = bounded_urlopen(
+        PYPI_API_URL,
+        timeout=3,
+        hard_timeout=UPDATE_FETCH_HARD_TIMEOUT,
+        headers={"User-Agent": "GitPR-Updater"},
+    )
+    if not raw:
+        return ""
 
     try:
-        req = urllib.request.Request(PYPI_API_URL, headers={"User-Agent": "GitPR-Updater"})
-        with urllib.request.urlopen(req, timeout=3) as response:
-            data = json.loads(response.read().decode())
-        latest_version = data.get("info", {}).get("version", "")
-
-        if latest_version:
-            os.makedirs(get_gitpr_dir(), exist_ok=True)
-            with open(cache_file, "w", encoding="utf-8") as f:
-                json.dump({"date": today, "version": latest_version}, f)
-
+        data = json.loads(raw.decode("utf-8", errors="replace"))
+        version = data["info"]["version"]
     except Exception:
-        pass  # Silent failure in case of no internet
+        return ""
 
+    # Only a parseable version is trusted: a captive portal or a malformed
+    # mirror must not poison the cache for a whole hour.
+    if _coerce_version(version) is None:
+        return ""
+    return version.strip()
+
+
+def get_latest_remote_version(force=False):
+    """Fetches the latest version published on PyPI, with a one-hour cache.
+
+    ``force=True`` (the ``--update`` flag) always asks PyPI: that command
+    promises an immediate verification, so it must not answer from the cache.
+    Returns "" when the remote version is unknown — offline, stalled DNS, or a
+    body that is not a version — and the caller then lets the run proceed.
+    """
+    cache_file = get_update_cache_file()
+
+    if not force:
+        cached = _read_cached_version(cache_file)
+        if cached:
+            return cached
+
+    latest_version = _fetch_pypi_version()
+    if latest_version:
+        try:
+            _write_cached_version(cache_file, latest_version)
+        except Exception:
+            pass  # A read-only home or a locked file must not hide the answer
     return latest_version
+
+
+def _is_newer(remote_version, local_version=None):
+    """Whether *remote_version* is a version this install should upgrade to.
+
+    PEP 440 ordering instead of a tuple comparison, so 1.4.10 > 1.4.9 and
+    pre/post/dev markers follow the standard. A remote pre-release is ignored
+    while the local install is stable: pip will not install it without --pre,
+    so blocking would tell the user to run a command that does nothing. An
+    unparseable version on either side is "unknown", never "newer".
+    """
+    remote = _coerce_version(remote_version)
+    local = _coerce_version(__version__ if local_version is None else local_version)
+    if remote is None or local is None:
+        return False
+    if remote.is_prerelease and not local.is_prerelease:
+        return False
+    return remote > local
 
 
 def enforce_update_required():
@@ -86,18 +217,16 @@ def enforce_update_required():
 
     Prints the upgrade instructions and returns True when the caller must stop.
     Returns False when the local version is current, when the remote version is
-    unknown (offline, so the user could not upgrade anyway) or when the check is
-    disabled via GITPR_SKIP_UPDATE_CHECK.
+    unknown (offline, so the user could not upgrade anyway), when it is a
+    pre-release a stable install cannot move to, or when the check is disabled
+    via GITPR_SKIP_UPDATE_CHECK.
     """
     if is_update_check_disabled():
         return False
 
     latest_version = get_latest_remote_version()
 
-    if not latest_version:
-        return False
-
-    if parse_version(latest_version) <= parse_version(__version__):
+    if not _is_newer(latest_version):
         return False
 
     click.echo("")
@@ -121,13 +250,13 @@ def enforce_update_required():
 
 def check_and_update():
     """Function triggered only when the user forces the --update flag."""
-    latest_version = get_latest_remote_version()
+    latest_version = get_latest_remote_version(force=True)
 
     if not latest_version:
         click.secho(__("❌ Could not check for updates at this moment."), fg="red")
         return
 
-    if parse_version(latest_version) > parse_version(__version__):
+    if _is_newer(latest_version):
         click.secho(
             __(
                 "\n🚀 New GitPR version found (v{latest_version})!",

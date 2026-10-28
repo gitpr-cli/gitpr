@@ -1,6 +1,6 @@
 # Documentação Técnica: Auto-Updater (--update)
 
-O GitPR é distribuído exclusivamente pelo PyPI. O **Auto-Updater** verifica diariamente se uma nova versão foi publicada e mantém a ferramenta sempre na release mais recente.
+O GitPR é distribuído exclusivamente pelo PyPI. O **Auto-Updater** verifica a cada execução se uma nova versão foi publicada, guardando a resposta por no máximo uma hora, e mantém a ferramenta sempre na release mais recente.
 
 ---
 
@@ -12,15 +12,17 @@ gitpr -u
 gitpr --update
 ```
 
-O comando força uma verificação imediata no PyPI e exibe o comando de atualização. Ele **não** instala nada — a atualização em si é sempre feita pelo seu gerenciador de pacotes.
+O comando força uma verificação imediata no PyPI — ele ignora o cache — e exibe o comando de atualização. Ele **não** instala nada — a atualização em si é sempre feita pelo seu gerenciador de pacotes.
 
 ---
 
 ## 2. Bloqueio Obrigatório de Atualização
 
-A cada execução do GitPR (exceto nos modos `--quiet`, `--hook` e `--mcp`), a ferramenta verifica se uma versão mais nova foi publicada. O resultado fica em cache por **24 horas** no arquivo `~/.gitpr/update_cache.json` para evitar chamadas repetidas à API.
+A cada execução do GitPR (exceto nos modos `--quiet`, `--hook` e `--mcp`), e antes dos subcomandos interativos, a ferramenta verifica se uma versão mais nova foi publicada. O resultado fica em cache por **1 hora** — uma janela móvel, não o dia do calendário local — no arquivo `~/.gitpr/update_cache.json` para evitar chamadas repetidas à API. `gitpr -u`/`--update` sempre ignora o cache.
 
 Quando a versão publicada é mais nova que a local, o GitPR **bloqueia a execução**: exibe as duas versões, mostra o comando `pip install --upgrade gitpr-cli` e encerra com status diferente de zero, sem executar nenhum trabalho.
+
+As versões são comparadas segundo o PEP 440: um pré-release remoto é ignorado enquanto a versão instalada é estável (o pip não o instala sem `--pre`), e uma versão remota que não pode ser interpretada conta como desconhecida.
 
 Não existe flag, fallback ou modo de compatibilidade que mantenha uma **release instalada** desatualizada rodando — atualizar é a única forma de continuar. Um checkout usado para desenvolvimento local tem uma única chave de escape, documentada em [Instalando o GitPR do código-fonte](tutorial/install-from-source.pt_br.md).
 
@@ -35,12 +37,14 @@ O bloqueio nunca dispara para:
 | `--mcp` / `gitpr-mcp` | Servidor MCP consumido por IDEs e agentes |
 | `-u` / `--update` | É justamente o comando que explica como atualizar |
 | `-h --<flag>` | Ajuda contextual |
+| `gitpr <subcomando>` sem terminal | CI, pipes e cron nunca podem ser bloqueados — o gate de subcomando só dispara quando a execução pode perguntar ao usuário |
+| `gitpr <subcomando> -h` / `--help` | Ler ajuda nunca pode ser bloqueado |
 
-`--help` e `--version` também não são afetados: o Click os resolve antes do corpo do comando rodar.
+`--help` e `--version` também não são afetados: o Click os resolve antes do corpo do comando rodar. A ajuda de subcomando é isenta pela linha de comando bruta. Invocações pela superfície de flags (`gitpr --status`, `gitpr -c`, …) mantêm o comportamento original e são bloqueadas independentemente do terminal.
 
 ### Comportamento Offline
 
-Quando não é possível determinar a versão publicada — sem internet e sem cache do dia atual — o GitPR executa normalmente. Um usuário offline nunca pode ficar preso a um comando que não consegue rodar.
+Quando não é possível determinar a versão publicada — sem internet e sem cache com menos de uma hora, ou uma resposta que não é uma versão válida — o GitPR executa normalmente. Um usuário offline nunca pode ficar preso a um comando que não consegue rodar.
 
 ---
 

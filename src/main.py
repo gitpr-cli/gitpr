@@ -75,6 +75,18 @@ def _may_ask_the_user(quiet=False, hook=False, mcp=False):
         return False
 
 
+def _subcommand_help_in_argv(argv=None):
+    """Whether the raw command line asks for help.
+
+    Click clears the group context arguments before this callback runs, so by
+    the time the update gate below executes, ``gitpr release -h`` is
+    indistinguishable from ``gitpr release``. The raw tokens are the only
+    surviving record. The scan fails open, which costs at most one skipped gate.
+    """
+    tokens = sys.argv[1:] if argv is None else argv
+    return any(token in ("-h", "--help") for token in tokens)
+
+
 def print_banner():
     """Displays the project ASCII Art signature"""
     banner = r"""
@@ -677,6 +689,13 @@ def cli(
     # first, so everything below runs only when NO subcommand was requested —
     # the legacy flag surface stays byte-for-byte intact (ADR-002).
     if ctx.invoked_subcommand is not None:
+        # The mandatory update gate covers subcommands too, but only when the
+        # run may stop and ask the user: a release in CI, a pipe or a hook must
+        # never be blocked. Help tokens are read from the raw argv because
+        # Click clears the context arguments before this callback runs.
+        if may_ask and not update and not help_flag and not _subcommand_help_in_argv():
+            if enforce_update_required():
+                sys.exit(1)
         return
 
     # ============================================================

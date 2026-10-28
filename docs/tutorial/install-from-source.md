@@ -71,7 +71,7 @@ and compares two versions:
 
 | Version | Where it comes from |
 | --- | --- |
-| Remote | `https://pypi.org/pypi/gitpr-cli/json`, cached for 24h in `~/.gitpr/update_cache.json` |
+| Remote | `https://pypi.org/pypi/gitpr-cli/json`, cached for 1h (rolling TTL) in `~/.gitpr/update_cache.json`; `gitpr -u` always queries PyPI |
 | Local | `__version__` at the top of `src/updater.py` |
 
 The run is blocked when the remote version is **greater** than the local one.
@@ -141,10 +141,10 @@ was already fixed upstream.
 
 Four details worth knowing before you rely on it:
 
-- **Any non-empty value disables the check** — including `0`, `false` and `no`.
-  The switch is read as a plain flag (`bool(os.environ.get(..., "").strip())`),
-  not parsed as a boolean. Only an empty or whitespace-only value leaves the
-  check enabled. Setting `GITPR_SKIP_UPDATE_CHECK=` therefore does **nothing**.
+- **Only explicit true values disable the check** — `1`, `true`, `yes`, `on` and
+  `y` (case-insensitive, surrounding spaces ignored). `0`, `false`, `no`, `off`,
+  `n`, an empty value and any unrecognized value leave the check enabled: the
+  switch is parsed as a boolean, not as a plain flag.
 - **It is not a `DEFAULT_CONFIG` key.** It does not appear in the configuration
   TUI and is not created by the setup wizard — you have to add the line to
   `~/.gitpr/.env` by hand.
@@ -157,8 +157,10 @@ Four details worth knowing before you rely on it:
   GITPR_SKIP_UPDATE_CHECK=1 gitpr -c
   ```
 
-- **To turn the check back on**, delete the line from `~/.gitpr/.env` (or
-  overwrite it with an empty value) and restart GitPR.
+- **To turn the check back on**, set the line to `GITPR_SKIP_UPDATE_CHECK=0`
+  (or delete it) and restart GitPR. A shell export of `0` wins for that one
+  command, because `load_dotenv` does not override a variable that already
+  exists in the environment.
 
 ---
 
@@ -174,11 +176,16 @@ Not every invocation goes through the gate. The check is skipped for:
 | `-u` / `--update` | It is the very command that explains how to update |
 | `-h --<flag>` | Contextual help |
 | `--help` / `--version` | Click resolves both before the command body runs |
-| **Any subcommand** | `gitpr fix`, `gitpr review-pr`, `gitpr release`, `gitpr init` dispatch before the gate |
-| Offline | When the remote version is unknown, the run proceeds — an offline user must never be locked out of a command they cannot fix |
+| **Subcommands in a non-interactive run** | `gitpr fix`, `gitpr review-pr`, `gitpr release`, … with stdin or stdout not a terminal (CI, pipes, cron): the subcommand gate only fires when the run can ask the user |
+| Subcommand help | `gitpr <subcommand> -h` / `--help` must always be readable |
+| Offline | When the remote version is unknown — no internet, a pre-release for a stable install, or an unparseable version — the run proceeds; an offline user must never be locked out of a command they cannot fix |
 
-In a blocked checkout, `gitpr -u` and the subcommands are therefore still usable
-for diagnosis, even without the environment switch.
+In a blocked checkout, `gitpr -u` is therefore always usable for diagnosis;
+interactive subcommands are blocked, while the same subcommands remain usable
+from scripts, CI and other non-interactive runs. The `GITPR_SKIP_UPDATE_CHECK`
+switch remains the local-development escape. Flag-based invocations
+(`gitpr --status`, `gitpr -c`, …) keep the original behaviour and are gated
+regardless of whether a terminal is attached.
 
 ---
 
