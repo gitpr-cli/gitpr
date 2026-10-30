@@ -278,8 +278,38 @@ La rama de destino del Pull Request se resuelve en el siguiente orden de priorid
 | Prioridad | Origen | Cómo configurarlo |
 |---|---|---|
 | **1 (la más alta)** | bandera `--base` | `gitpr --base develop` |
-| **2** | variable de entorno `PR_DEFAULT_BASE` | `PR_DEFAULT_BASE=develop` en `~/.gitpr/.env` |
-| **3 (predeterminada)** | Detección automática | `git symbolic-ref refs/remotes/origin/HEAD` (generalmente `main` o `master`) |
+| **2** | Archivo del proyecto | `.gitpr/conf/gitpr.config.yml`, versionado con el repositorio (abajo) |
+| **3** | variable de entorno `PR_DEFAULT_BASE` | `PR_DEFAULT_BASE=develop` en `~/.gitpr/.env` |
+| **4 (predeterminada)** | Detección automática | `git symbolic-ref refs/remotes/origin/HEAD` (generalmente `main` o `master`) |
+
+### 9.1 El Archivo del Proyecto
+
+`PR_DEFAULT_BASE` vale para toda la máquina: un repositorio que fusiona en `develop` junto a otro que fusiona en `main` necesitaría `--base` en cada ejecución. El archivo del proyecto es la respuesta por repositorio, y está pensado para ser confirmado en el repositorio:
+
+```yaml
+# Project configuration for GitPR — versioned with the repository.
+# The pull request target base branch for this repository.
+pull_request:
+  base_branch: develop
+```
+
+GitPR crea el archivo en la primera invocación dentro de un repositorio git y en `--install`, rellenado con `PR_DEFAULT_BASE` cuando está definido y `main` en caso contrario. **Nunca se sobrescribe** una vez existe, y GitPR nunca ejecuta `git add` — versionarlo es una decisión deliberada del equipo. Si el `.gitignore` del usuario excluye la ruta, el seed lo advierte.
+
+Edítalo a mano o mediante `gitpr config` → **Proyecto** ([Pantalla de Configuración Interactiva](config-tui.es_es.md)). Ambos escriben el mismo archivo: la rama se define, no se fusiona.
+
+Un archivo ilegible — YAML roto, un valor que no es texto — se informa como advertencia y la resolución continúa por la cadena; el archivo nunca se sobrescribe por accidente.
+
+### 9.2 El Destino No Es la Base del Diff
+
+El archivo del proyecto controla **solo la rama a la que se pide al forge que fusione**. El contenido de IA del PR sigue generándose a partir de un diff contra la rama predeterminada detectada (`origin/HEAD`). Un repositorio que apunta a `develop` recibe, por tanto, una propuesta de PR cuya descripción compara con `main` — una limitación conocida, registrada en la [ADR-015](plans/ADR-015-project-local-pr-base.md). La revisión completa local (`-f`), las herramientas de diff del MCP y `check --base` son interruptores separados y mantienen su propia base.
+
+### 9.3 Verificación
+
+Sea cual sea el origen, la rama de destino debe existir en `origin`. Se verifica inmediatamente antes de publicar — después de construir el diff, para que una rama obtenida en esta misma ejecución cuente — y una referencia ausente aborta la publicación con el motivo y el comando `git fetch origin <branch>` a ejecutar. `--no-publish` nunca llega a esta comprobación: no publica nada, así que el destino no se usa.
+
+Un pull request tampoco puede apuntar a la rama de la que parte, así que el destino resuelto no puede ser la rama en checkout. Cuando lo es — un archivo de proyecto fijado en `develop` publicado desde `develop`, por ejemplo — una ejecución interactiva abre una pantalla pequeña pidiendo el reemplazo: el mismo selector de ramas de `gitpr config`, sin la rama actual. La elección se guarda en el archivo del proyecto y la ejecución continúa desde ahí.
+
+El selector se omite cuando no hay a quién preguntar: `--quiet`, un stdin no interactivo (hooks, CI, editores) y un `--base` que apunta a la rama actual conservan el error. Un valor en `--base` es una elección deliberada de esa ejecución, no configuración obsoleta, así que GitPR lo informa en lugar de reescribir el archivo del proyecto en silencio.
 
 ---
 
@@ -383,7 +413,7 @@ La primera vez que uses `F3` o `--no-edit`, GitPR:
 | Variable | Predeterminado | Descripción |
 |---|---|---|
 | `GITHUB_TOKEN_ENCRYPTED` | *(ninguno)* | Token de Acceso Personal de GitHub cifrado |
-| `PR_DEFAULT_BASE` | *(vacío)* | Rama de destino predeterminada (usa detección automática cuando está vacía) |
+| `PR_DEFAULT_BASE` | *(vacío)* | Rama de destino para toda la máquina, usada cuando este repositorio no tiene una rama base de proyecto en `.gitpr/conf/gitpr.config.yml` (detección automática cuando ambas están vacías) |
 | `GITPR_AUTO_COMMIT` | `false` | Establécelo en `true` para ejecutar commits sin pedir confirmación |
 | `GITPR_SKIP_LINT` | `false` | Establécelo en `true` para omitir la validación del linter durante el auto-commit |
 | `GITPR_AUTO_STAGE` | `false` | Establécelo en `true` para hacer stage automático de todos los archivos unstaged sin mostrar el modal de selección |

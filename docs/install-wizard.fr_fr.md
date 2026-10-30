@@ -15,6 +15,8 @@ L'assistant vous guide à travers **4 étapes**, en demandant une confirmation a
 
 À la fin, un lien vers cette documentation est affiché pour référence.
 
+Avant les étapes, l'assistant initialise aussi le fichier versionné du projet `.gitpr/conf/gitpr.config.yml` avec la branche que les pull requests de ce dépôt doivent cibler — `PR_DEFAULT_BASE` lorsqu'il est défini, `main` sinon. Un fichier existant n'est jamais écrasé ; l'assistant se contente d'en indiquer le chemin. Versionnez-le pour que toute l'équipe cible la même branche ([Publication de Pull Request](pull-request-publication.fr_fr.md#91-le-fichier-du-projet)).
+
 ## 🚀 Comment Utiliser
 
 ```bash

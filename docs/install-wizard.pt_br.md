@@ -15,6 +15,8 @@ O assistente guia você por **4 etapas**, solicitando confirmação antes de cad
 
 Ao final, um link para esta documentação é exibido para referência.
 
+Antes dos passos, o assistente também semeia o arquivo versionado do projeto `.gitpr/conf/gitpr.config.yml` com a branch que os pull requests deste repositório devem mirar — `PR_DEFAULT_BASE` quando definido, `main` caso contrário. Um arquivo existente nunca é sobrescrito; o assistente apenas informa o caminho. Versione-o para que o time inteiro aponte para a mesma branch ([Publicação de Pull Request](pull-request-publication.pt_br.md#91-o-arquivo-do-projeto)).
+
 ## 🚀 Como Usar
 
 ```bash

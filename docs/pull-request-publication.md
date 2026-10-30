@@ -301,8 +301,38 @@ The target branch for the Pull Request is resolved in the following priority ord
 | Priority | Source | How to configure |
 |---|---|---|
 | **1 (highest)** | `--base` flag | `gitpr --base develop` |
-| **2** | `PR_DEFAULT_BASE` env | `PR_DEFAULT_BASE=develop` in `~/.gitpr/.env` |
-| **3 (default)** | Auto-detection | `git symbolic-ref refs/remotes/origin/HEAD` (usually `main` or `master`) |
+| **2** | Project file | `.gitpr/conf/gitpr.config.yml`, versioned with the repository (below) |
+| **3** | `PR_DEFAULT_BASE` env | `PR_DEFAULT_BASE=develop` in `~/.gitpr/.env` |
+| **4 (default)** | Auto-detection | `git symbolic-ref refs/remotes/origin/HEAD` (usually `main` or `master`) |
+
+### 9.1 The Project File
+
+`PR_DEFAULT_BASE` is machine-wide: a repository that merges into `develop` next to one that merges into `main` would need `--base` on every run. The project file is the per-repository answer, and it is meant to be committed:
+
+```yaml
+# Project configuration for GitPR — versioned with the repository.
+# The pull request target base branch for this repository.
+pull_request:
+  base_branch: develop
+```
+
+GitPR creates the file on the first invocation inside a git repository and in `--install`, seeded with `PR_DEFAULT_BASE` when it is set and `main` otherwise. It is **never overwritten** once it exists, and GitPR never runs `git add` — versioning it is a deliberate team decision. If the user's `.gitignore` excludes the path, the seed says so.
+
+Edit it by hand or through `gitpr config` → **Project** ([Interactive Configuration Screen](config-tui.md)). Both write the same file: the branch is set, not merged.
+
+An unreadable file — broken YAML, a value that is not text — is reported as a warning and the resolution continues down the chain; the file is never overwritten by accident.
+
+### 9.2 The Target Is Not the Diff Base
+
+The project file controls **only the branch the forge is asked to merge into**. The AI content of the PR is still generated from a diff against the detected default branch (`origin/HEAD`). A repository that targets `develop` therefore gets a PR proposal whose description compares against `main` — a known limitation, recorded in [ADR-015](plans/ADR-015-project-local-pr-base.md). The local full review (`-f`), the MCP diff tools and `check --base` are separate switches and keep their own base.
+
+### 9.3 Verification
+
+Whatever the source, the target branch must exist on `origin`. It is verified right before publishing — after the diff is built, so a branch fetched by this very run counts — and a missing ref aborts the publication with the reason and the `git fetch origin <branch>` command to run. `--no-publish` never reaches this check: it publishes nothing, so the target is not used.
+
+A pull request also cannot target the branch it is opened from, so the resolved target may not be the branch checked out. When it is — a project file pinned to `develop` published from `develop`, say — an interactive run opens a small screen asking for the replacement: the same branch picker as `gitpr config`, minus the current branch. The choice is written to the project file and the run continues from there.
+
+The picker is skipped when there is nobody to ask: `--quiet`, a non-interactive stdin (hooks, CI, editors) and a `--base` flag naming the current branch all keep the error instead. A `--base` value is a deliberate choice for that run, not stale configuration, so GitPR reports it rather than silently rewriting the project file.
 
 ---
 
@@ -406,7 +436,7 @@ The first time you use `F3` or `--no-edit`, GitPR will:
 | Variable | Default | Description |
 |---|---|---|
 | `GITHUB_TOKEN_ENCRYPTED` | *(none)* | Encrypted GitHub Personal Access Token |
-| `PR_DEFAULT_BASE` | *(empty)* | Default target branch (uses auto-detection when empty) |
+| `PR_DEFAULT_BASE` | *(empty)* | Machine-wide target branch, used when this repository has no project base branch in `.gitpr/conf/gitpr.config.yml` (auto-detection when both are empty) |
 | `GITPR_AUTO_COMMIT` | `false` | Set to `true` to execute commits without asking for confirmation |
 | `GITPR_SKIP_LINT` | `false` | Set to `true` to skip linter validation during auto-commit |
 | `GITPR_AUTO_STAGE` | `false` | Set to `true` to automatically stage all unstaged files without showing the selection modal |

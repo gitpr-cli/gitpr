@@ -1387,7 +1387,8 @@ def publish_pull_request(
     Args:
         title: Pull Request title.
         body: Pull Request Markdown body.
-        base: Target base branch (e.g. main). Empty uses PR_DEFAULT_BASE or auto-detects.
+        base: Target base branch (e.g. main). Empty uses the project's
+            .gitpr/conf/gitpr.config.yml, then PR_DEFAULT_BASE, then auto-detection.
         draft: Whether to create the Pull Request as a draft.
     """
     import time
@@ -1395,7 +1396,7 @@ def publish_pull_request(
         publish_pull_request_use_case,
     )
     from src.branding.badge_builder import attach_pr_badge
-    from src.core import get_base_branch, get_current_branch, get_git_full_diff
+    from src.core import get_current_branch, get_git_full_diff
     from src.infrastructure.ci.masking import mask_sensitive_text
     from src.metrics import log_local_metric
 
@@ -1419,12 +1420,24 @@ def publish_pull_request(
             ensure_ascii=False,
         )
 
+    from src.project_config import BaseBranchError, resolve_pull_request_base
+
     head_branch = _safe_call(get_current_branch) or ""
-    target_base = (
-        base.strip()
-        if base and base.strip()
-        else (os.getenv("PR_DEFAULT_BASE") or _safe_call(get_base_branch) or "main")
-    )
+    try:
+        resolved_base = resolve_pull_request_base(base)
+    except BaseBranchError as exc:
+        duration_ms = int((time.monotonic() - start_ms) * 1000)
+        log_local_metric(
+            command="mcp:publish_pr",
+            status="error",
+            provider="local",
+            duration_ms=duration_ms,
+        )
+        return json.dumps(
+            {"status": "error", "message": mask_sensitive_text(str(exc))},
+            ensure_ascii=False,
+        )
+    target_base = resolved_base.branch
 
     pr_data = {"commit_message": title, "pr_description": body}
     try:
@@ -1453,19 +1466,19 @@ def publish_pull_request(
         duration_ms=duration_ms,
     )
 
-    return json.dumps(
-        {
-            "status": outcome.status,
-            "url": outcome.url,
-            "number": outcome.number,
-            "provider": outcome.provider,
-            "source_branch": outcome.source_branch,
-            "target_branch": outcome.target_branch,
-            "http_status": outcome.http_status,
-            "message": mask_sensitive_text(outcome.message),
-        },
-        ensure_ascii=False,
-    )
+    payload = {
+        "status": outcome.status,
+        "url": outcome.url,
+        "number": outcome.number,
+        "provider": outcome.provider,
+        "source_branch": outcome.source_branch,
+        "target_branch": outcome.target_branch,
+        "http_status": outcome.http_status,
+        "message": mask_sensitive_text(outcome.message),
+    }
+    if resolved_base.warnings:
+        payload["warnings"] = [mask_sensitive_text(w) for w in resolved_base.warnings]
+    return json.dumps(payload, ensure_ascii=False)
 
 
 # =============================================================================
@@ -2261,7 +2274,7 @@ def _build_tools_catalog() -> dict:
                     "base": {
                         "type": "string",
                         "required": False,
-                        "description": "Target base branch (e.g. main). Empty uses PR_DEFAULT_BASE or auto-detects.",
+                        "description": "Target base branch (e.g. main). Empty uses the project's .gitpr/conf/gitpr.config.yml, then PR_DEFAULT_BASE, then auto-detection.",
                     },
                     "draft": {
                         "type": "boolean",

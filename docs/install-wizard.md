@@ -15,6 +15,8 @@ The wizard guides you through **4 steps**, asking for confirmation before each o
 
 At the end, a link to this documentation is displayed for reference.
 
+Before the steps, the wizard also seeds the versioned project file `.gitpr/conf/gitpr.config.yml` with the branch this repository's pull requests should target — `PR_DEFAULT_BASE` when it is set, `main` otherwise. An existing file is never overwritten; the wizard just reports its path. Commit it so the whole team targets the same branch ([Pull Request Publication](pull-request-publication.md#91-the-project-file)).
+
 ## 🚀 How to Use
 
 ```bash

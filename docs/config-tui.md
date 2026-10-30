@@ -43,6 +43,7 @@ The sidebar mirrors the commands and flags of the CLI, so the setting you want i
 | **General** | Interface language, co-author trailer, general log |
 | **AI Providers** | Default engine, AI timeout, both API keys, and the models of each provider — under a sub-section per provider, shown one at a time |
 | **Pull Request** | `OUTPUT_FILE_NAME`, base branch, auto commit/stage/merge, linter skip, publish log, reviewer suggestions |
+| **Project** | The versioned project file: its path, the PR target base branch, and the branch that will actually be used (§1.8) |
 | **Code Review** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
 | **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
@@ -54,7 +55,7 @@ The sidebar mirrors the commands and flags of the CLI, so the setting you want i
 | **Advanced** | Three sub-sections — **Spinner**, **Git Hooks**, **Downloads** — hidden until you turn on **Show advanced** |
 | **Unknown** | Keys in the file the schema does not declare — appears only when they exist |
 
-Each of the twelve categories links to its own technical documentation (§1.5).
+Each of the thirteen categories links to its own technical documentation (§1.5).
 
 ### 1.2 Controls
 
@@ -104,6 +105,7 @@ The verdict comes from re-reading `~/.gitpr/.env` after the download, never from
 | General | `config-tui.md` |
 | AI Providers | `providers-ia.md` |
 | Pull Request | `pull-request-publication.md` |
+| Project | `pull-request-publication.md` |
 | Code Review | `code-review-ia.md` |
 | Issue | `gitpr-issue-option.md` |
 | Blame | `blame-arqueologo.md` |
@@ -144,6 +146,22 @@ The list holds one entry per skill GitPR supports: **Commit**, **Pull Request**,
 
 Each file keeps the line endings it already had, so a `CRLF` file stays `CRLF` and your diff shows only the lines you edited.
 
+### 1.8 The Project Section
+
+The second store. Unlike every other category, these values do not come from `~/.gitpr/.env` — they live in `.gitpr/conf/gitpr.config.yml` at the repository root, and GitPR versions that file with the project so the whole team targets the same base branch ([Pull Request Publication](pull-request-publication.md)).
+
+| Row | Editable | Shows |
+| --- | --- | --- |
+| **Configuration File** | no | The absolute path of the file, which is also what gets written |
+| **PR Target Base Branch** | yes | The value in the file, picked from the repository's local branches and the branches that exist on `origin` — except the branch checked out. *(automatic)* removes the key and the repository falls back down the precedence chain; a branch the checkout does not have yet stays visible |
+| **Effective Base Branch** | no | The branch a pull request would target right now, and where it came from: `--base`, the project file, `PR_DEFAULT_BASE` or `origin/HEAD` |
+
+The file is created on the first invocation inside a repository (and by `--install`), seeded with `PR_DEFAULT_BASE` when that is set and `main` otherwise. Seeding never overwrites an existing file. If the file cannot be read — broken YAML, a value that is not text — the screen shows the fallback that would be used and saving *refuses to overwrite the file*, so hand-written content is never destroyed by an accidental `F2`.
+
+`F2` writes this section to the YAML and the rest of the screen to the `.env`, in the same save. A branch that does not exist on `origin` is **saved with a warning**: it may be about to be pushed. The CLI and the MCP server fail fast on the same missing ref, which is what the warning is warning about.
+
+A pull request cannot target the branch it is opened from, so the branch you are on right now is not an option in the picker, and picking it is refused at save time. A file that already names it is not an error while you are only editing something else — being on the target branch is a normal state of a checkout — but the value is labelled **{branch} (current branch)** so the problem is visible, and the next publish asks for a replacement.
+
 ---
 
 ## 2. How Values Are Read
@@ -162,6 +180,7 @@ Nothing is written until you press `F2`. While you edit, `F2` shows a counter of
 
 - **Save** writes only the fields you actually changed, so unrelated lines keep their comments and their position in the file.
 - **Skill files** are written by the same save: one `F2` covers the pending `.env` fields and the edited skills (§1.7). A skill that fails to write is reported by name and keeps its edit pending — the other files are still saved.
+- **Project fields** go to `.gitpr/conf/gitpr.config.yml`, not to the `.env` (§1.8). The project file is written first: if that fails, nothing is written anywhere and every edit stays pending.
 - **`Ctrl+R`** on a field does **not** rewrite the built-in default — it marks the line for **removal**, so the value falls back to whatever the code defaults to. The field renders `— will be removed —` and pressing `Ctrl+R` again undoes the mark. This is the honest reset: writing the current default would freeze it into the file and stop tracking future default changes.
 - **Emptying a field** clears the override.
 - After a successful save the screen stays open, re-reads the file, and reports how many settings were saved.
@@ -176,6 +195,7 @@ Nothing is written until you press `F2`. While you edit, `F2` shows a counter of
 | Integers must be greater than zero | An unparseable timeout is silently replaced by the default, so a typo never shows up as an error |
 | Enums must be one of the declared choices | An unknown provider name is not rejected at startup, it just does not work |
 | Templates must use known placeholders and keep `{datetime}` | An unknown placeholder is a `KeyError` on the next command; without `{datetime}` every run resolves to the same filename and overwrites the previous report |
+| The project base branch cannot be the branch checked out | A pull request cannot target itself — the forge refuses it, and GitPR refuses it earlier with the same rule (§1.8) |
 
 ### 3.2 Credential Validation
 
@@ -219,7 +239,8 @@ The screen is built from a declarative schema, so adding a setting is a data cha
 
 | File | Role |
 | --- | --- |
-| `src/config_schema.py` | Pure data: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (56 fields), plus `fields_of()`, `validate_field_value()` and the lookup helpers. Single source of truth for menu, widgets, defaults, sub-sections, visibility and validation |
+| `src/config_schema.py` | Pure data: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 fields), plus `fields_of()`, `validate_field_value()` and the lookup helpers. `ConfigField.store` names the file a value belongs to (`STORE_ENV` or `STORE_PROJECT`). Single source of truth for menu, widgets, defaults, sub-sections, visibility and validation |
+| `src/project_config.py` | The project store: path resolution, the seed, YAML read/write and the PR base resolver (§1.8). Kept out of `core.py` so the screen, the MCP server and `--install` can use it without loading the AI SDKs — `core.get_base_branch()` is imported inside the resolver |
 | `src/doc_links.py` | `doc_url(filename)` — the documentation base URL and the `?lang=` rule. Separate from `core.py` because the screen may not import `src.core`, which pulls the AI SDKs on every launch |
 | `src/ui/config_app.py` | `ConfigApp` plus the help and confirm modals. Master-detail layout, dirty state, search, the advanced toggle, the visibility filter, the download workers, the Skills pane (§1.7) and the save pipeline |
 | `src/config.py` | Four added functions: `read_env_file_values()`, `save_config_values()`, `remove_config_value()`, `validate_ai_key()`. It also holds the skill registry (`SKILL_FILES_BY_TYPE`, `SKILL_TYPES`) and the file helpers (`read_skill_file()`, `write_skill_file()`, `skill_file_status()`) that `get_skill_context()` and the Skills section both read (§1.7) |

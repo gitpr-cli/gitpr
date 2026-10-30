@@ -43,6 +43,7 @@ O menu lateral espelha os comandos e flags da CLI, pelo que a definição que qu
 | **Geral** | Idioma da interface, trailer de co-autor, log geral |
 | **Fornecedores de IA** | Motor predefinido, tempo limite da IA, as duas chaves de API, e os modelos de cada fornecedor — numa sub-secção por fornecedor, mostrada uma de cada vez |
 | **Pull Request** | `OUTPUT_FILE_NAME`, branch base, auto commit/stage/merge, ignorar linter, log de publicação, sugestão de revisores |
+| **Projeto** | O ficheiro versionado do projeto: o caminho, o ramo base de destino do PR e o ramo que realmente será usado (§1.8) |
 | **Revisão de Código** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
 | **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
@@ -54,7 +55,7 @@ O menu lateral espelha os comandos e flags da CLI, pelo que a definição que qu
 | **Avançado** | Três sub-secções — **Spinner**, **Git Hooks**, **Descarregamentos** — ocultas até ligar **Mostrar avançadas** |
 | **Desconhecidas** | Chaves no ficheiro que o schema não declara — aparece só quando existem |
 
-Cada uma das doze categorias liga à sua própria documentação técnica (§1.5).
+Cada uma das treze categorias liga à sua própria documentação técnica (§1.5).
 
 ### 1.2 Controlos
 
@@ -104,6 +105,7 @@ O veredicto vem de uma nova leitura do `~/.gitpr/.env` depois do descarregamento
 | Geral | `config-tui.md` |
 | Fornecedores de IA | `providers-ia.md` |
 | Pull Request | `pull-request-publication.md` |
+| Projeto | `pull-request-publication.md` |
 | Revisão de Código | `code-review-ia.md` |
 | Issue | `gitpr-issue-option.md` |
 | Blame | `blame-arqueologo.md` |
@@ -144,6 +146,22 @@ O `F2` guarda os campos do `.env` **e** os ficheiros de skill na mesma passagem,
 
 Cada ficheiro mantém o fim de linha que já tinha, por isso um ficheiro `CRLF` continua `CRLF` e o seu diff mostra apenas as linhas que editou.
 
+### 1.8 A Secção Projeto
+
+O segundo armazenamento. Ao contrário de todas as outras categorias, estes valores não vêm de `~/.gitpr/.env` — vivem em `.gitpr/conf/gitpr.config.yml`, na raiz do repositório, e o GitPR versiona esse ficheiro com o projeto para que toda a equipa aponte para o mesmo ramo base ([Publicação de Pull Request](pull-request-publication.pt_pt.md)).
+
+| Linha | Editável | Mostra |
+| --- | --- | --- |
+| **Ficheiro de Configuração** | não | O caminho absoluto do ficheiro, que é também o que é gravado |
+| **Ramo Base de Destino do PR** | sim | O valor no ficheiro, escolhido entre os ramos locais do repositório e os que existem no `origin` — exceto o ramo em checkout. *(automática)* remove a chave e o repositório volta à cadeia de precedência; um ramo que o checkout ainda não tem continua visível |
+| **Ramo Base Efetivo** | não | O ramo que um pull request apontaria agora, e de onde veio: `--base`, o ficheiro do projeto, `PR_DEFAULT_BASE` ou `origin/HEAD` |
+
+O ficheiro é criado na primeira invocação dentro de um repositório (e pelo `--install`), preenchido com o `PR_DEFAULT_BASE` quando definido e `main` caso contrário. A semeação nunca sobrescreve um ficheiro existente. Se o ficheiro não puder ser lido — YAML inválido, um valor que não é texto — o ecrã mostra o fallback que seria usado e a gravação *recusa-se a sobrescrever o ficheiro*, para que conteúdo escrito à mão nunca seja destruído por um `F2` acidental.
+
+O `F2` grava esta secção no YAML e o resto do ecrã no `.env`, na mesma gravação. Um ramo que não existe em `origin` é **guardado com aviso**: pode estar prestes a ser enviado. A CLI e o servidor MCP falham na mesma referência ausente, que é aquilo sobre o qual o aviso está a avisar.
+
+Um pull request não pode apontar para o ramo de onde parte, por isso o ramo em que está agora não é uma opção no seletor, e escolhê-lo é recusado ao guardar. Um ficheiro que já o nomeia não é erro enquanto só edita outra coisa — estar no ramo de destino é um estado normal de um checkout — mas o valor aparece como **{branch} (ramo atual)** para o problema ficar visível, e a publicação seguinte pede um substituto.
+
 ---
 
 ## 2. Como os Valores São Lidos
@@ -162,6 +180,7 @@ Nada é gravado até pressionar `F2`. Enquanto edita, o `F2` mostra um contador 
 
 - **Guardar** grava apenas os campos que realmente alterou, pelo que as linhas não relacionadas mantêm os seus comentários e a sua posição no ficheiro.
 - **Ficheiros de skill** são gravados na mesma gravação: um `F2` cobre os campos pendentes do `.env` e as skills editadas (§1.7). Uma skill que falha ao gravar é reportada pelo nome e mantém a edição pendente — os outros ficheiros são gravados na mesma.
+- **Campos do projeto** vão para `.gitpr/conf/gitpr.config.yml`, não para o `.env` (§1.8). O ficheiro do projeto é gravado primeiro: se falhar, nada é gravado em lado nenhum e todas as edições continuam pendentes.
 - **`Ctrl+R`** num campo **não** reescreve o padrão incorporado — marca a linha para **remoção**, para que o valor volte ao que o código define como padrão. O campo apresenta `— será removido —` e um novo `Ctrl+R` desfaz a marcação. Este é o reset honesto: gravar o padrão atual iria congelá-lo no ficheiro e interromper o acompanhamento de alterações futuras ao padrão.
 - **Esvaziar um campo** limpa a sobreposição.
 - Depois de guardar, o ecrã permanece aberto, relê o ficheiro e informa quantas definições foram guardadas.
@@ -176,6 +195,7 @@ O `F2` valida antes de gravar seja o que for. Um campo que falha ganha contorno 
 | Inteiros devem ser maiores que zero | Um tempo limite que não pode ser interpretado é substituído pelo padrão em silêncio, pelo que um erro de escrita nunca aparece como erro |
 | Enums devem ser uma das opções declaradas | Um nome de fornecedor desconhecido não é rejeitado no arranque, simplesmente não funciona |
 | Templates devem usar placeholders conhecidos e manter `{datetime}` | Um placeholder desconhecido é um `KeyError` no comando seguinte; sem `{datetime}` cada execução resolve para o mesmo nome de ficheiro e sobrescreve o relatório anterior |
+| A branch base do projeto não pode ser a branch em que está | Um pull request não pode apontar para si mesmo — a forge recusa, e o GitPR recusa antes com a mesma regra (§1.8) |
 
 ### 3.2 Validação de Credencial
 
@@ -219,7 +239,8 @@ O ecrã é construído a partir de um schema declarativo, pelo que adicionar uma
 
 | Ficheiro | Papel |
 | --- | --- |
-| `src/config_schema.py` | Dado puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (56 campos), mais `fields_of()`, `validate_field_value()` e os auxiliares de procura. Fonte única de verdade para menu, widgets, padrões, sub-secções, visibilidade e validação |
+| `src/config_schema.py` | Dado puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 campos), mais `fields_of()`, `validate_field_value()` e os auxiliares de procura. `ConfigField.store` nomeia o ficheiro a que um valor pertence (`STORE_ENV` ou `STORE_PROJECT`). Fonte única de verdade para menu, widgets, padrões, sub-secções, visibilidade e validação |
+| `src/project_config.py` | O armazenamento do projeto: resolução do caminho, a semeação, leitura/gravação YAML e o resolvedor do ramo base do PR (§1.8). Mantido fora do `core.py` para que o ecrã, o servidor MCP e o `--install` o usem sem carregar os SDKs de IA — o `core.get_base_branch()` é importado dentro do resolvedor |
 | `src/doc_links.py` | `doc_url(filename)` — o URL base da documentação e a regra do `?lang=`. Separado do `core.py` porque o ecrã não pode importar `src.core`, que puxa os SDKs de IA a cada abertura |
 | `src/ui/config_app.py` | `ConfigApp` mais os modais de ajuda e confirmação. Layout master-detail, dirty state, procura, o toggle de avançadas, o filtro de visibilidade, os workers de descarregamento, o painel de Skills (§1.7) e o pipeline de gravação |
 | `src/config.py` | Quatro funções novas: `read_env_file_values()`, `save_config_values()`, `remove_config_value()`, `validate_ai_key()`. Guarda também o registo de skills (`SKILL_FILES_BY_TYPE`, `SKILL_TYPES`) e os auxiliares de ficheiro (`read_skill_file()`, `write_skill_file()`, `skill_file_status()`) que o `get_skill_context()` e a secção Skills leem (§1.7) |

@@ -42,3 +42,28 @@ The interactive sequence triggered by `gitpr -c` (or during PR publication) that
 coordinates unstaged file selection, AI commit message generation, review/editing
 in a modal, and commit execution with animated progress.
 _Avoid_: commit wizard, auto-commit script, commit generator
+
+**PR target base**:
+The branch the forge is asked to merge the pull request into — resolved from
+`--base`, the project configuration file, `PR_DEFAULT_BASE`, the detected
+`origin/HEAD` or `main`. It must exist on `origin` and must differ from the branch
+checked out.
+_Avoid_: base branch, merge target, default branch
+
+**Diff base**:
+The branch the current branch is compared against to build the diff sent to the
+AI. It is a different value from the PR target base and today is still the
+detected default branch.
+_Avoid_: base branch
+
+**Project configuration file**:
+`.gitpr/conf/gitpr.config.yml` at the repository root, versioned with the project.
+It holds settings that belong to the team, starting with the PR target base, as
+opposed to the machine-wide `~/.gitpr/.env`.
+_Avoid_: config file, .env
+
+**Self-target**:
+A PR target base equal to the branch checked out. It is refused before any
+publication, and an interactive run offers to replace it in the project
+configuration file.
+_Avoid_: same branch, self-PR

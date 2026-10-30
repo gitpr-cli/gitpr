@@ -21,6 +21,8 @@ from src.config_schema import (
     GROUPS_BY_ID,
     KINDS,
     SKILL_LABELS,
+    STORE_ENV,
+    STORE_PROJECT,
     TEMPLATE_PLACEHOLDERS,
     TEMPLATE_REQUIRED,
     VALIDATOR_AI_KEY,
@@ -424,6 +426,33 @@ class TestCategoryHelpers(unittest.TestCase):
         the indices of 'general' (0), 'ai' (1) and 'pr' (2) are relied on by
         test_config_app.py — so a new section is free to land anywhere above."""
         self.assertEqual(CATEGORY_ORDER[-1], "advanced")
+
+
+class TestProjectSection(unittest.TestCase):
+    """The Project category is the only one backed by the repository file."""
+
+    def test_project_fields_use_the_project_store(self):
+        for key in (
+            "PROJECT_CONFIG_FILE",
+            "PROJECT_BASE_BRANCH",
+            "PROJECT_EFFECTIVE_BASE",
+        ):
+            self.assertEqual(FIELDS_BY_KEY[key].store, STORE_PROJECT)
+
+    def test_every_other_field_stays_in_the_env_store(self):
+        others = [field.key for field in FIELDS if not field.key.startswith("PROJECT_")]
+        self.assertTrue(others)
+        for key in others:
+            self.assertEqual(FIELDS_BY_KEY[key].store, STORE_ENV)
+
+    def test_only_the_branch_is_editable(self):
+        editable = [field.key for field in fields_of("project") if not field.read_only]
+        self.assertEqual(editable, ["PROJECT_BASE_BRANCH"])
+
+    def test_project_keys_are_never_seeded_into_the_env_file(self):
+        self.assertEqual(
+            [key for key in DEFAULT_CONFIG if key.startswith("PROJECT_")], []
+        )
 
 
 class TestSkillsSection(unittest.TestCase):

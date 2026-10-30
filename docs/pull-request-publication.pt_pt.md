@@ -278,8 +278,38 @@ O ramo de destino do Pull Request é determinado pela seguinte ordem de priorida
 | Prioridade | Origem | Como configurar |
 |---|---|---|
 | **1 (mais alta)** | Opção `--base` | `gitpr --base develop` |
-| **2** | Variável `PR_DEFAULT_BASE` | `PR_DEFAULT_BASE=develop` em `~/.gitpr/.env` |
-| **3 (predefinido)** | Deteção automática | `git symbolic-ref refs/remotes/origin/HEAD` (geralmente `main` ou `master`) |
+| **2** | Ficheiro do projeto | `.gitpr/conf/gitpr.config.yml`, versionado com o repositório (abaixo) |
+| **3** | Variável `PR_DEFAULT_BASE` | `PR_DEFAULT_BASE=develop` em `~/.gitpr/.env` |
+| **4 (predefinido)** | Deteção automática | `git symbolic-ref refs/remotes/origin/HEAD` (geralmente `main` ou `master`) |
+
+### 9.1 O Ficheiro do Projeto
+
+O `PR_DEFAULT_BASE` vale para a máquina inteira: um repositório que faz merge em `develop` ao lado de outro que faz merge em `main` precisaria de `--base` em cada execução. O ficheiro do projeto é a resposta por repositório, e deve ser commitado:
+
+```yaml
+# Project configuration for GitPR — versioned with the repository.
+# The pull request target base branch for this repository.
+pull_request:
+  base_branch: develop
+```
+
+O GitPR cria o ficheiro na primeira invocação dentro de um repositório git e no `--install`, preenchido com o `PR_DEFAULT_BASE` quando definido e `main` caso contrário. **Nunca é sobrescrito** depois de existir, e o GitPR nunca executa `git add` — versioná-lo é uma decisão deliberada da equipa. Se o `.gitignore` do utilizador excluir o caminho, o seed avisa.
+
+Edite-o à mão ou através de `gitpr config` → **Projeto** ([Ecrã de Configuração Interativa](config-tui.pt_pt.md)). Ambos escrevem o mesmo ficheiro: o ramo é definido, não fundido.
+
+Um ficheiro ilegível — YAML inválido, um valor que não é texto — é reportado como aviso e a resolução continua pela cadeia; o ficheiro nunca é sobrescrito por acidente.
+
+### 9.2 O Alvo Não É a Base do Diff
+
+O ficheiro do projeto controla **apenas o ramo para o qual o forge é convidado a fazer o merge**. O conteúdo da IA do PR continua a ser gerado a partir de um diff contra o ramo predefinido detetado (`origin/HEAD`). Um repositório que aponta para `develop` recebe, por isso, uma proposta de PR cuja descrição compara com `main` — uma limitação conhecida, registada na [ADR-015](plans/ADR-015-project-local-pr-base.md). A revisão completa local (`-f`), as ferramentas de diff do MCP e o `check --base` são interruptores separados e mantêm a própria base.
+
+### 9.3 Verificação
+
+Qualquer que seja a origem, o ramo de destino tem de existir em `origin`. É verificado imediatamente antes da publicação — depois de o diff ser construído, para que um ramo obtido nesta mesma execução conte — e uma referência ausente aborta a publicação com o motivo e o comando `git fetch origin <branch>` a executar. O `--no-publish` nunca chega a esta verificação: não publica nada, por isso o alvo não é usado.
+
+Um pull request também não pode apontar para o ramo de onde parte, por isso o alvo resolvido não pode ser o ramo em checkout. Quando é — um ficheiro de projeto fixado em `develop` publicado a partir de `develop`, por exemplo — uma execução interativa abre um ecrã pequeno a pedir o substituto: o mesmo seletor de ramos do `gitpr config`, sem o ramo atual. A escolha é gravada no ficheiro do projeto e a execução continua a partir dela.
+
+O seletor é saltado quando não há quem perguntar: `--quiet`, um stdin não interativo (hooks, CI, editores) e um `--base` a apontar para o ramo atual mantêm o erro. Um valor em `--base` é uma escolha deliberada dessa execução, não configuração desatualizada, por isso o GitPR informa-o em vez de reescrever o ficheiro do projeto em silêncio.
 
 ---
 
@@ -383,7 +413,7 @@ Na primeira vez que utilizar `F3` ou `--no-edit`, o GitPR irá:
 | Variável | Predefinição | Descrição |
 |---|---|---|
 | `GITHUB_TOKEN_ENCRYPTED` | *(nenhum)* | Personal Access Token do GitHub encriptado |
-| `PR_DEFAULT_BASE` | *(vazio)* | Ramo de destino predefinido (utiliza deteção automática quando vazio) |
+| `PR_DEFAULT_BASE` | *(vazio)* | Ramo de destino para toda a máquina, usado quando este repositório não tem um ramo base de projeto em `.gitpr/conf/gitpr.config.yml` (deteção automática quando ambos estão vazios) |
 | `GITPR_AUTO_COMMIT` | `false` | Defina como `true` para executar commits sem pedir confirmação |
 | `GITPR_SKIP_LINT` | `false` | Defina como `true` para saltar a validação de lint durante o commit automático |
 | `GITPR_AUTO_STAGE` | `false` | Defina como `true` para fazer stage automático de todos os ficheiros unstaged sem mostrar o modal de seleção |

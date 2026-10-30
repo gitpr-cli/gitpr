@@ -146,6 +146,23 @@ PR and issue publication is no longer GitHub-only (in development after v0.0.37)
 * **`--init` wizard** — `core.run_scm_init_wizard()` detects the forge, collects provider extras (Azure organization/project, Bitbucket username) and the access token, validates it via `test_connection()` (3 attempts, 401 re-prompt) and persists **only on success**: `GITPR_SCM_PROVIDER` + `GITPR_SCM_TOKEN_ENCRYPTED` (Fernet) + extras.
 * **Design notes** — see the [Multi-Forge glossary and ADR](plans/glossary-scm-multiforge.md) in `docs/plans/` for forge-specific quirks (Azure `api-version`, GitLab `iid` vs `id`, Bitbucket App Password, Azure textual diff summary) and the approved deviations.
 
+### **20. Project-Local PR Target (project_config.py)**
+
+The branch a pull request is opened against is no longer only a flag or a machine-wide default. `src/project_config.py` owns a **versioned file at the repository root** — `.gitpr/conf/gitpr.config.yml` — so the target travels with the project instead of living in each developer's `~/.gitpr/.env`:
+
+```yaml
+# Project configuration for GitPR — versioned with the repository.
+pull_request:
+  base_branch: develop
+```
+
+* **Resolution chain** — `resolve_pull_request_base()` applies `--base` → project file → `PR_DEFAULT_BASE` → detected `origin/HEAD` → `main`. Every consumer (default PR flow, `--no-edit`, `PrPublishApp`, MCP `publish_pull_request`) goes through this one resolver; a broken YAML is reported and the resolution continues down the chain, never repaired.
+* **Seeding** — the file is created on the first invocation inside a repository and by `--install`, and is never overwritten. `GITPR_SKIP_PROJECT_CONFIG_SEED` disables it (the test suite).
+* **Validation** — `verify_remote_base()` refuses a target that is missing from `origin` (with the `git fetch` command to run) and, before that, a target equal to the checked-out branch, raising `CurrentBranchError` — a narrower `BaseBranchError`, so the CLI and the MCP error mapping keep working unchanged.
+* **Repair** — an interactive publish (no `--base`, stdin a tty, not `--quiet`) whose project target is the current branch opens `src/ui/pr_base_app.py::BaseBranchPromptApp`, writes the chosen branch to the project file and resolves again. `--quiet`, a non-interactive stdin and an explicit `--base` keep the error instead of rewriting the repository.
+* **Configuration TUI** — `gitpr config` gained a **Project** category backed by `ConfigField.store` (`STORE_ENV` / `STORE_PROJECT`). The branch row is a picker over `list_branches()` (local branches plus `origin/*`, `origin/HEAD` excluded) that never offers the current branch, labels a stored current value as **(current branch)** and refuses an edit that would write it.
+* The project file controls the **PR target only**: the AI diff base is still the detected default branch. That split is known debt, recorded in [ADR-015](plans/ADR-015-project-local-pr-base.md).
+
 ---
 
 ## **💻 Technology Stack**
@@ -174,6 +191,8 @@ src/
 ├── main.py           # CLI (Click) — command and flag routing
 ├── core.py           # Orchestration — git ops, AI prompts, cache, skills, hooks
 ├── config.py         # Configuration, .env, API keys, models, plugins
+├── config_schema.py  # Declarative schema of `gitpr config` (fields, categories, stores)
+├── project_config.py # Project-local PR target (.gitpr/conf/gitpr.config.yml): seed, resolve, verify
 ├── security.py       # Fernet encryption (API keys at rest)
 ├── cache.py          # Local AI response cache (MD5, repo+branch)
 ├── ai_providers.py   # Unified AI call layer (Gemini + DeepSeek + Ollama)
@@ -194,7 +213,9 @@ src/
 ├── updater.py        # Version check (PyPI), mandatory update block and version markers
 └── ui/               # Sub-package: TUI components (Textual)
     ├── __init__.py       # Package marker (setuptools discovery)
+    ├── config_app.py     # `gitpr config` TUI (env + project stores)
     ├── issue_app.py      # Issue editing and publishing TUI
+    ├── pr_base_app.py    # Publish-time base-branch repair modal (self-target)
     ├── pr_publish_app.py # PR publisher TUI + staging selection + commit screens
     ├── chat_app.py       # Pair-programming chat TUI
     ├── metrics_app.py    # Metrics dashboard TUI
@@ -216,6 +237,7 @@ docs/               # Technical documentation (EN canonical + language suffixes)
 Each feature has a dedicated guide in `docs/` (English canonical + `.pt_br` / `.pt_pt` / `.es_es` / `.fr_fr`):
 
 * [pull-request-publication.md](pull-request-publication.md) — PR Publisher (TUI, auto-commit, merge)  
+* [config-tui.md](config-tui.md) — `gitpr config`: categories, env + project stores, PR target base  
 * [pr-descricao-padrao.md](pr-descricao-padrao.md) — Default PR description mode  
 * [understanding_chat_functionality.md](understanding_chat_functionality.md) — Pair-programming chat  
 * [mcp-integration.md](mcp-integration.md) — MCP integration with editors  
