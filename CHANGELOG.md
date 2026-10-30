@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.4] - 2026-10-29
+
+### Summary
+This release introduces an interactive terminal interface for creating commits, making the process more guided and accessible directly from the command line. Instead of relying on manual parameters, users can now compose and confirm their commits through a step-by-step experience right in the terminal. The change simplifies the daily workflow and reduces the chance of errors when recording changes to the repository.
+
+### ✨ Features
+- add interactive commit TUI for gitpr commit ([9bd2038](https://github.com/gitpr-cli/gitpr/commit/9bd203896456edcfa3cf79a0796eca6a010d97ce)) · 2026-10-29
+
+**Contributors:** [@natanfiuza](https://github.com/natanfiuza)
+
 ## [1.4.3] - 2026-10-27
 
 ### Summary
@@ -140,7 +150,7 @@ This release significantly expands the GitPR assistant, adding editor integratio
 ### Summary
 This version brings a wide range of new features focused on internationalization, supporting various version control providers and significant improvements to the user experience. Users can now take advantage of a global plugin system, integration with editors, a metrics and telemetry dashboard with data export, and automated workflows for publishing and merging pull requests. Large difference processing has been optimized with map reduction, and security has been strengthened with shell injection prevention and network time limits. The command-line interface has also been enhanced with interactive configuration wizards, multi-language support, and improvements in issue generation and commit messages.
 
-### Features
+### ✨ Features
 - add gitpr release subcommand for changelog (b0e5d92)
 - add suggested reviewers to PR flow (c7148ed)
 - add multi-forge SCM providers, migrate tests, expand translations (dd2ecef)
