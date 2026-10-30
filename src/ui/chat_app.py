@@ -66,21 +66,21 @@ class ChatHelpScreen(ModalScreen):
         cmd_text = "\n".join(cmd_lines)
 
         with Vertical(id="help_dialog"):
-            yield Static("💡 Chat Help", classes="help_title")
-            yield Static("⌨️ Keyboard Shortcuts", classes="help_section")
+            yield Static(__("💡 Chat Help"), classes="help_title")
+            yield Static(__("⌨️ Keyboard Shortcuts"), classes="help_section")
             with VerticalScroll(id="help_scroll"):
                 yield Static(
-                    "• [bold]F1[/bold] Help — Shows this help modal\n"
-                    "• [bold]F2[/bold] Refresh Diff — Updates the chat context with the latest code changes\n"
-                    "• [bold]F5[/bold] Auto-Patch — Extracts code blocks from the last AI response\n"
-                    "• [bold]F6[/bold] Export — Saves the full conversation to a Markdown file\n"
-                    "• [bold]F7/F8[/bold] — Navigate focus between AI messages\n"
-                    "• [bold]Ctrlhift+S[/bold] — Auto-Patch the focused AI message\n"
-                    "• [bold]Ctrlhift+E[/bold] — Export the focused AI message\n"
-                    "• [bold]Esc[/bold] Exit — Closes the chat",
+                    __("• [bold]F1[/bold] Help — Shows this help modal\n")
+                    + __("• [bold]F2[/bold] Refresh Diff — Updates the chat context with the latest code changes\n")
+                    + __("• [bold]F5[/bold] Auto-Patch — Extracts code blocks from the last AI response\n")
+                    + __("• [bold]F6[/bold] Export — Saves the full conversation to a Markdown file\n")
+                    + __("• [bold]F7/F8[/bold] — Navigate focus between AI messages\n")
+                    + __("• [bold]Ctrl+Shift+S[/bold] — Auto-Patch the focused AI message\n")
+                    + __("• [bold]Ctrl+Shift+E[/bold] — Export the focused AI message\n")
+                    + __("• [bold]Esc[/bold] Exit — Closes the chat"),
                     classes="help_text",
                 )
-                yield Static("⚡ Slash Commands", classes="help_section")
+                yield Static(__("⚡ Slash Commands"), classes="help_section")
                 yield Static(cmd_text, classes="help_text")
             yield Button(__("Got it"), variant="primary", id="close_help")
             yield Button(__("Online Help"), variant="default", id="online_help")

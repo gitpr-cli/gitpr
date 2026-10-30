@@ -3024,21 +3024,25 @@ def main():
     # --- Parse CLI args before starting the server ---
     parser = argparse.ArgumentParser(
         prog="gitpr-mcp",
-        description="GitPR MCP Server — integrate GitPR with AI-powered editors.",
+        description=__("GitPR MCP Server — integrate GitPR with AI-powered editors."),
     )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
         "--list",
         action="store_true",
-        help="Print the complete tools catalog as JSON (tools, resources, and prompts). "
-        "Use this to discover available capabilities without starting the server.",
+        help=__(
+            "Print the complete tools catalog as JSON (tools, resources, and prompts). "
+            "Use this to discover available capabilities without starting the server."
+        ),
     )
     mode_group.add_argument(
         "--install",
         nargs="?",
         const="auto",
         choices=["vscode", "cursor", "claude-code", "claude", "zed", "auto"],
-        help="Install MCP configuration for an editor (vscode, cursor, claude-code, claude, zed, or auto-detect).",
+        help=__(
+            "Install MCP configuration for an editor (vscode, cursor, claude-code, claude, zed, or auto-detect)."
+        ),
     )
     mode_group.add_argument(
         "--tool",
@@ -3046,18 +3050,22 @@ def main():
         const="",
         default=None,
         metavar="NAME",
-        help="Invoke a single MCP tool directly and print its JSON result to stdout. "
-        "Use --tool-args to pass parameters as a JSON object. "
-        "Use '--tool' alone (no NAME) to list available tools.",
+        help=__(
+            "Invoke a single MCP tool directly and print its JSON result to stdout. "
+            "Use --tool-args to pass parameters as a JSON object. "
+            "Use '--tool' alone (no NAME) to list available tools."
+        ),
     )
     parser.add_argument(
         "--tool-args",
         type=str,
         default="",
         metavar="JSON",
-        help="JSON object with tool parameters, e.g. "
-        '\'{"file_path": "src/main.py", "start_line": "10", "end_line": "20"}\'. '
-        "Only meaningful with --tool.",
+        help=__(
+            "JSON object with tool parameters, e.g. "
+            '\'{"file_path": "src/main.py", "start_line": "10", "end_line": "20"}\'. '
+            "Only meaningful with --tool."
+        ),
     )
     args, _ = parser.parse_known_args()
 
