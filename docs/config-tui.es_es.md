@@ -43,6 +43,7 @@ El menú lateral refleja los comandos y flags de la CLI, así que el ajuste que 
 | **General** | Idioma de la interfaz, trailer de coautor, registro general |
 | **Proveedores de IA** | Motor por defecto, timeout de la IA, las dos claves de API, y los modelos de cada proveedor — bajo una subsección por proveedor, mostrada de una en una |
 | **Pull Request** | `OUTPUT_FILE_NAME`, branch base, auto commit/stage/merge, omitir linter, log de publicación, sugerencia de revisores |
+| **Proyecto** | El archivo versionado del proyecto: su ruta, la rama base de destino del PR y la rama que realmente se usará (§1.8) |
 | **Revisión de Código** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
 | **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
@@ -54,7 +55,7 @@ El menú lateral refleja los comandos y flags de la CLI, así que el ajuste que 
 | **Avanzado** | Tres subsecciones — **Spinner**, **Git Hooks**, **Descargas** — ocultas hasta activar **Mostrar avanzadas** |
 | **Desconocidas** | Claves del archivo que el schema no declara — aparece solo cuando existen |
 
-Cada una de las doce categorías enlaza con su propia documentación técnica (§1.5).
+Cada una de las trece categorías enlaza con su propia documentación técnica (§1.5).
 
 ### 1.2 Controles
 
@@ -104,6 +105,7 @@ El veredicto sale de releer `~/.gitpr/.env` tras la descarga, nunca de `os.geten
 | General | `config-tui.md` |
 | Proveedores de IA | `providers-ia.md` |
 | Pull Request | `pull-request-publication.md` |
+| Proyecto | `pull-request-publication.md` |
 | Revisión de Código | `code-review-ia.md` |
 | Issue | `gitpr-issue-option.md` |
 | Blame | `blame-arqueologo.md` |
@@ -144,6 +146,22 @@ La lista tiene una entrada por skill soportada por GitPR: **Commit**, **Pull Req
 
 Cada archivo conserva los finales de línea que ya tenía, así que un archivo `CRLF` sigue siendo `CRLF` y su diff muestra solo las líneas que editó.
 
+### 1.8 La Sección Proyecto
+
+El segundo almacén. A diferencia de todas las demás categorías, estos valores no vienen de `~/.gitpr/.env` — viven en `.gitpr/conf/gitpr.config.yml`, en la raíz del repositorio, y GitPR versiona ese archivo con el proyecto para que todo el equipo apunte a la misma rama base ([Publicación de Pull Request](pull-request-publication.es_es.md)).
+
+| Fila | Editable | Muestra |
+| --- | --- | --- |
+| **Archivo de Configuración** | no | La ruta absoluta del archivo, que es también lo que se escribe |
+| **Rama Base de Destino del PR** | sí | El valor del archivo, elegido entre las ramas locales del repositorio y las que existen en `origin` — excepto la rama en checkout. *(automática)* elimina la clave y el repositorio vuelve a la cadena de precedencia; una rama que el checkout aún no tiene sigue visible |
+| **Rama Base Efectiva** | no | La rama a la que un pull request apuntaría ahora, y de dónde vino: `--base`, el archivo del proyecto, `PR_DEFAULT_BASE` u `origin/HEAD` |
+
+El archivo se crea en la primera invocación dentro de un repositorio (y con `--install`), rellenado con `PR_DEFAULT_BASE` cuando está definido y `main` en caso contrario. La siembra nunca sobrescribe un archivo existente. Si el archivo no puede leerse — YAML roto, un valor que no es texto — la pantalla muestra el fallback que se usaría y el guardado *se niega a sobrescribir el archivo*, para que el contenido escrito a mano nunca sea destruido por un `F2` accidental.
+
+`F2` escribe esta sección en el YAML y el resto de la pantalla en el `.env`, en el mismo guardado. Una rama que no existe en `origin` se **guarda con advertencia**: puede estar a punto de subirse. La CLI y el servidor MCP fallan con la misma referencia ausente, que es de lo que advierte la advertencia.
+
+Un pull request no puede apuntar a la rama de la que parte, así que la rama en la que estás ahora no es una opción del selector, y elegirla se rechaza al guardar. Un archivo que ya la nombra no es un error mientras solo editas otra cosa — estar en la rama de destino es un estado normal de un checkout — pero el valor aparece como **{branch} (rama actual)** para que el problema sea visible, y la próxima publicación pide un reemplazo.
+
 ---
 
 ## 2. Cómo Se Leen los Valores
@@ -162,6 +180,7 @@ No se escribe nada hasta que pulse `F2`. Mientras edita, `F2` muestra un contado
 
 - **Guardar** escribe solo los campos que realmente cambió, así que las líneas no relacionadas conservan sus comentarios y su posición en el archivo.
 - **Archivos de skill** se escriben en el mismo guardado: un `F2` cubre los campos pendientes del `.env` y las skills editadas (§1.7). Una skill que no se puede escribir se reporta por su nombre y mantiene su edición pendiente — los demás archivos se guardan igualmente.
+- **Los campos del proyecto** van a `.gitpr/conf/gitpr.config.yml`, no al `.env` (§1.8). El archivo del proyecto se escribe primero: si falla, no se escribe nada en ningún sitio y todas las ediciones quedan pendientes.
 - **`Ctrl+R`** en un campo **no** reescribe el valor por defecto incorporado — marca la línea para **eliminación**, de modo que el valor vuelve a lo que el código define por defecto. El campo muestra `— se eliminará —` y un nuevo `Ctrl+R` deshace la marca. Este es el reset honesto: escribir el valor por defecto actual lo congelaría en el archivo e interrumpiría el seguimiento de cambios futuros.
 - **Vaciar un campo** limpia la sobrescritura.
 - Tras guardar, la pantalla permanece abierta, relee el archivo e informa cuántos ajustes se guardaron.
@@ -176,6 +195,7 @@ No se escribe nada hasta que pulse `F2`. Mientras edita, `F2` muestra un contado
 | Los enteros deben ser mayores que cero | Un timeout que no se puede interpretar se sustituye por el valor por defecto en silencio, así que un error de escritura nunca aparece como error |
 | Los enums deben ser una de las opciones declaradas | Un nombre de proveedor desconocido no se rechaza al arrancar, simplemente no funciona |
 | Las plantillas deben usar placeholders conocidos y conservar `{datetime}` | Un placeholder desconocido es un `KeyError` en el siguiente comando; sin `{datetime}` cada ejecución resuelve al mismo nombre de archivo y sobrescribe el informe anterior |
+| La rama base del proyecto no puede ser la rama en la que está | Un pull request no puede apuntarse a sí mismo: la forja lo rechaza, y GitPR lo rechaza antes con la misma regla (§1.8) |
 
 ### 3.2 Validación de Credenciales
 
@@ -219,7 +239,8 @@ La pantalla se construye a partir de un schema declarativo, así que añadir un 
 
 | Archivo | Papel |
 | --- | --- |
-| `src/config_schema.py` | Dato puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (56 campos), más `fields_of()`, `validate_field_value()` y los auxiliares de búsqueda. Fuente única de verdad para menú, widgets, valores por defecto, subsecciones, visibilidad y validación |
+| `src/config_schema.py` | Dato puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 campos), más `fields_of()`, `validate_field_value()` y los auxiliares de búsqueda. `ConfigField.store` nombra el archivo al que pertenece un valor (`STORE_ENV` o `STORE_PROJECT`). Fuente única de verdad para menú, widgets, valores por defecto, subsecciones, visibilidad y validación |
+| `src/project_config.py` | El almacén del proyecto: resolución de ruta, la siembra, lectura/escritura YAML y el resolutor de la base del PR (§1.8). Se mantiene fuera de `core.py` para que la pantalla, el servidor MCP y `--install` lo usen sin cargar los SDK de IA — `core.get_base_branch()` se importa dentro del resolutor |
 | `src/doc_links.py` | `doc_url(filename)` — la URL base de la documentación y la regla de `?lang=`. Separado de `core.py` porque la pantalla no puede importar `src.core`, que arrastra los SDK de IA en cada apertura |
 | `src/ui/config_app.py` | `ConfigApp` más los modales de ayuda y confirmación. Layout master-detail, dirty state, búsqueda, el conmutador de avanzadas, el filtro de visibilidad, los workers de descarga, el panel de Skills (§1.7) y el pipeline de guardado |
 | `src/config.py` | Cuatro funciones nuevas: `read_env_file_values()`, `save_config_values()`, `remove_config_value()`, `validate_ai_key()`. También guarda el registro de skills (`SKILL_FILES_BY_TYPE`, `SKILL_TYPES`) y los auxiliares de archivo (`read_skill_file()`, `write_skill_file()`, `skill_file_status()`) que leen tanto `get_skill_context()` como la sección Skills (§1.7) |

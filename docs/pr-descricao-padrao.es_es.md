@@ -86,7 +86,7 @@ gitpr --no-edit
 
 Omite la TUI: hace auto-commit de los cambios pendientes (linter + mensaje de commit con IA), hace push y publica directamente. Úsalo con cuidado — el contenido no se revisa antes de publicar.
 
-Para publicar, GitPR necesita un **Personal Access Token (PAT)** de GitHub con ámbito `repo`, almacenado cifrado en `~/.gitpr/.env`. La rama de destino se resuelve mediante la flag `--base` → env `PR_DEFAULT_BASE` → detección automática.
+Para publicar, GitPR necesita un **Personal Access Token (PAT)** de GitHub con ámbito `repo`, almacenado cifrado en `~/.gitpr/.env`. La rama de destino se resuelve mediante la flag `--base` → archivo del proyecto `.gitpr/conf/gitpr.config.yml` → env `PR_DEFAULT_BASE` → detección automática, y debe existir en `origin`.
 
 > **Nota:** Consulta la [guía completa de publicación](pull-request-publication.md) para el flujo detallado (verificación de unstaged, auto-commit, merge, manejo de errores).
 

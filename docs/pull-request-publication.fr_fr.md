@@ -278,8 +278,38 @@ La branche cible de la Pull Request est déterminée dans l'ordre de priorité s
 | Priorité | Source | Comment configurer |
 |---|---|---|
 | **1 (la plus élevée)** | option `--base` | `gitpr --base develop` |
-| **2** | variable d'environnement `PR_DEFAULT_BASE` | `PR_DEFAULT_BASE=develop` dans `~/.gitpr/.env` |
-| **3 (par défaut)** | Détection automatique | `git symbolic-ref refs/remotes/origin/HEAD` (généralement `main` ou `master`) |
+| **2** | Fichier du projet | `.gitpr/conf/gitpr.config.yml`, versionné avec le dépôt (ci-dessous) |
+| **3** | variable d'environnement `PR_DEFAULT_BASE` | `PR_DEFAULT_BASE=develop` dans `~/.gitpr/.env` |
+| **4 (par défaut)** | Détection automatique | `git symbolic-ref refs/remotes/origin/HEAD` (généralement `main` ou `master`) |
+
+### 9.1 Le Fichier du Projet
+
+`PR_DEFAULT_BASE` vaut pour toute la machine : un dépôt qui fusionne dans `develop` à côté d'un autre qui fusionne dans `main` aurait besoin de `--base` à chaque exécution. Le fichier du projet est la réponse par dépôt, et il est destiné à être commité :
+
+```yaml
+# Project configuration for GitPR — versioned with the repository.
+# The pull request target base branch for this repository.
+pull_request:
+  base_branch: develop
+```
+
+GitPR crée le fichier à la première invocation dans un dépôt git et dans `--install`, prérempli avec `PR_DEFAULT_BASE` lorsqu'il est défini et `main` sinon. Il **n'est jamais écrasé** une fois qu'il existe, et GitPR n'exécute jamais `git add` — le versionner est une décision délibérée de l'équipe. Si le `.gitignore` de l'utilisateur exclut le chemin, le seed le signale.
+
+Modifiez-le à la main ou via `gitpr config` → **Projet** ([Écran de Configuration Interactive](config-tui.fr_fr.md)). Les deux écrivent le même fichier : la branche est définie, pas fusionnée.
+
+Un fichier illisible — YAML cassé, une valeur qui n'est pas du texte — est signalé comme avertissement et la résolution continue dans la chaîne ; le fichier n'est jamais écrasé par accident.
+
+### 9.2 La Cible N'Est Pas la Base du Diff
+
+Le fichier du projet contrôle **uniquement la branche dans laquelle le forge est invité à fusionner**. Le contenu IA de la PR est toujours généré à partir d'un diff contre la branche par défaut détectée (`origin/HEAD`). Un dépôt qui cible `develop` reçoit donc une proposition de PR dont la description se compare à `main` — une limite connue, consignée dans l'[ADR-015](plans/ADR-015-project-local-pr-base.md). La revue complète locale (`-f`), les outils de diff du MCP et `check --base` sont des interrupteurs distincts et gardent leur propre base.
+
+### 9.3 Vérification
+
+Quelle que soit la source, la branche cible doit exister sur `origin`. Elle est vérifiée juste avant la publication — après la construction du diff, afin qu'une branche récupérée par cette même exécution compte — et une référence absente interrompt la publication avec la raison et la commande `git fetch origin <branch>` à exécuter. `--no-publish` n'atteint jamais cette vérification : il ne publie rien, donc la cible n'est pas utilisée.
+
+Une pull request ne peut pas non plus cibler la branche dont elle part : la cible résolue ne peut donc pas être la branche extraite. Quand elle l'est — un fichier de projet fixé sur `develop` publié depuis `develop`, par exemple — une exécution interactive ouvre un petit écran demandant le remplacement : le même sélecteur de branches que `gitpr config`, sans la branche actuelle. Le choix est écrit dans le fichier du projet et l'exécution reprend à partir de là.
+
+Le sélecteur est ignoré quand il n'y a personne à qui demander : `--quiet`, un stdin non interactif (hooks, CI, éditeurs) et un `--base` désignant la branche actuelle conservent l'erreur. Une valeur de `--base` est un choix délibéré pour cette exécution, pas une configuration périmée : GitPR la signale au lieu de réécrire le fichier du projet en silence.
 
 ---
 
@@ -383,7 +413,7 @@ La première fois que vous utilisez `F3` ou `--no-edit`, GitPR :
 | Variable | Défaut | Description |
 |---|---|---|
 | `GITHUB_TOKEN_ENCRYPTED` | *(aucun)* | Token d'accès personnel GitHub chiffré |
-| `PR_DEFAULT_BASE` | *(vide)* | Branche cible par défaut (utilise la détection automatique lorsqu'elle est vide) |
+| `PR_DEFAULT_BASE` | *(vide)* | Branche cible pour toute la machine, utilisée quand ce dépôt n'a pas de branche de base de projet dans `.gitpr/conf/gitpr.config.yml` (détection automatique lorsque les deux sont vides) |
 | `GITPR_AUTO_COMMIT` | `false` | Définissez sur `true` pour exécuter les commits sans demander de confirmation |
 | `GITPR_SKIP_LINT` | `false` | Définissez sur `true` pour ignorer la validation du linter pendant l'auto-commit |
 | `GITPR_AUTO_STAGE` | `false` | Définir à `true` pour faire le stage automatique de tous les fichiers unstaged sans afficher le modal de sélection |

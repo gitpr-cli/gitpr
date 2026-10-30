@@ -15,6 +15,8 @@ El asistente te guía a través de **4 pasos**, solicitando confirmación antes 
 
 Al final, se muestra un enlace a esta documentación como referencia.
 
+Antes de los pasos, el asistente también siembra el archivo versionado del proyecto `.gitpr/conf/gitpr.config.yml` con la rama a la que deben apuntar los pull requests de este repositorio — `PR_DEFAULT_BASE` cuando está definido, `main` en caso contrario. Un archivo existente nunca se sobrescribe; el asistente solo informa su ruta. Versiónalo para que todo el equipo apunte a la misma rama ([Publicación de Pull Request](pull-request-publication.es_es.md#91-el-archivo-del-proyecto)).
+
 ## 🚀 Cómo Usar
 
 ```bash

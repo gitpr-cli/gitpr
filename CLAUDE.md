@@ -133,7 +133,7 @@ docs/
 | *(default)*              | PR publisher (TUI)     | `git fetch` → diff against `origin/main` → AI → `.md` → Textual TUI → POST to GitHub |
 | `--no-publish`           | PR description only    | Same as default, but saves the `.md` locally without opening the TUI       |
 | `--no-edit`              | Direct PR publish      | Same as default, but auto-commits and POSTs directly (skips the TUI)      |
-| `--base <branch>`        | PR base override       | Target base branch for the PR (overrides `PR_DEFAULT_BASE`)               |
+| `--base <branch>`        | PR base override       | Target base branch for the PR (overrides the project file and `PR_DEFAULT_BASE`) |
 | `-c` / `--commit`        | Commit message         | `git diff HEAD` → AI → console (Conventional Commits)                     |
 | `-r` / `--review`        | Local code review      | `git diff HEAD` → AI + Linter → `.txt`                                    |
 | `-f` / `--fullreview`    | Full code review       | `git fetch` → diff against remote base → AI + Linter → `.txt`             |
@@ -319,12 +319,13 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 ### User configuration
 - Global directory: `~/.gitpr/`
 - Config file: `~/.gitpr/.env` (dotenv format)
+- Project configuration file: `.gitpr/conf/gitpr.config.yml` at the repository root — versioned, seeded on the first invocation and by `--install` (never overwritten), holds the PR target base branch. Resolved by `src/project_config.py`: `--base` → project file → `PR_DEFAULT_BASE` → `origin/HEAD` → `main`, and the target must exist on `origin` and differ from the branch checked out before publishing — an interactive publish with no `--base` offers the replacement in `src/ui/pr_base_app.py`, which writes the project file ([ADR-015](docs/plans/ADR-015-project-local-pr-base.md)). It controls the PR target only — the AI diff base is still `origin/HEAD`
 - Fernet key: `~/.gitpr/secret.key` (auto-generated on first run)
 - Response cache: `~/.gitpr/cache/prompts/<action_folder>/<md5>.json`
 - Update cache: `~/.gitpr/update_cache.json` (daily)
 - Language files: `~/.gitpr/langs/{lang_code}.json`
 - Smart excludes config: `~/.gitpr/conf/gitpr.smart-excludes.json` (auto-downloaded, re-fetched when `__lang_version__` changes)
-- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `OUTPUT_FILE_NAME_RELEASE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `GITPR_LINTER_SECURITY`, `GITPR_LINTER_SECURITY_DISABLED_RULES`, `GITPR_FIX_SAFE_MAX_LINES_CHANGED`, `GITPR_FIX_SAFE_EXCLUDED_PATHS`, `GITPR_FIX_REQUIRE_CONFIRMATION`, `GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE`, `GITPR_FIX_BRANCH_NAME_TEMPLATE`, `GITPR_METRICS_CURRENCY`, `GITPR_METRICS_PRICE_<MODEL>_INPUT`, `GITPR_METRICS_PRICE_<MODEL>_OUTPUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`
+- Environment variables: `DEFAULT_AI_PROVIDER`, `GEMINI_API_KEY_ENCRYPTED`, `DEEPSEEK_API_KEY_ENCRYPTED`, `GEMINI_API_MODEL_PRIMARY`, `DEEPSEEK_API_MODEL_PRIMARY`, `GEMINI_API_MODEL_SECONDARY`, `DEEPSEEK_API_MODEL_SECONDARY`, `OUTPUT_FILE_NAME`, `OUTPUT_FILE_NAME_REVIEW`, `OUTPUT_FILE_NAME_FULLREVIEW`, `OUTPUT_FILE_NAME_FILEREVIEW`, `OUTPUT_FILE_NAME_BLAME`, `OUTPUT_FILE_NAME_ISSUE`, `OUTPUT_FILE_NAME_RELEASE`, `GITHUB_TOKEN_ENCRYPTED`, `PR_DEFAULT_BASE`, `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`, `GITPR_SCM_ORGANIZATION`, `GITPR_SCM_PROJECT`, `GITPR_SCM_USERNAME`, `GITPR_AI_TIMEOUT`, `GITPR_LINTER_TIMEOUT`, `GITPR_LINTER_SECURITY`, `GITPR_LINTER_SECURITY_DISABLED_RULES`, `GITPR_FIX_SAFE_MAX_LINES_CHANGED`, `GITPR_FIX_SAFE_EXCLUDED_PATHS`, `GITPR_FIX_REQUIRE_CONFIRMATION`, `GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE`, `GITPR_FIX_BRANCH_NAME_TEMPLATE`, `GITPR_METRICS_CURRENCY`, `GITPR_METRICS_PRICE_<MODEL>_INPUT`, `GITPR_METRICS_PRICE_<MODEL>_OUTPUT`, `SPINNER_THINKING_WORDS`, `GITPR_LANG`, `LANG_VERSION`, `SMART_EXCLUDES_VERSION`, `THINKING_WORDS_VERSION`, `GITPR_SKIP_PROJECT_CONFIG_SEED` (test-suite escape hatch, not advertised)
 
 ### AI Providers (Multi-Model Architecture)
 - **Gemini:** `gemini-pro-latest` (primary/advanced) / `gemini-flash-lite-latest` (secondary/simple)

@@ -43,6 +43,7 @@ Le menu latéral reflète les commandes et les flags de la CLI, donc le réglage
 | **Général** | Langue de l'interface, ligne de co-auteur, journal général |
 | **Fournisseurs d'IA** | Moteur par défaut, délai de l'IA, les deux clés d'API, et les modèles de chaque fournisseur — sous une sous-section par fournisseur, affichée une à la fois |
 | **Pull Request** | `OUTPUT_FILE_NAME`, branche de base, auto commit/stage/merge, ignorer le linter, journal de publication, suggestion de relecteurs |
+| **Projet** | Le fichier versionné du projet : son chemin, la branche de base cible de la PR et la branche qui sera réellement utilisée (§1.8) |
 | **Révision de Code** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
 | **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
@@ -54,7 +55,7 @@ Le menu latéral reflète les commandes et les flags de la CLI, donc le réglage
 | **Avancé** | Trois sous-sections — **Spinner**, **Git Hooks**, **Téléchargements** — masquées jusqu'à l'activation de **Afficher les options avancées** |
 | **Inconnues** | Clés du fichier que le schema ne déclare pas — n'apparaît que lorsqu'elles existent |
 
-Chacune des douze catégories a un lien vers sa propre documentation technique (§1.5).
+Chacune des treize catégories a un lien vers sa propre documentation technique (§1.5).
 
 ### 1.2 Contrôles
 
@@ -104,6 +105,7 @@ Le verdict vient d'une relecture de `~/.gitpr/.env` après le téléchargement, 
 | Général | `config-tui.md` |
 | Fournisseurs d'IA | `providers-ia.md` |
 | Pull Request | `pull-request-publication.md` |
+| Projet | `pull-request-publication.md` |
 | Révision de Code | `code-review-ia.md` |
 | Issue | `gitpr-issue-option.md` |
 | Blame | `blame-arqueologo.md` |
@@ -144,6 +146,22 @@ La liste contient une entrée par skill prise en charge par GitPR : **Commit**, 
 
 Chaque fichier conserve ses fins de ligne d'origine : un fichier `CRLF` reste en `CRLF` et votre diff n'affiche que les lignes que vous avez modifiées.
 
+### 1.8 La Section Projet
+
+Le second stockage. Contrairement à toutes les autres catégories, ces valeurs ne viennent pas de `~/.gitpr/.env` — elles vivent dans `.gitpr/conf/gitpr.config.yml`, à la racine du dépôt, et GitPR versionne ce fichier avec le projet pour que toute l'équipe cible la même branche de base ([Publication de Pull Request](pull-request-publication.fr_fr.md)).
+
+| Ligne | Modifiable | Affiche |
+| --- | --- | --- |
+| **Fichier de Configuration** | non | Le chemin absolu du fichier, qui est aussi ce qui est écrit |
+| **Branche de Base Cible de la PR** | oui | La valeur du fichier, choisie parmi les branches locales du dépôt et celles qui existent sur `origin` — sauf la branche extraite. *(automatique)* supprime la clé et le dépôt retombe dans la chaîne de priorité ; une branche que le checkout ne possède pas encore reste visible |
+| **Branche de Base Effective** | non | La branche qu'une pull request ciblerait maintenant, et d'où elle vient : `--base`, le fichier du projet, `PR_DEFAULT_BASE` ou `origin/HEAD` |
+
+Le fichier est créé à la première invocation dans un dépôt (et par `--install`), prérempli avec `PR_DEFAULT_BASE` lorsqu'il est défini et `main` sinon. Le seed n'écrase jamais un fichier existant. Si le fichier ne peut pas être lu — YAML cassé, une valeur qui n'est pas du texte — l'écran affiche le fallback qui serait utilisé et l'enregistrement *refuse d'écraser le fichier*, afin qu'un contenu écrit à la main ne soit jamais détruit par un `F2` accidentel.
+
+`F2` écrit cette section dans le YAML et le reste de l'écran dans le `.env`, dans le même enregistrement. Une branche qui n'existe pas sur `origin` est **enregistrée avec un avertissement** : elle est peut-être sur le point d'être poussée. La CLI et le serveur MCP échouent sur la même référence absente, ce dont l'avertissement avertit.
+
+Une pull request ne peut pas cibler la branche dont elle part : la branche sur laquelle vous êtes maintenant n'est donc pas proposée dans le sélecteur, et la choisir est refusé à l'enregistrement. Un fichier qui la nomme déjà n'est pas une erreur tant que vous ne modifiez autre chose — être sur la branche cible est un état normal d'un checkout — mais la valeur s'affiche comme **{branch} (branche actuelle)** pour rendre le problème visible, et la publication suivante demande un remplacement.
+
 ---
 
 ## 2. Comment les Valeurs Sont Lues
@@ -162,6 +180,7 @@ Rien n'est écrit avant que vous appuyiez sur `F2`. Pendant l'édition, `F2` aff
 
 - **Enregistrer** n'écrit que les champs que vous avez réellement modifiés, donc les lignes sans rapport conservent leurs commentaires et leur position dans le fichier.
 - **Fichiers de skill** sont écrits par le même enregistrement : un `F2` couvre les champs `.env` en attente et les skills modifiés (§1.7). Un skill qui ne peut pas être écrit est signalé par son nom et garde sa modification en attente — les autres fichiers sont enregistrés quand même.
+- **Les champs du projet** vont dans `.gitpr/conf/gitpr.config.yml`, pas dans le `.env` (§1.8). Le fichier du projet est écrit en premier : s'il échoue, rien n'est écrit nulle part et toutes les modifications restent en attente.
 - **`Ctrl+R`** sur un champ **ne** réécrit **pas** la valeur par défaut intégrée — il marque la ligne pour **suppression**, afin que la valeur revienne à ce que le code définit par défaut. Le champ affiche `— sera supprimé —` et un nouveau `Ctrl+R` annule la marque. C'est la réinitialisation honnête : écrire la valeur par défaut actuelle la figerait dans le fichier et interromprait le suivi des changements futurs.
 - **Vider un champ** efface la surcharge.
 - Après un enregistrement réussi, l'écran reste ouvert, relit le fichier et indique combien de paramètres ont été enregistrés.
@@ -176,6 +195,7 @@ Rien n'est écrit avant que vous appuyiez sur `F2`. Pendant l'édition, `F2` aff
 | Les entiers doivent être supérieurs à zéro | Un délai illisible est remplacé en silence par la valeur par défaut, donc une faute de frappe ne se manifeste jamais comme une erreur |
 | Les énumérations doivent être l'un des choix déclarés | Un nom de fournisseur inconnu n'est pas rejeté au démarrage, il ne fonctionne simplement pas |
 | Les modèles doivent utiliser des placeholders connus et conserver `{datetime}` | Un placeholder inconnu provoque un `KeyError` à la commande suivante ; sans `{datetime}` chaque exécution résout vers le même nom de fichier et écrase le rapport précédent |
+| La branche de base du projet ne peut pas être la branche courante | Une Pull Request ne peut pas se cibler elle-même : la forge la refuse, et GitPR la refuse plus tôt avec la même règle (§1.8) |
 
 ### 3.2 Validation des Identifiants
 
@@ -219,7 +239,8 @@ L'écran est construit à partir d'un schema déclaratif, donc ajouter un régla
 
 | Fichier | Rôle |
 | --- | --- |
-| `src/config_schema.py` | Données pures : `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (56 champs), plus `fields_of()`, `validate_field_value()` et les aides de recherche. Source unique de vérité pour le menu, les widgets, les valeurs par défaut, les sous-sections, la visibilité et la validation |
+| `src/config_schema.py` | Données pures : `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 champs), plus `fields_of()`, `validate_field_value()` et les aides de recherche. Source unique de vérité pour le menu, les widgets, les valeurs par défaut, les sous-sections, la visibilité et la validation |
+| `src/project_config.py` | Le stockage du projet : résolution du chemin, le seed, lecture/écriture YAML et le résolveur de la base de la PR (§1.8). Maintenu hors de `core.py` pour que l'écran, le serveur MCP et `--install` l'utilisent sans charger les SDK d'IA — `core.get_base_branch()` est importé dans le résolveur |
 | `src/doc_links.py` | `doc_url(filename)` — l'URL de base de la documentation et la règle du `?lang=`. Séparé de `core.py` parce que l'écran ne peut pas importer `src.core`, qui charge les SDK d'IA à chaque ouverture |
 | `src/ui/config_app.py` | `ConfigApp` plus les modales d'aide et de confirmation. Layout master-detail, dirty state, recherche, le basculement des options avancées, le filtre de visibilité, les workers de téléchargement, le panneau Skills (§1.7) et le pipeline d'enregistrement |
 | `src/config.py` | Quatre fonctions ajoutées : `read_env_file_values()`, `save_config_values()`, `remove_config_value()`, `validate_ai_key()`. Il contient aussi le registre des skills (`SKILL_FILES_BY_TYPE`, `SKILL_TYPES`) et les aides de fichier (`read_skill_file()`, `write_skill_file()`, `skill_file_status()`) que lisent à la fois `get_skill_context()` et la section Skills (§1.7) |

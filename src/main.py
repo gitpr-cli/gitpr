@@ -410,6 +410,55 @@ def _print_baseline_line(compared, quiet=False):
         click.secho(f"🧾 {line}", fg="blue", dim=True)
 
 
+def _resolve_pr_target(base, quiet):
+    """Resolves the PR target, repairing a project base that is the current branch.
+
+    A pull request cannot target the branch it is opened from. When the value
+    comes from the project file (or from the fallback chain) and the run is
+    interactive, the picker asks for a replacement, saves it in the project
+    file and the resolution runs again. A ``--base`` flag naming the current
+    branch is a deliberate choice, not stale configuration, so it is reported
+    instead of silently overridden — and so is a non-interactive run, where
+    there is no one to ask.
+    """
+    from src.project_config import (
+        BASE_BRANCH_FIELD,
+        CurrentBranchError,
+        current_branch,
+        list_branches,
+        project_config_path,
+        resolve_pull_request_base,
+        write_project_field_values,
+    )
+
+    try:
+        return resolve_pull_request_base(base)
+    except CurrentBranchError as exc:
+        if base or quiet or not sys.stdin.isatty():
+            raise
+        from src.ui.pr_base_app import prompt_for_base_branch
+
+        chosen = prompt_for_base_branch(current_branch(), list_branches())
+        if not chosen:
+            raise
+        try:
+            write_project_field_values(
+                {BASE_BRANCH_FIELD: chosen}, path=project_config_path()
+            )
+        except Exception:
+            # The file could not be written — the original refusal stands.
+            raise exc
+        click.secho(
+            __(
+                "✅ Project base branch set to '{branch}' for this repository.",
+                branch=chosen,
+            ),
+            fg="green",
+            err=True,
+        )
+        return resolve_pull_request_base(base)
+
+
 # Native Click configuration to accept -h in addition to --help. The root is a
 # group so `gitpr release` (ADR-002) exists as a subcommand: without one, the
 # callback below routes to the legacy ~29-flag dispatch unchanged.
@@ -554,7 +603,9 @@ def _print_baseline_line(compared, quiet=False):
 @click.option(
     "--base",
     type=str,
-    help=__("Target base branch for the Pull Request (overrides PR_DEFAULT_BASE)."),
+    help=__(
+        "Target base branch for the Pull Request (overrides the project configuration and PR_DEFAULT_BASE)."
+    ),
 )
 @click.option(
     "--no-publish",
@@ -685,6 +736,21 @@ def cli(
     if ctx.invoked_subcommand != "metrics":
         ledger.ensure_ledger(interactive=may_ask)
 
+    # Project-local configuration, versioned with the repository: seeded on
+    # every invocation inside a repository, never overwritten. Help paths are
+    # the one exception — a help screen must not write files — and the test
+    # suite opts out through the environment variable so `pytest` never seeds
+    # the developer's checkout.
+    project_seed = None
+    if (
+        not help_flag
+        and not _subcommand_help_in_argv()
+        and not os.getenv("GITPR_SKIP_PROJECT_CONFIG_SEED")
+    ):
+        from src.project_config import ensure_project_config
+
+        project_seed = ensure_project_config()
+
     # Subcommand dispatch (gitpr release …): Click invokes this group callback
     # first, so everything below runs only when NO subcommand was requested —
     # the legacy flag surface stays byte-for-byte intact (ADR-002).
@@ -762,6 +828,34 @@ def cli(
 
         set_lang(lang)
         reload_thinking_words(lang)
+
+    # Announce the project file, unless this run is quiet, a hook, the MCP
+    # server or the install wizard (which reports the same seed itself). The
+    # subcommand path never reaches this point, so `gitpr config` stays silent.
+    if (
+        project_seed is not None
+        and project_seed.created
+        and not install
+        and not quiet
+        and not hook
+        and not mcp
+    ):
+        click.secho(
+            __("📄 Project configuration created: {path}", path=project_seed.path),
+            fg="green",
+        )
+        click.secho(
+            __("Version it with git so the whole team targets the same base branch."),
+            dim=True,
+        )
+        if project_seed.ignored:
+            click.secho(
+                __(
+                    "⚠️ {path} is ignored by .gitignore and will not be versioned.",
+                    path=project_seed.path,
+                ),
+                fg="yellow",
+            )
 
     # Mandatory update gate: GitPR is distributed exclusively through PyPI, so a
     # published newer version blocks the run and the user is told to upgrade.
@@ -1690,7 +1784,7 @@ def cli(
         click.secho("\n" + __("❌ Error saving file: {error}", error=str(e)), fg="red")
 
     # ── PR Publisher logic ──
-    from src.core import get_base_branch, describe_repo
+    from src.core import describe_repo
 
     provider, repo_ref = _resolve_scm_context()
     if provider is None:
@@ -1698,7 +1792,6 @@ def cli(
 
     repo_info = describe_repo(repo_ref)
     head_branch = branch_name
-    target_base = base or os.getenv("PR_DEFAULT_BASE") or get_base_branch()
 
     pr_data = {
         "commit_message": data.get("commit_message", ""),
@@ -1708,6 +1801,20 @@ def cli(
     # ── --no-publish: save locally and exit ──
     if no_publish:
         return
+
+    # One resolver for every source: --base, the project file, PR_DEFAULT_BASE,
+    # origin/HEAD. Validation happens here — before --no-edit commits anything —
+    # but only on paths that actually publish.
+    from src.project_config import BaseBranchError
+
+    try:
+        resolved_base = _resolve_pr_target(base, quiet)
+    except BaseBranchError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1)
+    for warning in resolved_base.warnings:
+        click.secho(warning, fg="yellow", err=True)
+    target_base = resolved_base.branch
 
     # The badge goes on here, before either publisher reads `pr_data`: on screen
     # in the TUI, and in the request `--no-edit` sends. Nothing is attached when

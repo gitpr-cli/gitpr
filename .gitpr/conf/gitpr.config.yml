@@ -1,0 +1,4 @@
+# Project configuration for GitPR — versioned with the repository.
+# The pull request target base branch for this repository.
+pull_request:
+  base_branch: main

@@ -1445,8 +1445,9 @@ class TestEditorExtensionMcpTools(unittest.TestCase):
     @patch("src.core.get_current_branch", return_value="feat/ext")
     @patch("src.core.get_base_branch", return_value="main")
     @patch("src.core.get_git_full_diff", return_value="")
+    @patch("src.project_config.verify_remote_base")
     def test_publish_pull_request_needs_push(
-        self, _mock_diff, _mock_base, _mock_head, mock_scm, mock_metric
+        self, _verify, _mock_diff, _mock_base, _mock_head, mock_scm, mock_metric
     ):
         """publish_pull_request returns needs_push when branch is not on origin."""
         import src.application.use_cases.publish_pull_request  # noqa: F401
@@ -1481,8 +1482,9 @@ class TestEditorExtensionMcpTools(unittest.TestCase):
     @patch("src.core.get_current_branch", return_value="feat/ext")
     @patch("src.core.get_base_branch", return_value="main")
     @patch("src.core.get_git_full_diff", return_value="")
+    @patch("src.project_config.verify_remote_base")
     def test_publish_pull_request_masks_secrets_on_error(
-        self, _mock_diff, _mock_base, _mock_head, mock_scm, _mock_metric
+        self, _verify, _mock_diff, _mock_base, _mock_head, mock_scm, _mock_metric
     ):
         """publish_pull_request masks tokens in forge error messages."""
         import src.application.use_cases.publish_pull_request  # noqa: F401
@@ -1511,6 +1513,71 @@ class TestEditorExtensionMcpTools(unittest.TestCase):
         payload = json.loads(raw)
         self.assertEqual(payload["status"], "error")
         self.assertNotIn("ghp_1234567890abcdefghijklmnopqrstuvwxyz", payload["message"])
+
+    @patch("src.metrics.log_local_metric")
+    @patch("src.mcp_server._resolve_scm_target")
+    @patch("src.core.get_current_branch", return_value="feat/ext")
+    @patch("src.core.get_git_full_diff", return_value="")
+    @patch("src.project_config.resolve_pull_request_base")
+    def test_publish_pull_request_targets_the_project_base_branch(
+        self, mock_resolve, _mock_diff, _mock_head, mock_scm, _mock_metric
+    ):
+        """The MCP tool resolves the target through the shared resolver, so a
+        project that targets develop gets a develop pull request."""
+        import src.application.use_cases.publish_pull_request  # noqa: F401
+        from src.project_config import ResolvedBase
+
+        mock_resolve.return_value = ResolvedBase(branch="develop", source="project")
+        provider = MagicMock()
+        provider.name = "github"
+        provider.token = "tok"
+        provider.check_existing_pull_request.return_value = None
+        provider.create_pull_request.return_value = MagicMock(
+            url="https://forge/pr/7", number=7
+        )
+        mock_scm.return_value = (provider, MagicMock(), "")
+
+        with patch(
+            "src.application.use_cases.publish_pull_request._branch_needs_push",
+            return_value=False,
+        ):
+            raw = _call_tool(
+                mcp_server.publish_pull_request, title="feat: x", body="body"
+            )
+
+        payload = json.loads(raw)
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["target_branch"], "develop")
+        request = provider.create_pull_request.call_args.args[1]
+        self.assertEqual(request.target_branch, "develop")
+        mock_resolve.assert_called_once_with("")
+
+    @patch("src.metrics.log_local_metric")
+    @patch("src.mcp_server._resolve_scm_target")
+    @patch("src.core.get_current_branch", return_value="feat/ext")
+    @patch("src.project_config.resolve_pull_request_base")
+    def test_publish_pull_request_reports_a_missing_base_branch(
+        self, mock_resolve, _mock_head, mock_scm, _mock_metric
+    ):
+        """A target that does not exist on origin is an error envelope, never
+        a forge call with a branch that would fail there."""
+        from src.project_config import BaseBranchError
+
+        mock_resolve.side_effect = BaseBranchError(
+            "The base branch 'next' does not exist on origin."
+        )
+        provider = MagicMock()
+        provider.name = "github"
+        mock_scm.return_value = (provider, MagicMock(), "")
+
+        raw = _call_tool(
+            mcp_server.publish_pull_request, title="feat: x", body="body"
+        )
+
+        payload = json.loads(raw)
+        self.assertEqual(payload["status"], "error")
+        self.assertIn("does not exist on origin", payload["message"])
+        provider.create_pull_request.assert_not_called()
 
     @patch("src.application.use_cases.generate_mentor_explanation.explain_review")
     @patch("src.core.generate_pr_content")

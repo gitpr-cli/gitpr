@@ -1461,8 +1461,14 @@ def generate_skill_template():
         click.echo(__("\nNo new files were downloaded."))
 
 
-def get_base_branch():
-    """Discovers the remote main branch (e.g.: main or master)."""
+def get_base_branch(quiet=False):
+    """Discovers the remote main branch (e.g.: main or master).
+
+    ``quiet`` suppresses the fallback warning. The PR target resolver runs in
+    the configuration TUI and in the MCP server, where printing behind the
+    screen or into the JSON-RPC stream would corrupt the output; the diff
+    builder still reports the fallback on the normal path.
+    """
     try:
         # Fetch the default branch reference from the remote
         result = subprocess.run(
@@ -1477,12 +1483,13 @@ def get_base_branch():
         # The return is something like 'refs/remotes/origin/main', so we get the last part
         return result.stdout.strip().split("/")[-1]
     except subprocess.CalledProcessError:
-        click.secho(
-            __(
-                "⚠️ Warning: Remote main branch not detected. Assuming 'main' as default fallback."
-            ),
-            fg="yellow",
-        )
+        if not quiet:
+            click.secho(
+                __(
+                    "⚠️ Warning: Remote main branch not detected. Assuming 'main' as default fallback."
+                ),
+                fg="yellow",
+            )
         return "main"  # Default fallback if not found
 
 
@@ -1766,6 +1773,46 @@ def run_install_wizard():
     click.echo(
         __("This wizard will guide you through the essential GitPR setup steps.\n")
     )
+
+    # ------------------------------------------------------------------
+    # Project configuration (seeded as well by the root callback; reported
+    # here so the wizard always names the file the PR target comes from)
+    # ------------------------------------------------------------------
+    if not os.getenv("GITPR_SKIP_PROJECT_CONFIG_SEED"):
+        from src.project_config import ensure_project_config
+
+        seed = ensure_project_config()
+        if seed.error:
+            click.secho(
+                __(
+                    "⚠️ Could not create the project configuration: {error}",
+                    error=seed.error,
+                ),
+                fg="yellow",
+            )
+        elif seed.created:
+            click.secho(
+                __("📄 Project configuration created: {path}", path=seed.path),
+                fg="green",
+            )
+            click.secho(
+                __(
+                    "Version it with git so the whole team targets the same base branch."
+                ),
+                dim=True,
+            )
+        elif seed.path.exists():
+            click.secho(
+                __("Project configuration: {path}", path=seed.path), dim=True
+            )
+        if seed.created and seed.ignored:
+            click.secho(
+                __(
+                    "⚠️ {path} is ignored by .gitignore and will not be versioned.",
+                    path=seed.path,
+                ),
+                fg="yellow",
+            )
 
     # ------------------------------------------------------------------
     # Step 1: Skill Templates (equivalent to --skill)

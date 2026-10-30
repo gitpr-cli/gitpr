@@ -15,6 +15,8 @@ O assistente guia-te por **4 etapas**, pedindo confirmação antes de cada uma:
 
 No final, é exibida uma ligação para esta documentação como referência.
 
+Antes dos passos, o assistente também semeia o ficheiro versionado do projeto `.gitpr/conf/gitpr.config.yml` com o ramo que os pull requests deste repositório devem apontar — `PR_DEFAULT_BASE` quando definido, `main` caso contrário. Um ficheiro existente nunca é sobrescrito; o assistente apenas informa o caminho. Versione-o para que toda a equipa aponte para o mesmo ramo ([Publicação de Pull Request](pull-request-publication.pt_pt.md#91-o-ficheiro-do-projeto)).
+
 ## 🚀 Como Utilizar
 
 ```bash

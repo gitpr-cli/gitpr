@@ -2,7 +2,9 @@
 
 This module is pure data: it describes every ~/.gitpr/.env variable that the
 `gitpr config` TUI exposes, and it is the single source of truth for the menu
-categories, the widgets, the validation rules and the labels.
+categories, the widgets, the validation rules and the labels. The Project
+section is the one exception: its fields live in the repository's own
+.gitpr/conf/gitpr.config.yml (see ConfigField.store), not in the env file.
 
 The labels and descriptions are literal `__("...")` calls on purpose — the AST
 scanner in tests/test_i18n.py only finds statically resolvable keys, so a
@@ -29,6 +31,10 @@ KIND_VERSION = "version"
 # A pipe/semicolon joined list rendered read-only as a wrapped list, not as a
 # one-line text box.
 KIND_WORDS = "words"
+# A picker over the repository's branches. The options are not declared here:
+# they are read from git when the screen opens, so the list is whatever the
+# checkout has at that moment.
+KIND_BRANCH = "branch"
 
 KINDS = (
     KIND_BOOL,
@@ -40,6 +46,7 @@ KINDS = (
     KIND_SECRET,
     KIND_VERSION,
     KIND_WORDS,
+    KIND_BRANCH,
 )
 
 # Per-field action buttons rendered by the TUI, dispatched by name in
@@ -47,6 +54,14 @@ KINDS = (
 ACTION_DOWNLOAD = "download"
 ACTION_DOWNLOAD_WORDS = "download_words"
 ACTIONS = (ACTION_DOWNLOAD, ACTION_DOWNLOAD_WORDS)
+
+# Which file a field belongs to. STORE_ENV is ~/.gitpr/.env, written by
+# config.save_config_values(); STORE_PROJECT is .gitpr/conf/gitpr.config.yml at
+# the repository root, written by src.project_config. The screen dispatches on
+# this, so a project value never reaches save_config_values().
+STORE_ENV = "env"
+STORE_PROJECT = "project"
+STORES = (STORE_ENV, STORE_PROJECT)
 
 # Which code constant a version marker is compared against by its loader. The
 # TUI shows that constant when the marker is absent, so a read-only box is
@@ -109,6 +124,9 @@ class ConfigField:
     version_source: str = ""
     # Action button rendered next to the control, dispatched by ACTION_*.
     action: str = ""
+    # File this value belongs to: STORE_ENV or STORE_PROJECT. Every field that
+    # exists today is an .env key, so the default keeps them there.
+    store: str = STORE_ENV
 
 
 @dataclass(frozen=True)
@@ -148,6 +166,12 @@ CATEGORIES = (
         "pr",
         __("Pull Request"),
         __("Default behaviour of the pull request flow."),
+        doc="pull-request-publication.md",
+    ),
+    Category(
+        "project",
+        __("Project"),
+        __("Settings versioned with this repository."),
         doc="pull-request-publication.md",
     ),
     Category(
@@ -435,9 +459,10 @@ FIELDS = (
     ),
     ConfigField(
         key="PR_DEFAULT_BASE",
-        label=__("Default Base Branch"),
+        label=__("Global Default Base Branch"),
         description=__(
-            "Target branch of the pull request. Leave it empty to detect it automatically."
+            "Machine-wide fallback target branch, used when this repository has "
+            "no project base branch. Leave it empty to detect it automatically."
         ),
         category="pr",
         kind=KIND_STR,
@@ -540,6 +565,45 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="false",
+    ),
+    # ------------------------------------------------------------------ Project
+    # Unlike every other section, these values come from a file that belongs
+    # to the repository (STORE_PROJECT), not from ~/.gitpr/.env. The editable
+    # row and the two read-only rows are what the screen needs to state the
+    # path, the project value and the value that will actually be used.
+    ConfigField(
+        key="PROJECT_CONFIG_FILE",
+        label=__("Configuration File"),
+        description=__("Path of the project configuration file at the repository root."),
+        category="project",
+        kind=KIND_PATH,
+        default="",
+        read_only=True,
+        store=STORE_PROJECT,
+    ),
+    ConfigField(
+        key="PROJECT_BASE_BRANCH",
+        label=__("PR Target Base Branch"),
+        description=__(
+            "Branch the pull request is opened against for this repository. "
+            "Versioned with the project; leave it empty to use the global default or auto-detection."
+        ),
+        category="project",
+        kind=KIND_BRANCH,
+        default="",
+        store=STORE_PROJECT,
+    ),
+    ConfigField(
+        key="PROJECT_EFFECTIVE_BASE",
+        label=__("Effective Base Branch"),
+        description=__(
+            "The branch GitPR will target now, and where the value comes from."
+        ),
+        category="project",
+        kind=KIND_STR,
+        default="",
+        read_only=True,
+        store=STORE_PROJECT,
     ),
     # ------------------------------------------------------------- Code review
     ConfigField(

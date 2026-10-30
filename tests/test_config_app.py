@@ -12,12 +12,15 @@ from unittest.mock import patch
 
 from textual.widgets import Button, Input, ListView, Select, Static, Switch, TextArea
 
+import yaml
+
 from src.config import (
     SKILL_TYPES,
     VALIDATION_AUTH,
     VALIDATION_NETWORK,
     read_env_file_values,
 )
+from src.project_config import BaseBranchError
 from src.ui.config_app import ConfirmDiscardScreen
 from src.config_schema import FIELDS_BY_KEY
 
@@ -59,6 +62,24 @@ class ConfigAppTestCase(unittest.TestCase):
             handle.write(SEEDED_ENV)
         for target in ("src.config.ENV_FILE", "src.ui.config_app.ENV_FILE"):
             patcher = patch(target, self.env_path)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+        # The screen seeds and reads the project file, which lives at the
+        # repository root — the real checkout here. Point both at the temporary
+        # directory so opening the screen never writes into the project.
+        self.project_path = os.path.join(
+            self._tmpdir.name, ".gitpr", "conf", "gitpr.config.yml"
+        )
+        for target, value in (
+            ("src.ui.config_app.project_config_path", lambda: self.project_path),
+            ("src.ui.config_app.ensure_project_config", lambda: None),
+            # The checked-out branch gates the picker. Pinned to "none" so no
+            # test depends on the branch this checkout happens to be on; the
+            # tests that care patch their own.
+            ("src.ui.config_app.current_branch", lambda: ""),
+        ):
+            patcher = patch(target, value)
             patcher.start()
             self.addCleanup(patcher.stop)
         # The screen must never touch the real ~/.gitpr/.env or reach the network.
@@ -1657,6 +1678,249 @@ class TestDocumentationLink(SectionedAppTestCase):
                 app.query_one("#search", Input).value = "timeout"
                 await pilot.pause()
                 self.assertFalse(app.query_one("#category_doc").display)
+
+        run(scenario())
+
+
+class TestProjectSection(SectionedAppTestCase):
+    """The one category whose values go to the versioned project file.
+
+    The file is a second store: saving must write it, and must NOT write the
+    .env, even though both sections share one Save button.
+    """
+
+    def setUp(self):
+        super().setUp()
+        # Saving verifies the branch against origin; the checkout this suite
+        # runs in is not the one under test.
+        patcher = patch("src.ui.config_app.verify_remote_base")
+        self.verify_base = patcher.start()
+        self.addCleanup(patcher.stop)
+        # The picker's options come from git. Pinned here so the assertions
+        # describe the screen instead of whichever branches this checkout has.
+        patcher = patch(
+            "src.ui.config_app.list_branches",
+            return_value=["develop", "main", "next", "release"],
+        )
+        self.list_branches = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def write_project(self, text):
+        os.makedirs(os.path.dirname(self.project_path), exist_ok=True)
+        with open(self.project_path, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+
+    def read_project(self):
+        with open(self.project_path, encoding="utf-8", errors="replace") as handle:
+            return yaml.safe_load(handle) or {}
+
+    def test_rows_show_the_path_the_value_and_the_effective_branch(self):
+        self.write_project("pull_request:\n  base_branch: develop\n")
+
+        async def scenario():
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "project")
+                await pilot.pause()
+                self.assertEqual(
+                    app.query_one("#value_PROJECT_CONFIG_FILE", Input).value,
+                    self.project_path,
+                )
+                self.assertEqual(
+                    app.query_one("#value_PROJECT_BASE_BRANCH", Select).value,
+                    "develop",
+                )
+                effective = app.query_one("#value_PROJECT_EFFECTIVE_BASE", Input)
+                self.assertEqual(effective.value, "develop (from project file)")
+                self.assertTrue(effective.disabled)
+
+        run(scenario())
+
+    def test_saving_the_branch_writes_only_the_project_file(self):
+        self.write_project("pull_request:\n  base_branch: main\n")
+
+        async def scenario():
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                with open(self.env_path, "rb") as handle:
+                    env_before = handle.read()
+                self.goto(app, "project")
+                await pilot.pause()
+                app.query_one("#value_PROJECT_BASE_BRANCH", Select).value = "release"
+                await pilot.pause()
+                await pilot.press("f2")
+                await pilot.pause()
+                self.assertEqual(
+                    self.read_project()["pull_request"]["base_branch"], "release"
+                )
+                with open(self.env_path, "rb") as handle:
+                    self.assertEqual(handle.read(), env_before)
+                self.verify_base.assert_called_once_with("release")
+                # The effective row is recomputed in place after the save.
+                self.assertEqual(
+                    app.query_one("#value_PROJECT_EFFECTIVE_BASE", Input).value,
+                    "release (from project file)",
+                )
+
+        run(scenario())
+
+    def test_reset_drops_the_key_from_the_project_file(self):
+        self.write_project(
+            "# header\npull_request:\n  base_branch: develop\n"
+        )
+
+        async def scenario():
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "project")
+                await pilot.pause()
+                app.query_one("#value_PROJECT_BASE_BRANCH", Select).focus()
+                await pilot.press("ctrl+r")
+                await pilot.pause()
+                await pilot.press("f2")
+                await pilot.pause()
+                self.assertNotIn("pull_request", self.read_project())
+
+        run(scenario())
+
+    def test_a_branch_missing_on_origin_is_saved_anyway(self):
+        self.verify_base.side_effect = BaseBranchError("missing on origin")
+        self.write_project("pull_request:\n  base_branch: main\n")
+
+        async def scenario():
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "project")
+                await pilot.pause()
+                app.query_one("#value_PROJECT_BASE_BRANCH", Select).value = "next"
+                await pilot.pause()
+                await pilot.press("f2")
+                await pilot.pause()
+                self.assertEqual(
+                    self.read_project()["pull_request"]["base_branch"], "next"
+                )
+
+        run(scenario())
+
+    def test_the_branch_row_is_a_picker_over_the_repository_branches(self):
+        self.write_project("pull_request:\n  base_branch: develop\n")
+
+        async def scenario():
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "project")
+                await pilot.pause()
+                select = app.query_one("#value_PROJECT_BASE_BRANCH", Select)
+                values = [value for _, value in select._options]
+                # Empty first: it is what makes the repository fall back to the
+                # global default and to detection.
+                self.assertEqual(values, ["", "develop", "main", "next", "release"])
+                self.assertEqual(select.value, "develop")
+
+        run(scenario())
+
+    def test_a_branch_missing_from_the_checkout_stays_on_screen(self):
+        # The file may name a branch this clone does not have (it is created on
+        # the forge, or the clone is old). Select would drop the value, so it
+        # has to be added as an option.
+        self.write_project("pull_request:\n  base_branch: legacy\n")
+
+        async def scenario():
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "project")
+                await pilot.pause()
+                select = app.query_one("#value_PROJECT_BASE_BRANCH", Select)
+                self.assertEqual(select.value, "legacy")
+                self.assertIn("legacy", [value for _, value in select._options])
+                # ...and picking a branch git does know still works.
+                select.value = "release"
+                await pilot.pause()
+                self.assertTrue(app.is_dirty(FIELDS_BY_KEY["PROJECT_BASE_BRANCH"]))
+
+        run(scenario())
+
+    def test_the_current_branch_is_not_offered_as_a_target(self):
+        # A pull request cannot target the branch it is opened from, so the
+        # picker leaves that branch out — the file may still name it (below).
+        self.write_project("pull_request:\n  base_branch: main\n")
+
+        async def scenario():
+            with patch("src.ui.config_app.current_branch", return_value="develop"):
+                app = self.make_app()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    self.goto(app, "project")
+                    await pilot.pause()
+                    select = app.query_one("#value_PROJECT_BASE_BRANCH", Select)
+                    self.assertEqual(
+                        [value for _, value in select._options],
+                        ["", "main", "next", "release"],
+                    )
+
+        run(scenario())
+
+    def test_a_target_that_is_the_current_branch_is_flagged_and_replaceable(self):
+        # The file already names the branch checked out. It stays visible —
+        # Select would drop an unknown value — and says what it is, so the
+        # user can see the problem and pick another branch.
+        self.write_project("pull_request:\n  base_branch: develop\n")
+
+        async def scenario():
+            with patch("src.ui.config_app.current_branch", return_value="develop"):
+                app = self.make_app()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    self.goto(app, "project")
+                    await pilot.pause()
+                    select = app.query_one("#value_PROJECT_BASE_BRANCH", Select)
+                    self.assertEqual(select.value, "develop")
+                    labels = {value: label for label, value in select._options}
+                    self.assertEqual(labels["develop"], "develop (current branch)")
+                    select.value = "next"
+                    await pilot.pause()
+                    await pilot.press("f2")
+                    await pilot.pause()
+                    self.assertEqual(
+                        self.read_project()["pull_request"]["base_branch"], "next"
+                    )
+
+        run(scenario())
+
+    def test_saving_the_current_branch_is_refused(self):
+        # The picker cannot produce this value, but the rule is enforced at
+        # save time too: the plan carries the error and nothing is written.
+        self.write_project("pull_request:\n  base_branch: main\n")
+
+        async def scenario():
+            with patch("src.ui.config_app.current_branch", return_value="develop"):
+                app = self.make_app()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    app.pending["PROJECT_BASE_BRANCH"] = "develop"
+                    plan = app._build_plan()
+                    self.assertIn("PROJECT_BASE_BRANCH", plan["errors"])
+                    self.assertNotIn("PROJECT_BASE_BRANCH", plan["project"])  # nothing to write
+        run(scenario())
+
+    def test_editing_the_branch_marks_the_screen_dirty(self):
+        async def scenario():
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "project")
+                await pilot.pause()
+                app.query_one("#value_PROJECT_BASE_BRANCH", Select).value = "next"
+                await pilot.pause()
+                self.assertTrue(app.is_dirty(FIELDS_BY_KEY["PROJECT_BASE_BRANCH"]))
+                self.assertFalse(app.is_dirty(FIELDS_BY_KEY["PROJECT_CONFIG_FILE"]))
+                self.assertFalse(app.is_dirty(FIELDS_BY_KEY["PROJECT_EFFECTIVE_BASE"]))
 
         run(scenario())
 

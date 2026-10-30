@@ -67,6 +67,7 @@ from src.config_schema import (
     FIELDS_BY_KEY,
     GROUP_LABELS,
     KIND_BOOL,
+    KIND_BRANCH,
     KIND_ENUM,
     KIND_SECRET,
     KIND_STR,
@@ -74,6 +75,7 @@ from src.config_schema import (
     KIND_WORDS,
     KNOWN_KEYS,
     SKILL_LABELS,
+    STORE_PROJECT,
     VALIDATOR_AI_KEY,
     VALIDATOR_SCM_TOKEN,
     VERSION_LANG,
@@ -85,6 +87,21 @@ from src.config_schema import (
 )
 from src.doc_links import doc_url
 from src.i18n import AMBIENT_ENV_KEYS, __, set_lang
+from src.project_config import (
+    BASE_BRANCH_FIELD,
+    CONFIG_FILE_FIELD,
+    BaseBranchError,
+    EFFECTIVE_BASE_FIELD,
+    current_branch,
+    describe_base_source,
+    ensure_project_config,
+    list_branches,
+    load_project_field_values,
+    project_config_path,
+    resolve_pull_request_base,
+    verify_remote_base,
+    write_project_field_values,
+)
 from src.security import encrypt_data
 
 # Safe to import here: stdlib plus click and i18n, with no I/O at import time.
@@ -356,6 +373,13 @@ class ConfigHelpScreen(ModalScreen):
                     "environment variable, which always wins over the file."
                 )
             )
+            yield Static(
+                __(
+                    "The Project section is the exception: its values live in "
+                    ".gitpr/conf/gitpr.config.yml at the repository root and are "
+                    "saved there, so they travel with the project."
+                )
+            )
             yield Button(__("Close"), variant="primary", id="help_close")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -399,13 +423,26 @@ class ConfirmDiscardScreen(ModalScreen):
 class FieldRow(Vertical):
     """One configuration entry: label, control, description and inline error."""
 
-    def __init__(self, field, raw_value, is_set, shadowed, read_only=False):
+    def __init__(
+        self,
+        field,
+        raw_value,
+        is_set,
+        shadowed,
+        read_only=False,
+        branch_choices=(),
+        current_branch="",
+    ):
         super().__init__(id=f"row_{field.key}", classes="field")
         self.field = field
         self.raw_value = raw_value
         self.is_set = is_set
         self.shadowed = shadowed
         self.read_only = read_only or field.read_only
+        self.branch_choices = tuple(branch_choices)
+        # The branch checked out: offered to nobody as a choice, but a value
+        # the file already holds must stay visible so it can be changed.
+        self.current_branch = current_branch
         self.marked_for_removal = False
 
     def compose(self) -> ComposeResult:
@@ -485,6 +522,26 @@ class FieldRow(Vertical):
                 options.append(
                     (__("{value} (invalid)", value=self.raw_value), self.raw_value)
                 )
+            return Select(
+                options, value=self.raw_value, allow_blank=False, id=widget_id
+            )
+
+        if self.field.kind == KIND_BRANCH:
+            # The choices come from git, not from the schema: the file may name
+            # a branch this checkout does not have yet, and it must stay
+            # visible instead of being dropped by the Select on mount. The
+            # current branch is offered to nobody — but when the file holds it,
+            # it stays on screen, named for what it is, so the user can see the
+            # problem and pick a replacement.
+            options = [(_AUTOMATIC_LABEL, "")]
+            options.extend((branch, branch) for branch in self.branch_choices)
+            if self.raw_value and self.raw_value not in self.branch_choices:
+                label = (
+                    __("{value} (current branch)", value=self.raw_value)
+                    if self.raw_value == self.current_branch
+                    else self.raw_value
+                )
+                options.append((label, self.raw_value))
             return Select(
                 options, value=self.raw_value, allow_blank=False, id=widget_id
             )
@@ -672,6 +729,25 @@ class ConfigApp(App):
         # Changed message arriving later is attributed to the right skill.
         self.selected_skill = None
         self._load_skills()
+        # --- Project file. A second store, versioned with the repository:
+        # these values never reach save_config_values(). The file is seeded on
+        # open so the Project section always has something to show and edit;
+        # outside a git repository the seed is a no-op and the rows stay empty.
+        self.project_config_path = project_config_path()
+        self._project_seed = ensure_project_config()
+        self.project_values = load_project_field_values(
+            path=self.project_config_path
+        )
+        # The branch checked out right now. A pull request cannot target it, so
+        # it is never an option in the picker and a file that still names it is
+        # reported instead of being silently accepted.
+        self.current_branch = current_branch()
+        # Options of the branch picker, read once when the screen opens: the
+        # rows are mounted once, so a branch created during the session is
+        # picked up by the next `gitpr config`.
+        self.branch_choices = [
+            branch for branch in list_branches() if branch != self.current_branch
+        ]
 
     # ------------------------------------------------------------- lifecycle
 
@@ -771,8 +847,7 @@ class ConfigApp(App):
 
         container.mount_all(widgets)
 
-    @staticmethod
-    def _make_row(field, file_values, forced_read_only=False):
+    def _make_row(self, field, file_values, forced_read_only=False):
         """Builds a row, standing the code constant in for an absent marker.
 
         is_set stays False, so the annotation explains where the value came
@@ -780,6 +855,16 @@ class ConfigApp(App):
         """
         is_set = field.key in file_values
         raw_value = file_values.get(field.key, field.default)
+        if field.store == STORE_PROJECT:
+            # A second store: these rows read the project YAML, and the two
+            # read-only rows show a value the file does not hold — the path it
+            # lives at and the branch that will actually be used.
+            is_set = field.key in self.project_values
+            raw_value = self.project_values.get(field.key, field.default)
+            if field.key == CONFIG_FILE_FIELD:
+                raw_value = str(self.project_config_path)
+            elif field.key == EFFECTIVE_BASE_FIELD:
+                raw_value = self._effective_base_display()
         if field.kind == KIND_VERSION and not is_set:
             raw_value = _VERSION_FALLBACKS.get(field.version_source, field.default)
         if field.key == SKILLS_FOLDER_KEY:
@@ -794,6 +879,8 @@ class ConfigApp(App):
             shadowed=field.key in AMBIENT_ENV_KEYS
             and os.environ.get(field.key) not in (None, ""),
             read_only=forced_read_only,
+            branch_choices=self.branch_choices,
+            current_branch=self.current_branch,
         )
 
     # --------------------------------------------------------------- sidebar
@@ -1001,8 +1088,31 @@ class ConfigApp(App):
 
     # ------------------------------------------------------------ field state
 
+    def _is_set(self, field):
+        """True when the store this field belongs to already holds the key."""
+        if field.store == STORE_PROJECT:
+            return field.key in self.project_values
+        return field.key in self.file_values
+
+    def _effective_base_display(self):
+        """The target branch in use now, and where it comes from.
+
+        verify=False on purpose: opening the screen must not fail over a
+        branch that is not on the remote yet — saving warns instead.
+        """
+        resolved = resolve_pull_request_base(
+            config_path=self.project_config_path, verify=False
+        )
+        return __(
+            "{branch} (from {source})",
+            branch=resolved.branch,
+            source=describe_base_source(resolved.source),
+        )
+
     def file_value(self, field):
         """The value currently on disk, falling back to the declared default."""
+        if field.store == STORE_PROJECT:
+            return self.project_values.get(field.key, field.default)
         return self.file_values.get(field.key, field.default)
 
     def effective_value(self, field):
@@ -1029,7 +1139,9 @@ class ConfigApp(App):
     def _record(self, key, value):
         """Stores an edit; a secret emptied back out is no longer an edit."""
         field = FIELDS_BY_KEY.get(key)
-        if field is None:
+        if field is None or field.read_only:
+            # A programmatic write to a read-only box (the effective-base row
+            # is refreshed after saving) must not become a pending edit.
             return
         if field.kind == KIND_SECRET and not value:
             self.pending.pop(key, None)
@@ -1511,7 +1623,7 @@ class ConfigApp(App):
             self._update_dirty_indicator()
             return
 
-        if field.key not in self.file_values:
+        if not self._is_set(field):
             # "{name}", not "{key}": __()'s first parameter is itself named key.
             self.notify(
                 __("{name} already uses the default value.", name=field.key),
@@ -1559,7 +1671,13 @@ class ConfigApp(App):
             )
             return
 
-        if not plan["values"] and not plan["removals"] and not plan["skills"]:
+        if not (
+            plan["values"]
+            or plan["removals"]
+            or plan["project"]
+            or plan["project_removals"]
+            or plan["skills"]
+        ):
             self.notify(__("Nothing to save."), severity="information")
             return
 
@@ -1583,6 +1701,10 @@ class ConfigApp(App):
             "values": {},
             "secrets": {},
             "removals": [],
+            # The project store is written to a different file, by a different
+            # writer, so it keeps its own buckets and never reaches the .env.
+            "project": {},
+            "project_removals": [],
             "errors": {},
             "skills": {
                 skill_type: self.skill_pending[skill_type]
@@ -1593,17 +1715,40 @@ class ConfigApp(App):
         for field in FIELDS:
             if field.read_only:
                 continue
+            is_project = field.store == STORE_PROJECT
             if field.key in self.marked_for_removal:
-                if field.key in self.file_values:
-                    plan["removals"].append(field.key)
+                if self._is_set(field):
+                    bucket = "project_removals" if is_project else "removals"
+                    plan[bucket].append(field.key)
                 continue
             if not self.is_dirty(field):
                 continue
 
             value = self.effective_value(field)
+            if is_project:
+                value = value.strip()
             error = validate_field_value(field, value)
             if error:
                 plan["errors"][field.key] = error
+                continue
+
+            if is_project:
+                # A pull request cannot target the branch it is opened from.
+                # Only an edit is refused: a file that already names the
+                # current branch is a normal state of a checkout that happens
+                # to be on the target, and blocking every unrelated save
+                # because of it would make the screen unusable.
+                if value and value == self.current_branch:
+                    plan["errors"][field.key] = __(
+                        "A pull request cannot target the branch you are on. Choose another base branch."
+                    )
+                    continue
+                # An emptied project value means "unset": the key is dropped so
+                # the repository falls back down the precedence chain.
+                if value:
+                    plan["project"][field.key] = value
+                elif field.key in self.project_values:
+                    plan["project_removals"].append(field.key)
                 continue
 
             if field.kind == KIND_SECRET and field.validator:
@@ -1738,6 +1883,29 @@ class ConfigApp(App):
             # Encrypted only now, so a rejected credential never reaches disk.
             values[key] = encrypt_data(values[key])
 
+        # The project file goes first: it is a single small write, and doing it
+        # first means a failure there leaves the .env untouched — the two stores
+        # never end up half-saved in a way the screen would misreport.
+        project_warnings = []
+        if plan["project"] or plan["project_removals"]:
+            try:
+                write_project_field_values(
+                    plan["project"],
+                    plan["project_removals"],
+                    path=self.project_config_path,
+                )
+            except Exception as exc:
+                self.notify(
+                    __(
+                        "Could not write {path}: {error}",
+                        path=self.project_config_path,
+                        error=str(exc),
+                    ),
+                    severity="error",
+                )
+                return
+            project_warnings = self._project_save_warnings(plan["project"])
+
         try:
             save_config_values(values)
             for key in plan["removals"]:
@@ -1751,10 +1919,26 @@ class ConfigApp(App):
             )
             return
 
-        for message in warnings:
+        for message in list(warnings) + project_warnings:
             self.notify(message, severity="warning")
 
         self._after_save(plan, values, self._write_skills(plan["skills"]))
+
+    def _project_save_warnings(self, project_values):
+        """Warns — without blocking — when the saved branch is not on origin.
+
+        Saving stays possible: the branch may be about to be pushed. The CLI
+        and the MCP server fail fast on the same missing ref, so the user is
+        told here, before that happens.
+        """
+        branch = project_values.get(BASE_BRANCH_FIELD, "").strip()
+        if not branch:
+            return []
+        try:
+            verify_remote_base(branch)
+        except BaseBranchError as exc:
+            return [str(exc)]
+        return []
 
     def _write_skills(self, skills):
         """Writes the edited skill files, one failure at a time.
@@ -1787,6 +1971,9 @@ class ConfigApp(App):
         load_dotenv(ENV_FILE, override=True)
 
         self.file_values = read_env_file_values()
+        self.project_values = load_project_field_values(
+            path=self.project_config_path
+        )
         self.shadowed_keys = {
             key
             for key in self.file_values
@@ -1819,15 +2006,36 @@ class ConfigApp(App):
                 severity="warning",
             )
 
+        self._refresh_effective_row()
         self._render_view(self.query_one("#search", Input).value)
         self._update_dirty_indicator()
         self.notify(
             __(
                 "{count} setting(s) saved.",
-                count=len(values) + len(plan["removals"]) + len(written_skills),
+                count=len(values)
+                + len(plan["removals"])
+                + len(plan["project"])
+                + len(plan["project_removals"])
+                + len(written_skills),
             ),
             severity="information",
         )
+
+    def _refresh_effective_row(self):
+        """Recomputes the effective-base row in place after a save.
+
+        Rows are mounted once and never rebuilt, so writing to the widget is
+        the only way to show the new value; _record ignores it because the
+        field is read-only.
+        """
+        display = self._effective_base_display()
+        row = self.rows.get(EFFECTIVE_BASE_FIELD)
+        if row is None:
+            return
+        row.raw_value = display
+        widget = row.query_one(f"#{_value_id(EFFECTIVE_BASE_FIELD)}", Input)
+        if widget.value != display:
+            widget.value = display
 
 
 def launch_config_app():

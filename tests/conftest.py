@@ -35,12 +35,20 @@ into the developer's profile, reintroducing exactly the write this suite was
 made hermetic about. The new keys' own tests switch the ruleset back on with
 monkeypatch.setenv, which wins over the file because every load_dotenv runs
 with override=False.
+
+GITPR_SKIP_PROJECT_CONFIG_SEED stops cli() from seeding
+.gitpr/conf/gitpr.config.yml. The seed runs on every invocation, and dozens of
+CliRunner tests invoke the CLI with the repository as the working directory —
+without the switch the first pytest run would create a real, versioned project
+file in the checkout. The project-file tests create theirs in a temporary
+repository instead.
 """
 
 import os
 
 os.environ["GITPR_SHOW_LOGS"] = "false"
 os.environ["GITPR_SKIP_UPDATE_CHECK"] = "true"
+os.environ["GITPR_SKIP_PROJECT_CONFIG_SEED"] = "true"
 os.environ["GITPR_LANG"] = "en_us"
 os.environ["GITPR_LINTER_SECURITY"] = "false"
 
