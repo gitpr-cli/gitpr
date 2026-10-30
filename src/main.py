@@ -1437,13 +1437,26 @@ def cli(
             return
     elif commit:
         action_type = "commit"
-        if hook and is_merge_in_progress():
-            return  # merge in progress: git owns the message, skip AI silently
-        if not hook and not check_unstaged_files(
-            "commit", skip_check=no_unstaged_check, quiet=quiet, interactive=False
-        ):
+        if hook:
+            if is_merge_in_progress():
+                return  # merge in progress: git owns the message, skip AI silently
+            diff_text = get_git_diff()
+        else:
+            # Interactive commit TUI flow
+            from src.ui.commit_app import CommitApp
+
+            app = CommitApp(
+                provider=active_provider, skip_unstaged=no_unstaged_check
+            )
+            app.run()
+            if app.result == "no_changes":
+                click.secho(
+                    __(
+                        "\n⚠️ No new code found. Make some changes or check your branch before running the command.\n"
+                    ),
+                    fg="yellow",
+                )
             return
-        diff_text = get_git_diff()
     elif review:
         action_type = "review"
         if not hook and not check_unstaged_files(
