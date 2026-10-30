@@ -29,7 +29,7 @@ class TestMentorCli(unittest.TestCase):
     @patch("src.main.render_review_result")
     @patch("src.main.parse_diff_and_lint", return_value={"errors": [], "warnings": []})
     @patch("src.main.generate_pr_content")
-    @patch("src.core.get_git_diff", return_value="diff --git a/a.py b/a.py\n+new line")
+    @patch("src.main.get_git_diff", return_value="diff --git a/a.py b/a.py\n+new line")
     @patch("src.main._append_mentor_section")
     def test_review_without_mentor_is_opt_in(
         self, mock_append, mock_diff, mock_gen_pr, mock_linter, mock_render
@@ -47,7 +47,7 @@ class TestMentorCli(unittest.TestCase):
     @patch("src.main.render_review_result")
     @patch("src.main.parse_diff_and_lint", return_value={"errors": [], "warnings": []})
     @patch("src.main.generate_pr_content")
-    @patch("src.core.get_git_diff", return_value="diff --git a/a.py b/a.py\n+new line")
+    @patch("src.main.get_git_diff", return_value="diff --git a/a.py b/a.py\n+new line")
     @patch("src.main._append_mentor_section")
     def test_review_with_mentor_flag_invokes_append(
         self, mock_append, mock_diff, mock_gen_pr, mock_linter, mock_render
