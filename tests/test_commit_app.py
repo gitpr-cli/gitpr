@@ -154,6 +154,7 @@ class TestCommitAppUnit:
             called_fns = [c[0][0] for c in mock_call_from_thread.call_args_list]
             assert progress.add_log in called_fns
             assert progress.mark_finished in called_fns
+            assert app._schedule_auto_exit in called_fns
 
     def test_on_commit_progress_dismissed_sets_result(self):
         app = CommitApp(provider="gemini")
@@ -162,6 +163,12 @@ class TestCommitAppUnit:
             app._on_commit_progress_dismissed("done")
             assert app.result == "committed"
             mock_exit.assert_called_once()
+
+    def test_schedule_auto_exit_sets_timer(self):
+        app = CommitApp(provider="gemini")
+        with patch.object(app, "set_timer") as mock_timer:
+            app._schedule_auto_exit()
+            mock_timer.assert_called_once_with(0.6, app.exit)
 
 
 class TestCommitAppHeadlessFlow:
@@ -191,13 +198,8 @@ class TestCommitAppHeadlessFlow:
                     # Confirm commit
                     await pilot.click("#btn_confirm")
 
-                    # Wait for execution to finish and close button to show
-                    await _wait_until(pilot, lambda: bool(app.screen.query("#btn_close")) and app.screen.query_one("#btn_close").display)
-                    assert isinstance(app.screen, CommitProgressScreen)
-
-                    # Click Close
-                    await pilot.click("#btn_close")
-                    await pilot.pause(0.1)
+                    # Wait for commit execution to complete and auto-exit to set result
+                    await _wait_until(pilot, lambda: app.result == "committed")
 
                 assert app.result == "committed"
                 mock_stage.assert_called_once_with(["src/foo.py"])

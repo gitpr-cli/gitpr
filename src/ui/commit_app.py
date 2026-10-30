@@ -192,16 +192,21 @@ class CommitApp(App):
                 if output and output.strip():
                     first_line = output.strip().split("\n")[0]
                     self.call_from_thread(log.add_log, f"   {first_line}")
+                self.call_from_thread(log.mark_finished, False)
+                self.call_from_thread(self._schedule_auto_exit)
             else:
                 out_summary = output.strip()[:100] if output else "unknown error"
                 self.call_from_thread(
                     log.add_log,
                     __("❌ Failed to commit: {error}", error=out_summary),
                 )
-
-            self.call_from_thread(log.mark_finished, True)
+                self.call_from_thread(log.mark_finished, True)
 
         threading.Thread(target=_commit_work, daemon=True).start()
+
+    def _schedule_auto_exit(self) -> None:
+        """Close progress screen and exit upon successful commit."""
+        self.set_timer(0.6, self.exit)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Catch close button on progress modal."""

@@ -1456,6 +1456,12 @@ def cli(
                     ),
                     fg="yellow",
                 )
+            elif app.result == "committed":
+                click.secho(
+                    __("\n✅ Commit created successfully!\n"), fg="green", bold=True
+                )
+                if app._commit_output and app._commit_output.strip():
+                    click.echo(app._commit_output.strip() + "\n")
             return
     elif review:
         action_type = "review"
