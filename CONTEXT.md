@@ -30,3 +30,15 @@ _Avoid_: cache day, TTL
 A run attached to a terminal at both ends that is allowed to stop and ask the
 user. Scripts, pipes, hooks and the MCP server are never interactive.
 _Avoid_: CLI mode, TTY run
+
+**Stage selector**:
+The modal screen (`StageFilesScreen`) that presents files outside the Git staging
+area and allows the user to selectively add them (`git add`) to the index before
+generating a commit or pull request.
+_Avoid_: file picker, stage chooser, unstaged dialog
+
+**Commit flow**:
+The interactive sequence triggered by `gitpr -c` (or during PR publication) that
+coordinates unstaged file selection, AI commit message generation, review/editing
+in a modal, and commit execution with animated progress.
+_Avoid_: commit wizard, auto-commit script, commit generator

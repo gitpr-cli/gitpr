@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.3] - 2026-10-27
+
+### Summary
+This 1.4.3 release fixes the mandatory update gate missing a version published after the first check of the day. The PyPI answer used to be cached until local midnight, so a release published later that same day was never seen; the cache is now a rolling one-hour window and `gitpr -u`/`--update` always queries PyPI. The gate also covers subcommands when the run is interactive, while CI, pipes, hooks and the MCP server are never blocked. Remote pre-releases are ignored for stable installs, invalid remote versions are treated as unknown, and the skip switch now accepts only explicit true values.
+
+### 🐛 Bug Fixes
+
+- refresh the update cache on a one-hour rolling TTL instead of a local calendar date
+- make `gitpr -u` bypass the cache and query PyPI on every invocation
+- enforce the update gate for interactive subcommands (release, fix, review-pr, ...)
+- ignore remote pre-releases for stable installs and treat invalid versions as unknown
+- compare versions with PEP 440 and bound the PyPI fetch with `bounded_urlopen`
+- write the update cache atomically and parse `GITPR_SKIP_UPDATE_CHECK` as a strict boolean
+
+### 🔧 Chores
+
+- bump version to 1.4.3
+
 ## [1.4.2] - 2026-10-27
 
 ### Summary

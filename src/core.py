@@ -561,6 +561,33 @@ def get_git_diff(quiet=False):
         return None
 
 
+def get_git_staged_diff(quiet=False):
+    """Runs 'git diff --cached' and returns the output filtered by SMART_EXCLUDES."""
+    try:
+        cmd = ["git", "diff", "--cached", "-U1", "-w", "-M", "-B", "--"] + SMART_EXCLUDES
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=True,
+        )
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        if not quiet:
+            click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
+        return None
+    except FileNotFoundError:
+        if not quiet:
+            click.secho(
+                __("❌ Git not found. Make sure it is installed and in the PATH."),
+                fg="red",
+            )
+        return None
+
+
 #: The flags ``gitpr split`` captures its diff with — and the reason it does not
 #: reuse ``get_git_diff``'s.
 #:
