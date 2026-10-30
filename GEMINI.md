@@ -235,6 +235,7 @@ pipenv run twine upload dist/*
 > 
 > Create parent directories (`docs/gemini/reports/{branch}/`) if they do not exist.
 > Whenever an implementation plan is generated, it must be saved to `docs/gemini/plans/{branch}/{current_date}_{branch}_{planname}.md`, where `{current_date}` must be replaced with the current date (`YYYY-MM-DD` format), `{branch}` must be replaced with the current branch, and `{planname}` must be a short description of the plan, with no spaces or special characters, using only lowercase letters separated by underscores.
+> Whenever a walkthrough is generated, it must be saved to `docs/gemini/walkthrough/{branch}/{current_date}_{task_name}.md`, where `{current_date}` must be replaced with the current date (`YYYY-MM-DD` format), `{branch}` must be replaced with the current branch, and `{task_name}` must be a short description of the task, with no spaces or special characters, using only lowercase letters separated by underscores. Create parent directories (`docs/gemini/walkthrough/{branch}/`) if they do not exist.
 
 
 ### When starting a task
@@ -276,6 +277,7 @@ pipenv run twine upload dist/*
 
 This report is **mandatory** at the end of every implementation task — not just for the user, but as historical development documentation.
 It must be placed in `docs/gemini/reports/{branch}/{current_date}_{taskname}.md`, where `{current_date}` is today's date (`YYYY-MM-DD` format), `{branch}` is the current branch, and `{taskname}` is a short task description (only lowercase letters, numbers, and underscores, no spaces or special characters). Create the `docs/gemini/reports/` folder if it doesn't exist.
+Likewise, whenever a walkthrough artifact is generated, it must be saved to `docs/gemini/walkthrough/{branch}/{current_date}_{taskname}.md`.
 
 ## Project-specific notes
 

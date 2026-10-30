@@ -35,7 +35,8 @@
   each with the four translations; ADR-015 gained decision 10 (the self-target
   rule, the picker filter and the `--base` exception) and one rejected
   alternative (silent fallback to `origin/HEAD`); `CLAUDE.md` names the check
-  and the new screen. Nine new i18n keys, translated in all six `langs/*.json`.
+  and the new screen. Fifty new i18n keys (this task plus the project-file
+  work), translated in all six `langs/*.json`.
 - Technical documentation: `docs/ARCHITECTURE.md` gained section 20
   (*Project-Local PR Target*), the new modules in the project tree and the
   `config-tui.md` entry in the docs index; `CONTEXT.md` gained the domain terms
@@ -74,10 +75,21 @@
   (176 s).
 - `tests/test_config_cli.py` + `tests/test_install_wizard.py` +
   `tests/test_pr_base_app.py`: **24 passed**.
-- `tests/test_i18n.py`: **3 failed**, the same three known failures
-  (missing keys and orphans reported by that suite before this change) — the
-  new keys are present and translated in all six files.
-- Full suite: see the run recorded below.
+- `tests/test_i18n.py`: **passed** after the translation files were rebuilt
+  surgically. Running `tests/sync_i18n.py` wholesale truncates every `__()` key
+  whose literal is implicitly concatenated, so it was not used again: the six
+  files were restored from `HEAD`, the 50 new keys inserted, the 14 untranslated
+  ones translated in all six languages, and 5 dead keys removed (two of them
+  pre-existing). The diff is now 50 insertions / 5 removals per file.
+- `tests/demo/test_demo_text_mode.py` and `tests/test_plugins.py`: **passed**
+  (they had failed only because of the sync damage and, for the plugins, on the
+  known order-dependent `GITPR_LINTER_SECURITY` leak — they pass in isolation
+  and in the final run).
+- Full suite (`pytest tests/ -q`, the known hanging baseline test deselected):
+  **3081 passed, 2 failed, 2 skipped, 1 deselected** in 504 s. The two failures
+  are `tests/test_mentor_cli.py::TestMentorCli::test_review_with_mentor_flag_invokes_append`
+  and `...::test_review_without_mentor_is_opt_in`, which were reproduced in a
+  pristine `git archive HEAD` snapshot — pre-existing and unrelated.
 
 ### Impact
 

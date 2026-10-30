@@ -45,7 +45,43 @@ AI_PROMPT_PREFIXES = (
     "[{date}] Commit {hash} by {author}:",
     "Action: {status}",
     "AI Reason: {reason}",
+    "Based on the following commit timeline of a business rule",
 )
+
+# Technical terms, proper nouns, and categories identical to English across locales.
+ALLOWED_IDENTITY_TERMS = {
+    # Technical acronyms and terms
+    "Auto-Patch",
+    "id:",
+    "SCM / Forge",
+    "Semgrep SAST",
+    "Tokens",
+    "Total",
+    # Universal TUI categories & section headers (config / navigation)
+    "Baseline",
+    "Blame",
+    "Commit",
+    "Issue",
+    "Linter",
+    "Map-reduce",
+    "Mentor",
+    "Pull Request",
+    "Release",
+    "Skills",
+    "Spinner",
+    "Split",
+    # Language-specific cognates (identical in English and that language)
+    "Downloads",
+    "Git Hooks",
+    "General",
+    "Cycle",
+    "GitPR - Configuration",
+    "Modules",
+    "Suppression",
+    "Tests",
+    "⚡ Performance",
+    "📚 Documentation",
+}
 
 
 def _extract_keys_ast(path, keys):
@@ -210,6 +246,33 @@ class TestLangFileIntegrity(unittest.TestCase):
                 [],
                 f"{name}: untranslated user-facing key(s) — translate them, or add "
                 f"the prefix to AI_PROMPT_PREFIXES if they are AI prompts: {unexplained}",
+            )
+
+    def test_all_identity_keys_are_allowlisted(self):
+        """No user-facing prose should be left untranslated (identical to English).
+
+        Every key where key == value must be an AI prompt fragment, a status marker,
+        or an explicitly allowed technical term/category.
+        """
+        status_markers = {
+            "  [OK] {editor}: {message}",
+            "  [FAIL] {editor}: {message}",
+            "✔ {version}",
+        }
+        for name in LANG_FILES:
+            identity = {k for k, v in self.langs[name].items() if k == v}
+            unexplained = [
+                key
+                for key in identity
+                if key not in status_markers
+                and key not in ALLOWED_IDENTITY_TERMS
+                and not key.startswith(AI_PROMPT_PREFIXES)
+            ]
+            self.assertEqual(
+                unexplained,
+                [],
+                f"{name}: untranslated user-facing key(s) without translation — "
+                f"translate them or add to ALLOWED_IDENTITY_TERMS: {unexplained}",
             )
 
 
