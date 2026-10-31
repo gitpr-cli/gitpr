@@ -54,3 +54,6 @@ gitpr check --policy security-strict@1.0.0
 | **`0`** | Éxito | Ningún hallazgo contable alcanzó el umbral `--fail-on`. |
 | **`1`** | Fallo | Uno o más hallazgos contables alcanzaron el umbral `--fail-on`. |
 | **`2`** | Error | Ejecución abortada por error de configuración, política no encontrada, baseline corrupto o tiempo excedido. |
+
+> Los demás flujos que exigen el baseline (`-l`, `-r`, `-f`, `-i`, `risk`, `review-pr`) salen con **1** ante un baseline inutilizable. Ver [Baseline: exit codes por flujo](baseline-suppressions.es_es.md#baseline-inutilizable-exit-codes-por-flujo).
+

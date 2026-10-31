@@ -54,3 +54,6 @@ gitpr check --policy security-strict@1.0.0
 | **`0`** | Succès | Aucun résultat comptabilisable n'a atteint le seuil `--fail-on`. |
 | **`1`** | Échec | Un ou plusieurs résultats comptabilisables ont atteint le seuil `--fail-on`. |
 | **`2`** | Erreur | Exécution interrompue par une erreur de configuration, une politique introuvable, une baseline corrompue ou un délai dépassé. |
+
+> Les autres flux qui exigent le baseline (`-l`, `-r`, `-f`, `-i`, `risk`, `review-pr`) sortent avec **1** face à un baseline inutilisable. Voir [Baseline : exit codes par flux](baseline-suppressions.fr_fr.md#baseline-inutilisable-exit-codes-par-flux).
+

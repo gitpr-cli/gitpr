@@ -92,3 +92,10 @@ request after a reviewer request. An empty read-back means the request was
 accepted but nobody was attached. A forge that cannot report it means the
 attachment cannot be verified, which is never a failure.
 _Avoid_: attach result, confirmation, ack
+
+**Unusable baseline**:
+The baseline file a flow that enforces the baseline cannot apply: missing when
+required, tampered with, ill-formed, or carrying a checksum that diverges while
+the checksum guard is on. Such a flow stops rather than classify every legacy
+finding as new.
+_Avoid_: broken baseline, corrupt baseline, invalid baseline

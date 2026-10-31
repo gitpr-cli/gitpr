@@ -59,6 +59,8 @@ Os pipelines dependem de códigos de saída previsíveis:
 | **`1`** | Falha | Um ou mais achados contáveis atingiram ou superaram o threshold `--fail-on`. |
 | **`2`** | Erro | Execução interrompida por erro de configuração, política inválida, baseline corrompido, falha do provedor de IA ou tempo limite excedido. |
 
+> Os outros fluxos que exigem o baseline (`-l`, `-r`, `-f`, `-i`, `risk`, `review-pr`) saem com **1** diante de um baseline inutilizável. Veja [Baseline: exit codes por fluxo](baseline-suppressions.pt_br.md#baseline-inutilizável-exit-codes-por-fluxo).
+
 ---
 
 ## 4. Ordem de Execução do Pipeline
