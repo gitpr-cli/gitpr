@@ -85,7 +85,7 @@ O escopo é acrescentado **somente** à chave de cache — nunca ao texto enviad
 
 ### 2.5 O Diff Revisado É Registrado
 
-A revisão é guardada no cache junto do diff que a produziu, e é isso que permite ao `gitpr fix` corrigir a revisão que foi de fato revisada, em vez de recalcular um diff da sua árvore. Numa revisão remota isso não é uma conveniência, mas a única fonte correta: a branch pode não existir localmente. Veja a [documentação do Comando de Correção](fix-command.pt_br.md) para o que o lê de volta.
+A revisão é guardada no cache junto do diff que a produziu, e é isso que permite ao `gitpr fix` corrigir a revisão que foi de fato revisada, em vez de recalcular um diff da sua árvore. Numa revisão remota isso não é uma conveniência, mas a única fonte correta: a branch pode não existir localmente. Veja a [documentação do Comando de Correção](https://gitpr.natanfiuza.dev.br/docs/fix-command?lang=pt_br) para o que o lê de volta.
 
 O registro é arquivado sob o repositório e a branch em que **você está** — os mesmos campos que toda revisão em cache carrega, porque é o que o `gitpr fix` resolve para encontrá-la. As branches do próprio pull request são registradas dentro da entrada (como o `{branch}` do nome do relatório e na origem do diff), mas não a endereçam: revisar o PR #123 estando em `develop` arquiva a revisão sob `develop`.
 
@@ -210,7 +210,7 @@ A revisão remota usa a mesma instrução de sistema que a local: `.gitpr.review
  "base_branch": "main", "origin": "remote_pr", "linter": {…}, "warnings": [], "review": "…"}
 ```
 
-Diferente da CLI, ela não grava `.txt` — tools MCP não gravam artefatos — e resolve a forge por conta própria, então um repositório sem forge configurada responde com um erro JSON apontando o `gitpr --init` em vez de uma mensagem de terminal. O status é `error` com um `message` para cada recusa da §4.2. Veja a [documentação de Integração MCP](mcp-integration.pt_br.md).
+Diferente da CLI, ela não grava `.txt` — tools MCP não gravam artefatos — e resolve a forge por conta própria, então um repositório sem forge configurada responde com um erro JSON apontando o `gitpr --init` em vez de uma mensagem de terminal. O status é `error` com um `message` para cada recusa da §4.2. Veja a [documentação de Integração MCP](https://gitpr.natanfiuza.dev.br/docs/mcp-integration?lang=pt_br).
 
 ---
 
@@ -226,4 +226,4 @@ A revisão remota **não introduz configuração nova**. Ela lê o que a revisã
 | `DEFAULT_AI_PROVIDER` | Motor de IA usado quando `--provider` não é informado |
 | `GITPR_SKIP_SMART_EXCLUDES` | Desativa o filtro de smart excludes, local ou remoto |
 
-> **Nota:** Veja também a [documentação de Revisão de Código por IA](code-review-ia.pt_br.md) para os modos de revisão e a [documentação do Comando de Correção](fix-command.pt_br.md) para o que consome o diff registrado.
+> **Nota:** Veja também a [documentação de Revisão de Código por IA](https://gitpr.natanfiuza.dev.br/docs/code-review-ia?lang=pt_br) para os modos de revisão e a [documentação do Comando de Correção](https://gitpr.natanfiuza.dev.br/docs/fix-command?lang=pt_br) para o que consome o diff registrado.

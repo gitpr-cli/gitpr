@@ -85,7 +85,7 @@ The scope is added to the cache key **only** — never to the text sent to the A
 
 ### 2.5 The Reviewed Diff Is Recorded
 
-The review is stored in the cache with the diff it was produced from, which is what lets `gitpr fix` patch the revision that was actually reviewed instead of re-deriving a diff from your tree. For a remote review this is not a convenience but the only correct source: the branch may not exist locally at all. See the [Fix Command documentation](fix-command.md) for what reads it back.
+The review is stored in the cache with the diff it was produced from, which is what lets `gitpr fix` patch the revision that was actually reviewed instead of re-deriving a diff from your tree. For a remote review this is not a convenience but the only correct source: the branch may not exist locally at all. See the [Fix Command documentation](https://gitpr.natanfiuza.dev.br/docs/fix-command) for what reads it back.
 
 The record is filed under the repository and the branch **you are on** — the same fields every cached review carries, because that is what `gitpr fix` resolves to find it. The pull request's own branches are recorded inside the entry (as the `{branch}` of the report name and in the diff source), but they do not address it: reviewing PR #123 while on `develop` files the review under `develop`.
 
@@ -210,7 +210,7 @@ The remote review uses the same system instruction as the local one: `.gitpr.rev
  "base_branch": "main", "origin": "remote_pr", "linter": {…}, "warnings": [], "review": "…"}
 ```
 
-Unlike the CLI it writes no `.txt` — MCP tools do not write artefacts — and it resolves the forge itself, so a repository with no forge configured answers with a JSON error naming `gitpr --init` instead of a terminal message. The status is `error` with a `message` for every rejection in §4.2. See the [MCP Integration documentation](mcp-integration.md).
+Unlike the CLI it writes no `.txt` — MCP tools do not write artefacts — and it resolves the forge itself, so a repository with no forge configured answers with a JSON error naming `gitpr --init` instead of a terminal message. The status is `error` with a `message` for every rejection in §4.2. See the [MCP Integration documentation](https://gitpr.natanfiuza.dev.br/docs/mcp-integration).
 
 ---
 
@@ -226,4 +226,4 @@ The remote review introduces **no new configuration**. It reads what the local r
 | `DEFAULT_AI_PROVIDER` | AI engine used when `--provider` is not given |
 | `GITPR_SKIP_SMART_EXCLUDES` | Disables the smart-excludes filter, local or remote |
 
-> **Note:** See also the [AI Code Review documentation](code-review-ia.md) for the review modes and the [Fix Command documentation](fix-command.md) for what consumes the recorded diff.
+> **Note:** See also the [AI Code Review documentation](https://gitpr.natanfiuza.dev.br/docs/code-review-ia) for the review modes and the [Fix Command documentation](https://gitpr.natanfiuza.dev.br/docs/fix-command) for what consumes the recorded diff.
