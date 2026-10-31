@@ -184,6 +184,10 @@ reenvio um a um no lugar do filtro. Registro no survey §3.
 1. **`request_pull_request_reviewers(...) -> list[str]`** — o retorno passa a ser a
    lista de logins efetivamente anexados (o ABC continua **não-abstrato**, default
    `ScmNotSupportedError`). O método agora diz o que aconteceu, não só que "não deu erro".
+   Essa mudança **quebra subclasses de terceiros que sobrescrevem o método** (retornavam
+   `None`); a quebra, o guia de migração e a tolerância a `None` no chamador estão em
+   [ADR-0009](../adr/0009-reviewer-attach-returns-read-back.md) e em
+   `docs/scm-multiforge.md` §6.1.
 2. **Dois métodos novos, exclusivos do GitHub** — `get_commit_author_login(repo, sha)`
    e `get_user_login(login)`; ambos nunca levantam para o caso "não existe" e levantam
    para falha transitória (403/timeout), para não confundir ausência com indisponibilidade.

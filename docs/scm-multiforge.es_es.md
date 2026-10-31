@@ -140,6 +140,30 @@ La abstracción vive en `src/infrastructure/scm/`: el contrato `ScmProvider` en 
 
 `src/github_api.py` es un **shim obsoleto**: todavía expone las cuatro funciones heredadas con retornos en tupla para integraciones de terceros, pero toda llamada lanza un `DeprecationWarning`. El código nuevo y los plugins deben usar `resolve_scm_provider()`.
 
+### 6.1 Contrato para Proveedores de Terceros (cambio incompatible desde la v1.2.0)
+
+`ScmProvider.request_pull_request_reviewers()` devolvía `None`. Desde la **v1.2.0** devuelve `list[str]`: los logins que el forge **realmente asoció**, releídos del cuerpo de la respuesta. Una lista vacía significa "aceptado pero ignorado": así detecta GitPR un revisor que el forge descartó en silencio.
+
+| | Hasta la v1.1.x | Desde la v1.2.0 |
+| --- | --- | --- |
+| Tipo de retorno | `None` | `list[str]` (logins asociados) |
+| `[]` | — | Solicitud aceptada, nadie asociado |
+| Valor por defecto en la clase base | `ScmNotSupportedError` | `ScmNotSupportedError` (sin cambios) |
+
+**Quién se ve afectado:** solo las subclases que **sobrescriben** el método. Quien únicamente lo llama no se ve afectado. Una subclase que no lo sobrescribe sigue lanzando `ScmNotSupportedError`, como antes.
+
+**Cómo migrar:** devuelva lo que el forge asoció. Si el forge no devuelve cuerpo, devuelva la lista que se le pidió asociar: es optimista y desactiva el aviso de "no asociado" para ese forge.
+
+```python
+class MyForgeProvider(ScmProvider):
+    def request_pull_request_reviewers(self, repo, pr_id, reviewers) -> list[str]:
+        body = self._post_reviewers(repo, pr_id, reviewers)
+        return [r["login"] for r in body.get("requested_reviewers", [])]
+        # ¿El forge no devuelve cuerpo? Use `return list(reviewers)`.
+```
+
+Una sobrescritura heredada que aún devuelve `None` sigue funcionando: el llamador la interpreta como "no se puede verificar" y omite el aviso de "no asociado". Se tolera, no se recomienda. Registro de la decisión: [ADR-0009](adr/0009-reviewer-attach-returns-read-back.md).
+
 Registro de decisión de arquitectura y vocabulario canónico: [ADR-001 Abstracción SCM](plans/ADR-001-scm-abstraction.md) y [Glosario SCM Multi-Forge](plans/glossary-scm-multiforge.md).
 
 > **Nota:** Consulta también la [documentación de integración del GitHub PAT](github-pat-integration.md) para crear tokens y comprender el cifrado de GitPR (Fernet).

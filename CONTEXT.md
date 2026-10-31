@@ -85,3 +85,10 @@ The immutable secret-scanning rule catalogue (`sec-*`) shipped inside the GitPR
 Python package, executed by the static linter across all diff lines regardless
 of file extension.
 _Avoid_: security plugin, secret scanner, linter pack
+
+**Read-back**:
+The list of reviewer logins the forge reports as actually attached to a pull
+request after a reviewer request. An empty read-back means the request was
+accepted but nobody was attached. A forge that cannot report it means the
+attachment cannot be verified, which is never a failure.
+_Avoid_: attach result, confirmation, ack
