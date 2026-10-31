@@ -283,6 +283,13 @@ class ScmProvider(ABC):
         response), which is how the caller detects a request the forge
         accepted but silently ignored.
 
+        Contract change (since v1.2.0): this used to return None. Subclasses
+        that override the method must now return list[str]; if the forge
+        sends no body back, return the list that was requested. A legacy
+        override that still returns None is tolerated by the caller, which
+        reads it as "cannot verify" and skips the not-attached warning, but
+        it is not recommended (see docs/scm-multiforge.md and ADR-0009).
+
         Deliberately NOT abstract: only forges with a reviewer API support it
         (GitHub's requested_reviewers). The default raises
         ScmNotSupportedError so the four concrete providers keep compiling and

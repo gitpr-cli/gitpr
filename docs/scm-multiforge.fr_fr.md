@@ -140,6 +140,30 @@ L'abstraction vit dans `src/infrastructure/scm/` : le contrat `ScmProvider` dans
 
 `src/github_api.py` est un **shim obsolète** : il expose encore les quatre fonctions héritées avec leurs retours en tuple pour les intégrations tierces, mais chaque appel lève un `DeprecationWarning`. Le nouveau code et les plugins doivent utiliser `resolve_scm_provider()`.
 
+### 6.1 Contrat pour les Fournisseurs Tiers (changement incompatible depuis la v1.2.0)
+
+`ScmProvider.request_pull_request_reviewers()` retournait `None`. Depuis la **v1.2.0**, il retourne `list[str]` : les logins que le forge a **réellement associés**, relus dans le corps de la réponse. Une liste vide signifie « accepté mais ignoré » : c'est ainsi que GitPR détecte un relecteur écarté en silence par le forge.
+
+| | Jusqu'à la v1.1.x | Depuis la v1.2.0 |
+| --- | --- | --- |
+| Type de retour | `None` | `list[str]` (logins associés) |
+| `[]` | — | Demande acceptée, personne d'associé |
+| Valeur par défaut de la classe de base | `ScmNotSupportedError` | `ScmNotSupportedError` (inchangé) |
+
+**Qui est concerné :** uniquement les sous-classes qui **redéfinissent** la méthode. Celui qui ne fait que l'appeler n'est pas concerné. Une sous-classe qui ne la redéfinit pas continue de lever `ScmNotSupportedError`, comme avant.
+
+**Comment migrer :** retournez ce que le forge a associé. Si le forge ne renvoie pas de corps, retournez la liste qu'on vous a demandé d'associer : c'est optimiste et cela désactive l'avertissement « non associé » pour ce forge.
+
+```python
+class MyForgeProvider(ScmProvider):
+    def request_pull_request_reviewers(self, repo, pr_id, reviewers) -> list[str]:
+        body = self._post_reviewers(repo, pr_id, reviewers)
+        return [r["login"] for r in body.get("requested_reviewers", [])]
+        # Le forge ne renvoie pas de corps ? Utilisez `return list(reviewers)`.
+```
+
+Une redéfinition héritée qui retourne encore `None` continue de fonctionner : l'appelant la lit comme « vérification impossible » et saute l'avertissement « non associé ». Elle est tolérée, pas recommandée. Enregistrement de la décision : [ADR-0009](adr/0009-reviewer-attach-returns-read-back.md).
+
 Registre de décision d'architecture et vocabulaire canonique : [ADR-001 Abstraction SCM](plans/ADR-001-scm-abstraction.md) et [Glossaire SCM Multi-Forge](plans/glossary-scm-multiforge.md).
 
 > **Note :** Consultez aussi la [documentation d'intégration du GitHub PAT](github-pat-integration.md) pour créer des tokens et comprendre le chiffrement de GitPR (Fernet).

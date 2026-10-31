@@ -140,6 +140,30 @@ A abstração vive em `src/infrastructure/scm/`: o contrato `ScmProvider` em `ba
 
 O `src/github_api.py` é um **shim obsoleto**: ainda expõe as quatro funções legadas com retornos em tupla para integrações de terceiros, mas toda chamada levanta um `DeprecationWarning`. Código novo e plugins devem usar `resolve_scm_provider()`.
 
+### 6.1 Contrato para Provedores de Terceiros (quebra desde a v1.2.0)
+
+O `ScmProvider.request_pull_request_reviewers()` retornava `None`. Desde a **v1.2.0** ele retorna `list[str]`: os logins que o forge **realmente anexou**, relidos do corpo da resposta. Lista vazia significa "aceito, mas ignorado" — é assim que o GitPR detecta um revisor que o forge descartou em silêncio.
+
+| | Até a v1.1.x | Desde a v1.2.0 |
+| --- | --- | --- |
+| Tipo de retorno | `None` | `list[str]` (logins anexados) |
+| `[]` | — | Pedido aceito, ninguém anexado |
+| Padrão na classe base | `ScmNotSupportedError` | `ScmNotSupportedError` (inalterado) |
+
+**Quem é afetado:** apenas subclasses que **sobrescrevem** o método. Quem só o chama não é afetado. Uma subclasse que não o sobrescreve continua levantando `ScmNotSupportedError`, como antes.
+
+**Como migrar:** devolva o que o forge anexou. Se o forge não devolve corpo, devolva a lista que você recebeu para anexar — é otimista e desliga o aviso de "não anexado" para esse forge.
+
+```python
+class MyForgeProvider(ScmProvider):
+    def request_pull_request_reviewers(self, repo, pr_id, reviewers) -> list[str]:
+        body = self._post_reviewers(repo, pr_id, reviewers)
+        return [r["login"] for r in body.get("requested_reviewers", [])]
+        # O forge não devolve corpo? Use `return list(reviewers)`.
+```
+
+Uma sobrescrita legada que ainda retorna `None` continua funcionando: o chamador a interpreta como "não dá para verificar" e pula o aviso de "não anexado". É tolerada, não recomendada. Registro da decisão: [ADR-0009](adr/0009-reviewer-attach-returns-read-back.md).
+
 Registro de decisão de arquitetura e vocabulário canônico: [ADR-001 Abstração SCM](plans/ADR-001-scm-abstraction.md) e [Glossário SCM Multi-Forge](plans/glossary-scm-multiforge.md).
 
 > **Nota:** Consulte também a [documentação de integração do GitHub PAT](github-pat-integration.md) para criar tokens e entender a criptografia do GitPR (Fernet).

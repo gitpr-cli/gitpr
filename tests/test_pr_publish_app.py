@@ -947,6 +947,46 @@ class TestReviewerAttach:
         _run(run)
 
 
+class _LegacyProvider:
+    """Third-party provider written against the pre-1.2.0 contract: returns None."""
+
+    name = "legacy"
+
+    def __init__(self):
+        self.calls = []
+
+    def request_pull_request_reviewers(self, repo, pr_id, reviewers):
+        self.calls.append((pr_id, list(reviewers)))
+
+
+class TestLegacyNoneReadBack:
+    """A provider that still returns None means "cannot verify", never a failure."""
+
+    def test_none_read_back_produces_no_unattached_warning(self):
+        assert PrPublishApp._unattached_warnings(None, ["ana", "bob"], None) == []
+
+    def test_empty_read_back_still_warns_for_every_login(self):
+        with patch("src.i18n.TRANSLATIONS", {}):
+            lines = PrPublishApp._unattached_warnings(None, ["ana"], [])
+        assert [login for login, _ in lines] == ["ana"]
+
+    def test_one_by_one_retry_accepts_none_without_warning(self):
+        provider = _LegacyProvider()
+        fake_self = SimpleNamespace(
+            provider=provider,
+            repo_ref=object(),
+            _log=lambda message: None,
+            _unattached_warnings=lambda requested, attached: (
+                PrPublishApp._unattached_warnings(None, requested, attached)
+            ),
+        )
+        warnings = PrPublishApp._request_reviewers_one_by_one(
+            fake_self, 9, ["ana", "bob"]
+        )
+        assert warnings == []
+        assert provider.calls == [(9, ["ana"]), (9, ["bob"])]
+
+
 # ═══════════════════════════════════════════════════════════════════
 # CommitProgressScreen — generic title + optional close button
 # ═══════════════════════════════════════════════════════════════════

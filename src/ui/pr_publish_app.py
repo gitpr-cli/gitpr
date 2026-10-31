@@ -851,7 +851,8 @@ class PrPublishApp(App):
                 )
                 self._log(
                     f"Reviewers requested on PR #{pr_number}: {outcome.logins} "
-                    f"-> attached {attached}"
+                    f"-> attached "
+                    f"{'(no read-back)' if attached is None else attached}"
                 )
                 for login, line in self._unattached_warnings(
                     outcome.logins, attached
@@ -925,7 +926,8 @@ class PrPublishApp(App):
                     self.repo_ref, pr_number, [login]
                 )
                 self._log(
-                    f"Reviewer {login} on PR #{pr_number}: attached {attached}"
+                    f"Reviewer {login} on PR #{pr_number}: attached "
+                    f"{'(no read-back)' if attached is None else attached}"
                 )
                 for _, line in self._unattached_warnings([login], attached):
                     warnings.append(line)
