@@ -50,6 +50,18 @@ The branch the forge is asked to merge the pull request into — resolved from
 checked out.
 _Avoid_: base branch, merge target, default branch
 
+**Release workflow**:
+The GitHub Actions workflow triggered by version tags (`v*`) that validates,
+builds, publishes the Python package distribution to PyPI and creates the
+corresponding GitHub Release.
+_Avoid_: deploy script, publish job, release action
+
+**Trusted publishing**:
+The OpenID Connect (OIDC) authentication mechanism between GitHub Actions and
+PyPI that exchanges short-lived cryptographic tokens without storing long-lived
+API tokens or passwords in repository secrets.
+_Avoid_: PyPI token, secretless auth
+
 **Diff base**:
 The branch the current branch is compared against to build the diff sent to the
 AI. It is a different value from the PR target base and today is still the
