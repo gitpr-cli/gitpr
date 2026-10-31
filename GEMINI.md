@@ -170,7 +170,7 @@ pipenv run pytest -v
 # or
 python -m pytest tests/ -v
 
-# Publish package to PyPI
+# Publish package to PyPI (manual fallback; automated via .github/workflows/release.yml on tag v*)
 pipenv run python -m build
 pipenv run twine upload dist/*
 ```
