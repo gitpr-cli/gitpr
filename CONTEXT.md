@@ -79,3 +79,9 @@ A PR target base equal to the branch checked out. It is refused before any
 publication, and an interactive run offers to replace it in the project
 configuration file.
 _Avoid_: same branch, self-PR
+
+**Embedded security ruleset**:
+The immutable secret-scanning rule catalogue (`sec-*`) shipped inside the GitPR
+Python package, executed by the static linter across all diff lines regardless
+of file extension.
+_Avoid_: security plugin, secret scanner, linter pack

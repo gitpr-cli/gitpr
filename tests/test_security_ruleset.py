@@ -40,8 +40,12 @@ LANG_FILES = (
 
 # Fragments, never contiguous literals — see the module docstring.
 AWS_KEY = "AKIA" + "IOSFODNN7EXAMPLE"
+AWS_STS_KEY = "ASIA" + "IOSFODNN7EXAMPLE"
 GITHUB_TOKEN = "ghp_" + "a" * 36
+GITHUB_PAT = "github_pat_" + "11A" + "b" * 79
 SLACK_TOKEN = "xox" + "b-123456789012-abcdefghijklmnop"
+SLACK_CLIENT_TOKEN = "xox" + "c-123456789012-abcdefghijklmnop"
+SLACK_COOKIE_TOKEN = "xox" + "d-123456789012-abcdefghijklmnop"
 GOOGLE_KEY = "AIza" + "B" * 35
 PRIVATE_KEY_HEADER = "-----BEGIN OPENSSH " + "PRIVATE KEY-----"
 DB_URL = "postgres://user:" + "s3cr3t@localhost:5432/db"
@@ -52,6 +56,7 @@ GENERIC_VALUE = "hunter2xyz"
 # in an assertion — is a line the rule under test reports on, and this repo's own
 # pre-commit hook lints the diff that adds it.
 CREDENTIAL_LINE = "pass" + 'word = "{}"'
+UNQUOTED_CREDENTIAL_LINE = "pass" + "word = {}"
 
 # A realistic line per rule, for the tests that run one regex at a time.
 POSITIVES = {
@@ -163,14 +168,48 @@ class TestPositiveDetection:
         rule = rules_by_name()[name]
         assert re.search(rule["regex"], POSITIVES[name])
 
+    def test_aws_sts_key_is_detected(self):
+        rule = rules_by_name()["sec-aws-access-key"]
+        assert re.search(rule["regex"], 'aws_access_key_id = "' + AWS_STS_KEY + '"')
+
+    def test_github_pat_is_detected(self):
+        rule = rules_by_name()["sec-github-token"]
+        assert re.search(rule["regex"], 'github_pat = "' + GITHUB_PAT + '"')
+
+    def test_slack_client_and_cookie_tokens_are_detected(self):
+        rule = rules_by_name()["sec-slack-token"]
+        assert re.search(rule["regex"], 'token = "' + SLACK_CLIENT_TOKEN + '"')
+        assert re.search(rule["regex"], 'token = "' + SLACK_COOKIE_TOKEN + '"')
+
+    def test_unquoted_credential_assignment_is_detected(self):
+        rule = rules_by_name()["sec-generic-credential-assignment"]
+        assert re.search(rule["regex"], UNQUOTED_CREDENTIAL_LINE.format(GENERIC_VALUE))
+        assert re.search(rule["regex"], "API_KEY=" + GENERIC_VALUE)
+        assert re.search(rule["regex"], "token: " + GENERIC_VALUE)
+
+    def test_prefixed_key_name_in_snake_case_is_detected(self):
+        rule = rules_by_name()["sec-generic-credential-assignment"]
+        assert re.search(rule["regex"], 'db_password = "' + GENERIC_VALUE + '"')
+        assert re.search(rule["regex"], 'MY_API_KEY = "' + GENERIC_VALUE + '"')
+        assert re.search(rule["regex"], 'auth-token = "' + GENERIC_VALUE + '"')
+
 
 class TestNegativeDetection:
     """Near misses: a value that looks like the category but is not one."""
 
     NEAR_MISSES = {
-        "sec-aws-access-key": ["k = " + '"AKIA' + 'IOSFODNN7EXAMPL"'],
-        "sec-github-token": ["k = " + '"ghp_' + "a" * 35 + '"'],
-        "sec-slack-token": ["k = " + '"xox' + 'b-12345"'],
+        "sec-aws-access-key": [
+            "k = " + '"AKIA' + 'IOSFODNN7EXAMPL"',
+            "k = " + '"MALAYSIA1234567890123456"',
+        ],
+        "sec-github-token": [
+            "k = " + '"ghp_' + "a" * 35 + '"',
+            "k = " + '"github_pat_' + "b" * 35 + '"',
+        ],
+        "sec-slack-token": [
+            "k = " + '"xox' + 'b-12345"',
+            'k = "xoxz-123456789012-abcdefghijklmnop"',
+        ],
         "sec-google-api-key": ["k = " + '"AIza' + "B" * 34 + '"'],
         "sec-private-key-block": [
             "-----BEGIN CERTIFICATE-----",
@@ -181,7 +220,22 @@ class TestNegativeDetection:
             'DATABASE_URL = "postgresql://user@localhost/db"',
             'URL = "https://example.com/user:pass@host"',
         ],
-        "sec-generic-credential-assignment": [CREDENTIAL_LINE.format("abc")],
+        "sec-generic-credential-assignment": [
+            CREDENTIAL_LINE.format("abc"),
+            'bypassword = "' + GENERIC_VALUE + '"',
+            'antisensha = "' + GENERIC_VALUE + '"',
+            "pass" + "word = null",
+            "pass" + "word = None",
+            "pass" + "word = true",
+            "pass" + "word = false",
+            "api_key = $ENV_VAR",
+            "api_key = ${ENV_VAR}",
+            'api_key = os.getenv("API_KEY")',
+            "api_key = process.env.API_KEY",
+            'api_key = env("API_KEY")',
+            UNQUOTED_CREDENTIAL_LINE.format("changeme"),
+            UNQUOTED_CREDENTIAL_LINE.format("placeholder"),
+        ],
     }
 
     @pytest.mark.parametrize("name", sorted(NEAR_MISSES))
@@ -221,6 +275,29 @@ class TestPlaceholderFilter:
         """The lookahead matches the whole placeholder, not a prefix of it."""
         rule = rules_by_name()["sec-generic-credential-assignment"]
         assert re.search(rule["regex"], CREDENTIAL_LINE.format("your_password_here2"))
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "changeme",
+            "CHANGEME",
+            "your_password_here",
+            "your-password-here",
+            "xxxxxx",
+            "placeholder",
+            "example",
+            "dummy",
+            "sample",
+            "sua_senha",
+        ],
+    )
+    def test_unquoted_placeholder_is_not_a_credential(self, value):
+        rule = rules_by_name()["sec-generic-credential-assignment"]
+        assert not re.search(rule["regex"], UNQUOTED_CREDENTIAL_LINE.format(value))
+
+    def test_unquoted_placeholder_with_a_suffix_is_a_value(self):
+        rule = rules_by_name()["sec-generic-credential-assignment"]
+        assert re.search(rule["regex"], UNQUOTED_CREDENTIAL_LINE.format("your_password_here2"))
 
 
 class TestLevelRouting:

@@ -35,7 +35,7 @@ SECURITY_RULES = [
         "name": "sec-aws-access-key",
         "level": "error",
         "extensions": ["*"],
-        "regex": r"AKIA[0-9A-Z]{16}",
+        "regex": r"(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}",
         "message": __(
             "Possible AWS Access Key ID hardcoded in {file_name} (Line {line_number})."
         ),
@@ -44,7 +44,7 @@ SECURITY_RULES = [
         "name": "sec-github-token",
         "level": "error",
         "extensions": ["*"],
-        "regex": r"gh[pousr]_[A-Za-z0-9]{36,}",
+        "regex": r"(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{82,})",
         "message": __(
             "Possible GitHub token hardcoded in {file_name} (Line {line_number})."
         ),
@@ -53,7 +53,7 @@ SECURITY_RULES = [
         "name": "sec-slack-token",
         "level": "error",
         "extensions": ["*"],
-        "regex": r"xox[baprs]-[A-Za-z0-9-]{10,}",
+        "regex": r"xox[baprscd]-[A-Za-z0-9-]{10,}",
         "message": __(
             "Possible Slack token hardcoded in {file_name} (Line {line_number})."
         ),
@@ -93,13 +93,20 @@ SECURITY_RULES = [
         "extensions": ["*"],
         # Case-insensitivity is scoped per group: a global (?i) is only legal at
         # the very start of the pattern, so wrapping the regex later would raise.
-        # The negative lookahead sits right after the opening quote and runs
-        # before any value character is read, which is what filters placeholders.
+        # Negative lookbehinds enforce a left boundary against contiguous suffixes.
+        # The lookahead sits right after assignment/quote to filter placeholders
+        # and runtime variables/expressions.
         "regex": (
-            r"(?i:password|senha|secret|api[_-]?key|token)\s*[:=]\s*['\"]"
-            r"(?!(?i:changeme|xxx+|your[_-]?(?:key|password|secret|token)[_-]?here"
-            r"|placeholder|examples?|dummy|sample|sua[_-]?senha)['\"])"
-            r"[^'\"]{6,}['\"]"
+            r"(?<![a-zA-Z0-9])(?i:password|senha|secret|api[_-]?key|token)\s*[:=]\s*"
+            r"(?:"
+            r"(['\"])(?!(?i:(?:changeme|xxx+|your[_-]?(?:key|password|secret|token)[_-]?here"
+            r"|placeholder|examples?|dummy|sample|sua[_-]?senha))\1)[^'\"]{6,}\1"
+            r"|"
+            r"(?!(?i:(?:changeme|xxx+|your[_-]?(?:key|password|secret|token)[_-]?here"
+            r"|placeholder|examples?|dummy|sample|sua[_-]?senha|true|false|null|none)(?:\s|$|[#;,])"
+            r"|\$|process\.|os\.|env\())"
+            r"[^\s'\"#;,]{6,}"
+            r")"
         ),
         "message": __(
             "Possible hardcoded credential in {file_name} (Line {line_number})."
