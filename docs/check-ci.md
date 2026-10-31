@@ -59,6 +59,8 @@ Pipelines rely on predictable exit codes:
 | **`1`** | Failure | One or more countable findings met or exceeded the `--fail-on` threshold. |
 | **`2`** | Error | Execution aborted due to invalid configuration, missing policy, corrupted baseline, AI provider failure in-flight, or timeout deadline exceeded. |
 
+> The other flows that enforce the baseline (`-l`, `-r`, `-f`, `-i`, `risk`, `review-pr`) exit **1** on an unusable baseline. See [Baseline: exit codes per flow](baseline-suppressions.md#unusable-baseline-exit-codes-per-flow).
+
 ---
 
 ## 4. Pipeline Execution Order

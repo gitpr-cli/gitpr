@@ -54,3 +54,6 @@ gitpr check --policy security-strict@1.0.0
 | **`0`** | Sucesso | Nenhum achado contabilizável atingiu o patamar `--fail-on`. |
 | **`1`** | Falha | Um ou mais achados contabilizáveis atingiram o patamar `--fail-on`. |
 | **`2`** | Erro | Execução interrompida por erro de configuração, política inválida, baseline corrompido ou tempo limite excedido. |
+
+> Os outros fluxos que exigem o baseline (`-l`, `-r`, `-f`, `-i`, `risk`, `review-pr`) saem com **1** perante um baseline inutilizável. Ver [Baseline: exit codes por fluxo](baseline-suppressions.pt_pt.md#baseline-inutilizável-exit-codes-por-fluxo).
+

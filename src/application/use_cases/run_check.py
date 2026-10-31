@@ -210,8 +210,9 @@ def execute_check(
     high_risk_files: set[str] = set()
     if preliminary_risk:
         for f in preliminary_risk.files:
+            file_p = getattr(f, "file_path", getattr(f, "path", ""))
             if getattr(f, "level", None) in ("high", "critical"):
-                high_risk_files.add(f.path.replace("\\", "/").lower())
+                high_risk_files.add(file_p.replace("\\", "/").lower())
 
     # 5. Optional AI Review
     should_run_ai = not config.no_ia
@@ -292,7 +293,8 @@ def execute_check(
     file_risk_map: dict[str, float] = {}
     if preliminary_risk:
         for fr in preliminary_risk.files:
-            file_risk_map[fr.path.replace("\\", "/").lower()] = fr.score
+            fr_path = getattr(fr, "file_path", getattr(fr, "path", ""))
+            file_risk_map[fr_path.replace("\\", "/").lower()] = fr.score
 
     if snapshot.manifest is not None:
         # Classify findings against baseline

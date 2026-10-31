@@ -65,12 +65,26 @@ Un id que no corresponde a ningún hallazgo, o a dos, se rechaza — y el rechaz
 | Superficie | Efecto del baseline |
 |---|---|
 | `gitpr -l` / `--linter` | Sale con 1 solo cuando un hallazgo de nivel **error** es `new`. Los hallazgos existing, ignored y accepted se muestran con su status y su motivo, y la ejecución continúa |
-| `gitpr -r`, `-f`, `-i` | La revisión anota cada hallazgo con su status. La revisión nunca fue un portón, así que ningún exit code cambia |
-| `gitpr risk` | Solo los hallazgos `new` puntúan. Todo lo demás se adjunta como evidencia informativa que vale **cero puntos**, con su status en `details`, para que el número de riesgo describa el cambio en lugar del repositorio |
-| `gitpr review-pr` | Resuelve la política y el baseline por su cuenta, anotando los hallazgos del linter, la sección de riesgo y el comentario del PR |
+| `gitpr -r`, `-f`, `-i` | La revisión anota cada hallazgo con su status. La revisión nunca fue un portón, así que los **hallazgos** nunca cambian el exit code — pero un [baseline inutilizable](#baseline-inutilizable-exit-codes-por-flujo) sigue interrumpiendo la ejecución con exit 1 |
+| `gitpr risk` | Solo los hallazgos `new` puntúan. Todo lo demás se adjunta como evidencia informativa que vale **cero puntos**, con su status en `details`, para que el número de riesgo describa el cambio en lugar del repositorio. Un baseline inutilizable interrumpe la ejecución con exit 1 |
+| `gitpr review-pr` | Resuelve la política y el baseline por su cuenta, anotando los hallazgos del linter, la sección de riesgo y el comentario del PR. Un baseline inutilizable interrumpe la ejecución con exit 1 |
 | Todo lo demás (`-c`, descripción de PR, blame, issue, chat, release, split, fix) | El baseline no se consulta en absoluto |
 
 Un aviso destructivo, una alerta ignorada o un plazo vencido nunca hacen fallar una ejecución por sí solos: un plazo vencido es un aviso, impreso junto al informe.
+
+### Baseline inutilizable: exit codes por flujo
+
+Un **baseline inutilizable** es un archivo que un flujo que exige el baseline no puede aplicar: ausente cuando se exige, manipulado, mal formado, o con checksum divergente mientras `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH` está activa. Aplicarlo igualmente clasificaría todo hallazgo heredado como `new` y lo devolvería como veredicto, así que la ejecución se detiene.
+
+| Flujo | Baseline inutilizable |
+|---|---|
+| `gitpr -l`, `-r`, `-f`, `-i` | exit **1**, mensaje en stderr |
+| `gitpr risk` | exit **1**, mensaje en stderr |
+| `gitpr review-pr` | exit **1**, mensaje en stderr |
+| `gitpr check` | exit **2** (error, frente a 1 = hallazgos bloqueantes) — ver [check-ci](check-ci.es_es.md#3-códigos-de-salida) |
+| `-c`, descripción de PR, blame, issue, chat, release, split, fix | el baseline no se lee: sin efecto |
+
+Los dos códigos difieren a propósito. `check` está hecho para pipelines y separa "falló" (1) de "no pude evaluar" (2). Los flujos locales los lee una persona y usan 1 para toda negativa. Alinearlos en 2 sería un cambio incompatible para scripts y hooks que prueban `1`, así que está **aplazado**, no decidido.
 
 ---
 
@@ -82,7 +96,7 @@ Cuatro variables en `~/.gitpr/.env`, también editables desde `gitpr config` en 
 |---|---|---|
 | `GITPR_BASELINE_ENABLED` | `true` | `false` → ninguna ejecución lee el baseline; el comportamiento de antes de la funcionalidad, byte a byte |
 | `GITPR_BASELINE_PATH` | *(vacío)* | `.gitpr/baseline.json` por defecto. Una ruta relativa se resuelve desde la raíz del repositorio — así se apunta a un monorepo o a un baseline compartido en otro lugar |
-| `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH` | `true` | Un checksum divergente vuelve el baseline inutilizable: la ejecución lo rechaza, imprime la instrucción y sale con código distinto de cero en los flujos que bloquean. Con él apagado el archivo se aplica y la divergencia se sigue reportando como aviso |
+| `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH` | `true` | Un checksum divergente vuelve el baseline inutilizable: la ejecución lo rechaza, imprime la instrucción y sale con código distinto de cero ([exit codes por flujo](#baseline-inutilizable-exit-codes-por-flujo)). Con él apagado el archivo se aplica y la divergencia se sigue reportando como aviso |
 | `GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES` | `true` | `false` → `.gitpr/baseline.overrides.yml` no se lee, con un aviso. Las decisiones escritas en el archivo de baseline quedan solas |
 
 La clave maestra falla abierta — solo `false`, `0`, `no`, `off` o `n` la apagan.

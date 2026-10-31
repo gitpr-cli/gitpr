@@ -65,12 +65,26 @@ An id that matches no finding, or two findings, is refused — and the refusal s
 | Surface | Effect of the baseline |
 |---|---|
 | `gitpr -l` / `--linter` | Exits 1 only when an **error-level** finding is `new`. Existing, ignored and accepted findings are shown with their status and their reason, and the run continues |
-| `gitpr -r`, `-f`, `-i` | The review annotates each finding with its status. The review was never a gate, so no exit code changes |
-| `gitpr risk` | Only `new` findings score. Everything else is attached as informational evidence worth **zero points**, with its status in `details`, so the risk number describes the change rather than the repository |
-| `gitpr review-pr` | Resolves the policy and the baseline on its own, annotating the linter findings, the risk section and the PR comment |
+| `gitpr -r`, `-f`, `-i` | The review annotates each finding with its status. The review was never a gate, so **findings** never change the exit code — but an [unusable baseline](#unusable-baseline-exit-codes-per-flow) still stops the run with exit 1 |
+| `gitpr risk` | Only `new` findings score. Everything else is attached as informational evidence worth **zero points**, with its status in `details`, so the risk number describes the change rather than the repository. An unusable baseline stops the run with exit 1 |
+| `gitpr review-pr` | Resolves the policy and the baseline on its own, annotating the linter findings, the risk section and the PR comment. An unusable baseline stops the run with exit 1 |
 | Everything else (`-c`, PR description, blame, issue, chat, release, split, fix) | The baseline is not consulted at all |
 
 A destructive warning, an ignored alert or a past deadline never fails a run on their own: an overdue deadline is a warning, printed beside the report.
+
+### Unusable baseline: exit codes per flow
+
+An **unusable baseline** is a file that a flow which enforces the baseline cannot apply: it is missing when required, tampered with, ill-formed, or its checksum diverges while `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH` is on. Applying it anyway would classify every legacy finding as `new` and hand that back as a verdict, so the run stops instead.
+
+| Flow | Unusable baseline |
+|---|---|
+| `gitpr -l`, `-r`, `-f`, `-i` | exit **1**, message on stderr |
+| `gitpr risk` | exit **1**, message on stderr |
+| `gitpr review-pr` | exit **1**, message on stderr |
+| `gitpr check` | exit **2** (error, as opposed to 1 = blocking findings) — see [check-ci](check-ci.md#3-exit-codes) |
+| `-c`, PR description, blame, issue, chat, release, split, fix | the baseline is not read: no effect |
+
+The two codes differ on purpose. `check` is built for pipelines and separates "failed" (1) from "could not evaluate" (2). The local flows are read by a person and use 1 for every refusal. Aligning them on 2 would be a breaking change for scripts and hooks that test for `1`, so it is **deferred**, not decided.
 
 ---
 
@@ -82,7 +96,7 @@ Four variables in `~/.gitpr/.env`, also editable through `gitpr config` in the *
 |---|---|---|
 | `GITPR_BASELINE_ENABLED` | `true` | `false` → no run ever reads the baseline; the pre-feature behaviour, byte for byte |
 | `GITPR_BASELINE_PATH` | *(empty)* | `.gitpr/baseline.json` by default. A relative path resolves against the repository root — this is how a monorepo or a shared baseline elsewhere is pointed at |
-| `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH` | `true` | A divergent checksum makes the baseline unusable: the run refuses, prints the instruction and exits non-zero in the flows that block. With it off the file is applied and the divergence is still reported as a warning |
+| `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH` | `true` | A divergent checksum makes the baseline unusable: the run refuses, prints the instruction and exits non-zero (see [the exit codes per flow](#unusable-baseline-exit-codes-per-flow)). With it off the file is applied and the divergence is still reported as a warning |
 | `GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES` | `true` | `false` → `.gitpr/baseline.overrides.yml` is not read, with a warning. The decisions written in the baseline file stand alone |
 
 The master switch fails open — only `false`, `0`, `no`, `off` or `n` turn it off.
