@@ -537,6 +537,7 @@ Si deseas implementar GitPR como una barrera de calidad automatizada en tu equip
 * [**Pull Request (Modo Predeterminado)**](https://gitpr.natanfiuza.dev.br/docs/pr-descricao-padrao?lang=es) — Flujo completo para generar descripciones de PR sin flags.
 * [**Publicador de Pull Request (TUI)**](https://gitpr.natanfiuza.dev.br/docs/pull-request-publication?lang=es) — Cómo revisar y publicar Pull Requests directamente en GitHub desde el terminal.
 * [**Code Review con IA**](https://gitpr.natanfiuza.dev.br/docs/code-review-ia?lang=es) — Guía de los modos de review (`--review`, `--fullreview`) y auditoría de archivos (`--input`).
+* [**Revisión de Pull Request Remoto (gitpr review-pr)**](https://gitpr.natanfiuza.dev.br/docs/review-pr?lang=es) — Cómo el subcomando `gitpr review-pr` revisa un pull request ya abierto en la forge, obteniendo su diff por la API sin hacer checkout de su rama.
 * [**Mensajes de Commit con IA**](https://gitpr.natanfiuza.dev.br/docs/commit-message-ia?lang=es) — Cómo generar mensajes en el estándar Conventional Commits e integrar con Git Hooks.
 * [**Generación de Issues e Interfaz TUI**](https://gitpr.natanfiuza.dev.br/docs/issue-tui-help?lang=es) — Cómo usar la interfaz gráfica de terminal (TUI) y los 3 motores de contexto para gestionar Issues estructuradas.
 * [**Arqueólogo de Código (Git Blame)**](https://gitpr.natanfiuza.dev.br/docs/blame-arqueologo?lang=es) — Cómo rastrear el origen de reglas de negocio con `git blame` e IA.
