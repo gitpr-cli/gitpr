@@ -87,6 +87,32 @@ def _subcommand_help_in_argv(argv=None):
     return any(token in ("-h", "--help") for token in tokens)
 
 
+def _resolve_subcommand_tokens(ctx):
+    """The raw argument tokens trailing the invoked subcommand.
+
+    Click clears the group context arguments before the group callback runs,
+    so tokens after the subcommand must be recovered from Group.invoke's frame
+    or from sys.argv.
+    """
+    for depth in range(1, 6):
+        try:
+            f = sys._getframe(depth)
+            if (
+                f.f_code.co_name == "invoke"
+                and "cmd_name" in f.f_locals
+                and "args" in f.f_locals
+            ):
+                raw_args = f.f_locals.get("args")
+                if isinstance(raw_args, (list, tuple)):
+                    return list(raw_args)
+        except Exception:
+            break
+    if ctx.invoked_subcommand and ctx.invoked_subcommand in sys.argv:
+        idx = sys.argv.index(ctx.invoked_subcommand)
+        return sys.argv[idx + 1 :]
+    return list(getattr(ctx, "args", []) or [])
+
+
 def print_banner():
     """Displays the project ASCII Art signature"""
     banner = r"""
@@ -755,11 +781,36 @@ def cli(
     # first, so everything below runs only when NO subcommand was requested —
     # the legacy flag surface stays byte-for-byte intact (ADR-002).
     if ctx.invoked_subcommand is not None:
+        if help_flag:
+            cmd = cli.get_command(ctx, ctx.invoked_subcommand)
+            if cmd is not None:
+                sub_ctx = cmd.make_context(
+                    ctx.invoked_subcommand, [], parent=ctx
+                )
+                curr_cmd = cmd
+                curr_ctx = sub_ctx
+                remaining_args = _resolve_subcommand_tokens(ctx)
+                while isinstance(curr_cmd, click.Group) and remaining_args:
+                    sub_name = remaining_args[0]
+                    nested_cmd = curr_cmd.get_command(curr_ctx, sub_name)
+                    if nested_cmd is None:
+                        break
+                    remaining_args.pop(0)
+                    curr_ctx = nested_cmd.make_context(
+                        sub_name, [], parent=curr_ctx
+                    )
+                    curr_cmd = nested_cmd
+
+                click.echo(curr_cmd.get_help(curr_ctx))
+                ctx.exit(0)
+            click.echo(ctx.get_help())
+            ctx.exit(0)
+
         # The mandatory update gate covers subcommands too, but only when the
         # run may stop and ask the user: a release in CI, a pipe or a hook must
         # never be blocked. Help tokens are read from the raw argv because
         # Click clears the context arguments before this callback runs.
-        if may_ask and not update and not help_flag and not _subcommand_help_in_argv():
+        if may_ask and not update and not _subcommand_help_in_argv():
             if enforce_update_required():
                 sys.exit(1)
         return
