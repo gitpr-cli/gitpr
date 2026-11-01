@@ -13,7 +13,7 @@ import re
 import unittest
 from pathlib import Path
 
-from tests.sync_i18n import PATTERN, _extract_keys
+from tests.sync_i18n import _extract_keys
 
 REPO = Path(__file__).resolve().parent.parent
 LANGS_DIR = REPO / "langs"
@@ -85,26 +85,12 @@ ALLOWED_IDENTITY_TERMS = {
 
 
 def _extract_keys_ast(path, keys):
-    """Collects every __("literal") key in *path* using the AST.
-
-    Preferred over the regex in tests/sync_i18n.py for verification because the
-    parser folds implicit concatenation — __("a " "b") and multi-line literals
-    arrive as ONE Constant, matching the string the runtime lookup actually
-    builds. The regex captures only the first fragment, which made 21 real keys
-    look "missing" while their full forms looked like orphans.
-    """
+    """Collects every __("literal") key in *path* using the AST extractor."""
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-    except SyntaxError:
+        content = Path(path).read_text(encoding="utf-8", errors="replace")
+        _extract_keys(content, keys)
+    except Exception:
         return
-    for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
-            continue
-        if node.func.id != "__" or not node.args:
-            continue
-        first = node.args[0]
-        if isinstance(first, ast.Constant) and isinstance(first.value, str):
-            keys.add(first.value)
 
 
 def _keys_used_in_code():
@@ -330,11 +316,7 @@ class TestNoMissingKeys(unittest.TestCase):
         self.assertEqual(missing, [fake])
 
     def test_ast_extractor_joins_implicit_concatenation(self):
-        """Adjacent/multi-line literals must resolve to the full runtime key.
-
-        The regex in tests/sync_i18n.py stops at the first fragment, which is
-        why 21 keys looked missing before this extractor replaced it here.
-        """
+        """Adjacent/multi-line literals must resolve to the full runtime key."""
         import tempfile
 
         source = 'from src.i18n import __\n__("part one " "and part two {n}", n=1)\n'
@@ -347,8 +329,8 @@ class TestNoMissingKeys(unittest.TestCase):
         self.assertEqual(keys, {"part one and part two {n}"})
 
 
-class TestPatternExtraction(unittest.TestCase):
-    """Unit tests for the extraction regex shared with tests/sync_i18n.py."""
+class TestAstExtraction(unittest.TestCase):
+    """Unit tests for the AST key extractor from tests/sync_i18n.py."""
 
     def _extract(self, text):
         keys = set()
@@ -371,10 +353,17 @@ class TestPatternExtraction(unittest.TestCase):
         text = '__("   Current: {current} (from .env)", current=env_version or __("none"))'
         self.assertEqual(self._extract(text), {"   Current: {current} (from .env)", "none"})
 
-    def test_adjacent_literals_yield_first_only(self):
-        # Documented limitation: __("a" "b") captures only "a".
-        text = '__("a" "b")'
-        self.assertEqual(self._extract(text), {"a"})
+    def test_adjacent_literals_yield_joined_string(self):
+        """Implicit concatenation __("a " "b") must yield the full string "a b"."""
+        text = '__("a " "b")'
+        self.assertEqual(self._extract(text), {"a b"})
+
+    def test_multiline_implicit_concatenation(self):
+        text = '''__(
+            "first line "
+            "second line"
+        )'''
+        self.assertEqual(self._extract(text), {"first line second line"})
 
 
 class TestFormattingSmoke(unittest.TestCase):
