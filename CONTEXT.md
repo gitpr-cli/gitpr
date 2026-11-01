@@ -99,3 +99,20 @@ required, tampered with, ill-formed, or carrying a checksum that diverges while
 the checksum guard is on. Such a flow stops rather than classify every legacy
 finding as new.
 _Avoid_: broken baseline, corrupt baseline, invalid baseline
+
+**Package version**:
+The semantic release identifier (PEP 440) of the GitPR distribution on PyPI,
+defined exclusively in `src/updater.py::__version__` as the canonical single
+source of truth. It is surfaced by `gitpr --version`, checked by the update
+gate, and enforced by release workflows and agent guidelines.
+_Avoid_: tool version, code version, script version
+
+**Language asset version**:
+The schema and revision identifier (`__lang_version__`) of the localized dictionary
+files under `langs/` and remote templates, versioned independently of the package version.
+_Avoid_: lang version, translation release, dictionary version
+
+**Hook script version**:
+The version identifier (`__scripts_version__`) of the Git hook shell scripts
+installed into `.git/hooks/`, versioned independently of the package version.
+_Avoid_: hook version, git script version
