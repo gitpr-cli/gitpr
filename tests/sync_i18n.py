@@ -1,61 +1,57 @@
-import os
-import re
-import json
 import ast
+import json
+import os
+from pathlib import Path
 
-SRC_DIRS = ['src', 'main.py', 'run.py']
-LANG_FILES = ['pt_br.json', 'pt_pt.json', 'es_es.json', 'fr_fr.json', 'es.json', 'fr.json']
-
-# Captures only the string literal of __("...") calls. Deliberately does NOT
-# require a trailing ")": that requirement ran the match past kwargs
-# (e.g. __("...", count=len(x)), fg="red") and mangled keys.
-# Known limitations (accepted): adjacent literals __("a" "b") yield only "a";
-# multi-line literals are captured up to the first line's closing quote.
-PATTERN = re.compile(r'__\(\s*(["\'])(?:\\.|(?!\1).)*\1')
+REPO = Path(__file__).resolve().parent.parent
+SRC_DIRS = [REPO / "src", REPO / "run.py"]
+LANGS_DIR = REPO / "langs"
+LANG_FILES = ["pt_br.json", "pt_pt.json", "es_es.json", "fr_fr.json", "es.json", "fr.json"]
 
 
-def _extract_keys(text, keys):
-    """Adds every __() string literal in `text` to `keys`.
+def _extract_keys(source, keys):
+    """Extracts every __("literal") translation key from Python source using AST.
 
-    Literals are parsed with ast.literal_eval so escape sequences resolve to
-    the exact runtime string the translation lookup compares against.
+    Handles single and double quotes, escape sequences, nested calls, kwargs,
+    and folds implicit string concatenations (__("a " "b") and multi-line literals)
+    into the single combined string that runtime lookup expects.
     """
-    for m in PATTERN.finditer(text):
-        # The capture group is the opening quote; the whole match is
-        # __('body', so slice from the quote to get the full literal.
-        literal = m.group(0)[m.start(1) - m.start():]
-        try:
-            keys.add(ast.literal_eval(literal))
-        except (ValueError, SyntaxError):
-            keys.add(literal[1:-1])  # Fallback: raw body without quotes
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            continue
+        if node.func.id != "__" or not node.args:
+            continue
+        first = node.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            keys.add(first.value)
 
 
 def scan_file(filepath, keys):
     """Scans a single .py file, adding every __() string literal to `keys`."""
     try:
-        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
-            content = f.read()
-            # Handle potential multi-line matching or just basic matching.
-            # Usually translations are on a single line.
-            _extract_keys(content, keys)
+        path = Path(filepath)
+        content = path.read_text(encoding="utf-8", errors="replace")
+        _extract_keys(content, keys)
     except Exception as e:
         print(f"Error scanning {filepath}: {e}")
 
 
 def scan_dir(directory, keys):
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file.endswith('.py'):
-                scan_file(os.path.join(root, file), keys)
+    for path in Path(directory).rglob("*.py"):
+        scan_file(path, keys)
 
 
 def scan(keys):
     """Scans every Python source in SRC_DIRS, collecting keys into `keys`."""
-    for d in SRC_DIRS:
-        if os.path.isfile(d):
-            scan_file(d, keys)
-        elif os.path.isdir(d):
-            scan_dir(d, keys)
+    for path in SRC_DIRS:
+        if path.is_file():
+            scan_file(path, keys)
+        elif path.is_dir():
+            scan_dir(path, keys)
 
 
 def _live_key(key):
@@ -76,14 +72,12 @@ if __name__ == "__main__":
         print("No active keys found in codebase. Aborting without changes.")
         raise SystemExit(1)
 
-    langs_dir = 'langs'
-
     # List sorted to keep the json ordered
     sorted_keys = sorted(list(keys_in_code))
 
     for lang_file in LANG_FILES:
-        filepath = os.path.join(langs_dir, lang_file)
-        if not os.path.exists(filepath):
+        filepath = LANGS_DIR / lang_file
+        if not filepath.exists():
             print(f"File not found: {filepath}")
             continue
 
