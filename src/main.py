@@ -1625,6 +1625,9 @@ def cli(
     else:
         # Default: PR Description using Full Diff against the remote main
         action_type = "pr"
+        # The closing-line decision (ADR-003); the PR body assembly below is its
+        # only reader.
+        close_issue_decision = None
         if not check_unstaged_files(
             "pr", skip_check=no_unstaged_check, quiet=quiet, interactive=True
         ):
@@ -1811,6 +1814,13 @@ def cli(
         explanation = generate_pr_explanation(diff_text, ai_provider=active_provider, quiet=True)
         if explanation and explanation.markdown:
             pr_desc_body = f"{pr_desc_body.rstrip()}\n\n---\n\n{explanation.markdown}"
+
+    # ADR-004: the closing line joins the body here, after the reviewer guide
+    # and before the .md and pr_data — so every publisher receives it, and the
+    # badge attached later lands after it.
+    from src.issue_autoclose.insert_close_line import insert_close_line
+
+    pr_desc_body = insert_close_line(pr_desc_body, close_issue_decision)
 
     markdown_content = (
         __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
