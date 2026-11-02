@@ -116,3 +116,15 @@ _Avoid_: lang version, translation release, dictionary version
 The version identifier (`__scripts_version__`) of the Git hook shell scripts
 installed into `.git/hooks/`, versioned independently of the package version.
 _Avoid_: hook version, git script version
+
+**Issue registry**:
+The local, unversioned record of the last issue created with `gitpr -is`, kept at
+`.gitpr/conf/github.yml`, so the next pull request can offer to close it. It is
+state of the machine, not project content, and holds no credentials.
+_Avoid_: issue cache, issue log, github.yml state
+
+**Closing line**:
+The pull request body line (`close #N` on GitHub) that tells the forge to close
+the tracked issue when the pull request is merged. It is forge syntax, not a
+label: the issue is named by the line itself.
+_Avoid_: auto-close keyword, issue reference, fix line

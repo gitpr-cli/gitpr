@@ -16,6 +16,7 @@ from unittest.mock import patch, MagicMock
 import requests
 
 from src.infrastructure.scm.base import (
+    IssueInfo,
     PullRequestRequest,
     PullRequestResult,
     RepoRef,
@@ -513,6 +514,170 @@ class TestCreateIssue(unittest.TestCase):
         with self.assertRaises(ScmProviderError) as ctx:
             _provider().create_issue(_repo(), IssueRequest(title="T", description="D"))
         self.assertEqual(ctx.exception.http_status, 0)
+
+
+class TestGetIssue(unittest.TestCase):
+    """GET /repos/{o}/{r}/issues/{n} — the read-back behind the question
+    "close #N in the PR body?". The endpoint also answers pull request
+    numbers, so the payload's pull_request object is the discriminant."""
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_open_issue(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "number": 123,
+                "title": "Fix the thing",
+                "html_url": "https://github.com/natanfiuza/gitpr/issues/123",
+                "state": "open",
+            },
+        )
+
+        info = _provider().get_issue(_repo(), 123)
+
+        self.assertEqual(
+            info,
+            IssueInfo(
+                number=123,
+                title="Fix the thing",
+                url="https://github.com/natanfiuza/gitpr/issues/123",
+                state="open",
+                is_pull_request=False,
+            ),
+        )
+        args, kwargs = mock_get.call_args
+        self.assertEqual(args[0], f"https://api.github.com/repos/{REPO}/issues/123")
+        self.assertEqual(kwargs["timeout"], 5)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_closed_issue_keeps_its_state(self, mock_get):
+        mock_get.return_value = _response(
+            200, {"number": 123, "title": "T", "html_url": "u", "state": "closed"}
+        )
+
+        info = _provider().get_issue(_repo(), 123)
+
+        self.assertEqual(info.state, "closed")
+        self.assertFalse(info.is_pull_request)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_pull_request_number_is_flagged(self, mock_get):
+        """Without the flag the flow would offer to close a pull request."""
+        mock_get.return_value = _response(
+            200,
+            {
+                "number": 7,
+                "title": "A PR",
+                "html_url": "u",
+                "state": "open",
+                "pull_request": {"url": "https://api.github.com/repos/x/y/pulls/7"},
+            },
+        )
+
+        info = _provider().get_issue(_repo(), 7)
+
+        self.assertTrue(info.is_pull_request)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_missing_number_falls_back_to_the_requested_one(self, mock_get):
+        mock_get.return_value = _response(
+            200, {"title": "T", "html_url": "u", "state": "open"}
+        )
+
+        self.assertEqual(_provider().get_issue(_repo(), 77).number, 77)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_custom_timeout_is_used(self, mock_get):
+        mock_get.return_value = _response(200, {"number": 1, "state": "open"})
+
+        _provider().get_issue(_repo(), 1, timeout=9)
+
+        self.assertEqual(mock_get.call_args.kwargs["timeout"], 9)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_not_found_is_404(self, mock_get):
+        mock_get.return_value = _response(404, {"message": "Not Found"})
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_issue(_repo(), 999)
+
+        self.assertEqual(ctx.exception.http_status, 404)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_forbidden_is_403(self, mock_get):
+        mock_get.return_value = _response(
+            403, {"message": "Resource not accessible by integration"}
+        )
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_issue(_repo(), 1)
+
+        self.assertEqual(ctx.exception.http_status, 403)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_server_error_is_500(self, mock_get):
+        mock_get.return_value = _response(500, {"message": "Server Error"})
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_issue(_repo(), 1)
+
+        self.assertEqual(ctx.exception.http_status, 500)
+
+    @patch("src.i18n.TRANSLATIONS", {})
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_timeout_is_status_zero(self, mock_get):
+        mock_get.side_effect = requests.exceptions.Timeout()
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_issue(_repo(), 1)
+
+        self.assertEqual(ctx.exception.http_status, 0)
+        self.assertIn("timeout", ctx.exception.message.lower())
+
+
+class TestGetDefaultBranch(unittest.TestCase):
+    """GET /repos/{o}/{r} → default_branch — the fact behind the warning that
+    a PR merged into another branch will not close the issue."""
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_returns_the_default_branch(self, mock_get):
+        mock_get.return_value = _response(200, {"default_branch": "main"})
+
+        self.assertEqual(_provider().get_default_branch(_repo()), "main")
+        args, kwargs = mock_get.call_args
+        self.assertEqual(args[0], f"https://api.github.com/repos/{REPO}")
+        self.assertEqual(kwargs["timeout"], 5)
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_missing_field_is_empty_not_invented(self, mock_get):
+        mock_get.return_value = _response(200, {})
+
+        self.assertEqual(_provider().get_default_branch(_repo()), "")
+
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_unauthorized_is_401(self, mock_get):
+        mock_get.return_value = _response(401, {"message": "Bad credentials"})
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_default_branch(_repo())
+
+        self.assertEqual(ctx.exception.http_status, 401)
+
+    @patch("src.i18n.TRANSLATIONS", {})
+    @patch("src.infrastructure.scm.github_provider.requests.get")
+    def test_timeout_is_status_zero(self, mock_get):
+        mock_get.side_effect = requests.exceptions.Timeout()
+
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_default_branch(_repo())
+
+        self.assertEqual(ctx.exception.http_status, 0)
+
+
+class TestClosingLine(unittest.TestCase):
+    def test_github_closing_syntax(self):
+        self.assertEqual(_provider().closing_line(123), "close #123")
+        self.assertEqual(_provider().closing_line(1), "close #1")
 
 
 class TestTestConnection(unittest.TestCase):
