@@ -14,6 +14,8 @@ from src.infrastructure.scm import (
     provider_is_github,
     resolve_scm_provider,
 )
+from src.issue_autoclose.issue_registry import GITIGNORE_ENTRY
+from src.issue_autoclose.register_created_issue import register_created_issue
 from src.ui.help_screen import HelpScreen
 from src.i18n import __
 
@@ -63,6 +65,7 @@ class IssueApp(App):
         self.needs_new_token = False
 
         branch = get_current_branch()
+        self.branch = branch
         repo_display = self.repo_info if self.repo_info else __("Local Repository")
         self.sub_title = f"{repo_display} | Branch: {branch}"
 
@@ -150,6 +153,25 @@ class IssueApp(App):
                     issue_url=result.url,
                 )
             self.final_action = "created"
+            if github_flow:
+                outcome = register_created_issue(
+                    self.provider,
+                    self.repo_ref,
+                    result,
+                    title_input.value,
+                    self.branch,
+                )
+                if outcome.recorded:
+                    if outcome.gitignore_updated:
+                        self.final_message += "\n\n" + __(
+                            "ℹ️ Added {entry} to .gitignore so the local issue record stays out of the repository.",
+                            entry=GITIGNORE_ENTRY,
+                        )
+                else:
+                    self.final_message += "\n\n" + __(
+                        "⚠️ The issue was created, but it could not be recorded locally for automatic closure: {error}",
+                        error=outcome.error or outcome.skipped_reason,
+                    )
             log_command_metric(
                 command="issue:github_create", status="success", provider="github"
             )
