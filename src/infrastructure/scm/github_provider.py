@@ -17,6 +17,7 @@ import requests
 
 from src.i18n import __
 from src.infrastructure.scm.base import (
+    IssueInfo,
     IssueRequest,
     IssueResult,
     PullRequestRequest,
@@ -461,6 +462,38 @@ class GitHubProvider(ScmProvider):
             number=j.get("number"),
             provider=self.name,
         )
+
+    def get_issue(
+        self, repo: RepoRef, number: int, timeout: int = 5
+    ) -> IssueInfo:
+        """GET /repos/{owner}/{repo}/issues/{n} — the closed-issue read-back.
+
+        The issue endpoint answers pull request numbers too, so the payload's
+        ``pull_request`` object is what tells them apart (SPEC risk list).
+        The default timeout is short on purpose: the answer only decides
+        whether one question is asked before the PR flow, and a slow forge
+        must not hold up the run.
+        """
+        response = self._request(
+            "get", self._repo_url(repo, "issues", number), {200}, timeout
+        )
+        j = response.json()
+        return IssueInfo(
+            number=int(j.get("number") or number),
+            title=str(j.get("title") or ""),
+            url=str(j.get("html_url") or ""),
+            state=str(j.get("state") or ""),
+            is_pull_request=j.get("pull_request") is not None,
+        )
+
+    def get_default_branch(self, repo: RepoRef, timeout: int = 5) -> str:
+        """GET /repos/{owner}/{repo} → default_branch ("" when absent)."""
+        response = self._request("get", self._repo_url(repo), {200}, timeout)
+        return str(response.json().get("default_branch") or "")
+
+    def closing_line(self, number: int) -> str:
+        """GitHub closing keyword syntax: ``close #N``."""
+        return f"close #{number}"
 
     # -- releases ---------------------------------------------------------
 

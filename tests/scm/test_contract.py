@@ -10,6 +10,7 @@ import inspect
 import unittest
 
 from src.infrastructure.scm.base import (
+    IssueInfo,
     IssueRequest,
     IssueResult,
     PullRequestRequest,
@@ -207,6 +208,18 @@ class TestDomainDataclasses(unittest.TestCase):
         self.assertEqual(req.title, "t")
         self.assertEqual(result.provider, "gitlab")
 
+    def test_issue_info_fields(self):
+        info = IssueInfo(
+            number=7,
+            title="t",
+            url="https://x/i/7",
+            state="open",
+            is_pull_request=False,
+        )
+        self.assertEqual(info.number, 7)
+        self.assertEqual(info.state, "open")
+        self.assertFalse(info.is_pull_request)
+
 
 class _BareProvider(ScmProvider):
     """The smallest provider that satisfies the ABC — nothing else.
@@ -304,6 +317,28 @@ class TestPullRequestListingContract(unittest.TestCase):
         # with no window asked for there is nothing to place it in.
         self.assertFalse(within_window("", "2026-09-01", None))
         self.assertTrue(within_window("", None, None))
+
+
+class TestIssueReadbackContract(unittest.TestCase):
+    """The automatic issue closure reads an issue back before offering to
+    close it (ADR-003). It is a GitHub feature: every other forge inherits the
+    base defaults, which raise ScmNotSupportedError so a caller can degrade to
+    "feature inactive" instead of crashing."""
+
+    REPO = RepoRef(raw="u", workspace="w", name="r", provider="bare")
+
+    def test_a_forge_without_issue_readback_raises_not_supported(self):
+        provider = _BareProvider("token")
+
+        for call in (
+            lambda: provider.get_issue(self.REPO, 1),
+            lambda: provider.get_default_branch(self.REPO),
+            lambda: provider.closing_line(1),
+        ):
+            with self.subTest(call=call):
+                with self.assertRaises(ScmNotSupportedError) as ctx:
+                    call()
+                self.assertEqual(ctx.exception.provider, "bare")
 
 
 class TestErrors(unittest.TestCase):

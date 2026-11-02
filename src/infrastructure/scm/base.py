@@ -124,6 +124,23 @@ class IssueResult:
     provider: str
 
 
+@dataclass
+class IssueInfo:
+    """An issue as read back from the forge (get_issue).
+
+    state is the forge's own vocabulary ("open"/"closed" on GitHub).
+    is_pull_request says the number resolves to a pull request: GitHub's
+    issue endpoint answers PR numbers too, and a caller asking "can this
+    issue be closed by a pull request?" must not treat one as the other.
+    """
+
+    number: int
+    title: str
+    url: str
+    state: str
+    is_pull_request: bool = False
+
+
 class ScmProviderError(Exception):
     """Raised by ScmProvider methods on HTTP failures and network errors.
 
@@ -258,6 +275,50 @@ class ScmProvider(ABC):
         Raises ScmNotSupportedError when the forge has no issue resource
         (Azure DevOps).
         """
+
+    def get_issue(
+        self, repo: RepoRef, number: int, timeout: int = 5
+    ) -> IssueInfo:
+        """Read back a single issue by its user-visible number.
+
+        Deliberately NOT abstract: the automatic issue closure reads the issue
+        it created (ADR-003), and the feature is GitHub-only — the other three
+        forges raise ScmNotSupportedError, which the caller reads as "feature
+        inactive", never as a crash. The short 5 s default keeps a slow forge
+        from delaying the pull request flow that only wants one yes/no.
+
+        GitHub's issue endpoint also answers pull request numbers; the returned
+        IssueInfo.is_pull_request is how the caller tells them apart.
+        """
+        raise ScmNotSupportedError(
+            self.name,
+            "This forge has no API to read back a single issue.",
+        )
+
+    def get_default_branch(self, repo: RepoRef, timeout: int = 5) -> str:
+        """The repository's default branch, or "" when the forge does not say.
+
+        Deliberately NOT abstract, like get_issue: only the automatic issue
+        closure asks for it, to warn that a pull request merged into a
+        non-default branch will not close the issue. A caller that gets ""
+        cannot tell whether the warning applies and must stay silent.
+        """
+        raise ScmNotSupportedError(
+            self.name,
+            "This forge has no API to read the default branch.",
+        )
+
+    def closing_line(self, number: int) -> str:
+        """The body line that makes a pull request close issue *number*.
+
+        Forge-specific syntax, not a generic string: GitHub reads the keyword
+        "close #N", and a line built anywhere else could be spelled right and
+        still mean nothing to the forge.
+        """
+        raise ScmNotSupportedError(
+            self.name,
+            "This forge has no closing keyword for issues.",
+        )
 
     def create_release(
         self, repo: RepoRef, tag: str, title: str, body: str, draft: bool = False
