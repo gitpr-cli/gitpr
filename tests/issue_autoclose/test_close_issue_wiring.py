@@ -105,6 +105,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
         )
         secho = Mock()
         registry_cls = Mock(return_value=registry)
+        log_metric = Mock()
 
         with patch(
             "src.issue_autoclose.issue_registry.IssueRegistry", registry_cls
@@ -123,10 +124,13 @@ class PrepareCloseIssueTest(unittest.TestCase):
             "src.project_config.resolve_pull_request_base", base_resolver
         ), patch(
             "src.main.click.secho", secho
+        ), patch(
+            "src.metrics.log_command_metric", log_metric
         ):
             result = _prepare_close_issue(flags, base, may_ask)
 
         self.registry_cls = registry_cls
+        self.log_metric = log_metric
         return result, registry, resolve, scm, base_resolver, secho
 
     def test_disabled_flag_touches_nothing(self):
@@ -139,6 +143,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
         scm.assert_not_called()
         resolve.assert_not_called()
         base_resolver.assert_not_called()
+        self.log_metric.assert_not_called()
 
     def test_config_disabled_skips_before_the_registry_is_constructed(self):
         result, registry, resolve, scm, base_resolver, secho = self._run(
@@ -153,6 +158,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
         resolve.assert_not_called()
         base_resolver.assert_not_called()
         secho.assert_not_called()
+        self.log_metric.assert_not_called()
 
     def test_config_disabled_wins_over_close_issue(self):
         # T4's gate order: enabled is checked before the accept flag.
@@ -162,6 +168,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
 
         self.assertEqual(result, (None, None, None))
         resolve.assert_not_called()
+        self.log_metric.assert_not_called()
 
     def test_the_configured_timeout_reaches_the_use_case(self):
         _, _, resolve, _, _, _ = self._run(autoclose_timeout=17)
@@ -178,6 +185,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
         scm.assert_not_called()
         resolve.assert_not_called()
         base_resolver.assert_not_called()
+        self.log_metric.assert_not_called()
 
     def test_record_reaches_the_forge_and_forwards_the_question_settings(self):
         flags = CloseIssueFlags()
@@ -240,6 +248,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
         self.assertEqual(result, (None, None, (None, None)))
         scm.assert_called_once_with()
         resolve.assert_not_called()
+        self.log_metric.assert_not_called()
 
     def test_registry_error_still_reaches_the_warning(self):
         outcome = CloseIssueOutcome(
@@ -257,6 +266,61 @@ class PrepareCloseIssueTest(unittest.TestCase):
         scm.assert_called_once_with()
         resolve.assert_called_once()
         secho.assert_called_once_with(outcome.warning, fg="yellow", err=True)
+
+    def test_the_question_answer_is_recorded(self):
+        result, _, _, _, _, _ = self._run()
+
+        self.assertIsNotNone(result[0])
+        self.log_metric.assert_called_once_with(
+            command="issue_autoclose",
+            provider="git",
+            asked=True,
+            accepted=True,
+            skipped_reason="",
+        )
+
+    def test_the_accept_flag_is_recorded_without_a_question(self):
+        outcome = CloseIssueOutcome(decision=DECISION, accepted=True)
+
+        self._run(flags=CloseIssueFlags(accept=True), outcome=outcome)
+
+        self.log_metric.assert_called_once_with(
+            command="issue_autoclose",
+            provider="git",
+            asked=False,
+            accepted=True,
+            skipped_reason="",
+        )
+
+    def test_a_declined_question_is_recorded(self):
+        outcome = CloseIssueOutcome(skipped_reason="declined", asked=True)
+
+        result, _, _, _, _, _ = self._run(outcome=outcome)
+
+        self.assertIsNone(result[0])
+        self.log_metric.assert_called_once_with(
+            command="issue_autoclose",
+            provider="git",
+            asked=True,
+            accepted=False,
+            skipped_reason="declined",
+        )
+
+    def test_a_verification_failure_is_recorded_once(self):
+        outcome = CloseIssueOutcome(
+            warning="Could not check issue #7: boom. The local issue record was kept.",
+            skipped_reason="verify-failed",
+        )
+
+        self._run(outcome=outcome)
+
+        self.log_metric.assert_called_once_with(
+            command="issue_autoclose",
+            provider="git",
+            asked=False,
+            accepted=False,
+            skipped_reason="verify-failed",
+        )
 
 
 class CloseIssueFlagsCliTest(unittest.TestCase):

@@ -5861,10 +5861,14 @@ def _prepare_close_issue(flags, base, may_ask):
     publication clearing uses afterwards; ``scm_context`` is the
     provider/repository pair resolved here for the rest of the flow to reuse,
     or ``None`` when nothing needed it.
+
+    The outcome is also reported once to the local ledger as an
+    ``issue_autoclose`` row (``asked``, ``accepted``, ``skipped_reason``).
     """
     from src.config import get_issue_autoclose_timeout, issue_autoclose_enabled
     from src.issue_autoclose.issue_registry import IssueRegistry
     from src.issue_autoclose.resolve_close_issue import resolve_close_issue
+    from src.metrics import log_command_metric
 
     if flags.disabled:
         return None, None, None
@@ -5911,6 +5915,15 @@ def _prepare_close_issue(flags, base, may_ask):
     )
     if outcome.warning:
         click.secho(outcome.warning, fg="yellow", err=True)
+    # Q14: one row per decision the use case reached. The helper's own
+    # short-circuits never engaged the feature and stay out of the ledger.
+    log_command_metric(
+        command="issue_autoclose",
+        provider="git",
+        asked=outcome.asked,
+        accepted=outcome.accepted,
+        skipped_reason=outcome.skipped_reason,
+    )
     return outcome.decision, registry, scm_context
 
 
