@@ -654,6 +654,20 @@ def _resolve_pr_target(base, quiet):
     ),
 )
 @click.option(
+    "--close-issue",
+    is_flag=True,
+    help=__(
+        "Adds the closing line (close #N) to the Pull Request description without asking; the issue is still checked."
+    ),
+)
+@click.option(
+    "--no-close-issue",
+    is_flag=True,
+    help=__(
+        "Skips the automatic issue closure for this run (no record is read and no forge call is made)."
+    ),
+)
+@click.option(
     "--mentor",
     "mentor_flag",
     is_flag=True,
@@ -727,6 +741,8 @@ def cli(
     no_publish,
     no_edit,
     explain,
+    close_issue,
+    no_close_issue,
     mentor_flag,
     plugins,
     status,
@@ -745,6 +761,18 @@ def cli(
     # subcommand and every -h path reaches. Silent and best-effort, so it
     # cannot disturb anything below.
     log_usage()
+
+    # The two flags answer the same question, so accepting both would make the
+    # answer ambiguous. Rejected before the ledger migration prompt and the
+    # project-file seed: a usage error must not ask anything or write a file.
+    # Help wins over the error so `-h` always shows the flags it was given.
+    if close_issue and no_close_issue and not help_flag:
+        click.secho(
+            __("❌ --close-issue and --no-close-issue cannot be used together."),
+            fg="red",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
 
     # How much of a terminal this run may use, and — on the first run after an
     # upgrade — the question of what becomes of the pre-ledger event files. The
@@ -1625,9 +1653,14 @@ def cli(
     else:
         # Default: PR Description using Full Diff against the remote main
         action_type = "pr"
-        # The closing-line decision (ADR-003); the PR body assembly below is its
-        # only reader.
-        close_issue_decision = None
+        # ADR-005: the close-issue decision is made before the stage TUI, and
+        # only a local record can make it cost anything. `scm_context` lets the
+        # rest of the flow reuse the provider/repository resolved here.
+        from src.issue_autoclose.resolve_close_issue import CloseIssueFlags
+
+        close_issue_decision, close_issue_registry, scm_context = _prepare_close_issue(
+            CloseIssueFlags(accept=close_issue, disabled=no_close_issue), base, may_ask
+        )
         if not check_unstaged_files(
             "pr", skip_check=no_unstaged_check, quiet=quiet, interactive=True
         ):
@@ -1847,7 +1880,9 @@ def cli(
     # ── PR Publisher logic ──
     from src.core import describe_repo
 
-    provider, repo_ref = _resolve_scm_context()
+    # A record already made the early path resolve this once; reuse it — the
+    # tuple is truthy even on failure, so the error is never printed twice.
+    provider, repo_ref = scm_context or _resolve_scm_context()
     if provider is None:
         return
 
@@ -1896,7 +1931,10 @@ def cli(
             click.secho(_scm_access_canceled_message(provider), fg="red")
             return
 
-        _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename)
+        if _publish_pr_directly(
+            pr_data, provider, repo_ref, target_base, output_filename
+        ):
+            _clear_close_issue_record(close_issue_registry, close_issue_decision)
         return
 
     # ── Default: Open TUI ──
@@ -1963,6 +2001,12 @@ def cli(
                 click.secho(_scm_access_canceled_message(provider), fg="red")
                 break
             continue
+
+        # The record survives everything that did not put the line on the
+        # forge: a declined question, Esc, a failed publish, or merely opening
+        # an existing PR (which also reports "created").
+        if app.body_published:
+            _clear_close_issue_record(close_issue_registry, close_issue_decision)
 
         if app.final_message:
             cor = (
@@ -5800,6 +5844,66 @@ def _scm_access_canceled_message(provider):
     )
 
 
+def _prepare_close_issue(flags, base, may_ask):
+    """Reads the local record early and decides the closing line (ADR-005).
+
+    Called before the stage TUI, so the question comes before the description
+    exists. Only a record can make the feature cost anything — provider
+    resolution, the forge check and the question all hang off it; without one
+    the run is byte-for-byte the old flow.
+
+    Returns ``(decision, registry, scm_context)``. ``registry`` is what the
+    publication clearing uses afterwards; ``scm_context`` is the
+    provider/repository pair resolved here for the rest of the flow to reuse,
+    or ``None`` when nothing needed it.
+    """
+    from src.issue_autoclose.issue_registry import IssueRegistry
+    from src.issue_autoclose.resolve_close_issue import resolve_close_issue
+
+    if flags.disabled:
+        return None, None, None
+
+    registry = IssueRegistry()
+    try:
+        loaded = registry.load()
+    except Exception:
+        # An unreadable record still deserves the early path: the use case
+        # reloads it and reports the warning itself.
+        loaded = None
+    if loaded is not None and loaded.issue is None and not loaded.error:
+        return None, None, None
+
+    provider, repo_ref = _resolve_scm_context()
+    scm_context = (provider, repo_ref)
+    if provider is None:
+        return None, None, scm_context
+
+    # The question's warning only needs the configured target, not the
+    # validated one: the real resolution (origin check and base picker) stays
+    # where publishing happens.
+    target_branch = ""
+    if may_ask and not flags.accept:
+        try:
+            from src.project_config import resolve_pull_request_base
+
+            target_branch = resolve_pull_request_base(base, verify=False).branch
+        except Exception:
+            target_branch = ""
+
+    outcome = resolve_close_issue(
+        provider,
+        registry,
+        repo_ref,
+        flags=flags,
+        is_tty=may_ask,
+        target_branch=target_branch,
+        ask=lambda question, default=True: click.confirm(question, default=default),
+    )
+    if outcome.warning:
+        click.secho(outcome.warning, fg="yellow", err=True)
+    return outcome.decision, registry, scm_context
+
+
 def _resolve_scm_context():
     """Resolve the SCM forge (provider) + repository reference for the flows.
 
@@ -5844,8 +5948,27 @@ def _resolve_scm_context():
     return provider, repo_ref
 
 
+def _clear_close_issue_record(registry, decision):
+    """Forgets the recorded issue once the published PR carries the line.
+
+    ADR-007: only a publication that actually sent the body clears it. A
+    bookkeeping failure must never break the flow — the file is local state
+    and the next run overwrites it.
+    """
+    if registry is None or decision is None:
+        return
+    try:
+        registry.clear()
+    except Exception:
+        pass
+
+
 def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename):
-    """Publish PR directly to the forge without TUI (for --no-edit mode)."""
+    """Publish PR directly to the forge without TUI (for --no-edit mode).
+
+    Returns True only when the forge created the pull request, so the caller
+    can clear the issue record (ADR-007).
+    """
     from src.application.use_cases.publish_pull_request import (
         format_recommended_commit_body,
         publish_pull_request_use_case,
@@ -5912,7 +6035,7 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
                     ),
                     fg="red",
                 )
-            return
+            return False
         if github_flow:
             click.secho(
                 __(
@@ -5932,7 +6055,7 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
                 ),
                 fg="red",
             )
-        return
+        return False
 
     pr_url = outcome.url
     if github_flow:
@@ -5962,6 +6085,7 @@ def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filena
         f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}",
         fg="cyan",
     )
+    return True
 
 
 @cli.command(

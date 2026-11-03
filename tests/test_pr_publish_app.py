@@ -359,8 +359,23 @@ class TestPrPublishAppConstruction:
 
         assert app.final_action is None
         assert app.final_pr_url is None
+        assert app.body_published is False
         assert app._commit_no_verify is False
         assert app.needs_new_token is False
+
+
+class TestBodyPublished:
+    def test_just_open_existing_does_not_count_as_published(self, tmp_path):
+        """final_action is "created" here, but nothing was sent to the forge."""
+        with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
+            app = _make_app(tmp_path / "out.md")
+
+        with patch.object(app, "_prompt_open_browser") as prompt:
+            app._on_existing_pr_before_push_result("no", "https://x/pull/3", 3)
+
+        assert app.final_action == "created"
+        assert app.body_published is False
+        prompt.assert_called_once_with("https://x/pull/3")
 
 
 class TestSaveLocal:
@@ -709,6 +724,7 @@ class TestReviewerAttach:
                         app._publish_pr_from_progress(None)
                     await pilot.pause()
             assert app.final_action == "created"
+            assert app.body_published is True
             assert recorder.calls == [("create",)]
 
         _run(run)
@@ -830,6 +846,7 @@ class TestReviewerAttach:
                             await pilot.pause()
                     await pilot.pause()
             assert app.final_action == "created"
+            assert app.body_published is True
             update_index = recorder.calls.index(("update", 3))
             attach_index = recorder.calls.index(("attach", 3, ["bob", "carla"]))
             assert update_index < attach_index

@@ -729,6 +729,10 @@ class PrPublishApp(App):
         self.final_action = None
         self.final_message = ""
         self.final_pr_url = None
+        # True only when this run sent the body to the forge: a real create or
+        # a successful update of an existing PR. "created" alone also covers
+        # "just open existing", where nothing was published.
+        self.body_published = False
         self.needs_new_token = False
         self._commit_no_verify = False
         self._pending_commit_msg = ""
@@ -1415,6 +1419,7 @@ class PrPublishApp(App):
                             self.provider.update_pull_request(
                                 self.repo_ref, pr_num, description=pr_body
                             )
+                            self.body_published = True
                             self._log("Update PR description: ok=True")
                         except ScmProviderError as e:
                             self._log(
@@ -1708,6 +1713,7 @@ class PrPublishApp(App):
             )
             self.final_pr_url = pr_url
             self.final_action = "created"
+            self.body_published = True
             if provider_is_github(self.provider):
                 success_msg = __(
                     "✅ PR successfully created on GitHub:\n👉 {pr_url}",
