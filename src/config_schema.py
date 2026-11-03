@@ -677,6 +677,29 @@ FIELDS = (
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_ISSUE.md",
     ),
+    ConfigField(
+        key="GITPR_ISSUE_AUTOCLOSE",
+        label=__("Close Issue with Pull Request"),
+        description=__(
+            "Offers to add the closing line (close #N) for the issue created "
+            "with gitpr -is to the pull request description. Enabled by "
+            "default; false turns it off."
+        ),
+        category="issue",
+        kind=KIND_BOOL,
+        default="true",
+    ),
+    ConfigField(
+        key="GITPR_ISSUE_AUTOCLOSE_TIMEOUT",
+        label=__("Issue Lookup Timeout"),
+        description=__(
+            "Maximum time in seconds to wait for the forge when checking the "
+            "recorded issue. Invalid or non-positive values fall back to 5."
+        ),
+        category="issue",
+        kind=KIND_INT,
+        default="5",
+    ),
     # ------------------------------------------------------------------- Blame
     ConfigField(
         key="OUTPUT_FILE_NAME_BLAME",

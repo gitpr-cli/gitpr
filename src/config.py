@@ -505,6 +505,20 @@ def risk_scoring_in_review_enabled():
     return _env_bool_default_true("GITPR_RISK_INCLUDE_IN_REVIEW")
 
 
+def issue_autoclose_enabled():
+    """Returns True when the PR flow may offer to close the recorded issue.
+
+    Read-only opt-out: set GITPR_ISSUE_AUTOCLOSE=false in ~/.gitpr/.env to
+    skip the feature for a run. Never auto-written to .env.
+    """
+    return _env_bool_default_true("GITPR_ISSUE_AUTOCLOSE")
+
+
+def get_issue_autoclose_timeout():
+    """Returns the forge read timeout in seconds (default 5)."""
+    return _env_positive_int("GITPR_ISSUE_AUTOCLOSE_TIMEOUT", 5)
+
+
 def get_reviewer_suggestion_settings():
     """Returns the reviewer suggestion settings from ~/.gitpr/.env.
 

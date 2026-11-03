@@ -78,6 +78,8 @@ class PrepareCloseIssueTest(unittest.TestCase):
         outcome=None,
         scm=None,
         base_resolver=None,
+        autoclose_enabled=True,
+        autoclose_timeout=5,
     ):
         flags = flags if flags is not None else CloseIssueFlags()
         registry = (
@@ -102,10 +104,16 @@ class PrepareCloseIssueTest(unittest.TestCase):
             )
         )
         secho = Mock()
+        registry_cls = Mock(return_value=registry)
 
         with patch(
-            "src.issue_autoclose.issue_registry.IssueRegistry",
-            return_value=registry,
+            "src.issue_autoclose.issue_registry.IssueRegistry", registry_cls
+        ), patch(
+            "src.config.issue_autoclose_enabled",
+            return_value=autoclose_enabled,
+        ), patch(
+            "src.config.get_issue_autoclose_timeout",
+            return_value=autoclose_timeout,
         ), patch(
             "src.issue_autoclose.resolve_close_issue.resolve_close_issue",
             resolve,
@@ -118,6 +126,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
         ):
             result = _prepare_close_issue(flags, base, may_ask)
 
+        self.registry_cls = registry_cls
         return result, registry, resolve, scm, base_resolver, secho
 
     def test_disabled_flag_touches_nothing(self):
@@ -130,6 +139,34 @@ class PrepareCloseIssueTest(unittest.TestCase):
         scm.assert_not_called()
         resolve.assert_not_called()
         base_resolver.assert_not_called()
+
+    def test_config_disabled_skips_before_the_registry_is_constructed(self):
+        result, registry, resolve, scm, base_resolver, secho = self._run(
+            autoclose_enabled=False
+        )
+
+        self.assertEqual(result, (None, None, None))
+        # The constructor itself runs ``git rev-parse`` — it must not run.
+        self.registry_cls.assert_not_called()
+        self.assertEqual(registry.load_calls, 0)
+        scm.assert_not_called()
+        resolve.assert_not_called()
+        base_resolver.assert_not_called()
+        secho.assert_not_called()
+
+    def test_config_disabled_wins_over_close_issue(self):
+        # T4's gate order: enabled is checked before the accept flag.
+        result, _, resolve, _, _, _ = self._run(
+            flags=CloseIssueFlags(accept=True), autoclose_enabled=False
+        )
+
+        self.assertEqual(result, (None, None, None))
+        resolve.assert_not_called()
+
+    def test_the_configured_timeout_reaches_the_use_case(self):
+        _, _, resolve, _, _, _ = self._run(autoclose_timeout=17)
+
+        self.assertEqual(resolve.call_args.kwargs["timeout"], 17)
 
     def test_no_record_returns_before_the_forge(self):
         registry = _Registry()
@@ -161,6 +198,7 @@ class PrepareCloseIssueTest(unittest.TestCase):
         self.assertEqual(kwargs["flags"], flags)
         self.assertTrue(kwargs["is_tty"])
         self.assertEqual(kwargs["target_branch"], "develop")
+        self.assertEqual(kwargs["timeout"], 5)
         self.assertTrue(callable(kwargs["ask"]))
         base_resolver.assert_called_once_with("release", verify=False)
 

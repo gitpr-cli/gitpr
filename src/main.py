@@ -5852,15 +5852,24 @@ def _prepare_close_issue(flags, base, may_ask):
     resolution, the forge check and the question all hang off it; without one
     the run is byte-for-byte the old flow.
 
+    GITPR_ISSUE_AUTOCLOSE is checked before the record is touched: constructing
+    the registry runs ``git rev-parse``, so a disabled feature must not even
+    build one. ``--close-issue`` does not override the switch; the use case
+    applies the same order.
+
     Returns ``(decision, registry, scm_context)``. ``registry`` is what the
     publication clearing uses afterwards; ``scm_context`` is the
     provider/repository pair resolved here for the rest of the flow to reuse,
     or ``None`` when nothing needed it.
     """
+    from src.config import get_issue_autoclose_timeout, issue_autoclose_enabled
     from src.issue_autoclose.issue_registry import IssueRegistry
     from src.issue_autoclose.resolve_close_issue import resolve_close_issue
 
     if flags.disabled:
+        return None, None, None
+
+    if not issue_autoclose_enabled():
         return None, None, None
 
     registry = IssueRegistry()
@@ -5898,6 +5907,7 @@ def _prepare_close_issue(flags, base, may_ask):
         is_tty=may_ask,
         target_branch=target_branch,
         ask=lambda question, default=True: click.confirm(question, default=default),
+        timeout=get_issue_autoclose_timeout(),
     )
     if outcome.warning:
         click.secho(outcome.warning, fg="yellow", err=True)

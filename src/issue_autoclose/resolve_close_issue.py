@@ -80,8 +80,10 @@ def resolve_close_issue(
     reaches the question, and only the question path fetches the default branch
     to warn about a merge that would not close the issue.
 
-    ``enabled`` and ``timeout`` carry ``GITPR_ISSUE_AUTOCLOSE`` and
-    ``GITPR_ISSUE_AUTOCLOSE_TIMEOUT``; the caller wires them.
+    ``timeout`` carries ``GITPR_ISSUE_AUTOCLOSE_TIMEOUT``; the PR flow reads
+    ``GITPR_ISSUE_AUTOCLOSE`` earlier and never calls this function when it is
+    false. ``enabled`` stays available to callers that own the switch
+    themselves.
     """
     flags = flags if flags is not None else CloseIssueFlags()
     if flags.disabled:
