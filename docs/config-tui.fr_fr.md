@@ -45,7 +45,7 @@ Le menu latéral reflète les commandes et les flags de la CLI, donc le réglage
 | **Pull Request** | `OUTPUT_FILE_NAME`, branche de base, auto commit/stage/merge, ignorer le linter, journal de publication, suggestion de relecteurs |
 | **Projet** | Le fichier versionné du projet : son chemin, la branche de base cible de la PR et la branche qui sera réellement utilisée (§1.8) |
 | **Révision de Code** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
-| **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
+| **Issue** | `OUTPUT_FILE_NAME_ISSUE`, `GITPR_ISSUE_AUTOCLOSE`, `GITPR_ISSUE_AUTOCLOSE_TIMEOUT` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
 | **Linter** | `OUTPUT_FILE_NAME_LINTER`, `GITPR_LINTER_TIMEOUT` |
 | **Release** | Chemin du changelog, résumé par IA, incrément automatique, brouillon par défaut, `OUTPUT_FILE_NAME_RELEASE` |
@@ -239,7 +239,7 @@ L'écran est construit à partir d'un schema déclaratif, donc ajouter un régla
 
 | Fichier | Rôle |
 | --- | --- |
-| `src/config_schema.py` | Données pures : `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 champs), plus `fields_of()`, `validate_field_value()` et les aides de recherche. Source unique de vérité pour le menu, les widgets, les valeurs par défaut, les sous-sections, la visibilité et la validation |
+| `src/config_schema.py` | Données pures : `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (85 champs), plus `fields_of()`, `validate_field_value()` et les aides de recherche. Source unique de vérité pour le menu, les widgets, les valeurs par défaut, les sous-sections, la visibilité et la validation |
 | `src/project_config.py` | Le stockage du projet : résolution du chemin, le seed, lecture/écriture YAML et le résolveur de la base de la PR (§1.8). Maintenu hors de `core.py` pour que l'écran, le serveur MCP et `--install` l'utilisent sans charger les SDK d'IA — `core.get_base_branch()` est importé dans le résolveur |
 | `src/doc_links.py` | `doc_url(filename)` — l'URL de base de la documentation et la règle du `?lang=`. Séparé de `core.py` parce que l'écran ne peut pas importer `src.core`, qui charge les SDK d'IA à chaque ouverture |
 | `src/ui/config_app.py` | `ConfigApp` plus les modales d'aide et de confirmation. Layout master-detail, dirty state, recherche, le basculement des options avancées, le filtre de visibilité, les workers de téléchargement, le panneau Skills (§1.7) et le pipeline d'enregistrement |

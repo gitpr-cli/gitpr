@@ -12,7 +12,7 @@ Chaque commande exécutée ajoute une ligne au registre, avec :
 | Champ | Description |
 |-------|-------------|
 | `timestamp` | Quand la commande s'est terminée (ISO 8601) |
-| `command` | Quelle commande a tourné (`commit`, `review`, `fullreview`, `linter`, `blame`, `hook:post-checkout`, etc.) |
+| `command` | Quelle commande a tourné (`commit`, `review`, `fullreview`, `linter`, `blame`, `hook:post-checkout`, `issue_autoclose`, etc.) |
 | `status` | Résultat (`success`, `error`, `fired`, `no_changes`) |
 | `provider` | Fournisseur d'IA qui a répondu (`gemini`, `deepseek`, `ollama`) |
 | `model` | Modèle avec lequel le fournisseur a répondu |
@@ -32,6 +32,10 @@ n'ont jamais eu de diff en main — le linter, le moteur de blame et les hooks
 enregistrent des exécutions sans diff, et la section des modules les
 additionne sous `(sans module)` au lieu de les faire passer pour un module
 qui ne porte aucun nom.
+
+Les lignes de l'événement `issue_autoclose` portent aussi `asked`, `accepted`
+et `skipped_reason`, stockés dans le payload de la ligne — ils apparaissent
+dans l'export JSON, mais ne sont pas des colonnes du CSV.
 
 ## 📁 Où les Données Sont Stockées
 

@@ -226,6 +226,20 @@ HELP_MAP: dict[str, dict[str, str]] = {
             "Modifier for --issue (-is): uses the entire history of the current branch (git log + previous PRs cache) as context to generate the issue. Ideal for documenting epics, releases, and large features with multiple commits over days."
         ),
     },
+    "close_issue": {
+        "url": get_doc_url("issue-tui-help.md"),
+        "title": __("Automatic Issue Closure (--close-issue)"),
+        "description": __(
+            "Adds the closing line (close #N) for the issue recorded by gitpr -is to the Pull Request description without asking. The issue is still checked on the forge before the line is added; a closed or deleted issue is ignored."
+        ),
+    },
+    "no_close_issue": {
+        "url": get_doc_url("issue-tui-help.md"),
+        "title": __("Skip the Automatic Issue Closure (--no-close-issue)"),
+        "description": __(
+            "Skips the automatic issue closure for this run: no local record is read and no forge call is made. The record is kept for a later run."
+        ),
+    },
     "provider": {
         "url": get_doc_url("providers-ia.md"),
         "title": __("AI Provider Selection (--provider)"),

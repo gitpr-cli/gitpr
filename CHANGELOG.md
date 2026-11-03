@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### ✨ Features
+- automatic issue closure: after `gitpr -is` creates a GitHub issue, the next pull request offers to add `close #N` to the description (`--close-issue`, `--no-close-issue`, `GITPR_ISSUE_AUTOCLOSE`, `GITPR_ISSUE_AUTOCLOSE_TIMEOUT`); the record lives in `.gitpr/conf/github.yml`
+
 ## [1.4.4] - 2026-10-29
 
 ### Summary
