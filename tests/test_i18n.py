@@ -69,6 +69,7 @@ ALLOWED_IDENTITY_TERMS = {
     "Release",
     "Skills",
     "Spinner",
+    "Smart Excludes",
     "Split",
     # Language-specific cognates (identical in English and that language)
     "Downloads",

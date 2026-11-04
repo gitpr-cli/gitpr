@@ -427,6 +427,15 @@ class TestCategoryHelpers(unittest.TestCase):
         test_config_app.py — so a new section is free to land anywhere above."""
         self.assertEqual(CATEGORY_ORDER[-1], "advanced")
 
+    def test_smart_excludes_category_replaces_diff(self):
+        self.assertIn("smart_excludes", CATEGORY_ORDER)
+        self.assertNotIn("diff", CATEGORY_ORDER)
+        keys = [f.key for f in fields_of("smart_excludes", include_advanced=True)]
+        self.assertIn("GITPR_SKIP_SMART_EXCLUDES", keys)
+        self.assertIn("GITPR_SMART_EXCLUDES_GLOBAL", keys)
+        self.assertIn("GITPR_SMART_EXCLUDES_LOCAL", keys)
+        self.assertIn("SMART_EXCLUDES_VERSION", keys)
+
 
 class TestProjectSection(unittest.TestCase):
     """The Project category is the only one backed by the repository file."""

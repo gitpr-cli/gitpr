@@ -239,9 +239,9 @@ CATEGORIES = (
         doc="scm-multiforge.md",
     ),
     Category(
-        "diff",
-        __("Diff Filters"),
-        __("Paths excluded from every diff sent to the AI."),
+        "smart_excludes",
+        __("Smart Excludes"),
+        __("Paths excluded from every diff sent to the AI, and project exclusion rules."),
         doc="smart-excludes.md",
     ),
     Category(
@@ -1079,14 +1079,14 @@ FIELDS = (
         group="azure_devops",
         show_if=(("GITPR_SCM_PROVIDER", ("azure_devops",)),),
     ),
-    # ----------------------------------------------------------- Diff filters
+    # ----------------------------------------------------------- Smart excludes
     ConfigField(
         key="GITPR_SKIP_SMART_EXCLUDES",
         label=__("Disable Diff Filters"),
         description=__(
             "Sends every changed file to the AI, including the ones the smart filters would drop."
         ),
-        category="diff",
+        category="smart_excludes",
         kind=KIND_BOOL,
         default="",
     ),
@@ -1096,7 +1096,7 @@ FIELDS = (
         description=__(
             "Path of a custom filter list used by every project. Leave it empty to use the downloaded list."
         ),
-        category="diff",
+        category="smart_excludes",
         kind=KIND_PATH,
         default="",
     ),
@@ -1106,9 +1106,22 @@ FIELDS = (
         description=__(
             "Path of a filter list that only applies to the current project."
         ),
-        category="diff",
+        category="smart_excludes",
         kind=KIND_PATH,
         default="",
+    ),
+    ConfigField(
+        key="SMART_EXCLUDES_VERSION",
+        label=__("Filters List Version"),
+        description=__(
+            "Version of the downloaded filter list. Managed automatically."
+        ),
+        category="smart_excludes",
+        kind=KIND_VERSION,
+        default="",
+        read_only=True,
+        version_source=VERSION_LANG,
+        action=ACTION_DOWNLOAD,
     ),
     # ------------------------------------------------------------------ Skills
     # A read-only sentinel, and the only row of the section: the skills
@@ -1223,21 +1236,6 @@ FIELDS = (
         label=__("Translation Pack Version"),
         description=__(
             "Version of the downloaded translation file. Managed automatically."
-        ),
-        category="advanced",
-        kind=KIND_VERSION,
-        default="",
-        advanced=True,
-        read_only=True,
-        group="downloads",
-        version_source=VERSION_LANG,
-        action=ACTION_DOWNLOAD,
-    ),
-    ConfigField(
-        key="SMART_EXCLUDES_VERSION",
-        label=__("Filters List Version"),
-        description=__(
-            "Version of the downloaded filter list. Managed automatically."
         ),
         category="advanced",
         kind=KIND_VERSION,

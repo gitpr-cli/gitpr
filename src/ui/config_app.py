@@ -57,6 +57,16 @@ from src.config import (
     validate_ai_key,
     write_skill_file,
 )
+from src.core import (
+    _seed_local_smart_excludes,
+    get_global_docs_smart_excludes_path,
+    get_global_smart_excludes_path,
+    get_project_smart_excludes_path,
+    load_global_core_excludes_text,
+    load_global_docs_excludes_text,
+    load_raw_project_excludes_text,
+    save_project_excludes_text,
+)
 from src.config_schema import (
     ACTION_DOWNLOAD,
     ACTION_DOWNLOAD_WORDS,
@@ -129,7 +139,20 @@ _SKILL_EDITOR_ID = "skill_editor"
 _SKILL_ABSENT_NOTE_ID = "skill_absent_note"
 _SKILL_ACTIONS_ID = "skill_actions"
 _SKILL_DOWNLOAD_ID = "skill_download"
+_SKILL_DOWNLOAD_ID = "skill_download"
 _SKILL_STATUS_ID = "skill_status"
+
+# --- Smart Excludes section.
+_EXCLUDE_ITEM_PREFIX = "excludeitem_"
+_EXCLUDES_LIST_ID = "excludes_list"
+_EXCLUDES_PANE_ID = "excludes_pane"
+_EXCLUDES_EDITOR_ID = "excludes_editor"
+_EXCLUDES_NOTE_ID = "excludes_note"
+_EXCLUDES_ACTIONS_ID = "excludes_actions"
+_EXCLUDES_CREATE_ID = "excludes_create"
+_EXCLUDES_STATUS_ID = "excludes_status"
+
+EXCLUDE_SOURCES = ("project", "core", "docs")
 
 # The states config.skill_file_status() distinguishes, and what each one means
 # for the pane:
@@ -678,6 +701,13 @@ class ConfigApp(App):
     #skill_editor { height: 14; border: solid $panel; }
     #skill_absent_note { color: $text-muted; }
     #skill_actions { height: auto; margin-top: 1; }
+    #excludes_pane { height: auto; }
+    #excludes_list { height: auto; max-height: 6; border: solid $panel; }
+    #exclude_editor_box { height: auto; margin-top: 1; }
+    #exclude_editor_title { text-style: bold; }
+    #exclude_editor { height: 14; border: solid $panel; }
+    #exclude_note { color: $text-muted; }
+    #exclude_actions { height: auto; margin-top: 1; }
     """
 
     BINDINGS = [
@@ -729,6 +759,12 @@ class ConfigApp(App):
         # Changed message arriving later is attributed to the right skill.
         self.selected_skill = None
         self._load_skills()
+        # --- Smart Excludes.
+        self.exclude_files = {}
+        self.exclude_pending = {}
+        self.selected_exclude = None
+        self.project_excludes_exists = False
+        self._load_excludes()
         # --- Project file. A second store, versioned with the repository:
         # these values never reach save_config_values(). The file is seeded on
         # open so the Project section always has something to show and edit;
@@ -794,6 +830,30 @@ class ConfigApp(App):
                             yield Static(
                                 "", id=_SKILL_STATUS_ID, classes="action-status"
                             )
+                with Vertical(id=_EXCLUDES_PANE_ID):
+                    yield ListView(
+                        *[
+                            ListItem(
+                                Static(self._exclude_item_text(src)),
+                                id=f"{_EXCLUDE_ITEM_PREFIX}{src}",
+                            )
+                            for src in EXCLUDE_SOURCES
+                        ],
+                        id=_EXCLUDES_LIST_ID,
+                    )
+                    with Vertical(id="exclude_editor_box"):
+                        yield Static("", id="exclude_editor_title")
+                        yield TextArea("", id=_EXCLUDES_EDITOR_ID)
+                        yield Static("", id=_EXCLUDES_NOTE_ID)
+                        with Horizontal(id=_EXCLUDES_ACTIONS_ID):
+                            yield Button(
+                                __("Create project exclusions file"),
+                                compact=True,
+                                id=_EXCLUDES_CREATE_ID,
+                            )
+                            yield Static(
+                                "", id=_EXCLUDES_STATUS_ID, classes="action-status"
+                            )
         yield Footer()
 
     def on_mount(self) -> None:
@@ -809,6 +869,8 @@ class ConfigApp(App):
         # never blank if that message does not fire.
         self.query_one(f"#{_SKILLS_LIST_ID}", ListView).index = 0
         self._select_skill(SKILL_TYPES[0])
+        self.query_one(f"#{_EXCLUDES_LIST_ID}", ListView).index = 0
+        self._select_exclude(EXCLUDE_SOURCES[0])
 
     def _mount_rows(self):
         """Mounts every row once; switching view only toggles visibility.
@@ -969,6 +1031,11 @@ class ConfigApp(App):
             if skill_type in SKILL_FILES_BY_TYPE:
                 self._select_skill(skill_type)
             return
+        if event.list_view.id == _EXCLUDES_LIST_ID:
+            src = (event.item.id or "")[len(_EXCLUDE_ITEM_PREFIX) :] if event.item else ""
+            if src in EXCLUDE_SOURCES:
+                self._select_exclude(src)
+            return
         self._render_view()
 
     # ------------------------------------------------------------- rendering
@@ -1078,6 +1145,9 @@ class ConfigApp(App):
         self.query_one(f"#{_SKILL_PANE_ID}", Vertical).display = (
             not term and self.selected_category() == "skills"
         )
+        self.query_one(f"#{_EXCLUDES_PANE_ID}", Vertical).display = (
+            not term and self.selected_category() == "smart_excludes"
+        )
 
         # A gate can hide the row the user is on, and Textual keeps the focus
         # on a widget set to display=False — so without this the user would
@@ -1150,7 +1220,11 @@ class ConfigApp(App):
         self._update_dirty_indicator()
 
     def _update_dirty_indicator(self):
-        count = len(self.dirty_fields()) + len(self.dirty_skills())
+        count = (
+            len(self.dirty_fields())
+            + len(self.dirty_skills())
+            + (1 if self.dirty_excludes() else 0)
+        )
         indicator = self.query_one("#dirty_indicator", Static)
         if count:
             indicator.update(__("● {count} unsaved change(s)", count=count))
@@ -1286,6 +1360,109 @@ class ConfigApp(App):
             skill_type for skill_type in SKILL_TYPES if skill_type in self.skill_pending
         ]
 
+    def dirty_excludes(self):
+        """Returns True if project exclusions text has unsaved edits."""
+        if "project" not in self.exclude_pending:
+            return False
+        return self.exclude_pending["project"] != self.exclude_files.get("project", "")
+
+    def _load_excludes(self):
+        """Reads project, global core and global docs exclusions."""
+        self.project_excludes_exists, project_text = load_raw_project_excludes_text()
+        self.exclude_files["project"] = project_text
+        self.exclude_files["core"] = load_global_core_excludes_text()
+        self.exclude_files["docs"] = load_global_docs_excludes_text()
+
+    def _exclude_item_text(self, src):
+        notes = []
+        if src == "project":
+            if self.dirty_excludes():
+                notes.append(__("● edited"))
+            if not self.project_excludes_exists:
+                notes.append(__("not created"))
+            label = __("Project Exclusions")
+        elif src == "core":
+            notes.append(__("read only"))
+            label = __("Global Core Exclusions")
+        else:
+            notes.append(__("read only"))
+            label = __("Global Docs Exclusions")
+
+        content = self.exclude_pending.get(src, self.exclude_files.get(src, ""))
+        lines = [l for l in content.splitlines() if l.strip() and not l.strip().startswith("#")]
+        count_str = f"({len(lines)} patterns)"
+        notes_str = f"   {'   '.join(notes)}" if notes else ""
+        return f"{label}   {count_str}{notes_str}"
+
+    def _exclude_title(self, src):
+        if src == "project":
+            path = get_project_smart_excludes_path()
+            return f"{path.name} ({path.parent})"
+        elif src == "core":
+            path = get_global_smart_excludes_path()
+            return f"{path.name} ({__('read only')})"
+        else:
+            path = get_global_docs_smart_excludes_path()
+            return f"{path.name} ({__('read only')})"
+
+    def _refresh_exclude_item(self, src):
+        item = self.query_one(f"#{_EXCLUDE_ITEM_PREFIX}{src}", ListItem)
+        item.query_one(Static).update(self._exclude_item_text(src))
+
+    def _refresh_exclude_list(self):
+        for src in EXCLUDE_SOURCES:
+            self._refresh_exclude_item(src)
+
+    def _apply_exclude_controls(self, src):
+        editor = self.query_one(f"#{_EXCLUDES_EDITOR_ID}", TextArea)
+        note = self.query_one(f"#{_EXCLUDES_NOTE_ID}", Static)
+        actions = self.query_one(f"#{_EXCLUDES_ACTIONS_ID}", Horizontal)
+        title = self.query_one("#exclude_editor_title", Static)
+        title.update(self._exclude_title(src))
+
+        if src == "project":
+            if not self.project_excludes_exists:
+                editor.display = False
+                editor.read_only = True
+                note.display = True
+                note.update(__("No project-specific exclusions file found. Click below to create one."))
+                actions.display = True
+            else:
+                editor.display = True
+                editor.read_only = False
+                note.display = True
+                note.update(__("One glob pattern per line (e.g. *.pyc, dist/). Press F2 to save."))
+                actions.display = False
+        else:
+            editor.display = True
+            editor.read_only = True
+            note.display = True
+            note.update(__("Global exclusions list (read-only). Download updates using the button above."))
+            actions.display = False
+
+    def _select_exclude(self, src):
+        self.selected_exclude = src
+        self._apply_exclude_controls(src)
+        editor = self.query_one(f"#{_EXCLUDES_EDITOR_ID}", TextArea)
+        text = self.exclude_pending.get(src, self.exclude_files.get(src, ""))
+        editor.load_text(text)
+
+    def _focused_exclude(self):
+        focused = self.focused
+        while focused is not None:
+            if getattr(focused, "id", None) == _EXCLUDES_PANE_ID:
+                return self.selected_exclude
+            focused = getattr(focused, "parent", None)
+        return None
+
+    def _revert_exclude(self, src):
+        if src == "project" and self.dirty_excludes():
+            self.exclude_pending.pop("project", None)
+            text = self.exclude_files.get("project", "")
+            self.query_one(f"#{_EXCLUDES_EDITOR_ID}", TextArea).load_text(text)
+            self._refresh_exclude_item("project")
+            self._update_dirty_indicator()
+
     def on_text_area_changed(self, event: TextArea.Changed) -> None:
         """Tracks an edit by comparing with the file, not with a load flag.
 
@@ -1295,6 +1472,15 @@ class ConfigApp(App):
         this runs. Comparing against the text on disk is idempotent and
         order-independent: it states what is true whenever it happens to land.
         """
+        if event.text_area.id == _EXCLUDES_EDITOR_ID:
+            if self.selected_exclude == "project" and self.project_excludes_exists:
+                if event.text_area.text == self.exclude_files.get("project", ""):
+                    self.exclude_pending.pop("project", None)
+                else:
+                    self.exclude_pending["project"] = event.text_area.text
+                self._update_dirty_indicator()
+                self._refresh_exclude_item("project")
+            return
         if event.text_area.id != _SKILL_EDITOR_ID:
             return
         skill_type = self.selected_skill
@@ -1474,6 +1660,13 @@ class ConfigApp(App):
         if widget_id == _SKILL_DOWNLOAD_ID:
             self._start_skill_download()
             return
+        if widget_id == _EXCLUDES_CREATE_ID:
+            _seed_local_smart_excludes()
+            self._load_excludes()
+            self._refresh_exclude_list()
+            self._select_exclude("project")
+            self.notify(__("Project exclusions file created."))
+            return
         if not widget_id.startswith(_ACTION_PREFIX):
             return
         field = FIELDS_BY_KEY.get(widget_id[len(_ACTION_PREFIX) :])
@@ -1608,6 +1801,10 @@ class ConfigApp(App):
         if skill_type is not None:
             self._revert_skill(skill_type)
             return
+        exclude_src = self._focused_exclude()
+        if exclude_src is not None:
+            self._revert_exclude(exclude_src)
+            return
         field = self._focused_field()
         if field is None:
             return
@@ -1643,7 +1840,7 @@ class ConfigApp(App):
     def action_quit(self) -> None:
         # A pending skill edit is as unsaved as an .env one, so it opens the
         # same confirmation rather than leaving silently.
-        if self.dirty_fields() or self.dirty_skills():
+        if self.dirty_fields() or self.dirty_skills() or self.dirty_excludes():
             self.push_screen(ConfirmDiscardScreen(), self._after_discard_confirmation)
             return
         self.exit()
@@ -1677,6 +1874,7 @@ class ConfigApp(App):
             or plan["project"]
             or plan["project_removals"]
             or plan["skills"]
+            or plan["excludes"] is not None
         ):
             self.notify(__("Nothing to save."), severity="information")
             return
@@ -1710,6 +1908,7 @@ class ConfigApp(App):
                 skill_type: self.skill_pending[skill_type]
                 for skill_type in self.dirty_skills()
             },
+            "excludes": self.exclude_pending.get("project") if self.dirty_excludes() else None,
         }
 
         for field in FIELDS:
@@ -1922,7 +2121,22 @@ class ConfigApp(App):
         for message in list(warnings) + project_warnings:
             self.notify(message, severity="warning")
 
-        self._after_save(plan, values, self._write_skills(plan["skills"]))
+        saved_excludes = False
+        if plan["excludes"] is not None:
+            try:
+                save_project_excludes_text(plan["excludes"])
+                self.exclude_files["project"] = plan["excludes"]
+                self.exclude_pending.pop("project", None)
+                self.project_excludes_exists = True
+                self._load_excludes()
+                self._refresh_exclude_list()
+                if self.selected_exclude == "project":
+                    self._select_exclude("project")
+                saved_excludes = True
+            except Exception as exc:
+                self.notify(__("Could not save project exclusions: {error}", error=str(exc)), severity="error")
+
+        self._after_save(plan, values, self._write_skills(plan["skills"]), written_excludes=saved_excludes)
 
     def _project_save_warnings(self, project_values):
         """Warns — without blocking — when the saved branch is not on origin.
@@ -1963,7 +2177,7 @@ class ConfigApp(App):
             written.append(skill_type)
         return written
 
-    def _after_save(self, plan, values, written_skills=()):
+    def _after_save(self, plan, values, written_skills=(), written_excludes=False):
         from dotenv import load_dotenv
 
         # override=True on purpose: the user just edited the file, so the
@@ -2016,7 +2230,8 @@ class ConfigApp(App):
                 + len(plan["removals"])
                 + len(plan["project"])
                 + len(plan["project_removals"])
-                + len(written_skills),
+                + len(written_skills)
+                + (1 if written_excludes else 0),
             ),
             severity="information",
         )

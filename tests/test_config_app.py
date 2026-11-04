@@ -5,7 +5,9 @@ whole path — widget, pending state, validation, write — instead of asserting
 that methods were called.
 """
 import asyncio
+import json
 import os
+from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -1616,7 +1618,7 @@ class TestDocumentationLink(SectionedAppTestCase):
         "linter": "linter-regras-customizadas",
         "release": "release-notes",
         "scm": "scm-multiforge",
-        "diff": "smart-excludes",
+        "smart_excludes": "smart-excludes",
         "skills": "skill-template",
         "advanced": "version-markers",
     }
@@ -1925,5 +1927,117 @@ class TestProjectSection(SectionedAppTestCase):
         run(scenario())
 
 
+
+class TestSmartExcludesSection(SectionedAppTestCase):
+    """Item 10: Smart Excludes section with source selector and pattern editor."""
+
+    def setUp(self):
+        super().setUp()
+        self.project_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.project_dir.cleanup)
+        self.conf_dir = os.path.join(self.project_dir.name, ".gitpr", "conf")
+        self.local_file = os.path.join(self.conf_dir, "gitpr.smart-excludes.json")
+
+    def test_sidebar_lists_smart_excludes_section(self):
+        async def scenario():
+            with patch("src.core.Path.cwd", return_value=Path(self.project_dir.name)):
+                app = self.make_app()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    self.assertIn("cat_smart_excludes", sidebar_ids(app))
+                    self.assertFalse(app.query_one("#excludes_pane").display)
+                    self.goto(app, "smart_excludes")
+                    await pilot.pause()
+                    self.assertEqual(app.selected_category(), "smart_excludes")
+                    self.assertTrue(app.query_one("#excludes_pane").display)
+
+        run(scenario())
+
+    def test_the_three_sources_are_listed(self):
+        async def scenario():
+            with patch("src.core.Path.cwd", return_value=Path(self.project_dir.name)):
+                app = self.make_app()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    self.goto(app, "smart_excludes")
+                    await pilot.pause()
+                    ids = [item.id for item in app.query("#excludes_list ListItem")]
+                    self.assertEqual(
+                        ids,
+                        [
+                            "excludeitem_project",
+                            "excludeitem_core",
+                            "excludeitem_docs",
+                        ],
+                    )
+
+        run(scenario())
+
+    def test_switching_sources_changes_editor_read_only(self):
+        async def scenario():
+            with patch("src.core.Path.cwd", return_value=Path(self.project_dir.name)):
+                app = self.make_app()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    self.goto(app, "smart_excludes")
+                    await pilot.pause()
+
+                    # Core source: read-only
+                    app.query_one("#excludes_list", ListView).index = 1
+                    await pilot.pause()
+                    editor = app.query_one("#excludes_editor", TextArea)
+                    self.assertTrue(editor.read_only)
+                    self.assertTrue(editor.text)  # has fallback patterns
+
+                    # Docs source: read-only
+                    app.query_one("#excludes_list", ListView).index = 2
+                    await pilot.pause()
+                    editor = app.query_one("#excludes_editor", TextArea)
+                    self.assertTrue(editor.read_only)
+                    self.assertTrue(editor.text)
+
+        run(scenario())
+
+    def test_project_file_creation_and_saving_with_f2(self):
+        async def scenario():
+            with patch("src.core.Path.cwd", return_value=Path(self.project_dir.name)):
+                app = self.make_app()
+                async with app.run_test() as pilot:
+                    await pilot.pause()
+                    self.goto(app, "smart_excludes")
+                    await pilot.pause()
+
+                    # Absent project file shows creation button
+                    self.assertFalse(os.path.exists(self.local_file))
+                    btn = app.query_one("#excludes_create", Button)
+                    self.assertTrue(btn.display)
+
+                    # Click create button
+                    btn.press()
+                    await pilot.pause()
+                    self.assertTrue(os.path.exists(self.local_file))
+                    editor = app.query_one("#excludes_editor", TextArea)
+                    self.assertTrue(editor.display)
+                    self.assertFalse(editor.read_only)
+
+                    # Edit patterns
+                    editor.load_text("*.log\ntemp/\n# comment\n")
+                    await pilot.pause()
+                    self.assertTrue(app.dirty_excludes())
+
+                    # Save with F2
+                    app.action_save()
+                    await pilot.pause()
+                    self.assertFalse(app.dirty_excludes())
+
+                    # Check JSON file content
+                    with open(self.local_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    self.assertEqual(data.get("excludes"), ["*.log", "temp/"])
+
+        run(scenario())
+
+
 if __name__ == "__main__":
+
     unittest.main()
