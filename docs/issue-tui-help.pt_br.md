@@ -138,6 +138,8 @@ Na próxima execução do `gitpr` — o fluxo do Pull Request — o GitPR verifi
 - **O registro sobrevive a falhas.** Ele só é limpo depois que o Pull Request é publicado; uma publicação que falha ou é cancelada mantém o registro para a próxima execução.
 - **O registro se limpa sozinho.** Uma issue fechada ou excluída é esquecida; um registro de outro repositório é ignorado e mantido; um número que na verdade é um pull request também é esquecido.
 
+Para a ordem das decisões, o formato do registro e os modos de falha, consulte [issue-autoclose.md](issue-autoclose.md).
+
 > **Dica:** Rode `gitpr -h --close-issue` para o mesmo resumo direto no terminal.
 
 ---

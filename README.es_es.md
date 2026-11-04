@@ -172,7 +172,7 @@ Puedes pasar las siguientes *flags* para acciones específicas:
   * **Issue de Código Nuevo (`gitpr -is`):** Lee el `git diff` actual. **Por qué usar:** Ideal para documentar rápidamente la tarea que acabas de programar, antes de hacer commit.
   * **Issue de Épico/Release (`gitpr -is -ht`):** Lee el historial completo de la rama actual (Git Log + Caché de PR). **Por qué usar:** Ideal para generar documentación consolidada de un release completo o de una *feature* grande que llevó varios días/commits completar.
   * **Issue de Deuda Técnica/Arqueológica (`gitpr -is -b archivo:líneas`):** Lee la línea de tiempo de una regla de negocio específica. **Por qué usar:** Ideal para documentar deuda técnica, explicando cómo un bloque de código legacy evolucionó y por qué necesita ser refactorizado.
-* `--close-issue` / `--no-close-issue`: Controlan el **cierre automático de la issue**. Después de que `gitpr -is` cree una issue en GitHub, la siguiente ejecución de `gitpr` ofrece añadir `close #N` a la descripción del Pull Request — el registro se guarda en `.gitpr/conf/github.yml`, que GitPR añade a `.gitignore` automáticamente. `--close-issue` acepta sin preguntar, `--no-close-issue` omite la comprobación en esa ejecución y `GITPR_ISSUE_AUTOCLOSE=false` desactiva la funcionalidad. 📖 [Documentación completa](https://gitpr.natanfiuza.dev.br/docs/issue-tui-help?lang=es)
+* `--close-issue` / `--no-close-issue`: Controlan el **cierre automático de la issue**. Después de que `gitpr -is` cree una issue en GitHub, la siguiente ejecución de `gitpr` ofrece añadir `close #N` a la descripción del Pull Request — el registro se guarda en `.gitpr/conf/github.yml`, que GitPR añade a `.gitignore` automáticamente. `--close-issue` acepta sin preguntar, `--no-close-issue` omite la comprobación en esa ejecución y `GITPR_ISSUE_AUTOCLOSE=false` desactiva la funcionalidad. 📖 [Documentación completa](https://gitpr.natanfiuza.dev.br/docs/issue-autoclose?lang=es)
 * **Publicador de PR (predeterminado):** Ejecutar `gitpr` genera la descripción del PR con IA, guarda el archivo `.md` en `.gitpr/reports/pr_desc/` y abre una interfaz interactiva en el terminal (TUI) para revisar, editar y publicar el Pull Request directamente en GitHub, GitLab, Bitbucket o Azure DevOps vía REST API. Antes de la generación, detecta archivos sin commitear (*unstaged*), calcula revisores sugeridos y ofrece un modal para gestionarlos. Usa `--no-publish` para guardar solo el archivo del PR localmente sin abrir el publicador, o `--no-edit` para hacer auto-commit de los cambios pendientes (con validación de lint), auto-push y publicar inmediatamente — con manejo de actualizaciones de PR existentes, auto-merge opcional y retroalimentación clara de error cuando ocurren conflictos de merge. Usa `--base <branch>` para cambiar la rama de destino. 📖 [Documentación completa](https://gitpr.natanfiuza.dev.br/docs/pull-request-publication?lang=es)
 * `-h` o `--help`: Muestra la ayuda general con todas las opciones. Úsalo junto con otra flag para **ayuda contextual** (ej.: `gitpr -h --issue`, `gitpr -h --linter`) con un enlace directo a la documentación detallada de cada funcionalidad.
 * `-u` o `--update`: Comprueba en PyPI la versión más reciente de GitPR y muestra cómo actualizarla (Auto-Updater).
@@ -317,6 +317,23 @@ Para tu propio README hay una insignia estática. `gitpr badge --readme` imprime
 [![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
 
 📖 **Documentación completa:** [gitpr.natanfiuza.dev.br/docs/badge](https://gitpr.natanfiuza.dev.br/docs/badge?lang=es)
+
+## 🔗 Cierre Automático de la Issue (--close-issue)
+
+`gitpr -is` crea una issue, y el Pull Request es donde se cierra. Esta funcionalidad lleva el número de un punto al otro: cuando `F3` crea la issue en GitHub, GitPR la registra en `.gitpr/conf/github.yml` (añadido a `.gitignore` automáticamente) — una issue a la vez, la última gana.
+
+En la siguiente ejecución de `gitpr`, antes de generar la descripción, GitPR comprueba la issue registrada en GitHub. Mientras siga abierta, ofrece añadir `close #N` al cuerpo del Pull Request; la línea pasa a ser un párrafo propio al final y nunca se duplica. El merge del Pull Request cierra entonces la issue automáticamente.
+
+| Flag / configuración | Efecto |
+|---|---|
+| `--close-issue` | Añade la línea sin preguntar (la issue se sigue comprobando) |
+| `--no-close-issue` | Omite la comprobación en esta ejecución — no se lee ningún registro ni se hace ninguna llamada al forge |
+| `GITPR_ISSUE_AUTOCLOSE=false` | Desactiva la funcionalidad en todas las ejecuciones; `--close-issue` no la reactiva |
+| `GITPR_ISSUE_AUTOCLOSE_TIMEOUT` | Segundos de espera del forge al comprobar la issue (predeterminado `5`) |
+
+Solo GitHub; los otros forges omiten la funcionalidad en silencio. Una ejecución sin terminal no pregunta — usa `--close-issue` para participar. El registro sobrevive a una publicación fallida o cancelada y solo se borra después de que el cuerpo llegue al forge; una issue cerrada, eliminada o un número de pull request se olvidan solos, y un registro de otro repositorio se ignora y se conserva.
+
+📖 **Documentación completa:** [gitpr.natanfiuza.dev.br/docs/issue-autoclose](https://gitpr.natanfiuza.dev.br/docs/issue-autoclose?lang=es)
 
 ## 🧠 Arquitectura Multi-Modelo (IA Agnóstica)
 
@@ -541,6 +558,7 @@ Si deseas implementar GitPR como una barrera de calidad automatizada en tu equip
 * [**Revisión de Pull Request Remoto (gitpr review-pr)**](https://gitpr.natanfiuza.dev.br/docs/review-pr?lang=es) — Cómo el subcomando `gitpr review-pr` revisa un pull request ya abierto en la forge, obteniendo su diff por la API sin hacer checkout de su rama.
 * [**Mensajes de Commit con IA**](https://gitpr.natanfiuza.dev.br/docs/commit-message-ia?lang=es) — Cómo generar mensajes en el estándar Conventional Commits e integrar con Git Hooks.
 * [**Generación de Issues e Interfaz TUI**](https://gitpr.natanfiuza.dev.br/docs/issue-tui-help?lang=es) — Cómo usar la interfaz gráfica de terminal (TUI) y los 3 motores de contexto para gestionar Issues estructuradas.
+* [**Cierre Automático de la Issue (--close-issue)**](https://gitpr.natanfiuza.dev.br/docs/issue-autoclose?lang=es) — Cómo se registra en `.gitpr/conf/github.yml` la issue creada por `gitpr -is`, el orden de las compuertas que decide cuándo el siguiente Pull Request ofrece `close #N`, por qué el registro sobrevive a una publicación fallida y cómo se evita duplicar la línea.
 * [**Arqueólogo de Código (Git Blame)**](https://gitpr.natanfiuza.dev.br/docs/blame-arqueologo?lang=es) — Cómo rastrear el origen de reglas de negocio con `git blame` e IA.
 * [**Sistema de Skills y Plantillas**](https://gitpr.natanfiuza.dev.br/docs/skill-template?lang=es) — Cómo personalizar el comportamiento de la IA con archivos `.gitpr.*.md`.
 * [**Notas de la Versión y Changelog (gitpr release)**](https://gitpr.natanfiuza.dev.br/docs/release-notes?lang=es) — Cómo el subcomando `gitpr release` genera el changelog / las notas de la versión de un repositorio, sugiere la próxima versión semántica y publica releases en la forge.

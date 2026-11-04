@@ -138,6 +138,8 @@ Lorsque l'issue est créée sur GitHub avec `F3`, GitPR l'enregistre dans le fic
 - **L'enregistrement survit à un échec.** Il n'est effacé qu'après la publication de la Pull Request ; une publication échouée ou annulée le conserve pour l'exécution suivante.
 - **L'enregistrement se nettoie tout seul.** Une issue fermée ou supprimée est oubliée ; un enregistrement d'un autre dépôt est ignoré et conservé ; un numéro qui est en réalité une pull request est oublié aussi.
 
+Pour l'ordre des décisions, le format de l'enregistrement et les modes de défaillance, voir [issue-autoclose.md](issue-autoclose.md).
+
 > **Conseil :** Exécutez `gitpr -h --close-issue` pour obtenir ce même résumé directement dans le terminal.
 
 ---

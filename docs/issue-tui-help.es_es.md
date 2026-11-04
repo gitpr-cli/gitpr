@@ -138,6 +138,8 @@ En la siguiente ejecución de `gitpr` — el flujo del Pull Request — GitPR co
 - **El registro sobrevive a los fallos.** Solo se borra después de publicar el Pull Request; una publicación que falla o se cancela conserva el registro para la siguiente ejecución.
 - **El registro se limpia solo.** Una issue cerrada o eliminada se olvida; un registro de otro repositorio se ignora y se conserva; un número que en realidad es un pull request también se olvida.
 
+Para el orden de las decisiones, el formato del registro y los modos de fallo, consulte [issue-autoclose.md](issue-autoclose.md).
+
 > **Consejo:** Ejecuta `gitpr -h --close-issue` para ver este mismo resumen directamente en el terminal.
 
 ---
