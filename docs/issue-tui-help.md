@@ -120,6 +120,26 @@ The first time you use `F3`, GitPR will:
 - The master decryption key is located at `~/.gitpr/secret.key`
 - See the complete guide at [github-pat-integration.md](github-pat-integration.md)
 
+### 5.3 Automatic Issue Closure with the Pull Request
+
+When the issue is created on GitHub with `F3`, GitPR records it in the repository's `.gitpr/conf/github.yml` (the file is added to `.gitignore` automatically). The record holds one issue at a time: creating a new issue replaces the previous one.
+
+On the next `gitpr` run — the Pull Request flow — GitPR checks the recorded issue on GitHub. While it is still open, it offers to add `close #N` to the Pull Request description, so merging the PR closes the issue automatically. The line is inserted once, at the end of the description, and never duplicated.
+
+| Flag / setting | Effect |
+|---|---|
+| `--close-issue` | Adds the line without asking (the issue is still checked) |
+| `--no-close-issue` | Skips the check for this run — no record is read and no forge call is made |
+| `GITPR_ISSUE_AUTOCLOSE=false` | Turns the feature off for every run; `--close-issue` does not override it |
+| `GITPR_ISSUE_AUTOCLOSE_TIMEOUT` | Seconds to wait for the forge while checking the issue (default `5`) |
+
+- **GitHub only.** Other forges skip the feature in silence.
+- **No question without a terminal.** Runs that cannot ask (for example `--no-edit`, or a pipe) skip the question; use `--close-issue` to opt in.
+- **The record survives a failure.** It is cleared only after the Pull Request is published; a failed or cancelled publish keeps it for the next run.
+- **The record cleans itself.** An issue that was closed or deleted is forgotten; a record from another repository is ignored and kept; a number that turns out to be a pull request is forgotten too.
+
+> **Tip:** Run `gitpr -h --close-issue` for the same summary directly in the terminal.
+
 ---
 
 ## 6. Practical Examples
@@ -161,5 +181,6 @@ gitpr -is -b src/legacy/parser.py:200-350
 | `.gitpr.issue.md` | Local template with custom rules for issue generation (download with `gitpr -s`) |
 | `~/.gitpr/.env` | Global configuration: API keys and encrypted GitHub token |
 | `~/.gitpr/secret.key` | Fernet master key for credential decryption |
+| `.gitpr/conf/github.yml` | Local record of the issue created with `F3`, read by the automatic closure (gitignored) |
 
 > **Note:** See also the [main documentation (README.md)](../README.md) for an overview of all GitPR features.

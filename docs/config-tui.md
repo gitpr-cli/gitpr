@@ -45,7 +45,7 @@ The sidebar mirrors the commands and flags of the CLI, so the setting you want i
 | **Pull Request** | `OUTPUT_FILE_NAME`, base branch, auto commit/stage/merge, linter skip, publish log, reviewer suggestions |
 | **Project** | The versioned project file: its path, the PR target base branch, and the branch that will actually be used (§1.8) |
 | **Code Review** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
-| **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
+| **Issue** | `OUTPUT_FILE_NAME_ISSUE`, `GITPR_ISSUE_AUTOCLOSE`, `GITPR_ISSUE_AUTOCLOSE_TIMEOUT` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
 | **Linter** | `OUTPUT_FILE_NAME_LINTER`, `GITPR_LINTER_TIMEOUT` |
 | **Release** | Changelog path, AI summary, auto bump, draft by default, `OUTPUT_FILE_NAME_RELEASE` |
@@ -239,7 +239,7 @@ The screen is built from a declarative schema, so adding a setting is a data cha
 
 | File | Role |
 | --- | --- |
-| `src/config_schema.py` | Pure data: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 fields), plus `fields_of()`, `validate_field_value()` and the lookup helpers. `ConfigField.store` names the file a value belongs to (`STORE_ENV` or `STORE_PROJECT`). Single source of truth for menu, widgets, defaults, sub-sections, visibility and validation |
+| `src/config_schema.py` | Pure data: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (85 fields), plus `fields_of()`, `validate_field_value()` and the lookup helpers. `ConfigField.store` names the file a value belongs to (`STORE_ENV` or `STORE_PROJECT`). Single source of truth for menu, widgets, defaults, sub-sections, visibility and validation |
 | `src/project_config.py` | The project store: path resolution, the seed, YAML read/write and the PR base resolver (§1.8). Kept out of `core.py` so the screen, the MCP server and `--install` can use it without loading the AI SDKs — `core.get_base_branch()` is imported inside the resolver |
 | `src/doc_links.py` | `doc_url(filename)` — the documentation base URL and the `?lang=` rule. Separate from `core.py` because the screen may not import `src.core`, which pulls the AI SDKs on every launch |
 | `src/ui/config_app.py` | `ConfigApp` plus the help and confirm modals. Master-detail layout, dirty state, search, the advanced toggle, the visibility filter, the download workers, the Skills pane (§1.7) and the save pipeline |

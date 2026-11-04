@@ -45,7 +45,7 @@ O menu lateral espelha os comandos e flags da CLI, então a configuração que v
 | **Pull Request** | `OUTPUT_FILE_NAME`, branch base, auto commit/stage/merge, pular linter, log de publicação, sugestão de revisores |
 | **Projeto** | O arquivo versionado do projeto: o caminho, a branch base de destino do PR e a branch que realmente será usada (§1.8) |
 | **Revisão de Código** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
-| **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
+| **Issue** | `OUTPUT_FILE_NAME_ISSUE`, `GITPR_ISSUE_AUTOCLOSE`, `GITPR_ISSUE_AUTOCLOSE_TIMEOUT` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
 | **Linter** | `OUTPUT_FILE_NAME_LINTER`, `GITPR_LINTER_TIMEOUT` |
 | **Release** | Caminho do changelog, resumo por IA, bump automático, rascunho por padrão, `OUTPUT_FILE_NAME_RELEASE` |
@@ -239,7 +239,7 @@ A tela é construída a partir de um schema declarativo, então adicionar uma co
 
 | Arquivo | Papel |
 | --- | --- |
-| `src/config_schema.py` | Dado puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 campos), mais `fields_of()`, `validate_field_value()` e os auxiliares de busca. `ConfigField.store` nomeia o arquivo ao qual um valor pertence (`STORE_ENV` ou `STORE_PROJECT`). Fonte única de verdade para menu, widgets, padrões, sub-seções, visibilidade e validação |
+| `src/config_schema.py` | Dado puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (85 campos), mais `fields_of()`, `validate_field_value()` e os auxiliares de busca. `ConfigField.store` nomeia o arquivo ao qual um valor pertence (`STORE_ENV` ou `STORE_PROJECT`). Fonte única de verdade para menu, widgets, padrões, sub-seções, visibilidade e validação |
 | `src/project_config.py` | O armazenamento do projeto: resolução de caminho, a semeadura, leitura/gravação YAML e o resolvedor da base do PR (§1.8). Mantido fora do `core.py` para que a tela, o servidor MCP e o `--install` o usem sem carregar os SDKs de IA — o `core.get_base_branch()` é importado dentro do resolvedor |
 | `src/doc_links.py` | `doc_url(filename)` — a URL base da documentação e a regra do `?lang=`. Separado do `core.py` porque a tela não pode importar `src.core`, que carrega os SDKs de IA a cada abertura |
 | `src/ui/config_app.py` | `ConfigApp` mais os modais de ajuda e confirmação. Layout master-detail, dirty state, busca, o toggle de avançadas, o filtro de visibilidade, os workers de download, o painel de Skills (§1.7) e o pipeline de gravação |

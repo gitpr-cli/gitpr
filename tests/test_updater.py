@@ -314,8 +314,11 @@ class TestEnforceUpdateRequired(UpdaterTestCase):
 
     def test_orders_versions_by_pep440(self):
         """1.4.10 is newer than 1.4.9 — the tuple comparison got this right too."""
-        with mock.patch("src.updater.get_latest_remote_version", return_value="1.4.10"):
-            self.assertTrue(enforce_update_required())
+        with mock.patch("src.updater.__version__", "1.4.9"):
+            with mock.patch(
+                "src.updater.get_latest_remote_version", return_value="1.4.10"
+            ):
+                self.assertTrue(enforce_update_required())
 
     def test_ignores_a_remote_prerelease_for_a_stable_install(self):
         """pip will not install a pre-release without --pre, so blocking is a dead end."""

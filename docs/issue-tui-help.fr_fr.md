@@ -120,6 +120,26 @@ La première fois que vous utilisez `F3`, GitPR va :
 - La clé maîtresse de déchiffrement reste dans `~/.gitpr/secret.key`
 - Consultez le guide complet dans [github-pat-integration.md](github-pat-integration.md)
 
+### 5.3 Fermeture Automatique de l'Issue avec la Pull Request
+
+Lorsque l'issue est créée sur GitHub avec `F3`, GitPR l'enregistre dans le fichier `.gitpr/conf/github.yml` du dépôt (le fichier est ajouté automatiquement au `.gitignore`). L'enregistrement ne contient qu'une issue à la fois : créer une nouvelle issue remplace la précédente.
+
+À l'exécution suivante de `gitpr` — le flux de Pull Request — GitPR vérifie l'issue enregistrée sur GitHub. Tant qu'elle est ouverte, il propose d'ajouter `close #N` à la description de la Pull Request, afin que le merge ferme l'issue automatiquement. La ligne est insérée une seule fois, à la fin de la description, et n'est jamais dupliquée.
+
+| Flag / configuration | Effet |
+|---|---|
+| `--close-issue` | Ajoute la ligne sans demander (l'issue est toujours vérifiée) |
+| `--no-close-issue` | Ignore la vérification pour cette exécution — aucun enregistrement n'est lu et aucun appel à la forge n'est effectué |
+| `GITPR_ISSUE_AUTOCLOSE=false` | Désactive la fonctionnalité pour toutes les exécutions ; `--close-issue` ne la réactive pas |
+| `GITPR_ISSUE_AUTOCLOSE_TIMEOUT` | Secondes d'attente de la forge lors de la vérification de l'issue (par défaut `5`) |
+
+- **GitHub uniquement.** Les autres forges ignorent silencieusement la fonctionnalité.
+- **Pas de question sans terminal.** Les exécutions qui ne peuvent pas poser de question (par exemple `--no-edit`, ou un pipe) ignorent la question ; utilisez `--close-issue` pour participer.
+- **L'enregistrement survit à un échec.** Il n'est effacé qu'après la publication de la Pull Request ; une publication échouée ou annulée le conserve pour l'exécution suivante.
+- **L'enregistrement se nettoie tout seul.** Une issue fermée ou supprimée est oubliée ; un enregistrement d'un autre dépôt est ignoré et conservé ; un numéro qui est en réalité une pull request est oublié aussi.
+
+> **Conseil :** Exécutez `gitpr -h --close-issue` pour obtenir ce même résumé directement dans le terminal.
+
 ---
 
 ## 6. Exemples pratiques
@@ -161,5 +181,6 @@ gitpr -is -b src/legacy/parser.py:200-350
 | `.gitpr.issue.md` | Template local avec règles personnalisées pour la génération d'issues (téléchargez-le avec `gitpr -s`) |
 | `~/.gitpr/.env` | Configuration globale : clés d'API et token GitHub chiffré |
 | `~/.gitpr/secret.key` | Clé maîtresse Fernet pour le déchiffrement des identifiants |
+| `.gitpr/conf/github.yml` | Enregistrement local de l'issue créée avec `F3`, lu par la fermeture automatique (dans .gitignore) |
 
 > **Note :** Consultez également la [documentation principale (README.md)](../README.md) pour un aperçu de toutes les fonctionnalités de GitPR.

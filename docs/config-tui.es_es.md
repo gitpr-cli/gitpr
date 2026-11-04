@@ -45,7 +45,7 @@ El menú lateral refleja los comandos y flags de la CLI, así que el ajuste que 
 | **Pull Request** | `OUTPUT_FILE_NAME`, branch base, auto commit/stage/merge, omitir linter, log de publicación, sugerencia de revisores |
 | **Proyecto** | El archivo versionado del proyecto: su ruta, la rama base de destino del PR y la rama que realmente se usará (§1.8) |
 | **Revisión de Código** | `OUTPUT_FILE_NAME_REVIEW`, `_FULLREVIEW`, `_FILEREVIEW` |
-| **Issue** | `OUTPUT_FILE_NAME_ISSUE` |
+| **Issue** | `OUTPUT_FILE_NAME_ISSUE`, `GITPR_ISSUE_AUTOCLOSE`, `GITPR_ISSUE_AUTOCLOSE_TIMEOUT` |
 | **Blame** | `OUTPUT_FILE_NAME_BLAME` |
 | **Linter** | `OUTPUT_FILE_NAME_LINTER`, `GITPR_LINTER_TIMEOUT` |
 | **Release** | Ruta del changelog, resumen por IA, bump automático, borrador por defecto, `OUTPUT_FILE_NAME_RELEASE` |
@@ -239,7 +239,7 @@ La pantalla se construye a partir de un schema declarativo, así que añadir un 
 
 | Archivo | Papel |
 | --- | --- |
-| `src/config_schema.py` | Dato puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (83 campos), más `fields_of()`, `validate_field_value()` y los auxiliares de búsqueda. `ConfigField.store` nombra el archivo al que pertenece un valor (`STORE_ENV` o `STORE_PROJECT`). Fuente única de verdad para menú, widgets, valores por defecto, subsecciones, visibilidad y validación |
+| `src/config_schema.py` | Dato puro: `ConfigField`, `Category`, `Group`, `CATEGORIES`, `GROUPS`, `FIELDS` (85 campos), más `fields_of()`, `validate_field_value()` y los auxiliares de búsqueda. `ConfigField.store` nombra el archivo al que pertenece un valor (`STORE_ENV` o `STORE_PROJECT`). Fuente única de verdad para menú, widgets, valores por defecto, subsecciones, visibilidad y validación |
 | `src/project_config.py` | El almacén del proyecto: resolución de ruta, la siembra, lectura/escritura YAML y el resolutor de la base del PR (§1.8). Se mantiene fuera de `core.py` para que la pantalla, el servidor MCP y `--install` lo usen sin cargar los SDK de IA — `core.get_base_branch()` se importa dentro del resolutor |
 | `src/doc_links.py` | `doc_url(filename)` — la URL base de la documentación y la regla de `?lang=`. Separado de `core.py` porque la pantalla no puede importar `src.core`, que arrastra los SDK de IA en cada apertura |
 | `src/ui/config_app.py` | `ConfigApp` más los modales de ayuda y confirmación. Layout master-detail, dirty state, búsqueda, el conmutador de avanzadas, el filtro de visibilidad, los workers de descarga, el panel de Skills (§1.7) y el pipeline de guardado |

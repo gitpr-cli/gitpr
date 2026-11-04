@@ -11,7 +11,7 @@ Every executed command appends a row to the ledger recording:
 | Field | Description |
 |-------|-------------|
 | `timestamp` | When the command finished (ISO 8601) |
-| `command` | Which command ran (`commit`, `review`, `fullreview`, `linter`, `blame`, `hook:post-checkout`, etc.) |
+| `command` | Which command ran (`commit`, `review`, `fullreview`, `linter`, `blame`, `hook:post-checkout`, `issue_autoclose`, etc.) |
 | `status` | Outcome (`success`, `error`, `fired`, `no_changes`) |
 | `provider` | AI provider that answered (`gemini`, `deepseek`, `ollama`) |
 | `model` | Model the provider answered with |
@@ -30,6 +30,10 @@ Rows also carry `cache_hit`, `map_reduce`, `chunks_count`, `linter_errors` and
 linter, the blame engine and the hooks all record executions without one, and the
 modules section adds them up under `(no module)` instead of passing them off as
 a module named after nothing.
+
+Rows for the `issue_autoclose` event also carry `asked`, `accepted` and
+`skipped_reason`, stored in the row's payload — they appear in the JSON export
+but are not CSV columns.
 
 ## 📁 Where Data Is Stored
 

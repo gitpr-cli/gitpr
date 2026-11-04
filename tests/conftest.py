@@ -64,3 +64,9 @@ from src.updater import __lang_version__  # noqa: E402
 # test_core.py, for instance), which would otherwise rewrite ~/.gitpr/langs/*.json
 # on every __lang_version__ bump.
 os.environ["LANG_VERSION"] = __lang_version__
+
+# Several tests drive the PR flow; a developer profile with the issue-autoclose
+# feature off would change which path they exercise. Set after the i18n
+# snapshot so the configuration screen does not flag the field as "set in the
+# shell".
+os.environ["GITPR_ISSUE_AUTOCLOSE"] = "true"

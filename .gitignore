@@ -42,3 +42,4 @@ pip
 extensions/vscode/node_modules/
 extensions/vscode/out/
 extensions/vscode/*.vsix
+.gitpr/conf/github.yml

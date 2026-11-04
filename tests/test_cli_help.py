@@ -88,3 +88,12 @@ def test_contextual_help_flag_commit():
     result = runner.invoke(cli, ["-h", "-c"], prog_name="gitpr")
     assert result.exit_code == 0
     assert "AI Commit Message Generation" in result.output
+
+
+def test_contextual_help_flag_close_issue():
+    """`gitpr -h --close-issue` displays contextual help for the autoclose flag."""
+    runner = CliRunner()
+    result = runner.invoke(cli, ["-h", "--close-issue"], prog_name="gitpr")
+    assert result.exit_code == 0, f"Output was: {result.output}\nException was: {result.exception}"
+    assert "Automatic Issue Closure" in result.output
+    assert "docs/issue-tui-help" in result.output

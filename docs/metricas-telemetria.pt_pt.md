@@ -11,7 +11,7 @@ Cada comando executado acrescenta uma linha ao registo, gravando:
 | Campo | Descrição |
 |-------|-----------|
 | `timestamp` | Quando o comando terminou (ISO 8601) |
-| `command` | Qual comando correu (`commit`, `review`, `fullreview`, `linter`, `blame`, `hook:post-checkout`, etc.) |
+| `command` | Qual comando correu (`commit`, `review`, `fullreview`, `linter`, `blame`, `hook:post-checkout`, `issue_autoclose`, etc.) |
 | `status` | Resultado (`success`, `error`, `fired`, `no_changes`) |
 | `provider` | Provedor de IA que respondeu (`gemini`, `deepseek`, `ollama`) |
 | `model` | Modelo com que o provedor respondeu |
@@ -30,6 +30,10 @@ ficam a zero nos restantes. `modules` fica **vazio** nos comandos que nunca
 tiveram um diff em mãos — o linter, o motor de blame e os hooks registam
 execuções sem diff, e a secção de módulos soma-as em `(sem módulo)` em
 vez de as fazer passar por um módulo com nome de nada.
+
+As linhas do evento `issue_autoclose` transportam também `asked`, `accepted` e
+`skipped_reason`, guardados no payload da linha — aparecem na exportação JSON,
+mas não são colunas do CSV.
 
 ## 📁 Onde os Dados Ficam Armazenados
 

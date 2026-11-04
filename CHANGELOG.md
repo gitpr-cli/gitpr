@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.5.0] - 2026-11-03
+
+### Summary
+This 1.5.0 release introduces automatic issue closure: the system records the created GitHub issue, verifies whether the pull request should close it, and inserts the closing line into the pull request body exactly once, complete with dedicated configuration and metrics. It also boosts delivery reliability with version consistency across configuration and documentation, risk file path resolution, baseline exit code coverage, and a fix when reading missing legacy reviewers. Usability and internationalization enhancements were added, including subcommand help, translations of the technical pull request review documentation into European Portuguese, Spanish, and French, as well as newly translated help texts. The release also includes project-local base branch configuration for pull requests, status reports, automatic exit following a successful commit displaying its output, expanded secret ruleset detection coverage, and an automated PyPI release workflow. Finally, metrics export artifacts are no longer tracked and the version was bumped to 1.4.4.
+
+### ✨ Features
+- add issue autoclose metric ([857692c](https://github.com/gitpr-cli/gitpr/commit/857692cc4da1e463c51209f8c2dcc3eb32d411bb)) · 2026-11-03
+- add issue autoclose configuration ([18d4e4c](https://github.com/gitpr-cli/gitpr/commit/18d4e4cb8678384005755f82c648a1815c9d61cc)) · 2026-11-03
+- wire issue autoclose into the PR flow ([cd9f721](https://github.com/gitpr-cli/gitpr/commit/cd9f7213de18ac21158fdd0ca9f6c00fd88cc2ea)) · 2026-11-02
+- insert closing line into PR body once ([cc59bdb](https://github.com/gitpr-cli/gitpr/commit/cc59bdbece526b6b871532d5ece10ceab5c1b60b)) · 2026-11-02
+- resolve whether a pull request should close the recorded issue ([499c003](https://github.com/gitpr-cli/gitpr/commit/499c003944ffb0a5246cafb1d5df8fb008a25a78)) · 2026-11-02
+- record created GitHub issue for automatic closure ([4309268](https://github.com/gitpr-cli/gitpr/commit/4309268349152c75efa4ebe469594bbb47ec2344)) · 2026-11-02
+- add issue readback and local issue registry ([7287251](https://github.com/gitpr-cli/gitpr/commit/7287251788416ac65d34b159f0e704d0408d2439)) · 2026-11-02
+- extend secret ruleset detection coverage ([9dd149a](https://github.com/gitpr-cli/gitpr/commit/9dd149a0650dc4b94014266415bc9fd43d807408)) · 2026-10-31
+- add translations and translate MCP help ([96526b9](https://github.com/gitpr-cli/gitpr/commit/96526b970fa8af217356a32ed0227186e4125ea1)) — i18n · 2026-10-30
+- add project-local PR base branch config ([2eff88b](https://github.com/gitpr-cli/gitpr/commit/2eff88bf97306e95eb2719a17f32d29c22e01e10)) · 2026-10-30
+- auto-exit after successful commit and show output ([709f4f8](https://github.com/gitpr-cli/gitpr/commit/709f4f801fcdd8b98d1b6c3a3a931fea4d141ef1)) · [#231](https://github.com/gitpr-cli/gitpr/pull/231) · 2026-10-29
+
+### 🐛 Bug Fixes
+- show subcommand help when -h precedes command ([ce52558](https://github.com/gitpr-cli/gitpr/commit/ce52558949281546788aa19833e7887f7fea6f34)) · 2026-11-01
+- resolve risk file paths and cover baseline exit codes ([3e6f97a](https://github.com/gitpr-cli/gitpr/commit/3e6f97a5dfa118b35ec4ec22f2e883085a178f97)) · 2026-10-31
+- correct get_git_diff mock patch target in tests ([90fd76c](https://github.com/gitpr-cli/gitpr/commit/90fd76ce526e13b7a4241479ddda3c639c7758d8)) · 2026-10-30
+
+### 📚 Documentation
+- document issue autoclose ([eca21e8](https://github.com/gitpr-cli/gitpr/commit/eca21e86d670b0d17d3ae0399903b2cca8ac8af2)) · 2026-11-03
+- records investigation T0 of automatic issue closure ([5c7aa3d](https://github.com/gitpr-cli/gitpr/commit/5c7aa3d2cbc4129297e55a039f583d768abb43c0)) — specs · 2026-11-02
+- translate review-pr technical documentation to PT-PT, ES and FR ([8cdd1fc](https://github.com/gitpr-cli/gitpr/commit/8cdd1fc1a820ebe54326f31c6d7acafc874b7649)) · 2026-10-31
+
+### ♻️ Refactoring
+- replace regex i18n key extraction with AST ([694a640](https://github.com/gitpr-cli/gitpr/commit/694a6401f1df9cc2fcac483446380a9e2630b38d)) · 2026-11-01
+- handle legacy None reviewer read-back ([149fb49](https://github.com/gitpr-cli/gitpr/commit/149fb49190944c3e3ab7c187fdf92408de47f551)) · 2026-10-31
+
+### 🔧 Chores
+- untrack gitpr metrics export artifacts ([e4f455b](https://github.com/gitpr-cli/gitpr/commit/e4f455beb097ce327f80627934db2a4da497dee0)) · 2026-10-31
+- bump version to 1.4.4 ([80cb849](https://github.com/gitpr-cli/gitpr/commit/80cb8496dd343f0e8cfe6c36e8b95399ab19a273)) · [#231](https://github.com/gitpr-cli/gitpr/pull/231) · 2026-10-29
+
+### 📦 Other Changes
+- enforce version SSOT consistency across config and docs ([ed7e888](https://github.com/gitpr-cli/gitpr/commit/ed7e8882b15662b794ab70a4491ce56cd3f91460)) · 2026-10-31
+- add automated PyPI release workflow ([d401931](https://github.com/gitpr-cli/gitpr/commit/d401931f7226210a1629c921c784bcfb9f78859e)) · 2026-10-31
+- add status report ([652e99c](https://github.com/gitpr-cli/gitpr/commit/652e99c4bf58a8202be6a1d0551bccfb174ce93a)) · 2026-10-29
+- update status report ([c22a4dc](https://github.com/gitpr-cli/gitpr/commit/c22a4dcd6f94426a2e3615420ed8669edf7c1346)) · 2026-10-29
+
+**Contributors:** [@natanfiuza](https://github.com/natanfiuza)
+
 ## [1.4.4] - 2026-10-29
 
 ### Summary
@@ -106,10 +150,10 @@ This release significantly expands the features supporting the pull request work
 
 ## [1.2.0] - 2026-09-17
 
-### Resumo
+### Summary
 This release consolidates version 1.1.0 and expands workflows with Git and pull requests, including remote PR review, suggestion of resolved reviewers for GitHub logins, publishing, tracking of existing PRs, and merging with success and failure states. It also adds secure patch correction with rollback, changelog generation, interactive configuration, installation wizard, support for multiple SCM providers, and MCP integration for editors. Internationalization has been expanded with translations, key adjustments, and text normalization, while metrics, telemetry, and export features offer greater visibility into usage, lint, blame, and hooks. There are security and stability improvements, such as prevention of injection into linters, limitation of network and DNS timeouts, correction of MCP server crashes, and more robust handling of files and append errors. Finally, the technical documentation has been updated, and the distribution now requires updates via PyPI, without binary release, in addition to cache cleanup and packaging adjustments.
 
-### ✨ Funcionalidades
+### ✨ Features
 - add review-pr command to review remote pull requests (a8a7770)
 - add gitpr fix subcommand with safe patch apply and rollback (f4d5186)
 
@@ -117,11 +161,11 @@ This release consolidates version 1.1.0 and expands workflows with Git and pull 
 ### ⚡ Performance
 - adiciona filtro smart para reduzir tokens da IA (f7ce5c0)
 
-### 📚 Documentação
+### 📚 Documentation
 - update technical documentation (b9dd930)
 
 
-### ♻️ Refatoração
+### ♻️ Refactoring
 - hide coauthor trailer from TUI (d65c175)
 - format codebase for consistency (c67ab6a)
 - remove unused FileStageScreen and update translations (4570646)
@@ -129,10 +173,10 @@ This release consolidates version 1.1.0 and expands workflows with Git and pull 
 - extract MCP prompts to template files (2c3fb5b)
 - remove fallback pipenv e adiciona errors='replace' (aa675a7)
 
-### 🔧 Tarefas
+### 🔧 Chores
 - remove pip and pypa caches committed by mistake (f5bed07)
 
-**Contribuidores:** Nataniel Fiuza
+**Contributors:** Nataniel Fiuza
 
 ## [1.1.0] - 2026-09-13
 

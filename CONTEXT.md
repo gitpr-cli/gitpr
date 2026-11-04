@@ -128,3 +128,10 @@ The pull request body line (`close #N` on GitHub) that tells the forge to close
 the tracked issue when the pull request is merged. It is forge syntax, not a
 label: the issue is named by the line itself.
 _Avoid_: auto-close keyword, issue reference, fix line
+
+**Close issue decision**:
+The in-memory outcome of offering to close the tracked issue: the closing line
+and the issue it names, present only when the issue is still open and the user
+accepted. It is not the pull request body itself — the line becomes part of the
+description only when the body is assembled.
+_Avoid_: close prompt result, autoclose flag
