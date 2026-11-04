@@ -138,6 +138,8 @@ On the next `gitpr` run — the Pull Request flow — GitPR checks the recorded 
 - **The record survives a failure.** It is cleared only after the Pull Request is published; a failed or cancelled publish keeps it for the next run.
 - **The record cleans itself.** An issue that was closed or deleted is forgotten; a record from another repository is ignored and kept; a number that turns out to be a pull request is forgotten too.
 
+For the decision order, the record format and the failure modes, see [issue-autoclose.md](issue-autoclose.md).
+
 > **Tip:** Run `gitpr -h --close-issue` for the same summary directly in the terminal.
 
 ---

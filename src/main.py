@@ -227,14 +227,14 @@ HELP_MAP: dict[str, dict[str, str]] = {
         ),
     },
     "close_issue": {
-        "url": get_doc_url("issue-tui-help.md"),
+        "url": get_doc_url("issue-autoclose.md"),
         "title": __("Automatic Issue Closure (--close-issue)"),
         "description": __(
             "Adds the closing line (close #N) for the issue recorded by gitpr -is to the Pull Request description without asking. The issue is still checked on the forge before the line is added; a closed or deleted issue is ignored."
         ),
     },
     "no_close_issue": {
-        "url": get_doc_url("issue-tui-help.md"),
+        "url": get_doc_url("issue-autoclose.md"),
         "title": __("Skip the Automatic Issue Closure (--no-close-issue)"),
         "description": __(
             "Skips the automatic issue closure for this run: no local record is read and no forge call is made. The record is kept for a later run."

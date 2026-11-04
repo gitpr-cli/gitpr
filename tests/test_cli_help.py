@@ -96,4 +96,4 @@ def test_contextual_help_flag_close_issue():
     result = runner.invoke(cli, ["-h", "--close-issue"], prog_name="gitpr")
     assert result.exit_code == 0, f"Output was: {result.output}\nException was: {result.exception}"
     assert "Automatic Issue Closure" in result.output
-    assert "docs/issue-tui-help" in result.output
+    assert "docs/issue-autoclose" in result.output
