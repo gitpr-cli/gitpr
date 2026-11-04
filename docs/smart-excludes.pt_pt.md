@@ -150,6 +150,13 @@ Pode editar diretamente os ficheiros em cache em `~/.gitpr/conf/`. Estas altera�
 
 Defina a variável de ambiente `GITPR_SKIP_SMART_EXCLUDES=1` para desativar toda a filtragem do Smart Excludes na sessão atual. Utilize com moderação — remove tanto as exclusões globais como as locais do projeto.
 
+## 🖥️ TUI de Configuração (`gitpr config`)
+
+O comando `gitpr config` disponibiliza uma secção dedicada a **Smart Excludes** no menu lateral:
+- **Variáveis de ambiente:** alterne `GITPR_SKIP_SMART_EXCLUDES`, configure caminhos e consulte `SMART_EXCLUDES_VERSION` com botão de download.
+- **Seletor de fontes:** inspecione as listas **Global Core** e **Global Docs** em modo leitura, ou edite as **Exclusões do Projeto** locais.
+- **Editor de padrões:** adicione ou altere regras com um padrão glob por linha (ex: `*.pyc`, `dist/`) e prima `F2` para guardar no repositório.
+
 ## ❓ FAQ
 
 ### Porque é que os ficheiros de documentação são excluídos do diff?

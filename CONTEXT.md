@@ -135,3 +135,11 @@ and the issue it names, present only when the issue is still open and the user
 accepted. It is not the pull request body itself — the line becomes part of the
 description only when the body is assembled.
 _Avoid_: close prompt result, autoclose flag
+
+
+**Smart Excludes**:
+The pathspec-based filtering engine that automatically excludes noise (lockfiles,
+minified assets, generated artifacts) and documentation prose from the git diff
+before it is sent to the AI. Composed of three layers: Core Exclusions (global),
+Documentation Exclusions (global), and Project-Local Exclusions (`.gitpr/conf/gitpr.smart-excludes.json`).
+_Avoid_: diff ignore, ignore patterns, gitignore filter

@@ -405,6 +405,94 @@ def _get_raw_docs_patterns():
     return list(_FALLBACK_DOCS_SMART_EXCLUDES)
 
 
+def get_project_smart_excludes_path(project_root=None) -> Path:
+    local_path_override = os.getenv("GITPR_SMART_EXCLUDES_LOCAL")
+    if local_path_override:
+        return Path(local_path_override)
+    root = Path(project_root) if project_root else Path.cwd()
+    return root / ".gitpr" / "conf" / "gitpr.smart-excludes.json"
+
+
+def get_global_smart_excludes_path() -> Path:
+    global_path_override = os.getenv("GITPR_SMART_EXCLUDES_GLOBAL")
+    if global_path_override:
+        return Path(global_path_override)
+    return Path.home() / ".gitpr" / "conf" / "gitpr.smart-excludes.json"
+
+
+def get_global_docs_smart_excludes_path() -> Path:
+    return Path.home() / ".gitpr" / "conf" / "gitpr.docs-smart-excludes.json"
+
+
+def load_raw_project_excludes_text(project_root=None) -> tuple[bool, str]:
+    path = get_project_smart_excludes_path(project_root)
+    if not path.exists():
+        return False, ""
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            data = json.load(f)
+        patterns = data.get("excludes", [])
+        return True, "\n".join(patterns)
+    except Exception:
+        return True, ""
+
+
+def save_project_excludes_text(text: str, project_root=None) -> None:
+    path = get_project_smart_excludes_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    patterns = []
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            patterns.append(line)
+
+    comment = (
+        "Project-specific Smart Excludes. "
+        "Merged with the global list (~/.gitpr/conf/gitpr.smart-excludes.json) at runtime. "
+        "Add extensions or folder names to exclude from AI diffs for this project only. "
+        'Example: "*.pyc", "dist/", "node_modules/"'
+    )
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                existing = json.load(f)
+            if "_comment" in existing:
+                comment = existing["_comment"]
+        except Exception:
+            pass
+
+    payload = {
+        "_comment": comment,
+        "excludes": patterns,
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+
+def load_global_core_excludes_text() -> str:
+    path = get_global_smart_excludes_path()
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+            return "\n".join(data.get("excludes", []))
+        except Exception:
+            pass
+    return "\n".join(_FALLBACK_SMART_EXCLUDES)
+
+
+def load_global_docs_excludes_text() -> str:
+    path = get_global_docs_smart_excludes_path()
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                data = json.load(f)
+            return "\n".join(data.get("excludes", []))
+        except Exception:
+            pass
+    return "\n".join(_FALLBACK_DOCS_SMART_EXCLUDES)
+
+
 def get_changed_docs_list(ancestor_hash=None):
     """
     Returns a list of changed documentation file paths (names only, no content).

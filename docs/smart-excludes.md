@@ -150,6 +150,13 @@ You can edit the cached files in `~/.gitpr/conf/` directly. These changes persis
 
 Set the environment variable `GITPR_SKIP_SMART_EXCLUDES=1` to disable all Smart Excludes filtering for the current session. Use this sparingly — it removes both global and project-local exclusions.
 
+## 🖥️ Configuration TUI (`gitpr config`)
+
+The `gitpr config` command exposes a dedicated **Smart Excludes** section in its sidebar:
+- **Environment variables:** toggle `GITPR_SKIP_SMART_EXCLUDES`, configure custom paths, and check `SMART_EXCLUDES_VERSION` with a direct template download button.
+- **Source selector:** inspect **Global Core** and **Global Docs** lists in read-only mode, or edit **Project Exclusions** (`.gitpr/conf/gitpr.smart-excludes.json`).
+- **Pattern editor:** add or modify exclusions with one glob pattern per line (e.g. `*.pyc`, `dist/`), and press `F2` to save directly to the repository file.
+
 ## ❓ FAQ
 
 ### Why are documentation files excluded from the diff?
