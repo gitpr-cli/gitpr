@@ -319,7 +319,10 @@ def _load_smart_excludes(force=False):
         return []
 
     env_file = Path.home() / ".gitpr" / ".env"
-    load_dotenv(env_file)
+    try:
+        load_dotenv(env_file)
+    except Exception:
+        pass
 
     # Resolve global file path (env override or default)
     global_path_override = os.getenv("GITPR_SMART_EXCLUDES_GLOBAL")
@@ -344,14 +347,14 @@ def _load_smart_excludes(force=False):
             return set()
 
     # 1. Local copy is present and up to date
-    if global_file.exists() and not needs_update:
+    data = None
+    if not needs_update:
         try:
-            with open(global_file, "r", encoding="utf-8", errors="replace") as f:
-                data = json.load(f)
+            if global_file.exists():
+                with open(global_file, "r", encoding="utf-8", errors="replace") as f:
+                    data = json.load(f)
         except Exception:
             data = None
-    else:
-        data = None
 
     # 2. Download the updated list from the remote template
     if data is None:
@@ -368,10 +371,11 @@ def _load_smart_excludes(force=False):
             pass
 
     # 3. Offline fallback: reuse the local copy even if outdated
-    if data is None and global_file.exists():
+    if data is None:
         try:
-            with open(global_file, "r", encoding="utf-8", errors="replace") as f:
-                data = json.load(f)
+            if global_file.exists():
+                with open(global_file, "r", encoding="utf-8", errors="replace") as f:
+                    data = json.load(f)
         except Exception:
             pass
 
@@ -388,7 +392,12 @@ def _load_smart_excludes(force=False):
     else:
         local_file = Path(".gitpr") / "conf" / "gitpr.smart-excludes.json"
 
-    if local_file.exists():
+    try:
+        local_exists = local_file.exists()
+    except Exception:
+        local_exists = False
+
+    if local_exists:
         local_set = _load_patterns_set(local_file)
         if local_set:
             # Build a set from global pathspecs for dedup, then merge
@@ -418,7 +427,10 @@ def _load_docs_smart_excludes():
         return []
 
     env_file = Path.home() / ".gitpr" / ".env"
-    load_dotenv(env_file)
+    try:
+        load_dotenv(env_file)
+    except Exception:
+        pass
 
     conf_dir = Path.home() / ".gitpr" / "conf"
     local_file = conf_dir / "gitpr.docs-smart-excludes.json"
@@ -428,10 +440,11 @@ def _load_docs_smart_excludes():
         return [f":(exclude){pattern}" for pattern in data.get("excludes", [])]
 
     # 1. Local copy is present and up to date
-    if local_file.exists() and not needs_update:
+    if not needs_update:
         try:
-            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
-                return _to_pathspecs(json.load(f))
+            if local_file.exists():
+                with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                    return _to_pathspecs(json.load(f))
         except Exception:
             pass
 
@@ -448,12 +461,12 @@ def _load_docs_smart_excludes():
         pass
 
     # 3. Offline fallback: reuse the local copy even if outdated
-    if local_file.exists():
-        try:
+    try:
+        if local_file.exists():
             with open(local_file, "r", encoding="utf-8", errors="replace") as f:
                 return _to_pathspecs(json.load(f))
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     # 4. Last resort: built-in defaults
     return [f":(exclude){pattern}" for pattern in _FALLBACK_DOCS_SMART_EXCLUDES]
@@ -487,17 +500,21 @@ def _get_raw_docs_patterns():
     plain patterns without the :(exclude) prefix — suitable for fnmatch filtering.
     """
     env_file = Path.home() / ".gitpr" / ".env"
-    load_dotenv(env_file)
+    try:
+        load_dotenv(env_file)
+    except Exception:
+        pass
 
     conf_dir = Path.home() / ".gitpr" / "conf"
     local_file = conf_dir / "gitpr.docs-smart-excludes.json"
     needs_update = os.getenv("SMART_EXCLUDES_VERSION") != __lang_version__
 
     # 1. Local copy is present and up to date
-    if local_file.exists() and not needs_update:
+    if not needs_update:
         try:
-            with open(local_file, "r", encoding="utf-8", errors="replace") as f:
-                return json.load(f).get("excludes", [])
+            if local_file.exists():
+                with open(local_file, "r", encoding="utf-8", errors="replace") as f:
+                    return json.load(f).get("excludes", [])
         except Exception:
             pass
 
@@ -514,12 +531,12 @@ def _get_raw_docs_patterns():
         pass
 
     # 3. Stale local copy
-    if local_file.exists():
-        try:
+    try:
+        if local_file.exists():
             with open(local_file, "r", encoding="utf-8", errors="replace") as f:
                 return json.load(f).get("excludes", [])
-        except Exception:
-            pass
+    except Exception:
+        pass
 
     # 4. Fallback
     return list(_FALLBACK_DOCS_SMART_EXCLUDES)

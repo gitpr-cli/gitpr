@@ -2,7 +2,8 @@ from textual.app import ComposeResult
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 from textual.containers import Vertical
-from src.i18n import CURRENT_LANG, __
+from src.doc_links import doc_url
+from src.i18n import __
 
 
 class HelpScreen(ModalScreen):
@@ -24,8 +25,7 @@ class HelpScreen(ModalScreen):
     """
 
     def compose(self) -> ComposeResult:
-        lang_suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
-        help_url = f"https://github.com/gitpr-cli/gitpr.git/blob/main/docs/issue-tui-help{lang_suffix}.md"
+        help_url = doc_url("issue-tui-help.md")
         with Vertical(id="help_dialog"):
             yield Static(__("💡 GitPR Issue Help"), classes="help_title")
             yield Static(
