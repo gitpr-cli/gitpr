@@ -14,11 +14,11 @@ Each marker is a plain key in the user's global `~/.gitpr/.env`. It records **wh
 version of the code last downloaded that resource**:
 
 ```dotenv
-LANG_VERSION=v0.0.20
-SMART_EXCLUDES_VERSION=v0.0.20
-THINKING_WORDS_VERSION=v0.0.20
-LINTER_PRESETS_VERSION=v0.0.20
-SCRIPTS_VERSION=v0.0.3
+LANG_VERSION=v0.0.39
+SMART_EXCLUDES_VERSION=v0.0.39
+THINKING_WORDS_VERSION=v0.0.39
+LINTER_PRESETS_VERSION=v0.0.39
+SCRIPTS_VERSION=v0.0.4
 ```
 
 At runtime the resource loader compares the marker against the authoritative constant
@@ -77,7 +77,7 @@ Resolution chain in `_load_linter_presets()`:
 3. Stale local copy, when the download fails (offline).
 4. Built-in `_LINTER_PRESETS` constant, as a last resort.
 
-> **Not to be confused with the GitPR release version.** `__version__` (`0.0.37`)
+> **Not to be confused with the GitPR release version.** `__version__` (`1.5.0`)
 > identifies the CLI itself; `LINTER_PRESETS_VERSION` only records which preset
 > catalogue snapshot is cached locally. The two move independently.
 
@@ -89,8 +89,8 @@ Markers in `.env` are written by GitPR — **never edit them by hand**. What you
 is the constant in [`src/updater.py`](../src/updater.py) that they are compared against:
 
 ```python
-__lang_version__ = "v0.0.20"     # translations, smart excludes, thinking words, linter presets
-__scripts_version__ = "v0.0.3"   # Git hook scripts
+__lang_version__ = "v0.0.39"     # translations, smart excludes, thinking words, linter presets
+__scripts_version__ = "v0.0.4"   # Git hook scripts
 ```
 
 To publish a change to any `__lang_version__`-backed resource:

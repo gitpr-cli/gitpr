@@ -18,7 +18,8 @@ from textual.binding import Binding
 from textual import work
 from src.fix.patch_extractor import extract_code_blocks
 from src.core import get_git_diff
-from src.i18n import __, CURRENT_LANG
+from src.doc_links import doc_url
+from src.i18n import __
 from src.ai_providers import call_ai_chat, process_chat_command, load_chat_commands
 from src.spinner import THINKING_WORDS
 
@@ -89,8 +90,8 @@ class ChatHelpScreen(ModalScreen):
         if event.button.id == "close_help":
             self.app.pop_screen()
         elif event.button.id == "online_help":
-            lang_suffix = "" if CURRENT_LANG.startswith("en") else f".{CURRENT_LANG}"
-            url = f"https://github.com/gitpr-cli/gitpr.git/blob/main/docs/understanding_chat_functionality{lang_suffix}.md"
+            # Open canonical documentation website page for active locale
+            url = doc_url("understanding_chat_functionality.md")
             webbrowser.open(url)
 
 

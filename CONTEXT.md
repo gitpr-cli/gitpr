@@ -187,3 +187,10 @@ The strict gate inside the marketplace publication workflow that halts execution
 immediately with a fatal error if either `VSCE_PAT` or `OVSX_PAT` is missing on a
 release tag run, preventing phantom releases.
 _Avoid_: secret check, env fallback, optional token skip
+
+**Documentation link**:
+A canonical public URL pointing to `https://gitpr.natanfiuza.dev.br/docs/<slug>`
+without a `.md` extension or locale suffix in the path. English links carry no
+query string; localized links append `?lang=pt_br`, `?lang=pt_pt`, `?lang=es`,
+or `?lang=fr` matching the documentation site's language parameter contract.
+_Avoid_: raw GitHub doc URL, blob link, localized doc filename URL
