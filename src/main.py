@@ -3232,7 +3232,8 @@ def _echo_sections(sections):
         click.secho(text, **styles.get(style, {}))
 
 
-def _metrics_summary_lines(summary, window=None, cost=None, quality=None,
+def _metrics_summary_lines(summary, window=None, cost=None, token_trend=None,
+                           quality=None, latency=None,
                            debt=None, breakdown=None, cycle=None):
     """Renders the summary once, so every caller prints the same numbers.
 
@@ -3246,6 +3247,8 @@ def _metrics_summary_lines(summary, window=None, cost=None, quality=None,
         module_lines,
         provider_lines,
         quality_lines,
+        latency_lines,
+        token_trend_lines,
     )
 
     click.secho(__("\n📊 Local Telemetry Summary"), fg="cyan", bold=True)
@@ -3274,7 +3277,9 @@ def _metrics_summary_lines(summary, window=None, cost=None, quality=None,
 
     for section in (
         cost_lines(cost),
+        token_trend_lines(token_trend),
         quality_lines(quality),
+        latency_lines(latency),
         module_lines(debt),
         provider_lines(breakdown),
         cycle_lines(cycle),
@@ -3344,6 +3349,8 @@ def metrics_group(ctx, days, since, until):
             quality_report,
             resolve_window,
             show_metrics_summary,
+            latency_report,
+            token_trend_report,
         )
 
         since, until = resolve_window(days=days, since=since, until=until)
@@ -3352,7 +3359,9 @@ def metrics_group(ctx, days, since, until):
             show_metrics_summary(**window),
             window=(since, until),
             cost=cost_report(**window),
+            token_trend=token_trend_report(**window),
             quality=quality_report(**window),
+            latency=latency_report(**window),
             debt=module_debt(**window),
             breakdown=provider_breakdown(**window),
             cycle=cycle_report(**window),

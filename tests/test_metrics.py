@@ -2201,5 +2201,211 @@ class TestCycleLines:
         assert "origin" in lines[1][1]
 
 
+class TestTokenTrendReport:
+    """Continuous daily token trend with sparkline and horizontal bars."""
+
+    def test_continuous_days_preserve_zero_consumption_gaps(self, home):
+        ledger.record_event(
+            {
+                "command": "commit",
+                "status": "success",
+                "provider": "gemini",
+                "timestamp": "2026-03-01T10:00:00",
+                "meta": {"model": "pro", "total_tokens": 200},
+            },
+            context=GitContext(repo=OWNER_REPO),
+        )
+        ledger.record_event(
+            {
+                "command": "review",
+                "status": "success",
+                "provider": "gemini",
+                "timestamp": "2026-03-03T12:00:00",
+                "meta": {"model": "pro", "total_tokens": 800},
+            },
+            context=GitContext(repo=OWNER_REPO),
+        )
+
+        trend = metrics.token_trend_report()
+
+        assert [d["day"] for d in trend["days"]] == [
+            "2026-03-01",
+            "2026-03-02",
+            "2026-03-03",
+        ]
+        assert [d["tokens"] for d in trend["days"]] == [200, 0, 800]
+        assert trend["total_tokens"] == 1000
+        assert trend["peak_tokens"] == 800
+        assert trend["sparkline"][1] == "·"
+        assert trend["sparkline"][2] == "█"
+
+    def test_a_window_with_no_tokens_renders_nothing(self, home):
+        log_local_metric(command="linter", status="success", duration_ms=150)
+
+        trend = metrics.token_trend_report()
+
+        assert trend["days"] == []
+        assert metrics.token_trend_lines(trend) == []
+
+    def test_backfill_rows_do_not_enter_the_token_trend(self, home):
+        ledger.record_event(
+            {
+                "command": "commit",
+                "status": "success",
+                "provider": "gemini",
+                "timestamp": "2026-03-01T10:00:00",
+                "meta": {"model": "pro", "total_tokens": 500},
+            },
+            source=ledger.SOURCE_BACKFILL,
+            context=GitContext(repo=OWNER_REPO),
+        )
+
+        assert metrics.token_trend_report()["days"] == []
+
+    def test_caps_continuous_series_at_max_days(self, home):
+        ledger.record_event(
+            {
+                "command": "commit",
+                "status": "success",
+                "provider": "gemini",
+                "timestamp": "2026-01-01T10:00:00",
+                "meta": {"model": "pro", "total_tokens": 100},
+            },
+            context=GitContext(repo=OWNER_REPO),
+        )
+        ledger.record_event(
+            {
+                "command": "commit",
+                "status": "success",
+                "provider": "gemini",
+                "timestamp": "2026-01-30T10:00:00",
+                "meta": {"model": "pro", "total_tokens": 400},
+            },
+            context=GitContext(repo=OWNER_REPO),
+        )
+
+        trend = metrics.token_trend_report()
+
+        assert len(trend["days"]) == metrics.TOKEN_TREND_MAX_DAYS
+        assert trend["days"][-1]["day"] == "2026-01-30"
+        assert trend["days"][0]["day"] == "2026-01-17"
+
+    def test_token_trend_lines_draw_sparkline_and_daily_bars(self, home):
+        ledger.record_event(
+            {
+                "command": "commit",
+                "status": "success",
+                "provider": "gemini",
+                "timestamp": "2026-03-10T10:00:00",
+                "meta": {"model": "pro", "total_tokens": 1200},
+            },
+            context=GitContext(repo=OWNER_REPO),
+        )
+
+        lines = metrics.token_trend_lines(metrics.token_trend_report())
+
+        assert lines[0][0] == metrics.TITLE
+        assert "1,200" in lines[1][1]
+        assert "2026-03-10" in lines[2][1]
+        assert "█" * 20 in lines[2][1]
+
+
+class TestLatencyReport:
+    """Latency histogram over timed executions (duration_ms > 0)."""
+
+    def test_untimed_rows_and_backfill_are_excluded(self, home):
+        log_local_metric(command="hook:post-checkout", status="fired", duration_ms=0)
+        ledger.record_event(
+            {
+                "command": "commit",
+                "status": "success",
+                "duration_ms": 2000,
+            },
+            source=ledger.SOURCE_BACKFILL,
+            context=GitContext(repo=OWNER_REPO),
+        )
+
+        report = metrics.latency_report()
+
+        assert report["count"] == 0
+        assert report["buckets"] == []
+        assert metrics.latency_lines(report) == []
+
+    def test_meta_duration_ms_populates_ledger_when_top_level_omitted(self, home):
+        log_local_metric(
+            command="commit",
+            status="success",
+            meta={"provider": "gemini", "duration_ms": 2500, "total_tokens": 100},
+        )
+
+        report = metrics.latency_report()
+
+        assert report["count"] == 1
+        assert report["average_ms"] == 2500.0
+
+    def test_buckets_and_percentiles_classify_timed_runs(self, home):
+        for ms in (200, 1500, 8000, 20000, 35000):
+            log_local_metric(command="review", status="success", duration_ms=ms)
+
+        report = metrics.latency_report()
+
+        assert report["count"] == 5
+        assert [b["count"] for b in report["buckets"]] == [1, 1, 1, 1, 1]
+        assert all(b["rate"] == pytest.approx(0.2) for b in report["buckets"])
+        assert report["median_ms"] == 8000.0
+        assert report["p95_ms"] == 35000.0
+
+        lines = metrics.latency_lines(report)
+        assert lines[0][0] == metrics.TITLE
+        rendered = "\n".join(text for _, text in lines)
+        for label in ("< 1s", "1–5s", "5–15s", "15–30s", "≥ 30s"):
+            assert label in rendered
+        assert "█" in rendered
+
+
+class TestDashboardChartsParity:
+    """TUI, CLI and MCP surface parity for Token Trend and Latency Histogram."""
+
+    def test_dashboard_renders_token_trend_and_latency_sections(self, home):
+        ledger.record_event(
+            {
+                "command": "commit",
+                "status": "success",
+                "provider": "gemini",
+                "duration_ms": 1800,
+                "timestamp": "2026-04-01T10:00:00",
+                "meta": {"model": "pro", "total_tokens": 600},
+            },
+            context=GitContext(repo=OWNER_REPO),
+        )
+
+        trend_text = TestDashboard._section("#section_token_trend")
+        latency_text = TestDashboard._section("#section_latency")
+
+        assert trend_text is not None
+        assert latency_text is not None
+
+        for _style, line in metrics.token_trend_lines(metrics.token_trend_report()):
+            assert line.strip() in trend_text
+        for _style, line in metrics.latency_lines(metrics.latency_report()):
+            assert line.strip() in latency_text
+
+    def test_mcp_get_usage_metrics_includes_token_trend_and_latency(self, home):
+        from src.mcp_server import get_usage_metrics
+
+        log_local_metric(
+            command="commit",
+            status="success",
+            duration_ms=1400,
+            meta={"provider": "gemini", "model": "pro", "total_tokens": 350},
+        )
+
+        payload = json.loads(asyncio.run(get_usage_metrics()))
+
+        assert payload["status"] == "success"
+        assert payload["token_trend"]["total_tokens"] == 350
+        assert payload["latency"]["count"] == 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

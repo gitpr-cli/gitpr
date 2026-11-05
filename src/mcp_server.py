@@ -1233,6 +1233,8 @@ def get_usage_metrics(repo: str = "", since: str = "", until: str = "") -> str:
         provider_breakdown,
         quality_report,
         show_metrics_summary,
+        latency_report,
+        token_trend_report,
     )
 
     # The window is whatever the caller narrowed to — no day shortcut here: an
@@ -1250,6 +1252,8 @@ def get_usage_metrics(repo: str = "", since: str = "", until: str = "") -> str:
         quality = quality_report(**window)
         debt = module_debt(**window)
         providers = provider_breakdown(**window)
+        token_trend = token_trend_report(**window)
+        latency = latency_report(**window)
     except Exception as exc:
         # A ledger that cannot be read is not an empty ledger, and saying
         # "no data" would be a wrong answer rather than a missing one.
@@ -1268,7 +1272,9 @@ def get_usage_metrics(repo: str = "", since: str = "", until: str = "") -> str:
             "window": {"repo": repo.strip(), "since": since.strip(), "until": until.strip()},
             "summary": summary,
             "cost": cost,
+            "token_trend": token_trend,
             "quality": quality,
+            "latency": latency,
             "modules": debt["modules"],
             "modules_unmapped": debt["unmapped"],
             "providers": providers["providers"],
