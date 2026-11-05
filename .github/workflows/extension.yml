@@ -8,6 +8,12 @@ on:
   push:
     tags:
       - "ext-v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (package and test only, skip publishing even if secrets exist)"
+        type: boolean
+        default: false
 
 jobs:
   build-and-test:
@@ -21,6 +27,20 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Verify Git Tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/ext-v')
+        run: |
+          python -c "
+          import json, os, sys
+          with open('extensions/vscode/package.json', 'r', encoding='utf-8') as f:
+              pkg = json.load(f)
+          ref = os.environ.get('GITHUB_REF_NAME', '')
+          expected = f'ext-v{pkg[\"version\"]}'
+          if ref != expected:
+              sys.exit(f'FATAL: Tag mismatch! Git tag is \"{ref}\" but package.json version is \"{pkg[\"version\"]}\" (expected \"{expected}\"). Aborting release.')
+          print(f'OK: Tag {ref} matches package.json version {pkg[\"version\"]}')
+          "
 
       - name: Install gitpr-cli (editable)
         run: |
@@ -55,8 +75,11 @@ jobs:
   publish:
     name: Publish to VS Code Marketplace & Open VSX
     needs: build-and-test
-    if: startsWith(github.ref, 'refs/tags/ext-v')
+    if: startsWith(github.ref, 'refs/tags/ext-v') || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
     runs-on: ubuntu-latest
+    env:
+      VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      OVSX_PAT: ${{ secrets.OVSX_PAT }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -72,16 +95,30 @@ jobs:
           name: gitpr-vscode-vsix
           path: extensions/vscode
 
+      - name: Validate Publishing Credentials
+        if: startsWith(github.ref, 'refs/tags/ext-v')
+        run: |
+          missing=0
+          if [ -z "$VSCE_PAT" ]; then
+            echo "::error::Missing repository secret VSCE_PAT! Required to publish to Visual Studio Marketplace."
+            missing=1
+          fi
+          if [ -z "$OVSX_PAT" ]; then
+            echo "::error::Missing repository secret OVSX_PAT! Required to publish to Open VSX Registry."
+            missing=1
+          fi
+          if [ $missing -eq 1 ]; then
+            echo "FATAL: Required publishing secrets are missing from GitHub repository settings. Aborting release."
+            exit 1
+          fi
+          echo "OK: All publishing secrets are configured."
+
       - name: Publish to VS Code Marketplace
         if: env.VSCE_PAT != ''
         working-directory: extensions/vscode
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: npx @vscode/vsce publish --packagePath *.vsix -p "$VSCE_PAT"
 
       - name: Publish to Open VSX (Cursor)
         if: env.OVSX_PAT != ''
         working-directory: extensions/vscode
-        env:
-          OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: npx ovsx publish *.vsix -p "$OVSX_PAT"

@@ -162,3 +162,21 @@ unclassified *_PR_FULLREVIEW.txt text artifact in the workspace, and required ma
 step-summary concatenation. Replaced by the unified CI Check pipeline producing
 SARIF/JSON/JUnit artifacts and deterministic exit codes.
 _Avoid_: old action, linter action, legacy review runner
+
+**Marketplace publication workflow**:
+The GitHub Actions workflow (`.github/workflows/extension.yml`) triggered by `ext-v*`
+tags or manual dispatch that tests, packages, and publishes the GitPR editor extension
+to the Visual Studio Marketplace and Open VSX Registry.
+_Avoid_: extension deploy script, marketplace action, vsce pipeline
+
+**Extension release tag**:
+The semantic version tag prefixed with `ext-v` (such as `ext-v0.1.0`) that triggers
+the marketplace publication workflow and must strictly match `version` in
+`extensions/vscode/package.json`.
+_Avoid_: extension tag, vsix tag, marketplace version
+
+**Fail-fast secret check**:
+The strict gate inside the marketplace publication workflow that halts execution
+immediately with a fatal error if either `VSCE_PAT` or `OVSX_PAT` is missing on a
+release tag run, preventing phantom releases.
+_Avoid_: secret check, env fallback, optional token skip

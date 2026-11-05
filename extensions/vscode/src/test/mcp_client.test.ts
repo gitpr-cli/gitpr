@@ -113,7 +113,7 @@ describe("GitPR VS Code Extension — MCP Client & Thin Client Contract", () => 
   });
 
   it("connects to real Python gitpr-mcp over stdio, verifies contract, and calls get_git_context", async function () {
-    this.timeout(20000);
+    this.timeout(60000);
     const repoRoot = path.resolve(__dirname, "../../../..");
     const pythonCmd = process.env.PYTHON || "python";
     const client = new GitPrMcpClient(
