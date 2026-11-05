@@ -131,7 +131,7 @@ def print_banner():
     )
     click.secho(
         __(
-            "  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | -is,--issue | --no-publish | --no-edit | --plugins | -h,--help (use -h --flag for contextual help)\n"
+            "  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | --init | -is,--issue | --no-publish | --no-edit | --base | --plugins | -h,--help (use -h --flag for contextual help)\n"
         ),
         fg="white",
         dim=True,

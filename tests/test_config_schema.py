@@ -1,10 +1,9 @@
 """Synchronisation tests between the configuration schema and DEFAULT_CONFIG.
 
-The schema in src/config_schema.py is the UI's source of truth while
-src/config.py keeps DEFAULT_CONFIG as the seeding source. The two lists are
-hand-maintained, so these tests are what stop them from drifting: a new key
-added to DEFAULT_CONFIG fails here until someone classifies it as either an
-editable field or a deliberate omission.
+The schema in src/config_schema.py is the canonical source of truth for both the
+UI schema and DEFAULT_CONFIG (derived from fields where seeded=True). src/config.py
+imports DEFAULT_CONFIG from src.config_schema to preserve backward compatibility.
+These tests verify that the schema, seeding flags, and categories remain consistent.
 """
 import unittest
 
@@ -73,6 +72,11 @@ class TestSchemaCoversDefaults(unittest.TestCase):
     def test_hidden_keys_are_really_absent_from_the_schema(self):
         for key in DELIBERATELY_HIDDEN:
             self.assertNotIn(key, FIELDS_BY_KEY, f"{key} must stay out of the TUI")
+
+    def test_default_config_derived_from_seeded_fields(self):
+        """DEFAULT_CONFIG must match exactly the fields where seeded is True."""
+        seeded_expected = {field.key: field.default for field in FIELDS if field.seeded}
+        self.assertEqual(DEFAULT_CONFIG, seeded_expected)
 
 
 class TestFieldIntegrity(unittest.TestCase):
@@ -492,6 +496,59 @@ class TestSkillsSection(unittest.TestCase):
         in DEFAULT_CONFIG would freeze it to the first folder it saw."""
         self.assertNotIn("SKILLS_FOLDER", DEFAULT_CONFIG)
 
+
+
+
+class TestCheckCategory(unittest.TestCase):
+    """The check category holds unified pipeline checks and execution limits."""
+
+    EXPECTED_CHECK_KEYS = [
+        "GITPR_CHECK_BASE",
+        "GITPR_CHECK_FORMAT",
+        "GITPR_CHECK_OUTPUT",
+        "GITPR_CHECK_FAIL_ON",
+        "GITPR_CHECK_NO_IA",
+        "GITPR_CHECK_IA_ONLY_HIGH_RISK",
+        "GITPR_CHECK_BASELINE_PATH",
+        "GITPR_CHECK_POLICY",
+        "GITPR_CHECK_TIMEOUT_SECONDS",
+    ]
+
+    def test_check_category_declared_and_documented(self):
+        self.assertIn("check", CATEGORIES_BY_ID)
+        category = CATEGORIES_BY_ID["check"]
+        self.assertEqual(category.doc, "check-ci.md")
+
+    def test_check_fields_present_and_not_seeded(self):
+        fields = fields_of("check", include_advanced=True)
+        keys = [f.key for f in fields]
+        self.assertEqual(keys, self.EXPECTED_CHECK_KEYS)
+        for field in fields:
+            self.assertFalse(field.seeded, f"{field.key} should not be seeded in DEFAULT_CONFIG")
+
+
+class TestTUIDebtsResolved(unittest.TestCase):
+    """Verifies resolution of technical debts from previous iterations."""
+
+    def test_linter_app_disables_command_palette(self):
+        from src.ui.linter_app import LinterApp
+        self.assertFalse(
+            getattr(LinterApp, "ENABLE_COMMAND_PALETTE", True),
+            "LinterApp must disable the command palette (ENABLE_COMMAND_PALETTE = False)",
+        )
+
+    def test_banner_includes_init_and_base(self):
+        import io
+        from unittest.mock import patch
+        from src.main import print_banner
+
+        buf = io.StringIO()
+        with patch("sys.stdout", buf):
+            print_banner()
+        banner_output = buf.getvalue()
+        self.assertIn("--init", banner_output)
+        self.assertIn("--base", banner_output)
+        self.assertIn("--plugins", banner_output)
 
 if __name__ == "__main__":
     unittest.main()
