@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "publisher": "natanfiuza",
   "license": "LGPL-2.1-only",
+  "icon": "images/icon.png",
+  "homepage": "https://github.com/natanfiuza/gitpr",
+  "bugs": {
+    "url": "https://github.com/natanfiuza/gitpr/issues"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/natanfiuza/gitpr.git"

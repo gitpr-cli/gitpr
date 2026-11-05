@@ -41,6 +41,9 @@ Tanto o VS Code como o Cursor partilham o mesmo pacote VSIX (`natanfiuza.gitpr`)
   code --install-extension gitpr-0.1.0.vsix
   ```
 
+> [!TIP]
+> Para obter instruções sobre como configurar os publishers, obter os PATs e disparar o release automatizado nos marketplaces, consulte o [Guia de Publicação nos Marketplaces](marketplace-publishing-guide.md).
+
 ---
 
 ## Comandos e Fluxos de Utilização
