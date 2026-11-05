@@ -77,7 +77,10 @@ def _load_thinking_words(force=False):
     env_file = str(Path.home() / ".gitpr" / ".env")
 
     # Ensure .env has been loaded
-    load_dotenv(env_file)
+    try:
+        load_dotenv(env_file)
+    except Exception:
+        pass
 
     raw = os.getenv("SPINNER_THINKING_WORDS", "").strip()
 

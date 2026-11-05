@@ -235,33 +235,40 @@ HOOK_SCRIPT_SUFFIXES = {
 SCRIPTS_BASE_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/scripts/"
 
 
-def _seed_local_smart_excludes(project_root=None):
+def _seed_local_smart_excludes(project_root=None, force=False):
     """
     Create a template local smart-excludes file in the project's .gitpr/conf/ directory.
 
     The file starts with an empty exclude list and a comment explaining its purpose.
     Merged with the global list at load time — project-specific exclusions only.
-    Only creates the file if it does NOT already exist (never overwrites user config).
+    Only creates the file if it does NOT already exist (unless force=True).
+    Returns a dict with: {"created": bool, "path": Path, "already_existed": bool, "error": str | None}.
     """
+    result = {"created": False, "path": None, "already_existed": False, "error": None}
     try:
         root = Path(project_root) if project_root else Path.cwd()
         local_dir = root / ".gitpr" / "conf"
         local_file = local_dir / "gitpr.smart-excludes.json"
-        if not local_file.exists():
-            local_dir.mkdir(parents=True, exist_ok=True)
-            template = {
-                "_comment": (
-                    "Project-specific Smart Excludes. "
-                    "Merged with the global list (~/.gitpr/conf/gitpr.smart-excludes.json) at runtime. "
-                    "Add extensions or folder names to exclude from AI diffs for this project only. "
-                    'Example: "*.pyc", "dist/", "node_modules/"'
-                ),
-                "excludes": [],
-            }
-            with open(local_file, "w", encoding="utf-8") as f:
-                json.dump(template, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass  # Best-effort — never block the main flow for file seeding
+        result["path"] = local_file
+        if local_file.exists() and not force:
+            result["already_existed"] = True
+            return result
+        local_dir.mkdir(parents=True, exist_ok=True)
+        template = {
+            "_comment": (
+                "Project-specific Smart Excludes. "
+                "Merged with the global list (~/.gitpr/conf/gitpr.smart-excludes.json) at runtime. "
+                "Add extensions or folder names to exclude from AI diffs for this project only. "
+                'Example: "*.pyc", "dist/", "node_modules/"'
+            ),
+            "excludes": [],
+        }
+        with open(local_file, "w", encoding="utf-8") as f:
+            json.dump(template, f, ensure_ascii=False, indent=2)
+        result["created"] = True
+    except Exception as exc:
+        result["error"] = str(exc)
+    return result
 
 
 def _download_smart_excludes(url: str, hard_timeout: float = 10.0):
@@ -1547,8 +1554,8 @@ _CORRUPTED_PR_SKILL_ARTIFACT = '".gitpr.commit.md": "gitpr.commit.md",'
 _RELEASE_SKILL_LANG_SUFFIXES = ("", ".pt_br", ".pt_pt", ".es_es", ".fr_fr")
 
 
-def download_skill_file(local_name, remote_name, timeout=5, warn_on_exists=True, quiet=False):
-    """Downloads one skill template file into .gitpr/skill/ (never overwrites).
+def download_skill_file(local_name, remote_name, timeout=5, warn_on_exists=True, quiet=False, force=False):
+    """Downloads one skill template file into .gitpr/skill/ (never overwrites unless force=True).
 
     Shared by the ``gitpr --skill`` loop and the release flow first-use
     auto-download. Resolves the destination through ``resolve_skill_path``
@@ -1561,7 +1568,7 @@ def download_skill_file(local_name, remote_name, timeout=5, warn_on_exists=True,
     """
     file_path = resolve_skill_path(local_name)
 
-    if os.path.exists(file_path):
+    if os.path.exists(file_path) and not force:
         if warn_on_exists and not quiet:
             click.secho(
                 __(
@@ -1626,6 +1633,136 @@ def ensure_release_skill_template(quiet=False):
     )
 
 
+def seed_project_configuration(
+    force=False,
+    include_all_skills=False,
+    quiet=False,
+    project_root=None,
+):
+    """
+    Seeds project-local configuration files into .gitpr/conf/ and .gitpr/skill/.
+
+    Files seeded:
+      - .gitpr/conf/gitpr.config.yml (PR base branch, via ensure_project_config)
+      - .gitpr/conf/gitpr.smart-excludes.json (project-specific smart excludes)
+      - .gitpr/skill/.gitpr.linter.yml (local static linter rules)
+
+    If include_all_skills is True, also downloads all AI prompt templates.
+    Never overwrites existing files unless force=True.
+    Returns a dict with summary details.
+    """
+    from src.project_config import ensure_project_config
+
+    summary = {
+        "config": None,
+        "smart_excludes": None,
+        "linter": None,
+        "skills_downloaded": 0,
+    }
+
+    if not quiet:
+        click.secho(__("\n🌱 Seeding project configuration files..."), fg="cyan", bold=True)
+
+    # 1. Project config (.gitpr/conf/gitpr.config.yml)
+    config_seed = ensure_project_config(start_dir=project_root, force=force)
+    summary["config"] = config_seed
+    if not quiet:
+        if config_seed.error:
+            click.secho(
+                __(
+                    "  ❌ Could not create project configuration: {error}",
+                    error=config_seed.error,
+                ),
+                fg="red",
+            )
+        elif config_seed.created:
+            click.secho(
+                __("  ✅ Created: {path}", path=config_seed.path),
+                fg="green",
+            )
+        else:
+            click.secho(
+                __("  ℹ️  Already exists (preserved): {path}", path=config_seed.path),
+                fg="yellow",
+            )
+        if config_seed.created and config_seed.ignored:
+            click.secho(
+                __(
+                    "  ⚠️ {path} is ignored by .gitignore and will not be versioned.",
+                    path=config_seed.path,
+                ),
+                fg="yellow",
+            )
+
+    # 2. Smart excludes (.gitpr/conf/gitpr.smart-excludes.json)
+    se_seed = _seed_local_smart_excludes(project_root=project_root, force=force)
+    summary["smart_excludes"] = se_seed
+    if not quiet:
+        if se_seed["error"]:
+            click.secho(
+                __(
+                    "  ❌ Could not create smart excludes: {error}",
+                    error=se_seed["error"],
+                ),
+                fg="red",
+            )
+        elif se_seed["created"]:
+            click.secho(
+                __("  ✅ Created: {path}", path=se_seed["path"]),
+                fg="green",
+            )
+        else:
+            click.secho(
+                __("  ℹ️  Already exists (preserved): {path}", path=se_seed["path"]),
+                fg="yellow",
+            )
+
+    # 3. Linter (.gitpr/skill/.gitpr.linter.yml)
+    linter_path = resolve_skill_path(".gitpr.linter.yml")
+    linter_exists = os.path.exists(linter_path)
+    if CURRENT_LANG == "en_us":
+        lang_suffix = ""
+    else:
+        lang_suffix = f".{CURRENT_LANG}"
+    remote_linter = f"gitpr.linter{lang_suffix}.yml"
+
+    linter_downloaded = False
+    if not linter_exists or force:
+        linter_downloaded = download_skill_file(
+            ".gitpr.linter.yml",
+            remote_linter,
+            timeout=5,
+            warn_on_exists=False,
+            quiet=quiet,
+            force=force,
+        )
+    summary["linter"] = {
+        "path": linter_path,
+        "created": linter_downloaded,
+        "already_existed": linter_exists and not force,
+    }
+    if not quiet:
+        if linter_downloaded:
+            click.secho(
+                __("  ✅ Created: {path}", path=linter_path),
+                fg="green",
+            )
+        elif linter_exists and not force:
+            click.secho(
+                __("  ℹ️  Already exists (preserved): {path}", path=linter_path),
+                fg="yellow",
+            )
+
+    # 4. Optional: all skills
+    if include_all_skills:
+        summary["skills_downloaded"] = generate_skill_template()
+
+    if not quiet:
+        click.secho(__("\n✨ Project configuration seed complete!"), fg="green", bold=True)
+
+    return summary
+
+
 def generate_skill_template():
     """
     Downloads templates directly from the official repository.
@@ -1660,6 +1797,9 @@ def generate_skill_template():
     }
 
     success_count = 0
+
+    # Also seed project-local smart-excludes (GEMINI.md:613)
+    _seed_local_smart_excludes()
 
     for local_name, remote_name in files_to_download.items():
         # Skip existing files and count only fresh downloads (download_skill_file
@@ -1988,7 +2128,7 @@ def check_and_update_hooks_scripts():
 
 def run_install_wizard():
     """
-    Interactive setup wizard combining --skill, --installhooks, MCP install, and API key check.
+    Interactive setup wizard combining project config seed, --skill, --installhooks, MCP install, and API key check.
 
     Asks for confirmation before each step and prints a documentation URL at the end.
     """
@@ -2000,49 +2140,23 @@ def run_install_wizard():
     )
 
     # ------------------------------------------------------------------
-    # Project configuration (seeded as well by the root callback; reported
-    # here so the wizard always names the file the PR target comes from)
+    # Step 1: Project Local Configuration (.gitpr/conf/)
     # ------------------------------------------------------------------
-    if not os.getenv("GITPR_SKIP_PROJECT_CONFIG_SEED"):
-        from src.project_config import ensure_project_config
-
-        seed = ensure_project_config()
-        if seed.error:
-            click.secho(
-                __(
-                    "⚠️ Could not create the project configuration: {error}",
-                    error=seed.error,
-                ),
-                fg="yellow",
-            )
-        elif seed.created:
-            click.secho(
-                __("📄 Project configuration created: {path}", path=seed.path),
-                fg="green",
-            )
-            click.secho(
-                __(
-                    "Version it with git so the whole team targets the same base branch."
-                ),
-                dim=True,
-            )
-        elif seed.path.exists():
-            click.secho(
-                __("Project configuration: {path}", path=seed.path), dim=True
-            )
-        if seed.created and seed.ignored:
-            click.secho(
-                __(
-                    "⚠️ {path} is ignored by .gitignore and will not be versioned.",
-                    path=seed.path,
-                ),
-                fg="yellow",
-            )
+    click.secho(__("Step 1 of 5: Project Local Configuration"), fg="yellow", bold=True)
+    click.echo(
+        __(
+            "Initializes project-specific configuration files in '.gitpr/conf/' (PR base branch, Smart Excludes)."
+        )
+    )
+    if click.confirm(__("Proceed with project local configuration?"), default=True):
+        seed_project_configuration(force=False, include_all_skills=False, quiet=False)
+    else:
+        click.echo(__("Skipped.\n"))
 
     # ------------------------------------------------------------------
-    # Step 1: Skill Templates (equivalent to --skill)
+    # Step 2: Skill Templates (equivalent to --skill)
     # ------------------------------------------------------------------
-    click.secho(__("Step 1 of 4: Skill Templates"), fg="yellow", bold=True)
+    click.secho(__("\nStep 2 of 5: Skill Templates"), fg="yellow", bold=True)
     click.echo(
         __(
             "Downloads template files (.gitpr.*.md, .gitpr.linter.yml) into the .gitpr/skill/ folder."
@@ -2053,13 +2167,22 @@ def run_install_wizard():
     )
     if click.confirm(__("Proceed with downloading skill templates?"), default=True):
         generate_skill_template()
+        if click.confirm(
+            __(
+                "Would you like to configure an external linter bridge (ESLint, PHPCS, Stylelint)?"
+            ),
+            default=False,
+        ):
+            from src.linter_wizard import run_linter_setup_wizard
+
+            run_linter_setup_wizard()
     else:
         click.echo(__("Skipped.\n"))
 
     # ------------------------------------------------------------------
-    # Step 2: Git Hooks (equivalent to --installhooks)
+    # Step 3: Git Hooks (equivalent to --installhooks)
     # ------------------------------------------------------------------
-    click.secho(__("\nStep 2 of 4: Git Hooks"), fg="yellow", bold=True)
+    click.secho(__("\nStep 3 of 5: Git Hooks"), fg="yellow", bold=True)
     click.echo(
         __(
             "Installs pre-commit (static linter) and prepare-commit-msg (AI commit messages) hooks."
@@ -2079,9 +2202,9 @@ def run_install_wizard():
         click.echo(__("Skipped.\n"))
 
     # ------------------------------------------------------------------
-    # Step 3: MCP Configuration (equivalent to gitpr-mcp --install auto)
+    # Step 4: MCP Configuration (equivalent to gitpr-mcp --install auto)
     # ------------------------------------------------------------------
-    click.secho(__("\nStep 3 of 4: MCP Configuration"), fg="yellow", bold=True)
+    click.secho(__("\nStep 4 of 5: MCP Configuration"), fg="yellow", bold=True)
     click.echo(
         __(
             "Auto-detects and configures GitPR for VS Code, Cursor, Claude Desktop, and Zed."
@@ -2101,9 +2224,9 @@ def run_install_wizard():
         click.echo(__("Skipped.\n"))
 
     # ------------------------------------------------------------------
-    # Step 4: API Key Check
+    # Step 5: API Key Check
     # ------------------------------------------------------------------
-    click.secho(__("\nStep 4 of 4: API Key Configuration"), fg="yellow", bold=True)
+    click.secho(__("\nStep 5 of 5: API Key Configuration"), fg="yellow", bold=True)
     provider = get_ai_provider()
     existing_key = get_api_key(provider)
     if existing_key:

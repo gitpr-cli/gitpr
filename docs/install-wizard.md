@@ -4,18 +4,19 @@ The `gitpr --install` command runs an interactive guided wizard that prepares yo
 
 ## ✨ What It Does
 
-The wizard guides you through **4 steps**, asking for confirmation before each one:
+The wizard guides you through **5 steps**, asking for confirmation before each one:
 
 | Step | What it configures | Equivalent command |
 |------|-------------------|--------------------|
-| 1. Skill Templates | Downloads `.gitpr.*.md` and `.gitpr.linter.yml` template files | `gitpr --skill` |
-| 2. Git Hooks | Installs `pre-commit` and `prepare-commit-msg` hooks locally | `gitpr --installhooks` |
-| 3. MCP Configuration | Auto-detects and configures editors (VS Code, Cursor, Claude, Zed) | `gitpr-mcp --install auto` |
-| 4. API Key Check | Verifies or prompts for your AI provider API key | First-run wizard |
+| 1. Project Local Configuration | Initializes `.gitpr/conf/` (`gitpr.config.yml`, `gitpr.smart-excludes.json`) | `gitpr seed` |
+| 2. Skill Templates & Linter | Downloads `.gitpr.*.md` and `.gitpr.linter.yml` into `.gitpr/skill/` (with optional external linter setup) | `gitpr --skill` / `gitpr --linter-setup` |
+| 3. Git Hooks | Installs `pre-commit` and `prepare-commit-msg` hooks locally | `gitpr --installhooks` |
+| 4. MCP Configuration | Auto-detects and configures editors (VS Code, Cursor, Claude, Zed) | `gitpr-mcp --install auto` |
+| 5. API Key Check | Verifies or prompts for your AI provider API key | First-run wizard |
 
 At the end, a link to this documentation is displayed for reference.
 
-Before the steps, the wizard also seeds the versioned project file `.gitpr/conf/gitpr.config.yml` with the branch this repository's pull requests should target — `PR_DEFAULT_BASE` when it is set, `main` otherwise. An existing file is never overwritten; the wizard just reports its path. Commit it so the whole team targets the same branch ([Pull Request Publication](pull-request-publication.md#91-the-project-file)).
+The project configuration file `.gitpr/conf/gitpr.config.yml` sets the branch this repository's pull requests should target — `PR_DEFAULT_BASE` when it is set, `main` otherwise. An existing file is never overwritten by default. Commit it so the whole team targets the same branch ([Pull Request Publication](pull-request-publication.md#91-the-project-file)).
 
 ## 🚀 How to Use
 
@@ -38,7 +39,13 @@ Each step can be **skipped** by answering `n` (no) when prompted. Skipped steps 
 
 ## 📖 Step-by-Step Details
 
-### Step 1 — Skill Templates
+### Step 1 — Project Local Configuration
+
+Initializes project-specific configuration files in `.gitpr/conf/`:
+- **`gitpr.config.yml`** — PR target base branch configuration for the repository.
+- **`gitpr.smart-excludes.json`** — Project-specific file and folder exclusion rules for AI diffs, merged with global smart excludes at runtime.
+
+### Step 2 — Skill Templates & Linter
 
 Downloads AI context template files into your project's `.gitpr/skill/` folder:
 
@@ -52,9 +59,11 @@ Downloads AI context template files into your project's `.gitpr/skill/` folder:
 
 These files are **never overwritten** if they already exist. Edit them freely to customize AI behavior for your team's conventions.
 
+Upon downloading templates, the wizard also offers an optional prompt to configure external linter bridges (ESLint, PHPCS, Stylelint).
+
 📚 See also: [Skills and Templates System](skill-template.md)
 
-### Step 2 — Git Hooks
+### Step 3 — Git Hooks
 
 Installs two local Git hooks into `.git/hooks/`:
 
@@ -65,7 +74,7 @@ This enables the **Shift-Left** practice — catching issues on the developer's 
 
 📚 See also: [Local Git Hooks](git-hooks-locais.md)
 
-### Step 3 — MCP Configuration
+### Step 4 — MCP Configuration
 
 Auto-detects which AI-powered editors you use and creates the necessary configuration files:
 
@@ -83,7 +92,7 @@ Existing config files are **merged** — other MCP servers are never overwritten
 
 📚 See also: [MCP Integration](mcp-integration.md)
 
-### Step 4 — API Key Configuration
+### Step 5 — API Key Configuration
 
 Checks whether your AI provider API key is already configured:
 
@@ -94,15 +103,36 @@ You can skip this step and configure it later by running `gitpr` (which triggers
 
 📚 See also: [AI Providers](providers-ia.md)
 
+---
+
+## ⚡ Direct Project Configuration Seed (`gitpr seed`)
+
+To seed configuration files without walking through the entire interactive setup wizard, use the dedicated `seed` subcommand:
+
+```bash
+gitpr seed
+```
+
+Or using the root flag:
+```bash
+gitpr --seed
+```
+
+### Options:
+- `--force` / `-f`: Overwrites existing configuration files with default templates.
+- `--all` / `-a`: Also downloads all 12 AI prompt templates into `.gitpr/skill/`.
+
 ## 🔄 Running Individual Steps Later
 
 If you skipped a step, you can always run its equivalent command later:
 
 ```bash
-gitpr --skill              # Step 1: Download templates
-gitpr --installhooks    # Step 2: Install Git hooks
-gitpr-mcp --install auto   # Step 3: Configure MCP
-gitpr                      # Step 4: API key (first-run wizard)
+gitpr seed                 # Step 1: Project configuration
+gitpr --skill              # Step 2: Download templates
+gitpr --linter-setup       # Step 2 (optional): External linter bridge
+gitpr --installhooks       # Step 3: Install Git hooks
+gitpr-mcp --install auto   # Step 4: Configure MCP
+gitpr                      # Step 5: API key (first-run wizard)
 ```
 
 ## ⚙️ CI/CD Environments

@@ -18,7 +18,10 @@ env_path = Path.home() / ".gitpr" / ".env"
 # taken here, the one place where load_dotenv runs at import time.
 AMBIENT_ENV_KEYS = frozenset(os.environ)
 
-load_dotenv(env_path)
+try:
+    load_dotenv(env_path)
+except Exception:
+    pass
 
 
 def get_system_language():
@@ -42,11 +45,14 @@ def get_system_language():
     # the file through a temporary one created next to it, so on a first run —
     # when ~/.gitpr does not exist yet — the missing directory raises before
     # anything is written.
-    env_path.parent.mkdir(parents=True, exist_ok=True)
-    set_key(env_path, "GITPR_LANG", lang)
+    try:
+        env_path.parent.mkdir(parents=True, exist_ok=True)
+        set_key(env_path, "GITPR_LANG", lang)
 
-    # Reload .env so the new variable is available immediately
-    load_dotenv(env_path, override=True)
+        # Reload .env so the new variable is available immediately
+        load_dotenv(env_path, override=True)
+    except Exception:
+        pass
 
     return lang
 
