@@ -1742,5 +1742,6 @@
   "🧪 Covered Scenarios:": "🧪 Escenarios Cubiertos:",
   "🧭 Policy: {policy}": "🧭 Política: {policy}",
   "🧭 {policy}": "🧭 En vigor: {policy}",
-  "🧹 Conversation cleared. A new session has started.": "🧹 Conversación limpiada. Una nueva sesión ha comenzado."
+  "🧹 Conversation cleared. A new session has started.": "🧹 Conversación limpiada. Una nueva sesión ha comenzado.",
+  "ℹ️ Blame analysis: {with_count} file(s) with blame, {without_count} without blame (new or binary).": "ℹ️ Análisis de blame: {with_count} archivo(s) con blame, {without_count} sin blame (nuevos o binarios)."
 }

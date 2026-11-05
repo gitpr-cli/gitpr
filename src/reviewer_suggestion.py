@@ -58,6 +58,8 @@ class ReviewerSuggestionResult:
     candidates: list = field(default_factory=list)  # list[ReviewerCandidate]
     excluded_pr_author: bool = False
     warnings: list = field(default_factory=list)  # list[str]
+    files_with_blame: list = field(default_factory=list)  # list[str]
+    files_without_blame: list = field(default_factory=list)  # list[str]
 
 
 def normalize_email(email):

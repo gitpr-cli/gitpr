@@ -215,3 +215,9 @@ and .gitpr/skill/.gitpr.linter.yml) with baseline templates, idempotently
 without overwriting existing files unless explicitly forced. Distinct from
 machine-wide configuration seeding in ~/.gitpr/.env.
 _Avoid_: init repo, template copy, conf generator
+
+**Blame summary**:
+The aggregated count of files with and without blame history during reviewer suggestion
+computation (`files_with_blame` and `files_without_blame`), displayed as a single informative
+console line when unblamable files (new or binary) are present, replacing per-file warnings.
+_Avoid_: blame report, blame log, unblamable list
