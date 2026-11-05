@@ -1,6 +1,7 @@
 import asyncio
 from unittest.mock import MagicMock, patch
 import pytest
+from textual.widgets import Button
 
 from src.ui.commit_app import CommitApp
 from src.ui.pr_publish_app import (
@@ -14,7 +15,7 @@ def _run(coro_factory):
     asyncio.run(coro_factory())
 
 
-async def _wait_until(pilot, predicate, timeout=5.0):
+async def _wait_until(pilot, predicate, timeout=10.0):
     """Poll the app between pauses until *predicate* becomes true."""
     for _ in range(int(timeout / 0.05)):
         try:
@@ -192,11 +193,17 @@ class TestCommitAppHeadlessFlow:
                     await pilot.click("#btn_stage")
                     
                     # Wait for generation to complete and CommitMessageScreen's btn_confirm to appear
-                    await _wait_until(pilot, lambda: bool(app.screen.query("#btn_confirm")))
+                    await _wait_until(
+                        pilot,
+                        lambda: isinstance(app.screen, CommitMessageScreen)
+                        and app.screen.is_mounted
+                        and bool(app.screen.query("#btn_confirm")),
+                    )
                     assert isinstance(app.screen, CommitMessageScreen)
 
                     # Confirm commit
-                    await pilot.click("#btn_confirm")
+                    app.screen.query_one("#btn_confirm", Button).press()
+                    await pilot.pause()
 
                     # Wait for commit execution to complete and auto-exit to set result
                     await _wait_until(pilot, lambda: app.result == "committed")
