@@ -319,3 +319,105 @@ def split_patch_sections(diff_text):
 
     flush(len(lines))
     return sections
+
+
+#: Binary hunk guard thresholds (see CONTEXT.md).
+#:
+#: A legitimate Latin-1 / Windows-1252 source file decoded with errors="replace"
+#: produces 1 or 2 contiguous U+FFFD characters on isolated accented letters and
+#: stays well below 2-5% across a file's hunks. A binary blob diffed as text
+#: (e.g. a file with an ASCII header > 8000 bytes before the first NUL byte, or
+#: forced as text by .gitattributes) produces either contiguous runs of U+FFFD
+#: or a high density of replacement characters across the hunk body.
+BINARY_FFFD_CONTIGUOUS_RUN = 8
+BINARY_FFFD_MIN_COUNT = 32
+BINARY_FFFD_MIN_DENSITY = 0.10
+
+
+def _is_binary_hunk_section(lines, first_hunk_idx):
+    """True when the hunk content lines from *first_hunk_idx* carry binary U+FFFD streams."""
+    contiguous_needle = "\ufffd" * BINARY_FFFD_CONTIGUOUS_RUN
+    total_fffd = 0
+    total_chars = 0
+
+    for line in lines[first_hunk_idx:]:
+        if line.startswith("@@") or line.startswith("\\ No newline"):
+            continue
+        if line.startswith(("+", "-", " ")):
+            payload = line[1:]
+            if contiguous_needle in payload:
+                return True
+            total_fffd += payload.count("\ufffd")
+            total_chars += len(payload)
+
+    if total_fffd >= BINARY_FFFD_MIN_COUNT and total_chars > 0:
+        return (total_fffd / total_chars) >= BINARY_FFFD_MIN_DENSITY
+    return False
+
+
+def _collapse_section_to_binary_marker(section):
+    """Replace the hunks of *section* with git's standard 'Binary files ... differ' line."""
+    lines = section.text.split("\n")
+    while lines and lines[-1] == "":
+        lines.pop()
+
+    first_hunk_idx = None
+    for idx, line in enumerate(lines):
+        if line.startswith("@@") and _HUNK_HEADER_RE.match(line):
+            first_hunk_idx = idx
+            break
+
+    if first_hunk_idx is None or not _is_binary_hunk_section(lines, first_hunk_idx):
+        return None
+
+    old_label = f"a/{section.path}"
+    new_label = f"b/{section.path}"
+    kept_headers = []
+
+    for line in lines[:first_hunk_idx]:
+        if line.startswith("--- "):
+            raw_old = _strip_diff_prefix(_header_path(line, marker="--- "))
+            old_label = "/dev/null" if raw_old == "/dev/null" else f"a/{raw_old or section.path}"
+            continue
+        if line.startswith("+++ "):
+            raw_new = _strip_diff_prefix(_header_path(line, marker="+++ "))
+            new_label = "/dev/null" if raw_new == "/dev/null" else f"b/{raw_new or section.path}"
+            continue
+        kept_headers.append(line)
+
+    if not kept_headers:
+        kept_headers.append(f"diff --git a/{section.path} b/{section.path}")
+
+    kept_headers.append(f"Binary files {old_label} and {new_label} differ")
+    return "\n".join(kept_headers)
+
+
+def collapse_binary_hunks(diff_text):
+    """Binary hunk guard: collapse U+FFFD-heavy binary hunks into binary markers.
+
+    Fast-paths in O(1) when *diff_text* contains no U+FFFD character, and
+    returns *diff_text* verbatim when no section crosses the binary thresholds
+    (preserving legitimate Latin-1 / Windows-1252 source code byte for byte).
+    """
+    if not diff_text or "\ufffd" not in diff_text:
+        return diff_text
+
+    sections = split_patch_sections(diff_text)
+    if not sections:
+        return diff_text
+
+    changed = False
+    rebuilt = []
+    for section in sections:
+        collapsed = _collapse_section_to_binary_marker(section)
+        if collapsed is not None:
+            rebuilt.append(collapsed)
+            changed = True
+        else:
+            rebuilt.append(section.text.rstrip("\n"))
+
+    if not changed:
+        return diff_text
+
+    trailing = "\n" if diff_text.endswith("\n") else ""
+    return "\n".join(rebuilt) + trailing

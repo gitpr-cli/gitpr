@@ -23,6 +23,7 @@ Controladas por [`templates/gitpr.smart-excludes.json`](https://github.com/gitpr
 - **Activos minificados:** `*.min.js`, `*.min.css`, `*.bundle.js`
 - **Archivos generados:** `*.map`, `*.pyc`, `*.log`
 - **Archivos del sistema:** `.DS_Store`, `Thumbs.db`
+- **Activos binarios:** imágenes (`*.png`, `*.jpg`, `*.webp`, `*.ico`, `*.psd`), documentos Office/PDF (`*.pdf`, `*.docx`, `*.xlsx`, `*.pptx`), paquetes/comprimidos (`*.zip`, `*.tar`, `*.gz`, `*.7z`, `*.jar`, `*.whl`, `*.apk`), fuentes (`*.woff`, `*.woff2`, `*.ttf`, `*.otf`), audio/vídeo (`*.mp3`, `*.mp4`, `*.wav`, `*.mov`), binarios compilados/bibliotecas (`*.exe`, `*.dll`, `*.so`, `*.dylib`, `*.class`, `*.wasm`), bases de datos/datasets/pesos de ML (`*.sqlite`, `*.db`, `*.parquet`, `*.pkl`, `*.npy`, `*.pt`, `*.onnx`, `*.safetensors`, `*.bin`, `*.dat`) y certificados/keystores binarios (`*.p12`, `*.pfx`, `*.der`, `*.jks`)
 
 ### 2. Exclusiones de Documentación (Prosa)
 Controladas por [`templates/gitpr.docs-smart-excludes.json`](https://github.com/gitpr-cli/gitpr.git/blob/main/templates/gitpr.docs-smart-excludes.json):
@@ -33,6 +34,8 @@ Controladas por [`templates/gitpr.docs-smart-excludes.json`](https://github.com/
 - **Páginas de manual:** `.man`, `.1`–`.8`
 
 Las dos listas se **combinan en tiempo de ejecución** en una única variable `SMART_EXCLUDES`, que se añade a todos los comandos `git diff` que ejecuta GitPR.
+
+> **Binary Hunk Guard (salvaguarda contra `U+FFFD`):** Cuando un archivo binario tiene una extensión personalizada o un encabezado ASCII largo (> 8.000 bytes antes del primer byte `NUL`) y Git lo procesa como texto, la decodificación con `errors="replace"` enviaría largas secuencias de `U+FFFD` a la IA. GitPR inspecciona automáticamente los hunks del diff y colapsa cualquier sección con flujo binario de `U+FFFD` (`>= 8` `U+FFFD` contiguos o `>= 32` en total con densidad `>= 10%` en los hunks) en el marcador estándar `Binary files a/... and b/... differ`, preservando íntegramente los archivos de código heredado no-UTF-8 (p. ej., Latin-1/Windows-1252).
 
 ## 📋 Metadatos de Documentación (Documentos Modificados Sin Contenido)
 

@@ -59,17 +59,17 @@ def filter_excluded_sections(diff_text, patterns):
     pattern like "*.lock" already covers "vendor/deep/thing.lock" and no
     separate basename pass is needed. Without patterns the input is returned
     untouched, which is also what an empty SMART_EXCLUDES produces.
+    Surviving sections also pass through ``collapse_binary_hunks`` so binary
+    blobs that slipped past path globs never reach the model as U+FFFD streams.
     """
-    if not patterns:
-        return diff_text, []
+    from src.diff_parser import collapse_binary_hunks, split_patch_sections
 
-    # Imported here: diff_parser is pure and cheap, but keeping the import at
-    # module level would be the only thing this module needs from it.
-    from src.diff_parser import split_patch_sections
+    if not patterns:
+        return collapse_binary_hunks(diff_text), []
 
     sections = split_patch_sections(diff_text)
     if not sections:
-        return diff_text, []
+        return collapse_binary_hunks(diff_text), []
 
     kept = []
     dropped = []
@@ -80,5 +80,5 @@ def filter_excluded_sections(diff_text, patterns):
             kept.append(section.text)
 
     if not dropped:
-        return diff_text, []
-    return "\n".join(kept), dropped
+        return collapse_binary_hunks(diff_text), []
+    return collapse_binary_hunks("\n".join(kept)), dropped
