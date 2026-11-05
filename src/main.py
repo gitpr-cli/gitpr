@@ -5130,7 +5130,8 @@ def tests_generate(target_file, finding_id, framework_override, apply_flag, ai_p
                 encoding="utf-8",
                 errors="replace",
             )
-            diff_content = res.stdout if res.returncode == 0 else ""
+            from src.diff_parser import collapse_binary_hunks
+            diff_content = collapse_binary_hunks(res.stdout) if res.returncode == 0 else ""
             if not diff_content.strip() and os.path.exists(target_file):
                 # Fallback to reading file content if no diff
                 with open(target_file, "r", encoding="utf-8", errors="replace") as f:
@@ -5420,7 +5421,8 @@ def risk(target_file, output_format, base_ref, no_history):
             encoding="utf-8",
             errors="replace",
         )
-        diff_text = res.stdout if res.returncode == 0 else ""
+        from src.diff_parser import collapse_binary_hunks
+        diff_text = collapse_binary_hunks(res.stdout) if res.returncode == 0 else ""
     else:
         diff_text = get_git_diff(quiet=True)
         if not diff_text or not diff_text.strip():

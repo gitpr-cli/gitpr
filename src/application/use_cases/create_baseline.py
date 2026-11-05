@@ -107,7 +107,8 @@ def current_diff(base: str | None = None, quiet: bool = True) -> str:
         encoding="utf-8",
         errors="replace",
     )
-    return result.stdout if result.returncode == 0 else ""
+    from src.diff_parser import collapse_binary_hunks
+    return collapse_binary_hunks(result.stdout) if result.returncode == 0 else ""
 
 
 def diff_files(diff_text: str) -> list[str]:

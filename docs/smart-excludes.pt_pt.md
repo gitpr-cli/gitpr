@@ -23,6 +23,7 @@ Controladas por [`templates/gitpr.smart-excludes.json`](https://github.com/gitpr
 - **Assets minificados:** `*.min.js`, `*.min.css`, `*.bundle.js`
 - **Ficheiros gerados:** `*.map`, `*.pyc`, `*.log`
 - **Ficheiros do sistema operativo:** `.DS_Store`, `Thumbs.db`
+- **Ativos binários:** imagens (`*.png`, `*.jpg`, `*.webp`, `*.ico`, `*.psd`), documentos Office/PDF (`*.pdf`, `*.docx`, `*.xlsx`, `*.pptx`), pacotes/arquivos comprimidos (`*.zip`, `*.tar`, `*.gz`, `*.7z`, `*.jar`, `*.whl`, `*.apk`), tipos de letra (`*.woff`, `*.woff2`, `*.ttf`, `*.otf`), áudio/vídeo (`*.mp3`, `*.mp4`, `*.wav`, `*.mov`), binários compilados/bibliotecas (`*.exe`, `*.dll`, `*.so`, `*.dylib`, `*.class`, `*.wasm`), bases de dados/datasets/pesos de ML (`*.sqlite`, `*.db`, `*.parquet`, `*.pkl`, `*.npy`, `*.pt`, `*.onnx`, `*.safetensors`, `*.bin`, `*.dat`) e certificados/keystores binários (`*.p12`, `*.pfx`, `*.der`, `*.jks`)
 
 ### 2. Exclusões de Documentação (Texto)
 Controladas por [`templates/gitpr.docs-smart-excludes.json`](https://github.com/gitpr-cli/gitpr.git/blob/main/templates/gitpr.docs-smart-excludes.json):
@@ -33,6 +34,8 @@ Controladas por [`templates/gitpr.docs-smart-excludes.json`](https://github.com/
 - **Páginas de manual:** `.man`, `.1`–`.8`
 
 As duas listas são **fundidas em tempo de execução** numa única variável `SMART_EXCLUDES`, que é anexada a todos os comandos `git diff` executados pelo GitPR.
+
+> **Binary Hunk Guard (salvaguarda contra `U+FFFD`):** Quando um ficheiro binário tem uma extensão personalizada ou um cabeçalho ASCII longo (> 8.000 bytes antes do primeiro byte `NUL`) e o Git o processa como texto, a descodificação com `errors="replace"` enviaria longas sequências de `U+FFFD` para a IA. O GitPR inspeciona automaticamente os hunks do diff e colapsa qualquer secção com fluxo binário de `U+FFFD` (`>= 8` `U+FFFD` contíguos ou `>= 32` no total com densidade `>= 10%` nos hunks) para o marcador padrão `Binary files a/... and b/... differ`, preservando integralmente ficheiros de código legado não-UTF-8 (ex.: Latin-1/Windows-1252).
 
 ## 📋 Metadados de Documentação (Documentos Alterados Sem Conteúdo)
 

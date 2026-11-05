@@ -139,10 +139,17 @@ _Avoid_: close prompt result, autoclose flag
 
 **Smart Excludes**:
 The pathspec-based filtering engine that automatically excludes noise (lockfiles,
-minified assets, generated artifacts) and documentation prose from the git diff
+minified assets, generated artifacts, binary assets) and documentation prose from the git diff
 before it is sent to the AI. Composed of three layers: Core Exclusions (global),
 Documentation Exclusions (global), and Project-Local Exclusions (`.gitpr/conf/gitpr.smart-excludes.json`).
 _Avoid_: diff ignore, ignore patterns, gitignore filter
+
+**Binary hunk guard**:
+The post-diff safeguard that detects patch sections whose hunks carry binary byte
+streams decoded as `U+FFFD` replacement characters and collapses their hunks into
+a standard binary-diff marker before analysis, while preserving legitimate
+non-UTF-8 legacy text.
+_Avoid_: replacement stripper, U+FFFD filter, binary sanitizer
 
 **Seeded configuration field**:
 A configuration variable declared in the schema that is auto-written to `~/.gitpr/.env`

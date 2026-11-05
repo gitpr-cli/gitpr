@@ -31,6 +31,7 @@ from src.config import (
     ENV_FILE,
 )
 from src.ai_providers import call_ai_model
+from src.diff_parser import collapse_binary_hunks
 from src.doc_links import doc_url
 from src.i18n import __, CURRENT_LANG
 from src.updater import __lang_version__, __scripts_version__
@@ -52,6 +53,125 @@ _FALLBACK_SMART_EXCLUDES = [
     "*.min.js",
     "*.min.css",
     "*.svg",
+    "bun.lockb",
+    "bun.lock",
+    "npm-shrinkwrap.json",
+    "uv.lock",
+    "Cargo.lock",
+    "mix.lock",
+    "pubspec.lock",
+    "Podfile.lock",
+    "Package.resolved",
+    "packages.lock.json",
+    "gradle.lockfile",
+    "conan.lock",
+    "*.bundle.js",
+    "*.bundle.css",
+    "*.map",
+    "*.log",
+    "*.pyc",
+    "*.pyo",
+    ".DS_Store",
+    "Thumbs.db",
+    ".gitpr/fix_history.json",
+    ".gitpr/baseline.json",
+    ".gitpr/baseline.overrides.yml",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.webp",
+    "*.ico",
+    "*.bmp",
+    "*.tiff",
+    "*.tif",
+    "*.avif",
+    "*.heic",
+    "*.psd",
+    "*.ai",
+    "*.icns",
+    "*.pdf",
+    "*.doc",
+    "*.docx",
+    "*.xls",
+    "*.xlsx",
+    "*.ppt",
+    "*.pptx",
+    "*.odt",
+    "*.ods",
+    "*.odp",
+    "*.zip",
+    "*.tar",
+    "*.gz",
+    "*.tgz",
+    "*.bz2",
+    "*.xz",
+    "*.7z",
+    "*.rar",
+    "*.jar",
+    "*.war",
+    "*.ear",
+    "*.whl",
+    "*.egg",
+    "*.deb",
+    "*.rpm",
+    "*.dmg",
+    "*.iso",
+    "*.apk",
+    "*.aab",
+    "*.ipa",
+    "*.woff",
+    "*.woff2",
+    "*.ttf",
+    "*.otf",
+    "*.eot",
+    "*.mp3",
+    "*.mp4",
+    "*.wav",
+    "*.ogg",
+    "*.webm",
+    "*.mov",
+    "*.avi",
+    "*.flac",
+    "*.m4a",
+    "*.mkv",
+    "*.exe",
+    "*.dll",
+    "*.so",
+    "*.dylib",
+    "*.a",
+    "*.lib",
+    "*.o",
+    "*.obj",
+    "*.class",
+    "*.pyd",
+    "*.wasm",
+    "*.pdb",
+    "*.sqlite",
+    "*.sqlite3",
+    "*.db",
+    "*.mdb",
+    "*.accdb",
+    "*.parquet",
+    "*.feather",
+    "*.pkl",
+    "*.pickle",
+    "*.npy",
+    "*.npz",
+    "*.h5",
+    "*.hdf5",
+    "*.pt",
+    "*.pth",
+    "*.onnx",
+    "*.safetensors",
+    "*.bin",
+    "*.dat",
+    "*.p12",
+    "*.pfx",
+    "*.der",
+    "*.cer",
+    "*.jks",
+    "*.keystore",
 ]
 
 SMART_EXCLUDES_URL = "https://raw.githubusercontent.com/natanfiuza/gitpr/main/templates/gitpr.smart-excludes.json"
@@ -635,7 +755,7 @@ def get_git_diff(quiet=False):
             errors="replace",
             check=True,
         )
-        return result.stdout
+        return collapse_binary_hunks(result.stdout)
     except subprocess.CalledProcessError as e:
         if not quiet:
             click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
@@ -662,7 +782,7 @@ def get_git_staged_diff(quiet=False):
             errors="replace",
             check=True,
         )
-        return result.stdout
+        return collapse_binary_hunks(result.stdout)
     except subprocess.CalledProcessError as e:
         if not quiet:
             click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
@@ -779,7 +899,7 @@ def get_unstaged_diff(quiet=False):
             errors="replace",
             check=True,
         )
-        return result.stdout
+        return collapse_binary_hunks(result.stdout)
     except subprocess.CalledProcessError as e:
         if not quiet:
             click.secho(__("❌ Error running Git: {error}", error=e.stderr), fg="red")
@@ -1631,7 +1751,7 @@ def get_git_full_diff():
             errors="replace",
             check=True,
         )
-        return result.stdout
+        return collapse_binary_hunks(result.stdout)
 
     except subprocess.CalledProcessError as e:
         click.secho(__("❌ Error calculating diff: {error}", error=e.stderr), fg="red")

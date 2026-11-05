@@ -23,6 +23,7 @@ Contrôlées par [`templates/gitpr.smart-excludes.json`](https://github.com/gitp
 - **Assets minifiés :** `*.min.js`, `*.min.css`, `*.bundle.js`
 - **Fichiers générés :** `*.map`, `*.pyc`, `*.log`
 - **Fichiers système :** `.DS_Store`, `Thumbs.db`
+- **Actifs binaires :** images (`*.png`, `*.jpg`, `*.webp`, `*.ico`, `*.psd`), documents Office/PDF (`*.pdf`, `*.docx`, `*.xlsx`, `*.pptx`), archives/paquets (`*.zip`, `*.tar`, `*.gz`, `*.7z`, `*.jar`, `*.whl`, `*.apk`), polices (`*.woff`, `*.woff2`, `*.ttf`, `*.otf`), audio/vidéo (`*.mp3`, `*.mp4`, `*.wav`, `*.mov`), binaires compilés/bibliothèques (`*.exe`, `*.dll`, `*.so`, `*.dylib`, `*.class`, `*.wasm`), bases de données/datasets/poids ML (`*.sqlite`, `*.db`, `*.parquet`, `*.pkl`, `*.npy`, `*.pt`, `*.onnx`, `*.safetensors`, `*.bin`, `*.dat`) et certificats/keystores binaires (`*.p12`, `*.pfx`, `*.der`, `*.jks`)
 
 ### 2. Exclusions de documentation (prose)
 Contrôlées par [`templates/gitpr.docs-smart-excludes.json`](https://github.com/gitpr-cli/gitpr.git/blob/main/templates/gitpr.docs-smart-excludes.json) :
@@ -33,6 +34,8 @@ Contrôlées par [`templates/gitpr.docs-smart-excludes.json`](https://github.com
 - **Pages de manuel :** `.man`, `.1`–`.8`
 
 Les deux listes sont **fusionnées à l'exécution** dans une variable unique `SMART_EXCLUDES`, ajoutée à chaque commande `git diff` exécutée par GitPR.
+
+> **Binary Hunk Guard (garde-fou contre `U+FFFD`) :** Lorsqu'un fichier binaire possède une extension personnalisée ou un long en-tête ASCII (> 8 000 octets avant le premier octet `NUL`) et que Git le traite comme du texte, le décodage avec `errors="replace"` enverrait de longues séquences de `U+FFFD` à l'IA. GitPR inspecte automatiquement les hunks du diff et réduit toute section contenant un flux binaire de `U+FFFD` (`>= 8` `U+FFFD` contigus ou `>= 32` au total avec une densité `>= 10 %` dans les hunks) au marqueur standard `Binary files a/... and b/... differ`, tout en préservant intégralement les fichiers de code hérité non-UTF-8 (ex. : Latin-1/Windows-1252).
 
 ## 📋 Métadonnées de documentation (docs modifiées sans contenu)
 

@@ -108,7 +108,8 @@ def get_check_diff(
             cwd=repo_path or None,
         )
         if proc.returncode == 0:
-            return proc.stdout or ""
+            from src.diff_parser import collapse_binary_hunks
+            return collapse_binary_hunks(proc.stdout or "")
     except OSError:
         pass
     return ""

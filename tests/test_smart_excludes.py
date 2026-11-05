@@ -269,3 +269,41 @@ class TestGetChangedDocsList:
             result = get_changed_docs_list()
 
         assert result == []
+
+
+# ──────────────────────────────────────────────────────────────
+# Binary coverage & template parity
+# ──────────────────────────────────────────────────────────────
+class TestSmartExcludesBinaryCoverage:
+    def test_fallback_matches_remote_template_1_to_1(self):
+        """_FALLBACK_SMART_EXCLUDES must stay in 1:1 parity with templates/gitpr.smart-excludes.json."""
+        from pathlib import Path
+
+        repo_root = Path(__file__).resolve().parent.parent
+        template_path = repo_root / "templates" / "gitpr.smart-excludes.json"
+        template_data = json.loads(template_path.read_text(encoding="utf-8"))
+
+        assert list(_FALLBACK_SMART_EXCLUDES) == template_data["excludes"]
+
+    def test_all_eight_binary_families_are_covered(self):
+        """Representative binary patterns from all 8 real-world families must be excluded."""
+        expected_patterns = {
+            # 1. Images / design
+            "*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.ico", "*.bmp", "*.psd", "*.avif",
+            # 2. Binary documents / Office
+            "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx", "*.ppt", "*.pptx", "*.odt",
+            # 3. Archives / packages / disk images
+            "*.zip", "*.tar", "*.gz", "*.tgz", "*.7z", "*.rar", "*.jar", "*.whl", "*.apk", "*.iso",
+            # 4. Fonts
+            "*.woff", "*.woff2", "*.ttf", "*.otf", "*.eot",
+            # 5. Audio / video
+            "*.mp3", "*.mp4", "*.wav", "*.ogg", "*.webm", "*.mov", "*.avi", "*.mkv",
+            # 6. Compiled binaries / libraries / bytecode
+            "*.exe", "*.dll", "*.so", "*.dylib", "*.a", "*.lib", "*.o", "*.obj", "*.class", "*.pyd", "*.wasm",
+            # 7. Databases / datasets / ML weights / raw binary
+            "*.sqlite", "*.sqlite3", "*.db", "*.parquet", "*.pkl", "*.npy", "*.npz", "*.pt", "*.onnx", "*.safetensors", "*.bin", "*.dat",
+            # 8. Certificates / keystores
+            "*.p12", "*.pfx", "*.der", "*.cer", "*.jks", "*.keystore",
+        }
+        missing = expected_patterns - set(_FALLBACK_SMART_EXCLUDES)
+        assert not missing, f"Missing binary patterns in _FALLBACK_SMART_EXCLUDES: {sorted(missing)}"
