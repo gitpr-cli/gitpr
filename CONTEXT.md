@@ -206,3 +206,12 @@ _Avoid_: time chart, speed graph, duration table
 The continuous daily time series of token consumption from ledger executions
 over the active window, with zero-consumption days explicitly preserved.
 _Avoid_: token history, usage sparkline, token graph
+
+
+**Project configuration seed**:
+The explicit action of initializing repository-level configuration files
+(.gitpr/conf/gitpr.config.yml, .gitpr/conf/gitpr.smart-excludes.json,
+and .gitpr/skill/.gitpr.linter.yml) with baseline templates, idempotently
+without overwriting existing files unless explicitly forced. Distinct from
+machine-wide configuration seeding in ~/.gitpr/.env.
+_Avoid_: init repo, template copy, conf generator

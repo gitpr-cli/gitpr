@@ -283,7 +283,7 @@ def _global_default():
         return ""
 
 
-def ensure_project_config(path=None, start_dir=None, default_branch=None):
+def ensure_project_config(path=None, start_dir=None, default_branch=None, force=False):
     """Creates the project file when absent. Never raises, never overwrites.
 
     Without an explicit ``path`` the function is a no-op outside a git
@@ -299,7 +299,7 @@ def ensure_project_config(path=None, start_dir=None, default_branch=None):
         if code != 0:
             return SeedResult(created=False, path=target)
 
-    if target.exists():
+    if target.exists() and not force:
         return SeedResult(created=False, path=target)
 
     branch = (default_branch or _global_default() or "").strip()

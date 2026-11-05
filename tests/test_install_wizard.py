@@ -16,14 +16,17 @@ class TestInstallWizard(unittest.TestCase):
         # Patch click.echo and click.secho to suppress output during tests
         self._echo_patcher = patch("click.echo")
         self._secho_patcher = patch("click.secho")
+        self._linter_patcher = patch("src.linter_wizard.run_linter_setup_wizard")
         self.mock_echo = self._echo_patcher.start()
         self.mock_secho = self._secho_patcher.start()
+        self.mock_linter_wizard = self._linter_patcher.start()
 
     def tearDown(self):
         """Stop all patchers."""
         self._confirm_patcher.stop()
         self._echo_patcher.stop()
         self._secho_patcher.stop()
+        self._linter_patcher.stop()
 
     @patch("src.core.generate_skill_template")
     @patch("src.core.install_git_hooks")

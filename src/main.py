@@ -39,6 +39,7 @@ from src.core import (
     ensure_release_skill_template,
     generate_pr_content,
     generate_skill_template,
+    seed_project_configuration,
     get_branch_history_text,
     get_current_branch,
     get_doc_url,
@@ -182,6 +183,13 @@ HELP_MAP: dict[str, dict[str, str]] = {
         "title": __("Skills and Templates System (--skill)"),
         "description": __(
             "Downloads template files (.gitpr.*.md and .gitpr.linter.yml) from the official repository into the project's .gitpr/skill/ folder. These files allow customizing the AI behavior according to your team's rules. NEVER overwrites existing local files."
+        ),
+    },
+    "seed": {
+        "url": get_doc_url("install-wizard.md"),
+        "title": __("Project Configuration Seed (seed / --seed)"),
+        "description": __(
+            "Seeds project-local configuration files into .gitpr/conf/ (PR base branch, Smart Excludes) and .gitpr/skill/ (.gitpr.linter.yml). Supports --force to overwrite and --all to include all AI skill templates."
         ),
     },
     "update": {
@@ -539,6 +547,12 @@ def _resolve_pr_target(base, quiet):
     help=__("Downloads the skill template files into the .gitpr/skill/ folder."),
 )
 @click.option(
+    "-sd",
+    "--seed",
+    is_flag=True,
+    help=__("Seeds project-local configuration files into .gitpr/conf/ and .gitpr/skill/."),
+)
+@click.option(
     "-u",
     "--update",
     is_flag=True,
@@ -735,6 +749,7 @@ def cli(
     fullreview,
     linter,
     skill,
+    seed,
     update,
     installhooks,
     install,
@@ -1224,6 +1239,14 @@ def cli(
         from src.metrics import log_command_metric
 
         log_command_metric(command="skill", status="success", provider="git")
+        return
+
+    # --seed option: Seed project configuration and exit
+    if seed:
+        seed_project_configuration()
+        from src.metrics import log_command_metric
+
+        log_command_metric(command="seed", status="success", provider="local")
         return
 
     if installhooks:
@@ -2054,6 +2077,50 @@ def _preview_release(result, max_lines=40):
         click.echo(__("… and {more} more lines", more=len(lines) - max_lines))
     else:
         click.echo(result.markdown.rstrip("\n"))
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("install-wizard.md"),
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help=__(
+        "Forces overwriting existing project configuration files with default templates."
+    ),
+)
+@click.option(
+    "--all",
+    "-a",
+    "include_all",
+    is_flag=True,
+    help=__(
+        "Also downloads all AI prompt skill templates (.gitpr.*.md) into .gitpr/skill/."
+    ),
+)
+def seed(force, include_all):
+    """Seeds project-local configuration files (.gitpr/conf/ and linter).
+
+    Initializes the repository's local configuration files:
+      - .gitpr/conf/gitpr.config.yml (PR base branch)
+      - .gitpr/conf/gitpr.smart-excludes.json (Smart Excludes pathspecs)
+      - .gitpr/skill/.gitpr.linter.yml (Local regex linter rules)
+
+    Never overwrites existing files unless --force is specified.
+    """
+    from src.metrics import log_command_metric
+
+    try:
+        seed_project_configuration(force=force, include_all_skills=include_all, quiet=False)
+        log_command_metric(command="seed", status="success", provider="local")
+    except Exception:
+        log_command_metric(command="seed", status="error", provider="local")
+        raise
 
 
 @cli.command(
