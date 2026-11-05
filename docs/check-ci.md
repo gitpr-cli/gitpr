@@ -157,3 +157,115 @@ jobs:
         with:
           sarif_file: gitpr-results.sarif
 ```
+
+---
+
+## 7. Migration Guide: Upgrading from Legacy Action Workflow
+
+Prior to the introduction of `gitpr check`, the official composite action (`action.yml`) executed two sequential discrete commands:
+1. `gitpr --linter` (failed fast if static errors occurred).
+2. `gitpr --fullreview` (generated an unclassified text file `*_PR_FULLREVIEW.txt` on disk, which was optionally concatenated into `$GITHUB_STEP_SUMMARY`).
+
+This design created a breaking contract change when upgrading to modern GitPR:
+- **No `*_PR_FULLREVIEW.txt` on disk**: `gitpr check` does not create this text file. Workflows relying on `cat *_PR_FULLREVIEW.txt >> $GITHUB_STEP_SUMMARY` will fail or append nothing.
+- **SARIF / Native Code Scanning**: Output is now standard SARIF 2.1.0 (`gitpr-results.sarif` by default), JSON, or JUnit XML, which integrates directly into GitHub's **Security > Code scanning alerts** tab via `github/codeql-action/upload-sarif@v3`.
+- **Optional API Key & Zero-Cost CI**: `api-key` is no longer required (`required: false`). Workflows can run entirely offline/zero-cost with `no-ia: "true"`.
+- **Deterministic Exit Codes & Baseline Suppressions**: Rather than blindly failing on any linter/review finding, exit codes are strictly controlled by `--fail-on` (default `error`). Findings registered in `.gitpr/baseline.json` are suppressed and do not break the pipeline.
+
+### Contract Comparison: Before vs. After
+
+| Feature | Legacy Workflow (`v0.0.12` – `v0.0.36`) | Modern Unified Check (`v0.0.37+`) |
+|---|---|---|
+| **Underlying Command** | `gitpr --linter` then `gitpr --fullreview` | `gitpr check` |
+| **Output Artifact** | `*_PR_FULLREVIEW.txt` (raw text file) | `gitpr-results.sarif` (SARIF 2.1.0), JSON, or JUnit XML |
+| **GitHub UI Integration** | Manual markdown dump into `$GITHUB_STEP_SUMMARY` | Native **Code Scanning** inline PR annotations and alerts |
+| **API Key Requirement** | Required (`required: true`) | Optional (`required: false`); supports `no-ia: "true"` |
+| **Failure Policy** | Linter failure on error; review unsuppressed | Configurable `--fail-on` (`info`, `warning`, `error`) |
+| **Baseline Support** | No suppressions in CI | Full baseline suppressions (`.gitpr/baseline.json`) |
+| **Exit Codes** | Ad-hoc per sub-step | Normalized: `0` (clean), `1` (threshold failed), `2` (system error) |
+
+### Workflow Examples: Before & After
+
+#### ❌ Before (Legacy Workflow)
+
+```yaml
+name: CI Code Review (Legacy)
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Legacy composite action invocation
+      - name: Run GitPR Review
+        uses: natanfiuza/gitpr@v0.0.36
+        with:
+          provider: gemini
+          api-key: ${{ secrets.GEMINI_API_KEY }} # was mandatory
+
+      # Dependent step that breaks in modern versions:
+      - name: Publish Step Summary
+        if: always()
+        run: |
+          REVIEW_FILE=$(ls *_PR_FULLREVIEW.txt 2>/dev/null | head -n 1)
+          if [ -f "$REVIEW_FILE" ]; then
+            cat "$REVIEW_FILE" >> $GITHUB_STEP_SUMMARY
+          fi
+```
+
+#### ✅ After (Modern Unified Check)
+
+```yaml
+name: CI Check (Modern)
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # Required for Code Scanning SARIF upload
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run GitPR Unified CI Check
+        uses: natanfiuza/gitpr@main
+        with:
+          provider: gemini
+          api-key: ${{ secrets.GEMINI_API_KEY }} # optional when no-ia is true
+          format: sarif
+          output: gitpr-results.sarif
+          fail-on: error
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gitpr-results.sarif
+```
+
+### Preserving Standalone Text Reviews
+
+If your workflow specifically requires generating `*_PR_FULLREVIEW.txt` as a raw text artifact (e.g. for legacy archiving or custom downstream parsers), run `gitpr --fullreview` as a standalone run step instead of using `action.yml`:
+
+```yaml
+      - name: Run Standalone Full Review (Legacy Output)
+        env:
+          DEFAULT_AI_PROVIDER: gemini
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          pip install gitpr-cli
+          gitpr --fullreview
+```
