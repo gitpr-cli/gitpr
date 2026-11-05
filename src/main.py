@@ -1,6338 +1,6348 @@
-import os
-import sys
-from datetime import datetime
-
-import click
-
-# Reconfigure stdout to utf-8 to prevent UnicodeEncodeError with emojis on Windows
-if hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
-# stderr needs the same: Python encodes it with backslashreplace, so an error
-# message carrying an emoji reached the console as a literal `❌` — worst
-# on the messages that matter most, the ones saying why a command refused to run.
-if hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
-
-# Internal module imports
-import subprocess
-
-from src.chat_memory import ChatMemoryManager
-from src.config import (
-    check_internet_connection,
-    get_ai_provider,
-    get_reviewer_suggestion_settings,
-    get_split_settings,
-    risk_scoring_in_review_enabled,
-    setup_environment,
-    suggest_reviewers_enabled,
-)
-from src.core import (
-    append_coauthor_trailer,
-    check_and_update_hooks_scripts,
-    ensure_release_skill_template,
-    generate_pr_content,
-    generate_skill_template,
-    seed_project_configuration,
-    get_branch_history_text,
-    get_current_branch,
-    get_doc_url,
-    get_git_diff,
-    get_git_full_diff,
-    get_split_diff,
-    get_uncommitted_summary,
-    install_git_hooks,
-    is_merge_in_progress,
-    resolve_output_path,
-    run_install_wizard,
-    run_scm_init_wizard,
-)
-from src.i18n import __
-from src.linter_engine import generate_linter_report_content, parse_diff_and_lint
-from src.review.render import render_review_result
-from src.ui.chat_app import ChatApp
-from src.updater import __version__, check_and_update, enforce_update_required
-from src.usage_log import log_usage
-
-
-def _may_ask_the_user(quiet=False, hook=False, mcp=False):
-    """Whether this run may stop and ask a question in a TUI.
-
-    False for the modes that exist precisely so that nothing blocks: the hooks
-    (--quiet), the MCP stdio server (whose stdout is a JSON-RPC stream), and any
-    run without a terminal to draw on — a pipe, a cron job, CI.
-    """
-    if quiet or hook or mcp:
-        return False
-    try:
-        return sys.stdin.isatty() and sys.stdout.isatty()
-    except Exception:
-        return False
-
-
-def _subcommand_help_in_argv(argv=None):
-    """Whether the raw command line asks for help.
-
-    Click clears the group context arguments before this callback runs, so by
-    the time the update gate below executes, ``gitpr release -h`` is
-    indistinguishable from ``gitpr release``. The raw tokens are the only
-    surviving record. The scan fails open, which costs at most one skipped gate.
-    """
-    tokens = sys.argv[1:] if argv is None else argv
-    return any(token in ("-h", "--help") for token in tokens)
-
-
-def _resolve_subcommand_tokens(ctx):
-    """The raw argument tokens trailing the invoked subcommand.
-
-    Click clears the group context arguments before the group callback runs,
-    so tokens after the subcommand must be recovered from Group.invoke's frame
-    or from sys.argv.
-    """
-    for depth in range(1, 6):
-        try:
-            f = sys._getframe(depth)
-            if (
-                f.f_code.co_name == "invoke"
-                and "cmd_name" in f.f_locals
-                and "args" in f.f_locals
-            ):
-                raw_args = f.f_locals.get("args")
-                if isinstance(raw_args, (list, tuple)):
-                    return list(raw_args)
-        except Exception:
-            break
-    if ctx.invoked_subcommand and ctx.invoked_subcommand in sys.argv:
-        idx = sys.argv.index(ctx.invoked_subcommand)
-        return sys.argv[idx + 1 :]
-    return list(getattr(ctx, "args", []) or [])
-
-
-def print_banner():
-    """Displays the project ASCII Art signature"""
-    banner = r"""
- ,----.   ,--.  ,--.  ,------. ,------.
-'  .-./   `--',-'  '-.|  .--. '|  .--. '
-|  | .---.,--.'-.  .-'|  '--' ||  '--'.'
-'  '--'  ||  |  |  |  |  | --' |  |\  \
- `------' `--'  `--'  `--'     `--' '--'
-
-"""
-    click.secho(banner, fg="cyan", bold=True)
-    click.secho(
-        __("  🚀 Intelligent PR Automation with AI (v{version})", version=__version__),
-        fg="yellow",
-        bold=True,
-    )
-    click.secho(
-        __(
-            "  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | --init | -is,--issue | --no-publish | --no-edit | --base | --plugins | -h,--help (use -h --flag for contextual help)\n"
-        ),
-        fg="white",
-        dim=True,
-    )
-
-
-# ============================================================
-# Contextual help mapping (flag -> doc URL and description)
-# ============================================================
-HELP_MAP: dict[str, dict[str, str]] = {
-    "commit": {
-        "url": get_doc_url("commit-message-ia.md"),
-        "title": __("AI Commit Message Generation"),
-        "description": __(
-            "Generates commit messages in the Conventional Commits format automatically using AI. Supports integration with Git Hooks (prepare-commit-msg) for direct injection into the editor."
-        ),
-    },
-    "review": {
-        "url": get_doc_url("code-review-ia.md"),
-        "title": __("AI Code Review (Local Changes)"),
-        "description": __(
-            "Performs smart code review of uncommitted local changes (git diff HEAD). Automatically integrates the Static Linter (.gitpr.linter.yml) at the top of the report."
-        ),
-    },
-    "fullreview": {
-        "url": get_doc_url("code-review-ia.md"),
-        "title": __("Full AI Code Review (Full Diff)"),
-        "description": __(
-            "Performs a deep review comparing the current branch with the remote main branch (origin/main). Runs git fetch before analysis. Ideal for reviewing before opening a Pull Request."
-        ),
-    },
-    "input": {
-        "url": get_doc_url("code-review-ia.md"),
-        "title": __("Specific File Analysis (--input)"),
-        "description": __(
-            "Analyzes an entire file from the local system, ignoring the Git diff. REQUIRES --review (-r) or --fullreview (-f) to work. Excellent for auditing legacy code and refactoring."
-        ),
-    },
-    "linter": {
-        "url": get_doc_url("linter-regras-customizadas.md"),
-        "title": __("Customizable Static Linter"),
-        "description": __(
-            "Local static analysis engine that checks rules defined in the .gitpr.linter.yml file. Does not consume AI quotas or require internet. Ideal for CI/CD and pre-commit hooks."
-        ),
-    },
-    "skill": {
-        "url": get_doc_url("skill-template.md"),
-        "title": __("Skills and Templates System (--skill)"),
-        "description": __(
-            "Downloads template files (.gitpr.*.md and .gitpr.linter.yml) from the official repository into the project's .gitpr/skill/ folder. These files allow customizing the AI behavior according to your team's rules. NEVER overwrites existing local files."
-        ),
-    },
-    "seed": {
-        "url": get_doc_url("install-wizard.md"),
-        "title": __("Project Configuration Seed (seed / --seed)"),
-        "description": __(
-            "Seeds project-local configuration files into .gitpr/conf/ (PR base branch, Smart Excludes) and .gitpr/skill/ (.gitpr.linter.yml). Supports --force to overwrite and --all to include all AI skill templates."
-        ),
-    },
-    "update": {
-        "url": get_doc_url("auto-update.md"),
-        "title": __("GitPR Auto-Update"),
-        "description": __(
-            "Checks PyPI for a newer version of GitPR and displays the command to upgrade via pip. GitPR always requires the latest published version to run."
-        ),
-    },
-    "installhooks": {
-        "url": get_doc_url("git-hooks-locais.md"),
-        "title": __("Install Local Git Hooks"),
-        "description": __(
-            "Installs pre-commit (automatic static linter) and prepare-commit-msg (AI message generation) hooks in the local repository. Adopts the Shift Left practice for pre-push validation."
-        ),
-    },
-    "install": {
-        "url": get_doc_url("install-wizard.md"),
-        "title": __("Interactive Setup Wizard (--install)"),
-        "description": __(
-            "Guided setup that downloads skill templates, installs Git hooks, configures MCP for your editors, and verifies your AI provider API key."
-        ),
-    },
-    "blame": {
-        "url": get_doc_url("blame-arqueologo.md"),
-        "title": __("Code Archeologist (AI Git Blame)"),
-        "description": __(
-            "Tracks the origin and evolution of business rules in the code using git blame with AI classification (ORIGIN vs REFACTORING). Supports direct mode (file:10-20) and interactive mode. Can feed technical debt Issues context with --issue."
-        ),
-    },
-    "issue": {
-        "url": get_doc_url("issue-tui-help.md"),
-        "title": __("Issue Generation with Interactive TUI"),
-        "description": __(
-            "Generates standardized issues (What / Why / Where / How) using AI and opens an interactive terminal interface (Textual) for review. Has 3 context engines: current diff, branch history (--history), and code archeology (--blame). Allows saving local .md or publishing directly to GitHub via API."
-        ),
-    },
-    "history": {
-        "url": get_doc_url("issue-tui-help.md"),
-        "title": __("History Context for Issues (--history)"),
-        "description": __(
-            "Modifier for --issue (-is): uses the entire history of the current branch (git log + previous PRs cache) as context to generate the issue. Ideal for documenting epics, releases, and large features with multiple commits over days."
-        ),
-    },
-    "close_issue": {
-        "url": get_doc_url("issue-autoclose.md"),
-        "title": __("Automatic Issue Closure (--close-issue)"),
-        "description": __(
-            "Adds the closing line (close #N) for the issue recorded by gitpr -is to the Pull Request description without asking. The issue is still checked on the forge before the line is added; a closed or deleted issue is ignored."
-        ),
-    },
-    "no_close_issue": {
-        "url": get_doc_url("issue-autoclose.md"),
-        "title": __("Skip the Automatic Issue Closure (--no-close-issue)"),
-        "description": __(
-            "Skips the automatic issue closure for this run: no local record is read and no forge call is made. The record is kept for a later run."
-        ),
-    },
-    "provider": {
-        "url": get_doc_url("providers-ia.md"),
-        "title": __("AI Provider Selection (--provider)"),
-        "description": __(
-            "Forces the use of a specific AI provider for this execution: gemini (Google Gemini), deepseek (DeepSeek) or ollama (Local). Temporarily overrides the default provider defined in the .env file."
-        ),
-    },
-    "chat": {
-        "url": get_doc_url("understanding_chat_functionality.md"),
-        "title": __("Interactive Pair Programming Chat (--chat)"),
-        "description": __(
-            "Opens an interactive terminal (TUI) to chat with the AI about the current uncommitted changes. Features memory, auto-patching (F5), and live diff refresh (F2)."
-        ),
-    },
-    "lang": {
-        "url": get_doc_url("providers-ia.md"),
-        "title": __("Language Override (--lang)"),
-        "description": __(
-            "Forces the interface language for this execution (e.g.: en_us, pt_br). Overrides the GITPR_LANG environment variable and OS locale detection."
-        ),
-    },
-    "no-publish": {
-        "url": get_doc_url("pull-request-publication.md"),
-        "title": __("Skip Interactive Publisher (--no-publish)"),
-        "description": __(
-            "Generates the PR description and saves it locally without opening the interactive TUI."
-        ),
-    },
-    "no-edit": {
-        "url": get_doc_url("pull-request-publication.md"),
-        "title": __("Direct Publish with Auto-Commit (--no-edit)"),
-        "description": __(
-            "Generates the PR, auto-commits pending changes (with lint validation), and publishes directly to GitHub without opening the TUI."
-        ),
-    },
-    "plugins": {
-        "url": get_doc_url("plugins-system.md"),
-        "title": __("Plugin System (--plugins)"),
-        "description": __(
-            "Lists all globally installed custom linter packs and MCP prompts loaded from ~/.gitpr/plugins/."
-        ),
-    },
-    "status": {
-        "url": get_doc_url("git-status.md"),
-        "title": __("Uncommitted File Status (--status)"),
-        "description": __(
-            "Lists uncommitted file changes categorized as new (untracked), modified (unstaged edits) and deleted — fast, no AI, no network."
-        ),
-    },
-    "no-unstaged-check": {
-        "url": get_doc_url("git-status.md"),
-        "title": __("Skip Unstaged Check (--no-unstaged-check)"),
-        "description": __(
-            "Skips the unstaged-files verification that runs before PR, commit, review, full review and issue generation. Equivalent to GITPR_SKIP_UNSTAGED_CHECK=true for one run."
-        ),
-    },
-    "no-suggest-reviewers": {
-        "url": get_doc_url("suggested-reviewers.md"),
-        "title": __("Skip Suggested Reviewers (--no-suggest-reviewers)"),
-        "description": __(
-            "Disables the reviewer suggestion computation (git blame over the added lines) before the interactive publisher opens. Suggestions stay ON by default; set GITPR_SUGGEST_REVIEWERS=false in ~/.gitpr/.env to disable globally. On GitHub the accepted list is requested on the created PR."
-        ),
-    },
-    "linter-setup": {
-        "url": get_doc_url("linter-regras-customizadas.md"),
-        "title": __("External Linter Wizard (--linter-setup)"),
-        "description": __(
-            "Interactive wizard to configure external linters (ESLint, PHPCS, etc.) via Checkstyle XML integration."
-        ),
-    },
-    "explain": {
-        "url": get_doc_url("explain-pr.md"),
-        "title": __("Reviewer Guide (--explain / gitpr explain)"),
-        "description": __(
-            "Generates a concise reviewer-centric summary (What changes, Why it changes, Where to focus, and Regression risk)."
-        ),
-    },
-    "mentor": {
-        "url": get_doc_url("mentor-mode.md"),
-        "title": __("Junior Mentor Mode (--mentor / gitpr mentor)"),
-        "description": __(
-            "Enriches code reviews with pedagogical explanations (what is happening, why it matters, analogies, and concepts to learn) designed for junior engineers."
-        ),
-    },
-    "risk": {
-        "url": get_doc_url("risk-scoring.md"),
-        "title": __("Local Risk Scoring (gitpr risk)"),
-        "description": __(
-            "Calculates deterministic, explainable risk scores for the diff and files without AI, highlighting critical paths, missing tests, migrations, and bug history."
-        ),
-    },
-}
-
-# Priority for contextual help when multiple flags are used with -h
-# Lower value = higher priority
-HELP_PRIORITY: dict[str, int] = {
-    "linter": 1,
-    "skill": 2,
-    "update": 3,
-    "installhooks": 4,
-    "install": 14,
-    "issue": 5,
-    "blame": 6,
-    "commit": 7,
-    "fullreview": 8,
-    "review": 9,
-    "mentor": 9,
-    "explain": 9,
-    "risk": 10,
-    "input": 11,
-    "history": 12,
-    "provider": 12,
-    "lang": 13,
-    "no-publish": 16,
-    "no-edit": 17,
-    "plugins": 18,
-    "status": 19,
-    "no-unstaged-check": 20,
-    "no-suggest-reviewers": 21,
-    "linter-setup": 22,
-}
-
-
-def _resolve_policy_or_die(announce=True):
-    """Resolves the repository's policy pack once, or refuses to run at all.
-
-    Every mode that produces review output calls this before it reads a skill
-    file, a linter rule or a risk weight. A pack that cannot be resolved — the
-    directory was removed, the pinned version vanished after an upgrade, an
-    asset was edited behind the checksum — aborts rather than degrading,
-    because the output would still carry the policy's name over rules that are
-    not its own.
-
-    *announce* is off for the MCP server, whose stdout is the JSON-RPC stream.
-    """
-    from src.application.use_cases.resolve_effective_policy import (
-        resolve_effective_policy,
-    )
-    from src.domain.policy import PolicyError
-
-    try:
-        policy = resolve_effective_policy()
-    except PolicyError as error:
-        click.secho(f"❌ {error}", fg="red", err=True)
-        raise click.exceptions.Exit(1) from error
-
-    if announce and policy.is_active:
-        click.secho(
-            __("🧭 Policy: {policy}", policy=policy.policy_tag()),
-            fg="blue",
-        )
-    return policy
-
-
-def _resolve_baseline_or_die(required=False):
-    """Resolves the repository's baseline, or refuses to run on one it cannot apply.
-
-    Called right after the policy pack, and for the same reason: both decide how
-    the rest of the run reads a finding. *required* is the whole difference — a
-    flow that enforces the baseline (the linter, the review, the full review, the
-    file audit, the remote pull request) stops when the file cannot be applied,
-    because classifying every legacy finding as `new` and handing that back as a
-    verdict is worse than not running at all. Every other flow passes nothing,
-    reads nothing, and prints nothing: `-c`, the PR flows, blame, the issue
-    flows, chat, release, split and fix behave exactly as they did before this
-    feature existed.
-
-    Nothing is announced here. The line §8.4 asks for is the counts line printed
-    once the findings *have* been classified, and a file that is read but says
-    nothing about this diff has nothing worth a terminal line.
-    """
-    from src.application.use_cases.baseline_gate import load_baseline
-    from src.domain.baseline import BaselineError
-
-    try:
-        gate = load_baseline(required=required)
-    except BaselineError as error:
-        click.secho(f"❌ {error}", fg="red", err=True)
-        raise click.exceptions.Exit(1) from error
-
-    # stderr: `risk --format json` is read by machine, and a notice about the
-    # baseline belongs beside the document, never inside it.
-    for warning in gate.warnings:
-        click.secho(f"⚠️ {warning}", fg="yellow", err=True)
-    return gate
-
-
-def _classify_with_baseline(gate, findings):
-    """This run's findings read against the baseline, or [] when there is none.
-
-    The empty list is the answer both for a flow that has no baseline and for
-    one that found nothing: an inactive gate is never asked to classify, so no
-    call site has to tell the two apart before calling.
-    """
-    if not gate.is_active or not findings:
-        return []
-    from src.application.use_cases.baseline_gate import classify_findings_for_gate
-
-    return classify_findings_for_gate(findings, gate)
-
-
-def _print_baseline_line(compared, quiet=False):
-    """The one-line summary §8.4 asks for, printed only when there is one."""
-    from src.application.use_cases.baseline_gate import status_line
-
-    line = status_line(compared) if compared else ""
-    if line and not quiet:
-        click.secho(f"🧾 {line}", fg="blue", dim=True)
-
-
-def _resolve_pr_target(base, quiet):
-    """Resolves the PR target, repairing a project base that is the current branch.
-
-    A pull request cannot target the branch it is opened from. When the value
-    comes from the project file (or from the fallback chain) and the run is
-    interactive, the picker asks for a replacement, saves it in the project
-    file and the resolution runs again. A ``--base`` flag naming the current
-    branch is a deliberate choice, not stale configuration, so it is reported
-    instead of silently overridden — and so is a non-interactive run, where
-    there is no one to ask.
-    """
-    from src.project_config import (
-        BASE_BRANCH_FIELD,
-        CurrentBranchError,
-        current_branch,
-        list_branches,
-        project_config_path,
-        resolve_pull_request_base,
-        write_project_field_values,
-    )
-
-    try:
-        return resolve_pull_request_base(base)
-    except CurrentBranchError as exc:
-        if base or quiet or not sys.stdin.isatty():
-            raise
-        from src.ui.pr_base_app import prompt_for_base_branch
-
-        chosen = prompt_for_base_branch(current_branch(), list_branches())
-        if not chosen:
-            raise
-        try:
-            write_project_field_values(
-                {BASE_BRANCH_FIELD: chosen}, path=project_config_path()
-            )
-        except Exception:
-            # The file could not be written — the original refusal stands.
-            raise exc
-        click.secho(
-            __(
-                "✅ Project base branch set to '{branch}' for this repository.",
-                branch=chosen,
-            ),
-            fg="green",
-            err=True,
-        )
-        return resolve_pull_request_base(base)
-
-
-# Native Click configuration to accept -h in addition to --help. The root is a
-# group so `gitpr release` (ADR-002) exists as a subcommand: without one, the
-# callback below routes to the legacy ~29-flag dispatch unchanged.
-@click.group(invoke_without_command=True)
-@click.version_option(
-    version=__version__, prog_name="gitpr", message="%(prog)s v%(version)s"
-)
-@click.option(
-    "-c",
-    "--commit",
-    is_flag=True,
-    help=__("Generates only the commit message and displays it in the console."),
-)
-@click.option(
-    "-r",
-    "--review",
-    is_flag=True,
-    help=__("Performs a code review of local changes (git diff)."),
-)
-@click.option(
-    "-f",
-    "--fullreview",
-    is_flag=True,
-    help=__(
-        "Performs a code review of all changes since the remote main branch (origin/main)."
-    ),
-)
-@click.option(
-    "-l",
-    "--linter",
-    is_flag=True,
-    help=__("Runs only the local static linter (ideal for CI/CD)."),
-)
-@click.option(
-    "-s",
-    "--skill",
-    is_flag=True,
-    help=__("Downloads the skill template files into the .gitpr/skill/ folder."),
-)
-@click.option(
-    "-sd",
-    "--seed",
-    is_flag=True,
-    help=__("Seeds project-local configuration files into .gitpr/conf/ and .gitpr/skill/."),
-)
-@click.option(
-    "-u",
-    "--update",
-    is_flag=True,
-    help=__("Checks for a newer version of GitPR and shows how to update it."),
-)
-@click.option(
-    "-ih",
-    "--installhooks",
-    is_flag=True,
-    help=__("Automatically installs validation Git Hooks in the project."),
-)
-@click.option(
-    "--install",
-    is_flag=True,
-    help=__(
-        "Interactive setup wizard: downloads templates, installs hooks, configures MCP, and checks API key."
-    ),
-)
-@click.option(
-    "--init",
-    is_flag=True,
-    help=__(
-        "Interactive SCM forge wizard: detects the repository's forge, configures the provider, and stores the access token encrypted."
-    ),
-)
-@click.option(
-    "--hook",
-    type=click.Path(),
-    hidden=True,
-    help=__("Commit file path (internal hook use)."),
-)
-@click.option(
-    "-q",
-    "--quiet",
-    is_flag=True,
-    hidden=True,
-    help=__("Hides banner and non-essential logs (internal use)."),
-)
-@click.option(
-    "--pre-save",
-    is_flag=True,
-    hidden=True,
-    help=__(
-        "Saves the full AI payload (system + prompt) to a JSON file before each AI call (debug)."
-    ),
-)
-@click.option(
-    "-i",
-    "--input",
-    type=click.Path(),
-    help=__("Path to a specific file for full analysis."),
-)
-@click.option(
-    "-b",
-    "--blame",
-    type=str,
-    help=__(
-        "Analyzes the origin of a business rule (e.g., file.py:10-20 or just file.py)."
-    ),
-)
-@click.option(
-    "-ht",
-    "--history",
-    is_flag=True,
-    help=__(
-        "Uses the entire branch history (Git Log + PR Cache) as context to generate the issue."
-    ),
-)
-@click.option(
-    "-is",
-    "--issue",
-    is_flag=True,
-    help=__(
-        "Generates a standardized Issue from current changes and opens the interactive interface."
-    ),
-)
-@click.option(
-    "-ch",
-    "--chat",
-    is_flag=True,
-    help=__("Opens the interactive Pair Programming chat with AI."),
-)
-@click.option(
-    "-p",
-    "--provider",
-    type=click.Choice(["gemini", "deepseek", "ollama"]),
-    help=__("Forces the use of a specific AI provider for this execution."),
-)
-@click.option(
-    "--lang",
-    type=str,
-    help=__("Forces the interface language for this execution (e.g.: en_us, pt_br)."),
-)
-@click.option(
-    "--mcp",
-    is_flag=True,
-    hidden=True,
-    help=__(
-        "Start the MCP server for integration with VS Code, Cursor, Claude Desktop, etc."
-    ),
-)
-@click.option(
-    "--base",
-    type=str,
-    help=__(
-        "Target base branch for the Pull Request (overrides the project configuration and PR_DEFAULT_BASE)."
-    ),
-)
-@click.option(
-    "--no-publish",
-    is_flag=True,
-    help=__("Saves the PR file locally without opening the interactive publisher."),
-)
-@click.option(
-    "--no-edit",
-    is_flag=True,
-    help=__(
-        "Skips the interactive editor and publishes the Pull Request directly (with auto-commit)."
-    ),
-)
-@click.option(
-    "--explain",
-    "explain",
-    is_flag=True,
-    help=__(
-        "Includes the Reviewer Guide section ('Explain my PR') in the Pull Request description."
-    ),
-)
-@click.option(
-    "--close-issue",
-    is_flag=True,
-    help=__(
-        "Adds the closing line (close #N) to the Pull Request description without asking; the issue is still checked."
-    ),
-)
-@click.option(
-    "--no-close-issue",
-    is_flag=True,
-    help=__(
-        "Skips the automatic issue closure for this run (no record is read and no forge call is made)."
-    ),
-)
-@click.option(
-    "--mentor",
-    "mentor_flag",
-    is_flag=True,
-    help=__(
-        "Adds a didactic Mentor section to the code review (-r / -f)."
-    ),
-)
-@click.option(
-    "--plugins",
-    is_flag=True,
-    help=__("Lists all active global plugins (linters and prompts)."),
-)
-@click.option(
-    "--status",
-    is_flag=True,
-    help=__(
-        "Lists uncommitted file changes (new/modified/deleted) without AI processing."
-    ),
-)
-@click.option(
-    "--no-unstaged-check",
-    is_flag=True,
-    help=__("Skips the unstaged files verification before AI processing."),
-)
-@click.option(
-    "--no-suggest-reviewers",
-    is_flag=True,
-    help=__(
-        "Disables the suggested reviewers computation in the interactive publisher (default ON)."
-    ),
-)
-@click.option(
-    "--linter-setup",
-    is_flag=True,
-    help=__("Interactive wizard to configure external linters (ESLint, PHPCS, etc)."),
-)
-@click.option(
-    "-h",
-    "--help",
-    "help_flag",
-    is_flag=True,
-    help=__(
-        "Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."
-    ),
-)
-@click.pass_context
-def cli(
-    ctx,
-    commit,
-    review,
-    fullreview,
-    linter,
-    skill,
-    seed,
-    update,
-    installhooks,
-    install,
-    init,
-    hook,
-    quiet,
-    pre_save,
-    provider,
-    input,
-    blame,
-    history,
-    issue,
-    chat,
-    help_flag,
-    lang,
-    mcp,
-    base,
-    no_publish,
-    no_edit,
-    explain,
-    close_issue,
-    no_close_issue,
-    mentor_flag,
-    plugins,
-    status,
-    no_unstaged_check,
-    no_suggest_reviewers,
-    linter_setup,
-):
-    """
-    GitPR CLI - Intelligent PR Automation and AI Code Review.
-
-    DEFAULT BEHAVIOR (No options):
-    Fetches, compares with the remote main branch, generates a Markdown (.md) file, and opens an interactive TUI to review, edit, and publish the Pull Request directly to GitHub.
-    """
-
-    # Record the invocation first: this is the one point every flag, every
-    # subcommand and every -h path reaches. Silent and best-effort, so it
-    # cannot disturb anything below.
-    log_usage()
-
-    # The two flags answer the same question, so accepting both would make the
-    # answer ambiguous. Rejected before the ledger migration prompt and the
-    # project-file seed: a usage error must not ask anything or write a file.
-    # Help wins over the error so `-h` always shows the flags it was given.
-    if close_issue and no_close_issue and not help_flag:
-        click.secho(
-            __("❌ --close-issue and --no-close-issue cannot be used together."),
-            fg="red",
-            err=True,
-        )
-        raise click.exceptions.Exit(1)
-
-    # How much of a terminal this run may use, and — on the first run after an
-    # upgrade — the question of what becomes of the pre-ledger event files. The
-    # question belongs here rather than at the first write: it decides whether a
-    # screen appears, and a screen that appears after the command has done its
-    # work is a screen nobody is looking at.
-    from src import ledger
-
-    may_ask = _may_ask_the_user(quiet=quiet, hook=hook, mcp=mcp)
-    ledger.configure_terminal(interactive=may_ask, quiet=quiet)
-
-    # `gitpr metrics` takes the same one-time migration in its own callback,
-    # where the reason for its one exemption (`migrate` asks on purpose) is
-    # visible next to the action that needs it.
-    if ctx.invoked_subcommand != "metrics":
-        ledger.ensure_ledger(interactive=may_ask)
-
-    # Project-local configuration, versioned with the repository: seeded on
-    # every invocation inside a repository, never overwritten. Help paths are
-    # the one exception — a help screen must not write files — and the test
-    # suite opts out through the environment variable so `pytest` never seeds
-    # the developer's checkout.
-    project_seed = None
-    if (
-        not help_flag
-        and not _subcommand_help_in_argv()
-        and not os.getenv("GITPR_SKIP_PROJECT_CONFIG_SEED")
-    ):
-        from src.project_config import ensure_project_config
-
-        project_seed = ensure_project_config()
-
-    # Subcommand dispatch (gitpr release …): Click invokes this group callback
-    # first, so everything below runs only when NO subcommand was requested —
-    # the legacy flag surface stays byte-for-byte intact (ADR-002).
-    if ctx.invoked_subcommand is not None:
-        if help_flag:
-            cmd = cli.get_command(ctx, ctx.invoked_subcommand)
-            if cmd is not None:
-                sub_ctx = cmd.make_context(
-                    ctx.invoked_subcommand, [], parent=ctx
-                )
-                curr_cmd = cmd
-                curr_ctx = sub_ctx
-                remaining_args = _resolve_subcommand_tokens(ctx)
-                while isinstance(curr_cmd, click.Group) and remaining_args:
-                    sub_name = remaining_args[0]
-                    nested_cmd = curr_cmd.get_command(curr_ctx, sub_name)
-                    if nested_cmd is None:
-                        break
-                    remaining_args.pop(0)
-                    curr_ctx = nested_cmd.make_context(
-                        sub_name, [], parent=curr_ctx
-                    )
-                    curr_cmd = nested_cmd
-
-                click.echo(curr_cmd.get_help(curr_ctx))
-                ctx.exit(0)
-            click.echo(ctx.get_help())
-            ctx.exit(0)
-
-        # The mandatory update gate covers subcommands too, but only when the
-        # run may stop and ask the user: a release in CI, a pipe or a hook must
-        # never be blocked. Help tokens are read from the raw argv because
-        # Click clears the context arguments before this callback runs.
-        if may_ask and not update and not _subcommand_help_in_argv():
-            if enforce_update_required():
-                sys.exit(1)
-        return
-
-    # ============================================================
-    # CONTEXTUAL HELP HANDLER
-    # ============================================================
-    if help_flag:
-        # Identifica quais outras flags estao ativas (excluindo hidden: hook, quiet)
-        active_flags: list[str] = []
-        for param_name, help_info in HELP_MAP.items():
-            # Click converts hyphens into underscores for function parameter names
-            value = locals().get(param_name.replace("-", "_"))
-            # Trata tanto flags booleanas (True) quanto parametros string (blame, input, provider)
-            if value:
-                active_flags.append(param_name)
-
-        if not active_flags:
-            # gitpr -h puro (sem outras flags): mostra help padrao do Click
-            ctx = click.get_current_context()
-            click.secho(f"gitpr v{__version__}", fg="cyan", bold=True)
-            click.echo(ctx.get_help())
-            ctx.exit()
-
-        # Ordena por prioridade e seleciona a flag mais especifica
-        active_flags.sort(key=lambda f: HELP_PRIORITY.get(f, 99))
-        primary_flag = active_flags[0]
-        help_info = HELP_MAP.get(primary_flag)
-
-        if help_info:
-            click.secho(f"\n{'=' * 60}", bold=True)
-            click.secho(f"  {help_info['title']}", fg="cyan", bold=True)
-            click.secho(f"{'=' * 60}\n", bold=True)
-            click.echo(help_info["description"])
-            click.echo("")
-            click.secho(__(">> Full documentation:"), fg="green")
-            click.secho(f"  {help_info['url']}", fg="blue", underline=True)
-            click.echo("")
-
-            if len(active_flags) > 1:
-                click.secho(
-                    __(">> Tip: For help on a single option, use -h with it only."),
-                    fg="yellow",
-                    dim=True,
-                )
-
-            # Display the main GitPR documentation URL as a footer
-            click.secho(
-                __(">> Repository: https://github.com/gitpr-cli/gitpr.git"),
-                fg="bright_black",
-            )
-            click.echo("")
-        else:
-            # Fallback: mostra help padrao (nao deveria acontecer)
-            ctx = click.get_current_context()
-            click.echo(ctx.get_help())
-
-        # Garante saida limpa apos exibir ajuda contextual
-        ctx = click.get_current_context()
-        ctx.exit()
-
-    # Language override via --lang flag (one-shot, does not persist to .env)
-    if lang:
-        from src.i18n import set_lang
-        from src.spinner import reload_thinking_words
-
-        set_lang(lang)
-        reload_thinking_words(lang)
-
-    # Announce the project file, unless this run is quiet, a hook, the MCP
-    # server or the install wizard (which reports the same seed itself). The
-    # subcommand path never reaches this point, so `gitpr config` stays silent.
-    if (
-        project_seed is not None
-        and project_seed.created
-        and not install
-        and not quiet
-        and not hook
-        and not mcp
-    ):
-        click.secho(
-            __("📄 Project configuration created: {path}", path=project_seed.path),
-            fg="green",
-        )
-        click.secho(
-            __("Version it with git so the whole team targets the same base branch."),
-            dim=True,
-        )
-        if project_seed.ignored:
-            click.secho(
-                __(
-                    "⚠️ {path} is ignored by .gitignore and will not be versioned.",
-                    path=project_seed.path,
-                ),
-                fg="yellow",
-            )
-
-    # Mandatory update gate: GitPR is distributed exclusively through PyPI, so a
-    # published newer version blocks the run and the user is told to upgrade.
-    # Skipped for internal invocations (--quiet, --hook, --mcp), for the --update
-    # flag itself (it is the command that explains how to upgrade) and for the
-    # contextual help path, so automation, hooks and help never get locked out.
-    if not quiet and not hook and not mcp and not update and not help_flag:
-        if enforce_update_required():
-            sys.exit(1)
-
-    # Auto-sync Git hooks (version + language gated — silent when up to date).
-    # Skipped for internal invocations (--quiet, --hook, --mcp) so hooks
-    # never update themselves mid-flight and MCP startup stays fast.
-    if not quiet and not hook and not mcp:
-        check_and_update_hooks_scripts()
-
-    # MCP Server Mode — start stdio MCP server (handled before any interactive setup)
-    if mcp:
-        # The MCP tools call the same review, linter and risk code as the CLI, so
-        # the pack has to be in force here too: without this the IDE would answer
-        # from the GitPR defaults while the terminal answered from the pack, about
-        # the same repository. The label is suppressed because stdout is the
-        # JSON-RPC stream and anything printed there corrupts it.
-        _resolve_policy_or_die(announce=False)
-
-        from src.mcp_server import main as mcp_main
-
-        mcp_main()
-        return
-
-    if plugins:
-        from src.config import get_linter_plugins, get_prompt_plugins
-
-        linter_plugins = get_linter_plugins()
-        prompt_plugins = get_prompt_plugins()
-
-        click.secho(__("\n🧩 GitPR Plugin System"), fg="cyan", bold=True)
-
-        click.secho(
-            __("\n🔍 Linter Packs ({count}):", count=len(linter_plugins)),
-            fg="yellow",
-            bold=True,
-        )
-        if linter_plugins:
-            for p in linter_plugins:
-                click.echo(f"  - {os.path.basename(p)}")
-        else:
-            click.echo(__("  No global linter plugins installed."))
-
-        click.secho(
-            __("\n💬 Custom Prompts ({count}):", count=len(prompt_plugins)),
-            fg="yellow",
-            bold=True,
-        )
-        if prompt_plugins:
-            for p in prompt_plugins:
-                click.echo(f"  - {os.path.basename(p)}")
-        else:
-            click.echo(__("  No global prompt plugins installed."))
-
-        click.secho(f"\n💡 {__('Plugin directory:')} ~/.gitpr/plugins/", dim=True)
-        return
-
-    if status:
-        from src.core import get_unstaged_categorized
-
-        data = get_unstaged_categorized()
-        if not any(data.values()):
-            click.secho(
-                __("✅ Working tree clean. No uncommitted changes found."), fg="green"
-            )
-            return
-        click.secho(__("📂 Uncommitted changes (no AI):"), fg="cyan", bold=True)
-        _print_unstaged_summary(data, quiet=quiet)
-        return
-
-    # Resolve the policy pack once, here — before the banner and before any
-    # prompt, linter rule or risk weight is read — and publish it to the
-    # module-level global those three consult. Every command below this line
-    # runs under it.
-    #
-    # `gitpr policy` is the exception. It is the set of commands that repairs a
-    # broken lockfile, so it must run *when resolution fails*; it reads the
-    # repository non-strictly and reports what it finds itself.
-    if ctx.invoked_subcommand != "policy":
-        _resolve_policy_or_die(announce=not quiet)
-
-    # …and the baseline beside it, resolved once per run and before any finding
-    # is produced. The three flows named here are the ones that *enforce* it: on
-    # a file that cannot be applied they stop rather than report. Everything
-    # else in this file gets an inactive gate and never touches the disk.
-    baseline_gate = _resolve_baseline_or_die(
-        required=bool(linter or review or fullreview or input)
-    )
-
-    # Silencia o banner se estiver no modo quiet ou via hook
-    if not quiet and not hook:
-        print_banner()
-
-    # Enable AI payload dump for inspection (hidden debug flag)
-    if pre_save:
-        from src.ai_providers import set_pre_save
-
-        set_pre_save(True)
-
-    if linter:
-        diff_text = get_git_diff()
-
-        if not diff_text or not diff_text.strip():
-            if not quiet:
-                click.secho(__("✅ Nothing to validate (empty diff)."), fg="green")
-            return
-
-        # One lint, two views: the alert strings the report has always been
-        # built from, and the structured findings beside them. Only a baseline
-        # reads the second one, and a run without a baseline never looks at it.
-        linted = []
-        linter_results = parse_diff_and_lint(diff_text, findings_out=linted)
-        has_warnings = len(linter_results["warnings"]) > 0
-        has_errors = len(linter_results["errors"]) > 0
-
-        compared = _classify_with_baseline(baseline_gate, linted)
-        # No baseline, or nothing to classify: every error blocks, exactly as it
-        # always has. With one, only the errors *this change* introduced do — a
-        # legacy tree that baselined its findings can go green.
-        blocking = has_errors
-        if compared:
-            from src.application.use_cases.baseline_gate import (
-                alert_status_index,
-                annotate_alerts,
-                blocking_errors,
-            )
-
-            # The statuses are written onto the alerts themselves, so the
-            # report, the console and the TUI tell one story about one finding.
-            linter_results = annotate_alerts(
-                linter_results, alert_status_index(compared)
-            )
-            blocking = bool(blocking_errors(compared))
-        _print_baseline_line(compared, quiet=quiet)
-
-        # 1. Generate and save the Markdown report (only when violations are found)
-        if has_warnings or has_errors:
-            branch_name = get_current_branch()
-            safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
-            current_time = datetime.now().strftime("%Y%m%d%H%M%S")
-
-            report_path = resolve_output_path(
-                "OUTPUT_FILE_NAME_LINTER",
-                "{branch}_{datetime}_LINTER.md",
-                safe_branch_name,
-                current_time,
-            )
-
-            try:
-                with open(report_path, "w", encoding="utf-8", errors="replace") as f:
-                    f.write(generate_linter_report_content(linter_results))
-                if not quiet:
-                    click.secho(
-                        __("📄 Linter report saved to: {path}", path=report_path),
-                        fg="blue",
-                        dim=True,
-                    )
-            except Exception as e:
-                click.secho(
-                    __("❌ Error saving linter report: {error}", error=str(e)), fg="red"
-                )
-
-        # Fire-and-forget linter metric
-        from src.metrics import log_command_metric
-
-        log_command_metric(
-            command="linter",
-            status="error" if has_errors else "success",
-            linter_errors=len(linter_results.get("errors", [])),
-            linter_warnings=len(linter_results.get("warnings", [])),
-        )
-
-        # 2. Display TUI if there are errors and NOT in a hook/quiet mode. Every
-        #    error is still shown, baselined ones included, carrying their
-        #    status in front — hiding a legacy error would be the reviewers'
-        #    problem, not the baseline's.
-        if has_errors and not quiet and not hook:
-            from src.ui.linter_app import LinterApp
-
-            app = LinterApp(alerts=linter_results)
-            app.run()
-        elif blocking:
-            # Hook safety: print to the terminal only. Only when the run is
-            # actually failing: the sentence says "validation failed", and with
-            # a baseline every error in the diff can be a known one.
-            click.secho(
-                __(
-                    "\n🚨 Validation failed! Found {count} critical error(s):",
-                    count=len(linter_results["errors"]),
-                ),
-                fg="red",
-                bold=True,
-            )
-            for alert in linter_results["errors"]:
-                click.echo(f"  - {alert}")
-
-        # The exit code follows the baseline: an error the repository recorded
-        # does not fail the run, one this change introduced does. With no
-        # baseline `blocking` is `has_errors`, which is the `sys.exit(1)` every
-        # version before this one took here.
-        if blocking:
-            sys.exit(1)
-
-        # 3. Warning processing (best-practice advisories only)
-        if has_warnings and not quiet:
-            click.secho(
-                __(
-                    "\n⚠️ The Linter generated {count} best practice warning(s):",
-                    count=len(linter_results["warnings"]),
-                ),
-                fg="yellow",
-                bold=True,
-            )
-            for alert in linter_results["warnings"]:
-                click.echo(f"  - {alert}")
-            click.secho(
-                __("\n✅ Code approved with warnings. The commit will proceed."),
-                fg="green",
-            )
-        elif not quiet and not has_errors:
-            # `has_errors` is what keeps the sentence true: with a baseline a
-            # diff can carry errors that do not fail the run, and the line above
-            # has just listed them. Without one, `blocking` already exited.
-            click.secho(
-                __("\n✅ Clean code! No violations found by the local Linter."),
-                fg="green",
-                bold=True,
-            )
-
-        return
-
-    # Connection Guardian (Failing Fast)
-    check_internet_connection()
-
-    # Update Module (Pip-Aware)
-    if update:
-        click.secho(__("🔍 Checking for updates..."), fg="cyan")
-        check_and_update()
-        from src.metrics import log_command_metric
-
-        log_command_metric(command="update", status="success", provider="git")
-        return
-
-    # --install option: Interactive setup wizard
-    if install:
-        run_install_wizard()
-        from src.metrics import log_command_metric
-
-        log_command_metric(command="install", status="success", provider="git")
-        return
-
-    # --init option: SCM forge configuration wizard
-    if init:
-        run_scm_init_wizard()
-        return
-
-    # --linter-setup option: External linter wizard
-    if linter_setup:
-        from src.linter_wizard import run_linter_setup_wizard
-
-        run_linter_setup_wizard()
-        return
-
-    # --skill option: Generate template and exit
-    if skill:
-        generate_skill_template()
-        from src.metrics import log_command_metric
-
-        log_command_metric(command="skill", status="success", provider="git")
-        return
-
-    # --seed option: Seed project configuration and exit
-    if seed:
-        seed_project_configuration()
-        from src.metrics import log_command_metric
-
-        log_command_metric(command="seed", status="success", provider="local")
-        return
-
-    if installhooks:
-        hooks_ok = install_git_hooks()
-        if hooks_ok:
-            click.secho(
-                "\n" + __("✅ Git Hooks successfully installed!"), fg="green", bold=True
-            )
-            click.echo(__("The Linter will now run automatically before each commit."))
-
-            click.echo("\n---")
-            click.echo(__(">> Usage Guides:"))
-
-            # General Hooks documentation link
-            click.echo(__("• How to use Git Hooks:"))
-            click.secho(f"  {get_doc_url('git-hooks-locais.md')}", fg="blue")
-
-            # New link: Custom Rules Documentation
-            click.echo(__("• How to create new Linter rules (.gitpr.linter.yml):"))
-            click.secho(f"  {get_doc_url('linter-regras-customizadas.md')}", fg="blue")
-            click.echo("---\n")
-        from src.metrics import log_command_metric
-
-        log_command_metric(
-            command="installhooks",
-            status="success" if hooks_ok else "error",
-            provider="git",
-        )
-        return
-
-    # Archaeologist Module (--blame)
-    if blame and not issue:
-        # Parser to separate file from lines
-        if ":" in blame:
-            # Direct Mode: gitpr --blame file:10-20
-            file_path, lines = blame.split(":", 1)
-            try:
-                if "-" in lines:
-                    start_line, end_line = lines.split("-")
-                else:
-                    start_line = end_line = lines
-            except ValueError:
-                click.secho(
-                    __("❌ Invalid line format. Use start-end (e.g., 10-20)."), fg="red"
-                )
-                return
-        else:
-            # Interactive Mode: gitpr --blame file
-            file_path = blame
-            if not os.path.exists(file_path):
-                click.secho(
-                    __("❌ The file '{file_path}' was not found.", file_path=file_path),
-                    fg="red",
-                )
-                return
-
-            click.secho(
-                __(">> Selected file: {file_path}", file_path=file_path),
-                fg="cyan",
-                bold=True,
-            )
-            lines_input = click.prompt(
-                __("Which lines do you want to investigate? (E.g., 10-20 or just 45)")
-            )
-
-            if "-" in lines_input:
-                start_line, end_line = lines_input.split("-")
-            else:
-                start_line = end_line = lines_input
-
-        # Final file validation
-        if not os.path.exists(file_path):
-            click.secho(
-                __("❌ The file '{file_path}' was not found.", file_path=file_path),
-                fg="red",
-            )
-            return
-
-        # Trigger the engine
-        from src.blame_engine import run_blame_analysis
-
-        run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip())
-        from src.metrics import log_command_metric
-
-        log_command_metric(command="blame", status="success", provider="git")
-        return
-
-    # Issue Module (Hybrid)
-    if issue:
-        from src.issue_engine import generate_issue_content
-        from src.tui_issue import validate_or_request_scm_token
-        from src.ui.issue_app import IssueApp
-        from src.core import describe_repo
-
-        setup_environment()
-
-        # ── Unstaged files check (all 3 modes: diff, history, blame) ──
-        if not check_unstaged_files(
-            "issue", skip_check=no_unstaged_check, quiet=quiet, interactive=False
-        ):
-            return
-
-        context_text = ""
-        context_type = "diff"
-
-        # Intelligent Context Router
-        if history:
-            context_type = "history"
-            context_text = get_branch_history_text()
-            # Check if history is empty by comparing against possible EN variations
-            _no_commits = [
-                __("No exclusive commits"),
-                __("No exclusive commits found"),
-                __("No unique commits found."),
-            ]
-            _no_prs = [
-                __("No previous PR"),
-                __("No previous Pull Request"),
-                __("No previous AI-generated PR"),
-                __("No AI-generated PR found in cache"),
-            ]
-            _no_commits_found = any(phrase in context_text for phrase in _no_commits)
-            _no_prs_found = any(phrase in context_text for phrase in _no_prs)
-            if not context_text or (_no_commits_found and _no_prs_found):
-                click.secho(__("\n⚠️ No history found for this branch.\n"), fg="yellow")
-                return
-
-        elif blame:
-            context_type = "blame"
-            # Reuse the file/line parser from the blame option
-            if ":" in blame:
-                file_path, lines = blame.split(":", 1)
-                try:
-                    start_line, end_line = (
-                        lines.split("-") if "-" in lines else (lines, lines)
-                    )
-                except ValueError:
-                    click.secho(
-                        __("❌ Invalid line format. Use start-end (e.g., 10-20)."),
-                        fg="red",
-                    )
-                    return
-            else:
-                file_path = blame
-                if not os.path.exists(file_path):
-                    click.secho(
-                        __(
-                            "❌ The file '{file_path}' was not found.",
-                            file_path=file_path,
-                        ),
-                        fg="red",
-                    )
-                    return
-                click.secho(
-                    __(">> Selected file: {file_path}", file_path=file_path),
-                    fg="cyan",
-                    bold=True,
-                )
-                lines_input = click.prompt(
-                    __("Which lines do you want to investigate? (E.g.: 10-20)")
-                )
-                start_line, end_line = (
-                    lines_input.split("-")
-                    if "-" in lines_input
-                    else (lines_input, lines_input)
-                )
-
-            if not os.path.exists(file_path.strip()):
-                click.secho(
-                    __("❌ The file '{file_path}' was not found.", file_path=file_path),
-                    fg="red",
-                )
-                return
-
-            from src.blame_engine import run_blame_analysis
-
-            click.secho(
-                __("🔍 Extracting archaeological timeline in background..."), fg="cyan"
-            )
-
-            # Trigger the archaeologist in silent mode
-            timeline = run_blame_analysis(
-                file_path.strip(),
-                start_line.strip(),
-                end_line.strip(),
-                return_data=True,
-            )
-
-            if not timeline:
-                click.secho(
-                    __("\n⚠️ No traceable history to feed the issue.\n"), fg="yellow"
-                )
-                return
-
-            # Translate the dictionary list into AI-readable text
-            formatted_timeline = []
-            for item in timeline:
-                formatted_timeline.append(
-                    f"{__('[{date}] Commit {hash} by {author}:', date=item['raw_date'], hash=item['hash'], author=item['info']['author'])}\n"
-                    f"{__('Action: {status}', status=item['status'])}\n"
-                    f"{__('AI Reason: {reason}', reason=item['motivo'])}\n"
-                )
-            context_text = "\n".join(formatted_timeline)
-
-        else:
-            context_type = "diff"
-            context_text = get_git_diff()
-            if not context_text or not context_text.strip():
-                click.secho(
-                    __(
-                        "\n⚠️ No new code found. Make some changes before generating the issue.\n"
-                    ),
-                    fg="yellow",
-                )
-                return
-
-        # Generate content with AI using the correct language
-        issue_data = generate_issue_content(context_text, context_type=context_type)
-        if not issue_data:
-            return
-
-        # Resolve the SCM forge context (provider + repository reference)
-        provider, repo_ref = _resolve_scm_context()
-        if provider is None:
-            return
-
-        repo_info = describe_repo(repo_ref)
-
-        # Validate or request the forge token
-        github_token, provider = validate_or_request_scm_token(provider, repo_info)
-
-        if not github_token:
-            click.secho(_scm_access_canceled_message(provider), fg="red")
-            return
-
-        # Run the Terminal Graphical Interface (with reauth loop for expired tokens)
-        while True:
-            app = IssueApp(
-                issue_data=issue_data,
-                repo_info=repo_info,
-                github_token=github_token,
-                provider=provider,
-                repo_ref=repo_ref,
-            )
-            app.run()
-
-            # If token expired during the TUI session, re-prompt and relaunch
-            if app.final_action == "reauth":
-                click.secho(f"\n{app.final_message}\n", fg="yellow")
-                github_token, provider = validate_or_request_scm_token(
-                    provider, repo_info
-                )
-                if not github_token:
-                    click.secho(_scm_access_canceled_message(provider), fg="red")
-                    return
-                # Restart TUI with the same issue data and new token
-                continue
-
-            # Display return message after closing the TUI
-            if app.final_message:
-                cor = "green" if app.final_action in ["saved", "created"] else "red"
-                click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
-
-            break
-
-        return
-
-    # Chat Module (Pair Programming TUI)
-    if chat:
-        from src.config import get_api_key
-        from src.issue_engine import get_github_repo_info
-
-        setup_environment()
-
-        diff_text = get_git_diff()
-        if not diff_text or not diff_text.strip():
-            click.secho(
-                __(
-                    "\n⚠️ No new code found. Make some changes before starting the chat.\n"
-                ),
-                fg="yellow",
-            )
-            click.secho(
-                f"📚 {__('Chat documentation:')} {get_doc_url('understanding_chat_functionality.md')}",
-                fg="cyan",
-            )
-            return
-
-        active_provider = provider if provider else get_ai_provider()
-        api_key = get_api_key(active_provider)
-
-        if not api_key:
-            click.secho(__("❌ AI Provider API Key missing or invalid."), fg="red")
-            return
-
-        repo_info = get_github_repo_info() or "local-repo"
-        branch_name = get_current_branch()
-
-        try:
-            git_user = subprocess.run(
-                ["git", "config", "user.name"],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            ).stdout.strip()
-            git_email = subprocess.run(
-                ["git", "config", "user.email"],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            ).stdout.strip()
-        except Exception:
-            git_user, git_email = "Dev", "dev@local"
-
-        memory = ChatMemoryManager(
-            repo_info, branch_name, diff_text, git_user, git_email
-        )
-
-        system_instruction = __(
-            "You are a Senior Software Engineer acting as a Pair Programmer. Analyze the code provided and answer the user's questions clearly, objectively, and technically. Use Markdown to format code blocks. The current git diff is:\n\n{diff}",
-            diff=diff_text,
-        )
-
-        # Use the primary model configured in .env
-        env_model_key = f"{active_provider.upper()}_API_MODEL_PRIMARY"
-        api_model = os.getenv(env_model_key)
-        if not api_model:
-            click.secho(
-                __(
-                    "❌ Model configuration not found for provider {provider}.",
-                    provider=active_provider,
-                ),
-                fg="red",
-            )
-            return
-
-        app = ChatApp(
-            memory_manager=memory,
-            provider=active_provider,
-            api_key=api_key,
-            api_model=api_model,
-            system_instruction=system_instruction,
-        )
-        app.run()
-        from src.metrics import log_command_metric
-
-        log_command_metric(command="chat", status="success", provider=active_provider)
-        click.secho(
-            f"📚 {__('Chat documentation:')} {get_doc_url('understanding_chat_functionality.md')}",
-            fg="cyan",
-        )
-        return
-
-    # Input Mode validation (with guard to not interfere with contextual -h)
-    if input and not help_flag:
-        if not os.path.exists(input):
-            click.secho(
-                __("\n❌ Error: The file '{input}' was not found.", input=input),
-                fg="red",
-                bold=True,
-            )
-            return
-
-        if not (review or fullreview):
-            click.secho(
-                __(
-                    "\n❌ Error: The --input (-i) option can only be used with --review (-r) or --fullreview (-f)."
-                ),
-                fg="red",
-                bold=True,
-            )
-            return
-
-    # Ensure environment and keys are configured
-    setup_environment()
-
-    # Determine the AI provider to use (command line option takes priority)
-    active_provider = provider if provider else get_ai_provider()
-
-    # Determine the action type and which diff to capture
-    action_type = "pr"
-    diff_text = ""
-
-    if input:
-        # FILE REVIEW MODE: Read the physical file instead of git diff
-        action_type = "filereview"
-        try:
-            with open(input, "r", encoding="utf-8") as f:
-                diff_text = f.read()
-            click.secho(
-                __("📄 File Mode: Analyzing full content of '{input}'...", input=input),
-                fg="blue",
-            )
-        except Exception as e:
-            click.secho(__("❌ Error reading file: {error}", error=str(e)), fg="red")
-            return
-    elif commit:
-        action_type = "commit"
-        if hook:
-            if is_merge_in_progress():
-                return  # merge in progress: git owns the message, skip AI silently
-            diff_text = get_git_diff()
-        else:
-            # Interactive commit TUI flow
-            from src.ui.commit_app import CommitApp
-
-            app = CommitApp(
-                provider=active_provider, skip_unstaged=no_unstaged_check
-            )
-            app.run()
-            if app.result == "no_changes":
-                click.secho(
-                    __(
-                        "\n⚠️ No new code found. Make some changes or check your branch before running the command.\n"
-                    ),
-                    fg="yellow",
-                )
-            elif app.result == "committed":
-                click.secho(
-                    __("\n✅ Commit created successfully!\n"), fg="green", bold=True
-                )
-                if app._commit_output and app._commit_output.strip():
-                    click.echo(app._commit_output.strip() + "\n")
-            return
-    elif review:
-        action_type = "review"
-        if not hook and not check_unstaged_files(
-            "review", skip_check=no_unstaged_check, quiet=quiet, interactive=False
-        ):
-            return
-        diff_text = get_git_diff()
-    elif fullreview:
-        action_type = "fullreview"
-        if not hook and not check_unstaged_files(
-            "fullreview", skip_check=no_unstaged_check, quiet=quiet, interactive=False
-        ):
-            return
-        diff_text = get_git_full_diff()
-    else:
-        # Default: PR Description using Full Diff against the remote main
-        action_type = "pr"
-        # ADR-005: the close-issue decision is made before the stage TUI, and
-        # only a local record can make it cost anything. `scm_context` lets the
-        # rest of the flow reuse the provider/repository resolved here.
-        from src.issue_autoclose.resolve_close_issue import CloseIssueFlags
-
-        close_issue_decision, close_issue_registry, scm_context = _prepare_close_issue(
-            CloseIssueFlags(accept=close_issue, disabled=no_close_issue), base, may_ask
-        )
-        if not check_unstaged_files(
-            "pr", skip_check=no_unstaged_check, quiet=quiet, interactive=True
-        ):
-            return
-        click.secho(__("🚀 Starting pull request generation..."), fg="cyan")
-        diff_text = get_git_full_diff()
-
-    # A git failure is not an empty diff. get_git_full_diff()/get_git_diff()
-    # return None when git fails; folding that into "no new code found" hides it.
-    # Exit non-zero so scripts can tell the two apart. Hook mode fails open: a
-    # non-zero prepare-commit-msg hook makes git abort the user's commit.
-    if diff_text is None:
-        if hook:
-            return
-        raise click.exceptions.Exit(1)
-
-    # CRITICAL: Warn the user before exiting if there are no changes
-    if not diff_text.strip():
-        click.secho(
-            __(
-                "\n⚠️ No new code found. Make some changes or check your branch before running the command.\n"
-            ),
-            fg="yellow",
-        )
-        return
-
-    # Call AI according to active_provider using the new function signature.
-    # The two branch-review modes record their diff so `gitpr fix` patches
-    # against the revision that was reviewed, not against a later working tree.
-    data = generate_pr_content(
-        action_type,
-        action_type,
-        diff_text,
-        active_provider,
-        store_diff=action_type in ("review", "fullreview"),
-    )
-    if not data:
-        return
-
-    # Output Processing
-    branch_name = get_current_branch()
-    safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
-    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
-
-    # Commit only in console
-    if action_type == "commit":
-        msg = append_coauthor_trailer(data.get("commit_message", __("Code update")))
-
-        if hook:
-            # HOOK MODE: Inject message directly into Git file
-            try:
-                with open(hook, "r", encoding="utf-8") as f:
-                    original_content = f.read()
-
-                # Place suggestion at the top, keeping original Git comments below
-                with open(hook, "w", encoding="utf-8") as f:
-                    f.write(f"{msg}\n\n{original_content}")
-
-                click.secho(
-                    __("✅ Message successfully injected into the editor!"), fg="green"
-                )
-            except Exception as e:
-                click.secho(
-                    __("❌ Error injecting into hook: {error}", error=str(e)), fg="red"
-                )
-        else:
-            # CONSOLE MODE: The original existing behavior
-            click.secho(
-                __("\n>> Tip: Use without --commit to generate the full PR.\n"),
-                fg="yellow",
-            )
-            click.secho(__("\n📝 Commit Suggestion:\n"), fg="green", bold=True)
-            click.echo(msg)
-            click.echo("\n")
-        return
-
-    # Code Review and File Review
-    if action_type in ["review", "fullreview", "filereview"]:
-        if fullreview:
-            output_filename = resolve_output_path(
-                "OUTPUT_FILE_NAME_FULLREVIEW",
-                "{branch}_{datetime}_PR_FULLREVIEW.txt",
-                safe_branch_name,
-                current_time,
-            )
-        elif action_type == "filereview":
-            output_filename = resolve_output_path(
-                "OUTPUT_FILE_NAME_FILEREVIEW",
-                "{branch}_{datetime}_FILE_REVIEW.txt",
-                safe_branch_name,
-                current_time,
-            )
-        else:
-            output_filename = resolve_output_path(
-                "OUTPUT_FILE_NAME_REVIEW",
-                "{branch}_{datetime}_PR_REVIEW.txt",
-                safe_branch_name,
-                current_time,
-            )
-        content = data.get("review", __("No analysis generated."))
-        from src.config import mentor_mode_enabled
-        if action_type in ("review", "fullreview") and (mentor_flag or mentor_mode_enabled()):
-            content = _append_mentor_section(content, action_type, diff_text, active_provider)
-        elif mentor_flag:
-            click.secho(
-                __("⚠️ Notice: --mentor option is only supported for -r (--review) and -f (--fullreview)."),
-                fg="yellow",
-                dim=True,
-            )
-
-        # Run the Linter. If "filereview", enable full-file mode.
-        linted = []
-        if action_type == "filereview":
-            linter_results = parse_diff_and_lint(
-                diff_text, is_full_file=True, file_path=input, findings_out=linted
-            )
-        else:
-            linter_results = parse_diff_and_lint(diff_text, findings_out=linted)
-
-        # The statuses reach the report file, the console and the risk section
-        # from this one classification. A review has never exited non-zero over
-        # a finding, and a baseline does not change that — it changes what a
-        # reader is told about one.
-        compared = _classify_with_baseline(baseline_gate, linted)
-        if compared:
-            from src.application.use_cases.baseline_gate import (
-                alert_status_index,
-                annotate_alerts,
-            )
-
-            linter_results = annotate_alerts(
-                linter_results, alert_status_index(compared)
-            )
-        _print_baseline_line(compared, quiet=quiet)
-
-        risk_section = None
-        if action_type in ("review", "fullreview") and risk_scoring_in_review_enabled():
-            try:
-                from src.application.use_cases.baseline_gate import (
-                    attach_informational_evidence,
-                    new_findings,
-                    status_line,
-                )
-                from src.application.use_cases.calculate_risk import execute_calculate_risk
-                from src.domain.risk.risk_explanation import format_risk_review_section
-                from src.review.diff_source import DiffOrigin, DiffSource
-
-                r_diff_source = DiffSource(
-                    origin=DiffOrigin.LOCAL,
-                    content=diff_text,
-                    identifier="head",
-                )
-                # With a baseline the score is this change's alone: the legacy
-                # findings travel as zero-weight evidence instead of raising it.
-                r_risk = execute_calculate_risk(
-                    r_diff_source, findings=new_findings(compared) if compared else None
-                )
-                if compared:
-                    attach_informational_evidence(r_risk, compared)
-                risk_section = format_risk_review_section(r_risk)
-                line = status_line(compared) if compared else ""
-                if line:
-                    risk_section = f"**{line}**\n\n{risk_section}"
-            except Exception:
-                risk_section = None
-
-        render_review_result(content, linter_results, output_filename, risk_assessment_text=risk_section)
-        return
-
-    # Default Pull Request (.md file)
-    output_filename = resolve_output_path(
-        "OUTPUT_FILE_NAME",
-        "{branch}_{datetime}_PR_DESC.md",
-        safe_branch_name,
-        current_time,
-    )
-
-    pr_desc_body = data.get("pr_description", __("No detailed description."))
-
-    from src.config import explain_enabled_by_default
-    if explain or explain_enabled_by_default():
-        from src.application.use_cases.generate_pr_explanation import generate_pr_explanation
-        click.secho("🧐 " + __("Generating Reviewer Guide (Explain my PR)..."), fg="cyan", dim=True)
-        explanation = generate_pr_explanation(diff_text, ai_provider=active_provider, quiet=True)
-        if explanation and explanation.markdown:
-            pr_desc_body = f"{pr_desc_body.rstrip()}\n\n---\n\n{explanation.markdown}"
-
-    # ADR-004: the closing line joins the body here, after the reviewer guide
-    # and before the .md and pr_data — so every publisher receives it, and the
-    # badge attached later lands after it.
-    from src.issue_autoclose.insert_close_line import insert_close_line
-
-    pr_desc_body = insert_close_line(pr_desc_body, close_issue_decision)
-
-    markdown_content = (
-        __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
-        + "```text\n"
-        + f"{data.get('commit_message', __('Code update'))}\n"
-        + "```\n\n---\n\n"
-        + pr_desc_body
-    )
-
-    try:
-        with open(output_filename, "w", encoding="utf-8") as f:
-            f.write(markdown_content)
-        click.secho(
-            __(
-                "\n✅ Success! The file '{output_filename}' was generated in the current folder.",
-                output_filename=output_filename,
-            ),
-            fg="green",
-            bold=True,
-        )
-    except Exception as e:
-        click.secho("\n" + __("❌ Error saving file: {error}", error=str(e)), fg="red")
-
-    # ── PR Publisher logic ──
-    from src.core import describe_repo
-
-    # A record already made the early path resolve this once; reuse it — the
-    # tuple is truthy even on failure, so the error is never printed twice.
-    provider, repo_ref = scm_context or _resolve_scm_context()
-    if provider is None:
-        return
-
-    repo_info = describe_repo(repo_ref)
-    head_branch = branch_name
-
-    pr_data = {
-        "commit_message": data.get("commit_message", ""),
-        "pr_description": pr_desc_body,
-    }
-
-    # ── --no-publish: save locally and exit ──
-    if no_publish:
-        return
-
-    # One resolver for every source: --base, the project file, PR_DEFAULT_BASE,
-    # origin/HEAD. Validation happens here — before --no-edit commits anything —
-    # but only on paths that actually publish.
-    from src.project_config import BaseBranchError
-
-    try:
-        resolved_base = _resolve_pr_target(base, quiet)
-    except BaseBranchError as exc:
-        click.secho(f"❌ {exc}", fg="red", err=True)
-        raise click.exceptions.Exit(1)
-    for warning in resolved_base.warnings:
-        click.secho(warning, fg="yellow", err=True)
-    target_base = resolved_base.branch
-
-    # The badge goes on here, before either publisher reads `pr_data`: on screen
-    # in the TUI, and in the request `--no-edit` sends. Nothing is attached when
-    # the user opted out or when the linter had no rules to run.
-    from src.branding.badge_builder import attach_pr_badge
-
-    attach_pr_badge(pr_data, diff_text)
-
-    # ── --no-edit: auto-commit + direct publish ──
-    if no_edit:
-        from src.tui_issue import validate_or_request_scm_token
-
-        if not _run_auto_commit_cli(active_provider):
-            return
-
-        github_token, provider = validate_or_request_scm_token(provider, repo_info)
-        if not github_token:
-            click.secho(_scm_access_canceled_message(provider), fg="red")
-            return
-
-        if _publish_pr_directly(
-            pr_data, provider, repo_ref, target_base, output_filename
-        ):
-            _clear_close_issue_record(close_issue_registry, close_issue_decision)
-        return
-
-    # ── Default: Open TUI ──
-    from src.tui_issue import validate_or_request_scm_token
-    from src.ui.pr_publish_app import PrPublishApp
-
-    github_token, provider = validate_or_request_scm_token(provider, repo_info)
-    if not github_token:
-        click.secho(_scm_access_canceled_message(provider), fg="red")
-        return
-
-    # ── Suggested reviewers (default TUI flow only, never blocking) ──
-    # Blame of the diff's added lines against the working tree. Any failure
-    # (missing identity, shallow repo, git error) degrades to a yellow note
-    # and the publisher opens without suggestions.
-    reviewer_suggestion = None
-    if not no_suggest_reviewers and suggest_reviewers_enabled():
-        from src.cache import get_git_user_info
-        from src.suggest_reviewers import compute_reviewer_suggestions
-
-        click.secho(__("🔍 Searching for suggested reviewers..."), fg="cyan", dim=True)
-        try:
-            settings = get_reviewer_suggestion_settings()
-            user_name, user_email = get_git_user_info()
-            suggestion_result = compute_reviewer_suggestions(
-                diff_text,
-                pr_author_email=user_email,
-                pr_author_name=user_name,
-                top_n=settings["top_n"],
-                excluded_authors=settings["excluded"],
-            )
-        except Exception as e:
-            suggestion_result = None
-            click.secho(
-                __("⚠️ Could not compute reviewer suggestions: {error}", error=str(e)),
-                fg="yellow",
-                dim=True,
-            )
-        if suggestion_result:
-            for warning in suggestion_result.warnings:
-                click.secho(f"  ⚠️ {warning}", fg="yellow", dim=True)
-            reviewer_suggestion = _reviewer_suggestion_view(
-                suggestion_result, provider, repo_ref
-            )
-
-    # Interactive TUI with reauth loop
-    while True:
-        app = PrPublishApp(
-            pr_data=pr_data,
-            repo_info=repo_info,
-            github_token=github_token,
-            provider=provider,
-            repo_ref=repo_ref,
-            base_branch=target_base,
-            output_filename=output_filename,
-            reviewer_suggestion=reviewer_suggestion,
-        )
-        app.run()
-
-        if app.final_action == "reauth":
-            click.secho(f"\n{app.final_message}\n", fg="yellow")
-            github_token, provider = validate_or_request_scm_token(provider, repo_info)
-            if not github_token:
-                click.secho(_scm_access_canceled_message(provider), fg="red")
-                break
-            continue
-
-        # The record survives everything that did not put the line on the
-        # forge: a declined question, Esc, a failed publish, or merely opening
-        # an existing PR (which also reports "created").
-        if app.body_published:
-            _clear_close_issue_record(close_issue_registry, close_issue_decision)
-
-        if app.final_message:
-            cor = (
-                "green" if app.final_action in ["saved", "created", "merged"] else "red"
-            )
-            click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
-
-        if (
-            app.final_action in ["created", "merged", "merge_failed"]
-            and app.final_pr_url
-        ):
-            if click.confirm(__("🔗 Open the Pull Request in your browser?")):
-                import webbrowser
-
-                webbrowser.open(app.final_pr_url)
-        click.secho(
-            f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}",
-            fg="cyan",
-        )
-        break
-
-
-# ============================================================
-# gitpr release — changelog / release notes (first subcommand, ADR-002)
-# ============================================================
-def _preview_release(result, max_lines=40):
-    """Prints a terminal preview of the generated changelog section (grill Q4/Q5)."""
-    lines = result.markdown.rstrip("\n").splitlines()
-    if len(lines) > max_lines:
-        click.echo("\n".join(lines[:max_lines]))
-        click.echo(__("… and {more} more lines", more=len(lines) - max_lines))
-    else:
-        click.echo(result.markdown.rstrip("\n"))
-
-
-@cli.command(
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("install-wizard.md"),
-)
-@click.option(
-    "--force",
-    "-f",
-    is_flag=True,
-    help=__(
-        "Forces overwriting existing project configuration files with default templates."
-    ),
-)
-@click.option(
-    "--all",
-    "-a",
-    "include_all",
-    is_flag=True,
-    help=__(
-        "Also downloads all AI prompt skill templates (.gitpr.*.md) into .gitpr/skill/."
-    ),
-)
-def seed(force, include_all):
-    """Seeds project-local configuration files (.gitpr/conf/ and linter).
-
-    Initializes the repository's local configuration files:
-      - .gitpr/conf/gitpr.config.yml (PR base branch)
-      - .gitpr/conf/gitpr.smart-excludes.json (Smart Excludes pathspecs)
-      - .gitpr/skill/.gitpr.linter.yml (Local regex linter rules)
-
-    Never overwrites existing files unless --force is specified.
-    """
-    from src.metrics import log_command_metric
-
-    try:
-        seed_project_configuration(force=force, include_all_skills=include_all, quiet=False)
-        log_command_metric(command="seed", status="success", provider="local")
-    except Exception:
-        log_command_metric(command="seed", status="error", provider="local")
-        raise
-
-
-@cli.command(
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("release-notes.md"),
-)
-@click.option(
-    "--since",
-    "since_tag",
-    metavar="<tag>",
-    help=__(
-        "Range origin: tag or reference from where commits are collected (default: the latest reachable tag, or the first commit when no tag exists)."
-    ),
-)
-@click.option(
-    "--version",
-    "target_version",
-    metavar="<x.y.z>",
-    help=__(
-        "Target version of the release (default: automatic semantic bump suggestion)."
-    ),
-)
-@click.option(
-    "--publish",
-    is_flag=True,
-    help=__(
-        "After generating, publish the release on the configured forge (asks for confirmation)."
-    ),
-)
-@click.option(
-    "--draft",
-    is_flag=True,
-    help=__(
-        "Create the release as a draft on the forge (GitHub). Only applies together with --publish; GitLab has no draft concept."
-    ),
-)
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["markdown", "json"], case_sensitive=False),
-    default="markdown",
-    show_default=True,
-    help=__(
-        "json prints the full result to stdout without touching files or publishing."
-    ),
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help=__(
-        "Regenerate the version section when it already exists in the changelog (idempotency override)."
-    ),
-)
-def release(since_tag, target_version, publish, draft, output_format, force):
-    """Generates the changelog / release notes of the current repository.
-
-    Scans the commits between --since (default: the latest reachable tag) and
-    HEAD, classifies them by Conventional Commits, suggests a semantic version
-    bump, optionally adds an AI executive summary and prepends the new section
-    to CHANGELOG.md.
-
-    Local generation is the default — nothing is published and no local tags or
-    version files are touched. With --publish the release is created on the
-    forge after an explicit confirmation; GitHub auto-creates the tag on its
-    default branch, GitLab requires the tag to already exist there.
-
-    On the first run the ``.gitpr.release.md`` skill template is downloaded
-    (language-aware, never overwriting) and used as the system instruction of
-    the AI executive summary — edit it locally to customize the summary.
-    """
-    import json
-
-    from src.config import get_release_settings, get_scm_settings
-    from src.infrastructure.scm.base import ScmNotSupportedError, ScmProviderError
-    from src.infrastructure.scm.factory import resolve_scm_provider
-    from src.release_engine import (
-        ReleaseNotesError,
-        generate_release_notes,
-        get_repo_root,
-        publish_release,
-        result_to_json,
-        upsert_changelog,
-    )
-
-    settings = get_release_settings()
-    json_mode = output_format.lower() == "json"
-
-    if json_mode and publish:
-        click.secho(
-            __("⚠️ --format json is stdout-only: --publish is ignored."),
-            fg="yellow",
-        )
-    if draft and not publish:
-        click.secho(
-            __(
-                "⚠️ --draft only applies together with --publish: generating the changelog locally."
-            ),
-            fg="yellow",
-        )
-
-    # R4: first-use auto-download of the .gitpr.release.md skill template.
-    # CLI layer only (never the engine), skipped on --format json because that
-    # mode is stdout-only and must not touch the filesystem.
-    if not json_mode:
-        ensure_release_skill_template()
-
-    try:
-        result = generate_release_notes(
-            repo_path=".",
-            since_tag=since_tag,
-            target_version=target_version,
-            ai_summary=settings["ai_summary"],
-            auto_bump=settings["auto_bump"],
-            quiet=json_mode,
-            ask_version=not json_mode,
-            changelog_path=settings["changelog_path"],
-        )
-    except ReleaseNotesError as exc:
-        click.secho(str(exc), fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    # Warnings live inside the JSON result too — never pollute the stdout stream.
-    if not json_mode:
-        for warning in result.warnings:
-            click.secho(f"  ⚠️ {warning}", fg="yellow", dim=True)
-
-    if json_mode:
-        click.echo(json.dumps(result_to_json(result), indent=2, ensure_ascii=False))
-        return
-
-    repo_root = get_repo_root(".")
-    changelog_path = settings["changelog_path"]
-    if not os.path.isabs(changelog_path):
-        changelog_path = os.path.join(repo_root, changelog_path)
-
-    try:
-        status = upsert_changelog(
-            changelog_path, result.version, result.markdown, force=force
-        )
-    except ReleaseNotesError as exc:
-        click.secho(str(exc), fg="red")
-        raise click.exceptions.Exit(1) from exc
-
-    if status == "replaced":
-        click.secho(
-            __("🔄 Existing section for version {version} regenerated.",
-               version=result.version),
-            fg="cyan",
-        )
-    else:
-        click.secho(
-            __("✅ Changelog updated: {path}", path=changelog_path),
-            fg="green",
-            bold=True,
-        )
-
-    # R5: per-run artifact under .gitpr/reports/release/ (best-effort — a
-    # failure here warns but never fails the command; the changelog upsert
-    # above already ruled the release generation).
-    try:
-        branch = get_current_branch()
-        safe_branch = branch.replace("/", "-").replace("\\", "-")
-        artifact_path = resolve_output_path(
-            "OUTPUT_FILE_NAME_RELEASE",
-            "{branch}_{datetime}_RELEASE.md",
-            safe_branch,
-            datetime.now().strftime("%Y%m%d%H%M%S"),
-        )
-        with open(artifact_path, "w", encoding="utf-8", errors="replace") as f:
-            f.write(result.markdown)
-        click.secho(
-            __("📄 Release notes artifact saved to: {path}", path=artifact_path),
-            fg="blue",
-            dim=True,
-        )
-    except Exception as exc:
-        click.secho(
-            __(
-                "⚠️ Warning: Could not save the release notes artifact: {error}",
-                error=str(exc),
-            ),
-            fg="yellow",
-        )
-
-    click.echo("")
-    _preview_release(result)
-
-    if not publish:
-        click.secho(
-            __("ℹ️ To publish this release on the forge, run again with --publish."),
-            fg="cyan",
-            dim=True,
-        )
-        return
-
-    effective_draft = draft or settings["publish_draft_by_default"]
-    scm_provider = resolve_scm_provider(get_scm_settings())
-    from src.core import get_origin_remote_url
-
-    remote_url = get_origin_remote_url()
-    if not remote_url:
-        click.secho(
-            __("❌ No git remote 'origin' found. Cannot publish the release."),
-            fg="red",
-        )
-        raise click.exceptions.Exit(1)
-    try:
-        repo_ref = scm_provider.parse_repo_ref(remote_url)
-    except ValueError as exc:
-        click.secho(str(exc), fg="red")
-        raise click.exceptions.Exit(1) from exc
-
-    if not click.confirm(
-        __(
-            "❓ Publish release {version} on {provider}?",
-            version=result.version,
-            provider=scm_provider.name,
-        ),
-        default=False,
-    ):
-        click.secho(
-            __("⏭️ Publication skipped — the changelog was generated locally."),
-            fg="yellow",
-        )
-        return
-
-    try:
-        url = publish_release(
-            result, scm_provider, repo_ref, draft=effective_draft
-        )
-    except ScmNotSupportedError as exc:
-        click.secho(
-            __(
-                "⚠️ Release publishing is not supported on {provider}. The changelog was generated locally — publish it manually.",
-                provider=exc.provider,
-            ),
-            fg="yellow",
-        )
-        return
-    except ScmProviderError as exc:
-        click.secho(str(exc), fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    click.secho(
-        __("✅ Release {version} published: {url}",
-           version=result.version, url=url),
-        fg="green",
-        bold=True,
-    )
-
-
-@cli.command(
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("config-tui.md"),
-)
-def config():
-    """Opens the interactive configuration screen for ~/.gitpr/.env.
-
-    Master-detail interface: the categories on the left, the settings of the
-    selected one on the right, edited in place. F2 validates and saves, Ctrl+R
-    removes the line so the built-in default applies again, and / searches a
-    variable or a label across every category.
-
-    Changes are written only when you save, and secrets are stored encrypted.
-    The screen shows the value from the file; when an environment variable
-    shadows it the field is flagged, because the environment wins at runtime.
-
-    Works on a clean machine — with no file yet the screen opens on the
-    built-in defaults.
-    """
-    # setup_environment() is deliberately NOT called: it prompts for a missing
-    # API key on stdin, which would fight the screen for the terminal. Nothing
-    # else in the startup path is needed, and the root callback already returns
-    # early for subcommands, so no banner is printed either.
-    from src.ui.config_app import launch_config_app
-
-    launch_config_app()
-
-
-# ============================================================
-# gitpr demo — guided tour over a recorded example
-# ============================================================
-
-
-@cli.command(
-    "demo",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("demo.md"),
-)
-@click.option(
-    "--scenario",
-    "scenario_name",
-    metavar="<name>",
-    help=__("Example to walk through. Without it, the first one is used."),
-)
-@click.option(
-    "--lang",
-    "lang",
-    metavar="<lang>",
-    help=__("Language for this run (en_us, pt_br, pt_pt, es_es, fr_fr)."),
-)
-@click.option(
-    "--no-tui",
-    "no_tui",
-    is_flag=True,
-    help=__("Prints the tour as plain text instead of opening the screen."),
-)
-def demo(scenario_name, lang, no_tui):
-    """Guided tour of GitPR over an example diff.
-
-    Walks through the three things GitPR does with a change — the commit
-    message, the code review and the pull request description — using an
-    example that ships with the tool. Nothing is generated and nothing is sent:
-    the answers were recorded once and are replayed, so the tour needs no API
-    key, no Git repository and no connection.
-
-    This is the second way to use GitPR. For the real thing, run ``gitpr --init``
-    to configure a provider and a forge token.
-    """
-    # The root callback returns before its --lang handler for every subcommand,
-    # so the flag has to be applied here. reload_thinking_words() is
-    # deliberately not called: the tour never spins, and it would download.
-    if lang:
-        from src.i18n import set_lang
-
-        set_lang(lang)
-
-    from src.demo.demo_runner import run_demo
-    from src.demo.scenarios import DemoScenarioError
-
-    try:
-        run_demo(scenario_name, tui=not no_tui)
-    except DemoScenarioError as exc:
-        click.secho(f"❌ {exc}", fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-
-@cli.command(
-    "badge",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("badge.md"),
-)
-@click.option(
-    "--readme",
-    "readme",
-    is_flag=True,
-    help=__("Prints only the snippet, ready to paste into a README."),
-)
-@click.option(
-    "--style",
-    "style",
-    metavar="<style>",
-    default="flat",
-    show_default=True,
-    help=__("shields.io style: flat, flat-square or for-the-badge."),
-)
-def badge(readme, style):
-    """Adoption badge for a project's README.
-
-    Prints the Markdown for a static badge. Nothing is written to your README —
-    the snippet is printed so you can paste it where you want it.
-    """
-    from src.branding.badge_builder import (
-        DEFAULT_STYLE,
-        VALID_STYLES,
-        build_readme_badge,
-    )
-
-    if style not in VALID_STYLES:
-        click.secho(
-            __(
-                "⚠️ Unknown style '{style}' — falling back to '{default}'.",
-                style=style,
-                default=DEFAULT_STYLE,
-            ),
-            fg="yellow",
-            err=True,
-        )
-
-    snippet = build_readme_badge(style)
-
-    # --readme is the pipe-friendly form: the snippet and nothing else.
-    if readme:
-        click.echo(snippet)
-        return
-
-    click.secho("🏷️  " + __("GitPR badge for your README"), fg="cyan", bold=True)
-    click.echo("")
-    click.echo(snippet)
-    click.echo("")
-    click.secho(
-        __(
-            "Pull requests published by GitPR carry a badge too, with the linter counts of the diff."
-        ),
-        dim=True,
-    )
-
-
-# ============================================================
-# gitpr fix — review findings applied as reviewable diffs (ADR-004)
-# ============================================================
-_FIX_SAFETY_COLORS = {"safe": "green", "review_required": "yellow", "experimental": "red"}
-
-
-def _fix_reason(reason_code):
-    """The translated reason behind a classification code.
-
-    The classifier reports a code and never a sentence, so the wording lives
-    here — and the MCP tool keeps reporting the code, because its callers match
-    on a stable string instead of reading prose.
-
-    One literal __() per code rather than a table of sentences: the i18n test
-    scans the source for __() literals, so a sentence reached through a variable
-    would be looked up by nothing and silently stay English.
-    """
-    if reason_code == "apply_check_failed":
-        return __("it does not apply to the current tree")
-    if reason_code == "multi_file":
-        return __("it changes more than one file")
-    if reason_code == "low_confidence":
-        return __("the AI declared low confidence in it")
-    if reason_code == "excluded_path":
-        return __("it touches a configured sensitive path")
-    if reason_code == "multiple_hunks":
-        return __("it spans more than one hunk")
-    if reason_code == "too_many_lines":
-        return __("it changes more lines than the configured limit")
-    if reason_code == "removes_call":
-        return __("it deletes a line that looks like a call")
-    return reason_code
-
-
-def _fix_location(finding):
-    """``path:line`` for a finding, or just the path when it carries no line."""
-    if finding.line_start:
-        return f"{finding.file_path}:{finding.line_start}"
-    return finding.file_path
-
-
-def _print_fix_candidate(candidate):
-    """One candidate as a terminal block: class, location, finding, patch id."""
-    finding = candidate.finding
-    click.secho(f"  {finding.id}", fg="cyan", bold=True, nl=False)
-    click.secho(
-        f"  [{candidate.safety.value}]",
-        fg=_FIX_SAFETY_COLORS.get(candidate.safety.value, "white"),
-        nl=False,
-    )
-    click.secho(f"  {_fix_location(finding)}")
-    if finding.message:
-        click.echo(f"     {finding.message}")
-    line = f"     ↳ {candidate.patch_id}"
-    if candidate.safety.value != "safe":
-        line += f" — {_fix_reason(candidate.safety_reason)}"
-    click.secho(line, fg="white", dim=True)
-
-
-def _print_fix_diff(diff_text):
-    """A unified diff in the terminal colours the rest of the project uses."""
-    for line in diff_text.rstrip("\n").splitlines():
-        if line.startswith(("+++", "---")):
-            click.secho(f"   {line}", fg="cyan")
-        elif line.startswith("@@"):
-            click.secho(f"   {line}", fg="magenta")
-        elif line.startswith("+"):
-            click.secho(f"   {line}", fg="green")
-        elif line.startswith("-"):
-            click.secho(f"   {line}", fg="red")
-        else:
-            click.echo(f"   {line}")
-
-
-def _print_fix_left_out(candidates, selected):
-    """The candidates a batch did not take, with the id that brings them back."""
-    for candidate in candidates:
-        if candidate not in selected:
-            click.secho(
-                __(
-                    "⏭️ {finding_id} not applied — {safety}: {reason}",
-                    finding_id=candidate.finding.id,
-                    safety=candidate.safety.value,
-                    reason=_fix_reason(candidate.safety_reason),
-                ),
-                fg="white",
-                dim=True,
-            )
-
-
-def _append_mentor_section(content, action_type, diff_text, active_provider):
-    """Generates and appends pedagogical mentor explanations to a code review."""
-    from src.application.use_cases.generate_mentor_explanation import (
-        MentorError,
-        explain_review,
-    )
-
-    synthetic_record = {
-        "response": {"review": content},
-        "diff": diff_text,
-        "action_type": action_type,
-    }
-
-    try:
-        click.secho("🎓 " + __("Generating Mentor guidance for review findings..."), fg="cyan", dim=True)
-        run = explain_review(
-            record=synthetic_record,
-            finding_id=None,
-            ai_provider=active_provider,
-            quiet=False,
-        )
-        if run and run.markdown:
-            click.secho(
-                __("🎓 Mentor: {count} finding(s) explained successfully.", count=len(run.explanations)),
-                fg="green",
-                dim=True,
-            )
-            if run.skipped_ids:
-                click.secho(
-                    __(
-                        "ℹ️ {count} additional finding(s) not expanded. Run 'gitpr mentor --finding <id>' to view.",
-                        count=len(run.skipped_ids),
-                    ),
-                    fg="yellow",
-                    dim=True,
-                )
-            return f"{content.rstrip()}\n\n---\n\n{run.markdown}"
-    except MentorError as exc:
-        click.secho(f"⚠️ {exc}", fg="yellow", dim=True)
-    except Exception as exc:
-        click.secho(
-            __(
-                "⚠️ Warning: Failed to generate mentor section ({error})",
-                error=str(exc),
-            ),
-            fg="yellow",
-            dim=True,
-        )
-
-    return content
-
-
-@cli.command(
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("fix-command.md"),
-)
-@click.argument("finding_id", required=False, metavar="[<finding-id>]")
-@click.option(
-    "--list",
-    "list_only",
-    is_flag=True,
-    help=__("Lists the fix candidates of the last review — what the command does with no arguments."),
-)
-@click.option(
-    "--apply",
-    "apply_changes",
-    is_flag=True,
-    help=__("Writes the patch into the working tree. Without it the run is a dry run that touches nothing."),
-)
-@click.option(
-    "--all-safe",
-    "all_safe",
-    is_flag=True,
-    help=__("Selects every patch classified as safe. Writing them still requires --apply."),
-)
-@click.option(
-    "--create-branch",
-    "branch_name",
-    metavar="<name>",
-    help=__("Creates and switches to this branch before applying the patches."),
-)
-@click.option(
-    "--no-branch",
-    is_flag=True,
-    help=__("Applies on the current branch even when the configuration would create one."),
-)
-@click.option(
-    "--yes",
-    "assume_yes",
-    is_flag=True,
-    help=__("Skips the confirmation prompt. It never bypasses --force."),
-)
-@click.option(
-    "--force",
-    is_flag=True,
-    help=__("Applies a patch that is not safe, after a typed confirmation phrase."),
-)
-@click.option(
-    "--rollback",
-    "rollback_id",
-    metavar="<patch-id>",
-    help=__("Undoes a patch applied earlier, reading its diff from the local history."),
-)
-def fix(
-    finding_id,
-    list_only,
-    apply_changes,
-    all_safe,
-    branch_name,
-    no_branch,
-    assume_yes,
-    force,
-    rollback_id,
-):
-    """Turns the last code review into patches you read before they touch your tree.
-
-    Reads the most recent review of this repository and branch (``gitpr -r``),
-    asks the AI for the smallest unified diff that fixes each problem the review
-    raised, and classifies every patch by how much it can be trusted.
-
-    Nothing is written by default: with no arguments the candidates are listed,
-    and a dry run prints the diff. Writing requires --apply, and a patch that is
-    not classified as safe additionally requires --force with a typed phrase.
-
-    The diff is re-derived with the same function that produced the review, so
-    the patch is written against the tree in front of you now. Every applied
-    patch is recorded in ``.gitpr/fix_history.json`` and can be undone with
-    --rollback, which needs no commit because the whole diff is stored.
-    """
-    from src.config import get_fix_settings
-    from src.fix.apply_fix import (
-        FixError,
-        apply_candidates,
-        collect_candidates,
-        find_candidate,
-        resolve_review,
-        select_safe,
-    )
-    from src.fix.rollback_fix import rollback_fix as undo_patch
-
-    settings = get_fix_settings()
-
-    if rollback_id:
-        if finding_id or apply_changes or all_safe:
-            click.secho(
-                __("❌ --rollback takes no finding id and cannot be combined with --apply or --all-safe."),
-                fg="red",
-            )
-            raise click.exceptions.Exit(1)
-        try:
-            entry = undo_patch(rollback_id)
-        except FixError as exc:
-            click.secho(str(exc), fg="red", err=True)
-            raise click.exceptions.Exit(1) from exc
-        click.secho(
-            __(
-                "ℹ️ Undone patch {patch_id}: {files} restored.",
-                patch_id=entry.get("patch_id"),
-                files=", ".join(entry.get("files_changed") or []),
-            ),
-            fg="green",
-        )
-        return
-
-    if force and all_safe:
-        click.secho(
-            __("⚠️ --force has no effect with --all-safe: only safe patches are selected."),
-            fg="yellow",
-        )
-
-    if not finding_id and not all_safe:
-        if apply_changes:
-            click.secho(
-                __("⚠️ Nothing was selected: name a finding id or add --all-safe."),
-                fg="yellow",
-            )
-        list_only = True
-
-    try:
-        candidates = collect_candidates(
-            resolve_review(),
-            max_lines_changed=settings["safe_max_lines_changed"],
-            excluded_paths=settings["safe_excluded_paths"],
-        )
-        if all_safe:
-            selected = select_safe(candidates)
-        elif finding_id:
-            selected = (find_candidate(candidates, finding_id),)
-        else:
-            selected = ()
-    except FixError as exc:
-        click.secho(str(exc), fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    if not candidates:
-        click.secho(__("ℹ️ The review raised no fixable findings."), fg="yellow")
-        return
-
-    if all_safe and not selected:
-        click.secho(
-            __("ℹ️ None of the candidates is safe. Apply one by id with 'gitpr fix <id> --apply'."),
-            fg="yellow",
-        )
-        return
-
-    if list_only:
-        click.secho(__("🔎 Fix candidates from the last review:"), fg="cyan", bold=True)
-        for candidate in candidates:
-            _print_fix_candidate(candidate)
-        click.secho(
-            __(
-                "ℹ️ Apply one with 'gitpr fix <id> --apply'; the safe ones can be batched with '--all-safe --apply'."
-            ),
-            fg="cyan",
-            dim=True,
-        )
-        return
-
-    branch = None
-    if branch_name:
-        branch = branch_name
-    elif all_safe and not no_branch and settings["create_branch_on_all_safe"]:
-        branch = settings["branch_name_template"].format(
-            branch=get_current_branch() or "",
-            datetime=datetime.now().strftime("%Y%m%d%H%M%S"),
-        )
-
-    if not apply_changes:
-        # Dry run: the diff and the classification are the whole point, and
-        # apply_candidates(dry_run=True) is the one path that writes nothing.
-        results = apply_candidates(selected, dry_run=True)
-        for candidate, result in zip(selected, results):
-            _print_fix_candidate(candidate)
-            _print_fix_diff(result.dry_run_diff)
-            for warning in result.warnings:
-                click.secho(f"   {warning}", fg="yellow")
-        if branch:
-            click.secho(
-                __(
-                    "ℹ️ Branch '{branch}' would be created before the patches are applied.",
-                    branch=branch,
-                ),
-                fg="cyan",
-                dim=True,
-            )
-        if all_safe:
-            _print_fix_left_out(candidates, selected)
-        click.secho(
-            __("ℹ️ Dry run — nothing was written. Add --apply to write it."),
-            fg="cyan",
-            dim=True,
-        )
-        return
-
-    # A patch that is not safe is never written by a plain --apply: --force is
-    # the only door, and it opens on a typed phrase rather than a y/n.
-    unsafe = [candidate for candidate in selected if candidate.safety.value != "safe"]
-    if unsafe and not force:
-        for candidate in unsafe:
-            click.secho(
-                __(
-                    "❌ {finding_id} is {safety} ({reason}) — re-run with --force to apply it anyway.",
-                    finding_id=candidate.finding.id,
-                    safety=candidate.safety.value,
-                    reason=_fix_reason(candidate.safety_reason),
-                ),
-                fg="red",
-            )
-        raise click.exceptions.Exit(1)
-
-    if unsafe:
-        phrase = f"apply {unsafe[0].finding.id}"
-        typed = click.prompt(
-            __(
-                "❗ {safety} patch: {reason}. Type '{phrase}' to confirm",
-                safety=unsafe[0].safety.value,
-                reason=_fix_reason(unsafe[0].safety_reason),
-                phrase=phrase,
-            )
-        )
-        if typed.strip().lower() != phrase.lower():
-            click.secho(
-                __("❌ The confirmation phrase does not match. Nothing was applied."),
-                fg="red",
-            )
-            raise click.exceptions.Exit(1)
-    elif settings["require_confirmation"] and not assume_yes:
-        question = (
-            __("❓ Apply {finding_id} to the working tree?", finding_id=finding_id)
-            if finding_id
-            else __("❓ Apply the selected patches to the working tree?")
-        )
-        if not click.confirm(question, default=False):
-            click.secho(__("❌ Operation cancelled by user."), fg="yellow")
-            return
-
-    try:
-        results = apply_candidates(selected, dry_run=False, branch=branch)
-    except FixError as exc:
-        click.secho(str(exc), fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    if branch:
-        click.secho(
-            __("✅ Branch '{branch}' created for the batch.", branch=branch), fg="green"
-        )
-    for candidate, result in zip(selected, results):
-        if result.applied:
-            click.secho(
-                __(
-                    "✅ Patch applied: {patch_id} ({files})",
-                    patch_id=result.patch_id,
-                    files=", ".join(result.files_changed) or _fix_location(candidate.finding),
-                ),
-                fg="green",
-                bold=True,
-            )
-        for warning in result.warnings:
-            click.secho(f"   {warning}", fg="yellow")
-    if all_safe:
-        _print_fix_left_out(candidates, selected)
-
-
-@cli.command(
-    "review-pr",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("review-pr.md"),
-)
-@click.argument("pr_number", type=int, metavar="<number>")
-@click.option(
-    "--provider",
-    "ai_provider",
-    metavar="<name>",
-    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
-)
-@click.option(
-    "--post-comment",
-    "post_comment",
-    is_flag=True,
-    help=__(
-        "Publishes the review as a comment on the pull request. Without it the forge is never written to."
-    ),
-)
-def review_pr(pr_number, ai_provider, post_comment):
-    """Reviews a pull request that is already open, without checking it out.
-
-    Fetches the diff straight from the forge and runs the same review engine as
-    ``gitpr -r``, so the report, the linter alerts and the saved .txt are the
-    same — only the diff's origin differs. Built for reviewing someone else's
-    pull request, where the branch is not and need not be local.
-
-    Nothing is published on the forge unless --post-comment is given.
-    """
-    from src.domain.baseline import BaselineError
-    from src.infrastructure.scm.base import ScmProviderError
-    from src.review.remote_pr import ReviewPrError, review_remote_pr
-
-    # A subcommand never runs the root callback, so the pack has to be resolved
-    # here or this flow would lint and score from the defaults while the
-    # terminal answered from the pack — about the same repository. The baseline
-    # is resolved inside the use case, before its first network call.
-    _resolve_policy_or_die()
-
-    provider, repo_ref = _resolve_scm_context()
-    if not provider or not repo_ref:
-        raise click.exceptions.Exit(1)
-
-    active_provider = ai_provider or get_ai_provider()
-
-    try:
-        result = review_remote_pr(
-            pr_number, provider, repo_ref, active_provider, post_comment
-        )
-    except ReviewPrError as exc:
-        click.secho(f"❌ {exc}", fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-    except BaselineError as exc:
-        click.secho(f"❌ {exc}", fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-    except ScmProviderError as exc:
-        click.secho(f"❌ {exc}", fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    for warning in result.warnings:
-        click.secho(f"⚠️  {warning}", fg="yellow")
-
-    # The {branch} slot carries the PR's source branch: the report belongs to
-    # the revision being reviewed, not to whatever branch is checked out.
-    safe_branch_name = (result.diff_source.head_branch or f"pr-{pr_number}").replace(
-        "/", "-"
-    ).replace("\\", "-")
-    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
-    output_filename = resolve_output_path(
-        "OUTPUT_FILE_NAME_REVIEW",
-        "{branch}_{datetime}_PR_REVIEW.txt",
-        safe_branch_name,
-        current_time,
-    )
-
-    compared = getattr(result, "compared", None) or []
-    _print_baseline_line(compared)
-
-    risk_section = None
-    if risk_scoring_in_review_enabled() and result.diff_source:
-        try:
-            from src.application.use_cases.baseline_gate import (
-                attach_informational_evidence,
-                new_findings,
-                status_line,
-            )
-            from src.application.use_cases.calculate_risk import execute_calculate_risk
-            from src.domain.risk.risk_explanation import format_risk_review_section
-
-            # Same reading as the local review: with a baseline the score is
-            # this pull request's own findings, and the rest of what the linter
-            # saw travels as evidence worth nothing.
-            r_risk = execute_calculate_risk(
-                result.diff_source, findings=new_findings(compared) if compared else None
-            )
-            if compared:
-                attach_informational_evidence(r_risk, compared)
-            risk_section = format_risk_review_section(r_risk)
-            line = status_line(compared) if compared else ""
-            if line:
-                risk_section = f"**{line}**\n\n{risk_section}"
-        except Exception:
-            risk_section = None
-
-    render_review_result(result.review, result.linter_results, output_filename, risk_assessment_text=risk_section)
-
-
-@cli.command(
-    "split",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("split-command.md"),
-)
-@click.option(
-    "--dry-run",
-    "dry_run",
-    is_flag=True,
-    help=__("Prints the plan and stops. Never prompts and never writes."),
-)
-@click.option(
-    "--apply",
-    "apply_flag",
-    is_flag=True,
-    help=__("Stages and commits each group of the plan."),
-)
-@click.option(
-    "--yes",
-    "assume_yes",
-    is_flag=True,
-    help=__("Skips the confirmation prompt. It never bypasses the per-group check."),
-)
-@click.option(
-    "--max-groups",
-    "max_groups",
-    type=int,
-    metavar="<n>",
-    help=__("Upper limit on how many commits the plan may propose."),
-)
-@click.option(
-    "--provider",
-    "ai_provider",
-    metavar="<name>",
-    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
-)
-def split(dry_run, apply_flag, assume_yes, max_groups, ai_provider):
-    """Turns a working tree holding several concerns into atomic commits.
-
-    Reads the uncommitted changes, asks the AI to group them by intent, and
-    proposes one commit per group — each with a message written for that group
-    alone. The working tree is never written to: the files end up byte-identical
-    to how they started, with the work redistributed across commits.
-
-    Without a flag the plan is printed and you are offered the chance to apply
-    it. --dry-run prints it and stops. --apply prints it, confirms once, and
-    stages and commits every group.
-    """
-    from src.infrastructure.git.patch_applier import is_git_repository
-    from src.split.apply_split_plan import apply_split_plan
-    from src.split.generate_split_plan import generate_split_plan
-    from src.split.split_plan import SplitError
-
-    if dry_run and apply_flag:
-        click.secho(
-            __("❌ --dry-run and --apply cannot be used together."), fg="red", err=True
-        )
-        raise click.exceptions.Exit(1)
-
-    if not is_git_repository():
-        click.secho(__("❌ Not a Git repository."), fg="red", err=True)
-        raise click.exceptions.Exit(1)
-
-    settings = get_split_settings()
-
-    try:
-        plan = generate_split_plan(
-            get_split_diff(),
-            untracked=get_uncommitted_summary()["untracked"],
-            max_groups=max_groups or settings["max_groups"],
-            max_units=settings["max_units"],
-            provider=ai_provider,
-        )
-    except SplitError as exc:
-        click.secho(str(exc), fg="yellow", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    _print_split_plan(plan)
-    for warning in plan.warnings:
-        click.secho(f"   {warning}", fg="yellow")
-
-    if dry_run:
-        click.echo()
-        click.secho(__("ℹ️ Dry run: nothing was staged and nothing was committed."), fg="cyan")
-        return
-
-    # Bare mode always asks, whatever the configuration says. With --apply the
-    # user has already stated the intent, so GITPR_SPLIT_REQUIRE_CONFIRMATION can
-    # legitimately skip the question; with no flag at all the question *is* the
-    # command, and skipping it would make `gitpr split` commit on its own.
-    ask = not apply_flag or settings["require_confirmation"]
-    if ask and not assume_yes:
-        if not click.confirm(
-            __("❓ Stage and commit these {count} group(s)?", count=plan.total_groups),
-            default=False,
-        ):
-            click.secho(__("❌ Operation cancelled by user."), fg="yellow")
-            return
-
-    try:
-        result = apply_split_plan(plan)
-    except SplitError as exc:
-        click.secho(str(exc), fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    _report_split_result(result)
-
-
-def _print_split_plan(plan):
-    """The plan, as the user reads it before anything happens.
-
-    Every group is shown with its files and its units, because the plan is the
-    deliverable and the user is being asked to trust it with a commit. The
-    ungrouped units are listed too: they are not in any commit, and a plan that
-    quietly omitted them would read as complete when it is not.
-    """
-    click.echo()
-    click.secho(
-        __(
-            "📦 Split plan: {count} commit(s) proposed",
-            count=plan.total_groups,
-        ),
-        fg="cyan",
-        bold=True,
-    )
-    for group in plan.groups:
-        click.echo()
-        click.secho(f"  {group.group_id}  {group.intent_label}", fg="green", bold=True)
-        click.echo(
-            "      "
-            + __(
-                "{units} change unit(s) in {files}",
-                units=len(group.units),
-                files=", ".join(group.file_paths),
-            )
-        )
-        if group.justification:
-            click.secho(f"      {group.justification}", dim=True)
-        if group.generated_commit_message:
-            click.secho(
-                "      "
-                + __("message: {message}", message=group.generated_commit_message),
-                fg="cyan",
-            )
-
-    if plan.ungrouped_units:
-        click.echo()
-        click.secho(
-            __(
-                "  Not grouped ({count} unit(s), left in the working tree):",
-                count=len(plan.ungrouped_units),
-            ),
-            fg="yellow",
-        )
-        for unit in plan.ungrouped_units:
-            click.echo(f"      {unit.id}  {unit.file_path}")
-    click.echo()
-
-
-def _report_split_result(result):
-    """What the run did, including the groups that did not make it.
-
-    A failure is reported in full — which group the run stopped at, git's own
-    words about why, and the one thing the user cannot infer afterwards: whether
-    the index is clean or is holding that group staged. Silence about a partial
-    run would leave them to reconstruct it from ``git status``.
-    """
-    if result.commits:
-        click.echo()
-        click.secho(
-            __("✅ {count} commit(s) created:", count=result.total_commits),
-            fg="green",
-            bold=True,
-        )
-        for group_id, sha in result.commits:
-            click.echo(f"  {group_id}  {sha[:10]}")
-
-    if result.completed:
-        return
-
-    click.echo()
-    click.secho(
-        __(
-            "🛑 The run stopped at {group_id}: {error}",
-            group_id=result.stopped_at,
-            error=result.error,
-        ),
-        fg="red",
-        bold=True,
-    )
-    if result.staged_but_not_committed:
-        click.secho(
-            __(
-                "   That group is staged and was not committed. Commit it once the cause is fixed, or run 'git reset' to unstage it."
-            ),
-            fg="yellow",
-        )
-    else:
-        click.secho(
-            __("   Its changes were unstaged and are back in the working tree."),
-            fg="yellow",
-        )
-    if result.commits:
-        click.secho(
-            __(
-                "   The {count} commit(s) above are real and are left in place; 'git reset' undoes them.",
-                count=result.total_commits,
-            ),
-            fg="yellow",
-        )
-    if result.uncommitted_units:
-        click.secho(
-            __(
-                "   Still uncommitted: {count} change unit(s).",
-                count=len(result.uncommitted_units),
-            ),
-            fg="yellow",
-        )
-
-
-# ============================================================
-# gitpr metrics — the local usage ledger
-# ============================================================
-
-
-def _echo_sections(sections):
-    """Prints the (style, text) lines the dashboard also draws.
-
-    The styles come from src/metrics.py, where each section is rendered once:
-    the terminal maps them onto click's palette and the dashboard onto Textual
-    markup, so the two surfaces cannot tell different stories about one ledger.
-    """
-    from src.metrics import TITLE, WARN
-
-    # The terminal's spelling of the two intents the renderer names: a section
-    # header, and a line the reader should not skim past.
-    styles = {TITLE: {"fg": "cyan", "bold": True}, WARN: {"fg": "yellow"}}
-    for style, text in sections:
-        click.secho(text, **styles.get(style, {}))
-
-
-def _metrics_summary_lines(summary, window=None, cost=None, token_trend=None,
-                           quality=None, latency=None,
-                           debt=None, breakdown=None, cycle=None):
-    """Renders the summary once, so every caller prints the same numbers.
-
-    The same sections the dashboard draws, in text: a metric is computed
-    once (see the readers in src/metrics.py) and rendered wherever it is read,
-    so the terminal and the TUI cannot drift apart.
-    """
-    from src.metrics import (
-        cost_lines,
-        cycle_lines,
-        module_lines,
-        provider_lines,
-        quality_lines,
-        latency_lines,
-        token_trend_lines,
-    )
-
-    click.secho(__("\n📊 Local Telemetry Summary"), fg="cyan", bold=True)
-    click.echo(f"  {__('Path')}: {summary['path']}")
-    # The scope is said out loud because the surfaces do not share one: this
-    # summary answers "what did this machine do" (the cost question), while
-    # `export` and `dashboard` narrow to the repository you are standing in.
-    click.echo(f"  {__('Repository')}: {__('All repositories')}")
-    click.echo(f"  {__('Events')}: {summary['total_events']}")
-    if window and any(window):
-        since, until = window
-        click.echo(f"  {__('Window')}: {since or '…'} → {until or '…'}")
-    if summary["backfilled_events"]:
-        click.echo(
-            f"  {__('Reconstructed from cache')}: {summary['backfilled_events']}"
-        )
-    click.echo(f"  {__('Disk usage')}: {summary['disk_usage']}")
-    if summary["pending_legacy_files"]:
-        click.secho(
-            __(
-                "  ⚠ {count} event files are not imported yet — run `gitpr metrics migrate`.",
-                count=summary["pending_legacy_files"],
-            ),
-            fg="yellow",
-        )
-
-    for section in (
-        cost_lines(cost),
-        token_trend_lines(token_trend),
-        quality_lines(quality),
-        latency_lines(latency),
-        module_lines(debt),
-        provider_lines(breakdown),
-        cycle_lines(cycle),
-    ):
-        if section:
-            click.echo()
-            _echo_sections(section)
-
-
-def _window_options(command):
-    """The same three window flags, on every reading sub-action.
-
-    Declared per subcommand instead of inherited from the group because Click
-    parses a group's options before the subcommand name: `gitpr metrics --days 7
-    export` would set a window the export never sees. One definition, applied
-    wherever a read happens, so no surface can quietly go without it.
-    """
-    options = [
-        click.option(
-            "--days",
-            type=int,
-            help=__("Limits every number below to the last N days."),
-        ),
-        click.option("--since", type=str, help=__("Start of the window (YYYY-MM-DD).")),
-        click.option("--until", type=str, help=__("End of the window (YYYY-MM-DD).")),
-    ]
-    for option in reversed(options):
-        command = option(command)
-    return command
-
-
-@cli.group(
-    "metrics",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    invoke_without_command=True,
-    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("metricas-telemetria.md"),
-)
-@_window_options
-@click.pass_context
-def metrics_group(ctx, days, since, until):
-    """Local usage telemetry: what ran, how often, and what it cost.
-
-    Everything here reads ~/.gitpr/metrics/telemetry.db, which records one row
-    per executed command. With no action it prints the summary; `export` writes
-    the CSV/JSON other people can read, `bundle` and `merge` move rows between
-    machines, `dashboard` opens the TUI, `migrate` imports the event files
-    written before the ledger existed, and `prune` and `purge` are the two ways
-    to delete rows.
-    """
-    from src import ledger
-
-    # The same one-time migration the rest of the CLI takes at startup, minus
-    # the action that *is* the migration: `migrate` asks on purpose, and asking
-    # twice in one invocation would be asking the same question twice. Every
-    # other action reads the ledger, so they all need the rows to be in it —
-    # `gitpr metrics export` answering "nothing to export" while the files sit
-    # on disk would be true and useless.
-    if ctx.invoked_subcommand != "migrate":
-        ledger.ensure_ledger(interactive=ledger.interactive())
-
-    if ctx.invoked_subcommand is None:
-        from src.metrics import (
-            cost_report,
-            cycle_report,
-            module_debt,
-            provider_breakdown,
-            quality_report,
-            resolve_window,
-            show_metrics_summary,
-            latency_report,
-            token_trend_report,
-        )
-
-        since, until = resolve_window(days=days, since=since, until=until)
-        window = {"since": since, "until": until}
-        _metrics_summary_lines(
-            show_metrics_summary(**window),
-            window=(since, until),
-            cost=cost_report(**window),
-            token_trend=token_trend_report(**window),
-            quality=quality_report(**window),
-            latency=latency_report(**window),
-            debt=module_debt(**window),
-            breakdown=provider_breakdown(**window),
-            cycle=cycle_report(**window),
-        )
-        click.echo()
-        click.echo(
-            __(
-                "Use `gitpr metrics export` to consolidate, `gitpr metrics prune` to clean."
-            )
-        )
-
-@metrics_group.command(
-    "export",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Exports consolidated metrics to CSV and JSON in the current folder."),
-)
-@_window_options
-def metrics_export(days, since, until):
-    from src.infrastructure.git.identity import working_context
-    from src.metrics import export_metrics, resolve_window
-
-    since, until = resolve_window(days=days, since=since, until=until)
-    csv_path, json_path, count = export_metrics(
-        repo_filter=working_context().repo or None, since=since, until=until
-    )
-    if count > 0:
-        click.secho(
-            __("✅ Metrics exported: {count} events.", count=count),
-            fg="green",
-            bold=True,
-        )
-        if csv_path:
-            click.echo(f"  CSV: {csv_path}")
-        if json_path:
-            click.echo(f"  JSON: {json_path}")
-    else:
-        click.secho(__("No new metrics to export."), fg="yellow")
-
-
-@metrics_group.command(
-    "bundle",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Writes a slice of the ledger as a .db file to hand to someone else."),
-)
-@_window_options
-@click.option(
-    "--output",
-    "-o",
-    "output_path",
-    type=click.Path(),
-    help=__("Where to write the bundle (default: ./.gitpr/metrics/export/)."),
-)
-def metrics_bundle(days, since, until, output_path):
-    """The transport for a team: the receiver merges it and the rows are theirs.
-
-    The CSV/JSON export stays the human-readable surface — this is the one path
-    that writes a binary, and only because rows must arrive with their UUIDs
-    intact.
-    """
-    from src import ledger
-    from src.infrastructure.git.identity import working_context
-    from src.metrics import resolve_window
-
-    since, until = resolve_window(days=days, since=since, until=until)
-    destination = output_path or ledger.default_bundle_path()
-
-    if os.path.exists(destination):
-        if not click.confirm(
-            __("⚠ {path} already exists. Replace it?", path=destination)
-        ):
-            click.secho(__("Bundle cancelled."), fg="yellow")
-            return
-        os.remove(destination)
-
-    try:
-        rows = ledger.build_bundle(
-            destination,
-            repo=working_context().repo or None,
-            since=since,
-            until=until,
-        )
-    except ledger.LedgerError as exc:
-        click.secho(f"❌ {exc}", fg="red")
-        return
-
-    click.secho(__("✅ Bundle written: {count} events.", count=rows), fg="green", bold=True)
-    click.echo(f"  {destination}")
-
-
-@metrics_group.command(
-    "merge",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Merges bundle files into the local ledger, skipping rows it already has."),
-)
-@click.argument("bundles", nargs=-1, type=click.Path(exists=True, dir_okay=False))
-def metrics_merge(bundles):
-    """Folds someone else's numbers into yours.
-
-    Rows are keyed by UUID, so merging the same bundle twice changes nothing —
-    and a bundle written by a newer GitPR is refused before anything is
-    attached, leaving the local ledger exactly as it was.
-    """
-    from src import ledger
-
-    if not bundles:
-        click.secho(__("Name at least one bundle file to merge."), fg="yellow")
-        return
-
-    try:
-        merged, skipped = ledger.merge_bundles(bundles)
-    except ledger.LedgerVersionError as exc:
-        click.secho(
-            __(
-                "❌ {path} was written by a newer GitPR (schema {found}); this one "
-                "understands {supported}. Upgrade GitPR to merge it.",
-                path=bundles[0],
-                found=exc.found,
-                supported=exc.supported,
-            ),
-            fg="red",
-        )
-        return
-    except ledger.LedgerError as exc:
-        click.secho(f"❌ {exc}", fg="red")
-        return
-
-    click.secho(
-        __(
-            "✅ Merged {count} events ({skipped} already present).",
-            count=merged,
-            skipped=skipped,
-        ),
-        fg="green",
-        bold=True,
-    )
-
-
-@metrics_group.command(
-    "dashboard",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Opens the interactive metrics dashboard (TUI)."),
-)
-@_window_options
-def metrics_dashboard(days, since, until):
-    from src.infrastructure.git.identity import working_context
-    from src.metrics import resolve_window
-    from src.ui.metrics_app import launch_metrics_dashboard
-
-    since, until = resolve_window(days=days, since=since, until=until)
-    # The working copy's own label, not get_repo_name(): the latter hardcodes
-    # github.com and answers "unknown/repo" everywhere else, so filtering the
-    # ledger by it would show an empty dashboard on GitLab, Bitbucket and
-    # Azure — the same defect the hooks had.
-    launch_metrics_dashboard(
-        repo_filter=working_context().repo or None, since=since, until=until
-    )
-
-
-@metrics_group.command(
-    "migrate",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Imports the pre-ledger event files into the ledger."),
-)
-def metrics_migrate():
-    """The way back in for anyone who declined the wizard.
-
-    It asks on purpose — typing the command *is* the answer — so the skip marker
-    written by an earlier refusal does not suppress it. Without a terminal there
-    is nobody to ask, so the import happens with progress on stderr.
-    """
-    from src import ledger
-
-    files = ledger.pending_legacy_files()
-    if not files:
-        click.secho(__("Nothing to import."), fg="yellow")
-        return
-
-    if _may_ask_the_user():
-        from src.ui.metrics_migration_app import run_migration_wizard
-
-        run_migration_wizard(legacy_files=files)
-        return
-
-    absorbed, _already = ledger.absorb_legacy_files(files=files)
-    click.secho(__("✅ Imported {count} events.", count=absorbed), fg="green")
-
-
-@metrics_group.command(
-    "prune",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Deletes metric records older than a date."),
-)
-@click.option(
-    "--before",
-    type=str,
-    required=True,
-    help=__("Deletes records written before this date (YYYY-MM-DD). Required."),
-)
-@click.option(
-    "--source",
-    type=str,
-    help=__("Restricts the deletion to one source (execution or cache_backfill)."),
-)
-def metrics_prune(before, source):
-    """There is no automatic expiry: a calendar that deletes on its own would
-    change last year's answer without anyone asking."""
-    from src.metrics import prune_metrics
-
-    if not click.confirm(
-        __("⚠ This will permanently delete records written before {date}. Continue?", date=before)
-    ):
-        click.secho(__("Purge cancelled."), fg="yellow")
-        return
-
-    removed = prune_metrics(before, source=source)
-    click.secho(
-        __("✅ {count} records removed.", count=removed), fg="green"
-    )
-
-
-@metrics_group.command(
-    "purge",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Deletes every local metric record, and the pre-ledger files with it."),
-)
-def metrics_purge():
-    from src.metrics import purge_metrics
-
-    if click.confirm(
-        __("⚠ This will permanently delete all local metric records. Continue?")
-    ):
-        removed = purge_metrics()
-        click.secho(
-            __("✅ Metrics purged ({count} records removed).", count=removed),
-            fg="green",
-        )
-    else:
-        click.secho(__("Purge cancelled."), fg="yellow")
-
-
-@metrics_group.command(
-    "hook-event",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    hidden=True,
-    help=__("Internal: logs a git hook event name."),
-)
-@click.argument("event_name", metavar="<name>")
-def metrics_hook_event(event_name):
-    """Fire-and-forget event logging, called by the installed Git hooks.
-
-    Hidden because it is not a user-facing action: the whole process is "start,
-    write one row, exit", and the hooks guard the call with `command -v gitpr`.
-    """
-    from src.metrics import log_command_metric
-
-    log_command_metric(command=f"hook:{event_name}", status="fired", provider="git")
-
-
-# ============================================================
-# gitpr policy — the shared quality policy of a repository
-# ============================================================
-
-# Which bundled pack a stack suggests. The detector only looks at files that
-# are unambiguous on their own: a composer.json alone is a PHP project of no
-# particular framework, so it suggests php-security; artisan next to it makes it
-# Laravel. Keeping this list here rather than reusing the test-generation
-# framework detector keeps one question ("what is this repository") answered in
-# one place per feature that actually asks it.
-POLICY_STACKS = {
-    "laravel": ("gitpr/laravel-quality", ("artisan", "composer.json")),
-    "php": ("gitpr/php-security", ("composer.json",)),
-    "vue": ("gitpr/vue-quality", ("vue.config.js", "vite.config.js", "vite.config.ts")),
-    "node": ("gitpr/node-quality", ("package.json",)),
-}
-
-
-def _detect_policy_stack(repo_path=None):
-    """The stack a repository looks like, or None.
-
-    Order matters: Laravel is a PHP project and a Vue app is a Node project, so
-    the more specific marker is asked first. ``package.json`` returning node
-    after ``vue.config.js`` returned vue is the whole point of the ladder.
-    """
-    root = repo_path or os.getcwd()
-    for stack in ("laravel", "vue", "php", "node"):
-        pack, markers = POLICY_STACKS[stack]
-        if all(os.path.exists(os.path.join(root, marker)) for marker in markers):
-            return stack
-    # A Vue project built with Vite has no vue.config.js — the dependency is the
-    # only evidence there is, and reading it is cheaper than missing the pack.
-    package_json = os.path.join(root, "package.json")
-    if os.path.isfile(package_json):
-        try:
-            with open(package_json, "r", encoding="utf-8", errors="replace") as f:
-                if "vue" in f.read():
-                    return "vue"
-        except OSError:
-            pass
-    return None
-
-
-def _command_error(error):
-    """Prints a domain failure the way every other command prints a failure.
-
-    Shared by the policy and baseline groups: a domain error is already a
-    sentence written for the user, so both only have to decide where it goes —
-    stderr — and what the process says about it — nothing, then exit 1.
-    """
-    click.secho(f"❌ {error}", fg="red", err=True)
-    raise click.exceptions.Exit(1)
-
-
-def _may_write(yes, quiet=False, hook=False, mcp=False):
-    """Whether a command that writes to the record is allowed to, refusing rather than hanging.
-
-    ``--yes`` answers the question, and only the question: every check that
-    decides *whether* the write is legal has already run and is not skipped by
-    it. Without ``--yes`` and without a terminal there is nobody to answer, so
-    the command fails with the instruction instead of waiting on a prompt that
-    no one will ever see.
-
-    The refusal says "writes files" rather than "writes to the repository"
-    because ``install`` writes to the user's own pack store instead — and a
-    wrong destination in the message is worse than a vague one.
-    """
-    if yes:
-        return True
-    if not _may_ask_the_user(quiet=quiet, hook=hook, mcp=mcp):
-        click.secho(
-            __(
-                "❌ This command writes files and there is no terminal to "
-                "confirm it. Re-run it with --yes."
-            ),
-            fg="red",
-            err=True,
-        )
-        raise click.exceptions.Exit(1)
-    return False
-
-
-@cli.group(
-    "policy",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    invoke_without_command=True,
-    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("policy-packs.md"),
-)
-@click.pass_context
-def policy_group(ctx):
-    """The shared quality policy this repository follows.
-
-    A policy pack is a versioned YAML manifest that carries skills, linter rules,
-    severity overrides, critical paths and risk weights for a whole stack. The
-    repository records the one it follows in .gitpr/policy.lock.yml, so the
-    choice is reviewed and versioned with the code it applies to.
-
-    `list`, `validate` and `show` only read. `use`, `install`, `init` and `off`
-    write to the repository and ask before they do.
-    """
-    if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
-
-
-@policy_group.command(
-    "list",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Lists the packs available on this machine and the one in force."),
-)
-def policy_list():
-    from src.infrastructure.policy import discover_packs, read_lockfile
-
-    active = read_lockfile() or {}
-    active_root = (active.get("root") or {}).get("name")
-
-    click.secho(__("🔒 Active policy"), fg="cyan", bold=True)
-    if not active:
-        click.echo(__("  None. This repository runs on the GitPR defaults."))
-    else:
-        for pack in active.get("packs", []):
-            marker = "→" if pack.get("name") == active_root else " "
-            click.echo(
-                f"  {marker} {pack.get('name')}@{pack.get('version')} "
-                f"[{pack.get('source', '?')}]"
-            )
-        click.secho(
-            __("  Recorded in {path}", path=os.path.join(".gitpr", "policy.lock.yml")),
-            dim=True,
-        )
-
-    click.secho(__("\n📦 Available packs"), fg="cyan", bold=True)
-    packs = discover_packs()
-    if not packs:
-        click.secho(__("  No packs found."), fg="yellow")
-        return
-    labels = {
-        "local_path": __("project"),
-        "installed": __("installed"),
-        "bundled": __("bundled"),
-    }
-    for pack in packs:
-        source = labels.get(pack.source.value, pack.source.value)
-        if pack.error:
-            click.secho(
-                __(
-                    "  {name} [{source}] — unusable: {reason}",
-                    name=pack.name,
-                    source=source,
-                    reason=pack.error,
-                ),
-                fg="yellow",
-            )
-            continue
-        reference = pack.reference
-        click.echo(f"  {reference.name}@{reference.version} [{source}]")
-        if reference.path:
-            click.secho(f"      {reference.path}", dim=True)
-
-
-@policy_group.command(
-    "validate",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Validates a pack: schema, compatibility, skills, dependencies and checksum."),
-)
-@click.argument("target", metavar="<pack-or-path>")
-def policy_validate(target):
-    from src.application.use_cases.validate_policy_pack import validate_policy_pack
-
-    report = validate_policy_pack(target)
-
-    def line(ok, text):
-        click.secho(f"  {'✅' if ok else '❌'} {text}", fg="green" if ok else "red")
-
-    click.secho(__("🔍 {target}", target=report["target"]), fg="cyan", bold=True)
-    if not report["ok"]:
-        for error in report["errors"]:
-            line(False, error)
-        raise click.exceptions.Exit(1)
-
-    pack = report["pack"]
-    click.echo(
-        __(
-            "{name}@{version} from {source}",
-            name=pack["name"],
-            version=pack["version"],
-            source=report["source"],
-        )
-    )
-    line(
-        True,
-        __(
-            "Schema {version} is valid, and compatible with GitPR {gitpr}.",
-            version=report["schema"]["schema_version"],
-            gitpr=report["schema"]["gitpr_version"],
-        ),
-    )
-
-    for skill in report["skills"]:
-        line(
-            True,
-            __(
-                "Skill {name}: {characters} characters of context.",
-                name=skill["name"],
-                characters=skill["characters"],
-            ),
-        )
-
-    linter = report["linter"]
-    line(
-        linter["rules_file_found"] or not linter["rules_file"],
-        __(
-            "Linter: {count} rule(s) from {packs}.",
-            count=linter["rules_count"],
-            packs=", ".join(linter["packs_contributing_rules"]) or __("none"),
-        ),
-    )
-    for override in linter["severity_overrides"]:
-        click.echo(
-            "    "
-            + __(
-                "{rule} → {level} (from {origin})",
-                rule=override["rule_name"],
-                level=override["level"],
-                origin=override["from"],
-            )
-        )
-        if override["reason"]:
-            click.secho(f"        {override['reason']}", dim=True)
-
-    baseline = report["baseline"]
-    if baseline["suppressions"] or baseline["accepted_debt"]:
-        # Said with the counts and nothing else: the entries themselves are in
-        # `gitpr baseline show`, where they can be read against the findings they
-        # silence — a suppression listed here would be a decision out of context.
-        line(
-            True,
-            __(
-                "Baseline: {suppressions} suppression(s) and {debt} accepted debt(s) "
-                "come with this pack.",
-                suppressions=len(baseline["suppressions"]),
-                debt=len(baseline["accepted_debt"]),
-            ),
-        )
-
-    for dependency in report["dependencies"]:
-        click.echo(
-            "    "
-            + __(
-                "depends on {name} {range}",
-                name=dependency["name"],
-                range=dependency["range"] or __("any version"),
-            )
-            + (
-                __(" (resolved to {version})", version=dependency["resolved"])
-                if dependency["resolved"]
-                else ""
-            )
-        )
-
-    click.echo(__("Checksum: {checksum}", checksum=pack["checksum"]))
-    for warning in report["warnings"]:
-        click.secho(f"  ⚠️ {warning}", fg="yellow")
-
-
-@policy_group.command(
-    "show",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Shows the policy in force, with the origin of every value."),
-)
-def policy_show():
-    from src.application.use_cases.resolve_effective_policy import (
-        resolve_effective_policy,
-    )
-
-    policy = resolve_effective_policy(strict=False, publish=False)
-    if not policy.is_active:
-        click.secho(
-            __("No policy pack is active in this repository."), fg="yellow"
-        )
-        for warning in policy.warnings:
-            click.secho(f"  ⚠️ {warning}", fg="yellow")
-        return
-
-    click.secho(
-        __("🧭 {policy}", policy=policy.policy_tag()), fg="cyan", bold=True
-    )
-
-    click.secho(__("\nPrecedence, lowest first:"), bold=True)
-    for position, pack in enumerate(policy.packs, start=1):
-        click.echo(
-            f"  {position}. {pack.name}@{pack.version} [{pack.source.value}]"
-        )
-    click.echo(f"  {' ' * len(str(len(policy.packs) + 1))}. policy.overrides.yml")
-
-    click.secho(__("\nEffective configuration:"), bold=True)
-    for key in sorted(policy.provenance):
-        origin = policy.provenance[key]
-        value = _policy_value(policy, key)
-        click.echo(f"  {key} = {value}")
-        click.secho(f"      ← {origin}", dim=True)
-
-    if policy.warnings:
-        click.secho(__("\nWarnings:"), bold=True)
-        for warning in policy.warnings:
-            click.secho(f"  ⚠️ {warning}", fg="yellow")
-
-
-def _policy_render(value, indent="      "):
-    """One provenance value as the few words a line can carry.
-
-    The linter catalogue is a list of rule dictionaries: printing it would put
-    fifteen rules with their regexes on one line and bury every other field, so
-    it is summarised by count and names. A context that is prose keeps its line
-    breaks, indented under its key.
-    """
-    if isinstance(value, (list, tuple)) and value and isinstance(value[0], dict):
-        names = [str(item["name"]) for item in value if isinstance(item, dict) and item.get("name")]
-        return __(
-            "{count} item(s): {names}", count=len(value), names=", ".join(names)
-        )
-    if isinstance(value, (list, tuple)):
-        return ", ".join(str(item) for item in value)
-    if value is None:
-        return ""
-    text = str(value)
-    if "\n" in text:
-        return f"\n{indent}".join(text.splitlines())
-    return text
-
-
-def _policy_value(policy, key):
-    """The composed value behind a provenance key, for `policy show`.
-
-    The provenance map keys are the dotted paths the composer writes as it goes,
-    so reading one back is a walk down the same path. A severity override is
-    answered by its level, because the level is the decision the line reports.
-    """
-    def walk(source, parts):
-        for part in parts:
-            if isinstance(source, dict):
-                source = source.get(part)
-            else:
-                return None
-        return source
-
-    for group, attribute in (
-        ("linter", "linter_config"),
-        ("risk", "risk_config"),
-        ("pr", "pr_config"),
-        ("commit", "commit_config"),
-    ):
-        if key == group or key.startswith(f"{group}."):
-            parts = key.split(".")
-            if group == "linter" and parts[1:2] == ["severity_overrides"]:
-                override = policy.severity_overrides.get(".".join(parts[2:]))
-                return override.level if override else "?"
-            return _policy_render(walk(getattr(policy, attribute), parts[1:]))
-
-    if key.startswith("baseline."):
-        # Named by rule — or by fingerprint for debt, which covers one finding
-        # and has no rule to be named after. The reason and the origin are in
-        # `gitpr baseline show`, one command away from the finding itself.
-        entries = policy.baseline_dict().get(key.split(".", 1)[1], [])
-        return _policy_render(
-            [item.get("rule_id") or item.get("fingerprint") or "?" for item in entries]
-        )
-
-    if key.startswith("skills."):
-        return _policy_render(policy.skill_context_for(key.split(".")[1]) or "")
-    if key == "protected_paths":
-        return _policy_render(policy.protected_paths)
-    return ""
-
-
-@policy_group.command(
-    "use",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Pins a pack for this repository, writing .gitpr/policy.lock.yml."),
-)
-@click.argument("reference", metavar="<name>[@<version>]")
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-def policy_use(reference, yes):
-    from src.application.use_cases.activate_policy_pack import (
-        activate_policy_pack,
-        build_lockfile,
-        describe_lockfile,
-    )
-    from src.domain.policy import PolicyError
-
-    try:
-        data = build_lockfile(reference)
-    except PolicyError as error:
-        _command_error(error)
-
-    click.secho(
-        __("This repository will follow {summary}.", summary=describe_lockfile(data)),
-        fg="cyan",
-    )
-    for pack in data.get("packs", []):
-        click.echo(f"  {pack['name']}@{pack['version']} [{pack['source']}]")
-    click.echo(
-        __("Written to {path}", path=os.path.join(".gitpr", "policy.lock.yml"))
-    )
-
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-    try:
-        activate_policy_pack(reference)
-    except PolicyError as error:
-        _command_error(error)
-    click.secho(__("✅ Policy activated."), fg="green", bold=True)
-
-
-@policy_group.command(
-    "off",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Stops following the pack, removing .gitpr/policy.lock.yml."),
-)
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-def policy_off(yes):
-    from src.application.use_cases.activate_policy_pack import deactivate_policy_pack
-    from src.infrastructure.policy import lockfile_path
-
-    if not os.path.isfile(lockfile_path()):
-        click.secho(
-            __("No policy pack is active in this repository."), fg="yellow"
-        )
-        return
-    click.secho(
-        __(
-            "The pack and the overrides file are kept; only the lockfile is removed, "
-            "so every command returns to the GitPR defaults."
-        ),
-        fg="cyan",
-    )
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-    deactivate_policy_pack()
-    click.secho(__("✅ Policy deactivated."), fg="green", bold=True)
-
-
-@policy_group.command(
-    "install",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Copies a pack from a local directory into ~/.gitpr/policies."),
-)
-@click.argument("source", metavar="<path>", type=click.Path(exists=True, file_okay=False))
-@click.option(
-    "--force", is_flag=True, help=__("Replaces an installation that is already there.")
-)
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-def policy_install(source, force, yes):
-    from src.application.use_cases.install_policy_pack import (
-        install_policy_pack,
-        load_source_pack,
-    )
-    from src.domain.policy import PolicyError
-    from src.infrastructure.policy import installed_pack_dir
-
-    try:
-        pack = load_source_pack(source)
-    except PolicyError as error:
-        _command_error(error)
-
-    manifest = pack.manifest
-    click.secho(
-        __(
-            "{name}@{version} will be copied to {destination}.",
-            name=manifest.name,
-            version=manifest.version,
-            destination=installed_pack_dir(manifest.name),
-        ),
-        fg="cyan",
-    )
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-    try:
-        destination = install_policy_pack(source, overwrite=force)
-    except PolicyError as error:
-        _command_error(error)
-    click.secho(
-        __("✅ Installed to {path}", path=destination), fg="green", bold=True
-    )
-
-
-@policy_group.command(
-    "init",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Suggest and activate the official pack for this project's stack."),
-)
-@click.option(
-    "--stack",
-    "stack",
-    metavar="<stack>",
-    help=__("laravel, vue, php or node. Detected from the project when omitted."),
-)
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-def policy_init(stack, yes):
-    from src.application.use_cases.activate_policy_pack import (
-        activate_policy_pack,
-        build_lockfile,
-        describe_lockfile,
-    )
-    from src.domain.policy import PolicyError
-
-    if not stack:
-        stack = _detect_policy_stack()
-        if not stack:
-            click.secho(
-                __(
-                    "❌ Could not tell what this project is. Name the stack with "
-                    "--stack laravel|vue|php|node."
-                ),
-                fg="red",
-                err=True,
-            )
-            raise click.exceptions.Exit(1)
-        click.secho(__("Detected stack: {stack}", stack=stack), fg="cyan")
-
-    if stack not in POLICY_STACKS:
-        click.secho(
-            __(
-                "❌ Unknown stack {stack}. Choose one of: {known}.",
-                stack=stack,
-                known=", ".join(sorted(POLICY_STACKS)),
-            ),
-            fg="red",
-            err=True,
-        )
-        raise click.exceptions.Exit(1)
-
-    reference = POLICY_STACKS[stack][0]
-    try:
-        data = build_lockfile(reference)
-    except PolicyError as error:
-        _command_error(error)
-
-    click.secho(
-        __("This repository will follow {summary}.", summary=describe_lockfile(data)),
-        fg="cyan",
-    )
-    for pack in data.get("packs", []):
-        click.echo(f"  {pack['name']}@{pack['version']} [{pack['source']}]")
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-    try:
-        activate_policy_pack(reference)
-    except PolicyError as error:
-        _command_error(error)
-    click.secho(__("✅ Policy activated."), fg="green", bold=True)
-
-
-def _baseline_settings():
-    """The `GITPR_BASELINE_*` keys, read once per command."""
-    from src.config import get_baseline_settings
-
-    return get_baseline_settings()
-
-
-def _baseline_file(settings):
-    """`GITPR_BASELINE_PATH`, or None to mean `.gitpr/baseline.json`.
-
-    The empty string is not a filename, and None is how every reader in the
-    repository spells "use the default" — so the conversion happens here, once,
-    rather than in each command.
-    """
-    return settings["path"] or None
-
-
-def _suppression_scopes():
-    """The four scopes, taken from the enum that defines them.
-
-    Called while the module is imported, because `click.Choice` reads its
-    arguments at decoration time — which is why the import is inside it.
-    """
-    from src.domain.baseline import SuppressionScope
-
-    return [scope.value for scope in SuppressionScope]
-
-
-def _baseline_entry_or_die(identifier, settings):
-    """The entry an id names, resolved without writing anything.
-
-    A prompt has to describe the decision it is about to record, and an
-    auditable suppression whose subject is invisible is not one. The resolution
-    is the same one the use case performs — same prefix rule, same refusal of a
-    resolved entry, same strictness about the file — done once more so the
-    question can name the finding.
-    """
-    from src.domain.baseline import (
-        BaselineError,
-        BaselineStatus,
-        resolve_fingerprint_prefix,
-    )
-    from src.infrastructure.baseline.local_baseline_repository import read_baseline
-
-    snapshot = read_baseline(None, _baseline_file(settings))
-    if not snapshot.exists:
-        raise BaselineError(
-            __(
-                "There is no baseline in this repository — run "
-                "'gitpr baseline create' first."
-            ),
-            path=snapshot.path,
-        )
-    if not snapshot.is_usable:
-        raise BaselineError(
-            __(
-                "{path} cannot be read: {problem} Run 'gitpr baseline update "
-                "--recompute' to rebuild it from the working tree.",
-                path=snapshot.path,
-                problem=snapshot.first_problem(),
-            ),
-            path=snapshot.path,
-        )
-
-    manifest = snapshot.manifest
-    fingerprint = resolve_fingerprint_prefix(
-        identifier, [entry.fingerprint for entry in manifest.entries]
-    )
-    entry = manifest.entry_for(fingerprint)
-    if entry.status is BaselineStatus.RESOLVED:
-        raise BaselineError(
-            __(
-                "{fingerprint} was resolved — {path} in {file} is not in the tree "
-                "any more, so there is nothing to decide about it.",
-                fingerprint=fingerprint,
-                path=entry.file_path,
-                file=entry.rule_id or entry.category,
-            )
-        )
-    return snapshot, entry
-
-
-def _short_fingerprint(fingerprint):
-    """The id a person copies out of `show` and pastes into `suppress`."""
-    return fingerprint if len(fingerprint) <= 19 else fingerprint[:19]
-
-
-def _entry_line(entry, applied=None):
-    """One entry as a line: its id, its rule, where it is, and its status."""
-    status = applied.status.value if applied else entry.status.value
-    identity = entry.rule_id or f"category:{entry.category}"
-    location = f"{entry.file_path}:{entry.line_start}"
-    return f"{_short_fingerprint(entry.fingerprint)}  {identity}  {location}  [{status}]"
-
-
-def _decision_note(entry, applied):
-    """Why a decision was made, where it lives, and who signed it."""
-    if applied is None:
-        return ""
-    from src.domain.baseline import ORIGIN_ENTRY
-
-    parts = [applied.reason, applied.scope.value, applied.origin]
-    if applied.origin == ORIGIN_ENTRY:
-        if entry.suppressed_by:
-            parts.append(__("by {author}", author=entry.suppressed_by))
-        if entry.suppressed_at:
-            parts.append(entry.suppressed_at)
-    if applied.owner:
-        parts.append(__("owner {owner}", owner=applied.owner))
-    if applied.due_date:
-        parts.append(__("due {due}", due=applied.due_date))
-    return " · ".join(part for part in parts if part)
-
-
-def _baseline_warning(warning):
-    """A baseline notice, printed beside the document rather than inside it."""
-    click.secho(f"⚠️ {warning}", fg="yellow", err=True)
-
-
-def _baseline_json(payload):
-    import json
-
-    click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
-
-
-def _is_json(output_format):
-    return str(output_format).lower() == "json"
-
-
-def _baseline_status_counts(entries, overrides):
-    """One count per persisted status, each entry read through the overrides."""
-    from src.domain.baseline import BaselineStatus, status_of_entry
-
-    counts = {status.value: 0 for status in BaselineStatus}
-    for entry in entries:
-        applied = status_of_entry(entry, overrides)
-        status = applied.status if applied is not None else entry.status
-        counts[status.value] += 1
-    return counts
-
-
-def _counts_summary(counts):
-    """`9 existing, 2 ignored` — the statuses that have something to say."""
-    from src.domain.baseline import BaselineStatus
-
-    parts = [
-        f"{counts.get(status.value, 0)} {status.value}"
-        for status in BaselineStatus
-        if counts.get(status.value)
-    ]
-    return ", ".join(parts)
-
-
-@cli.group(
-    "baseline",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    invoke_without_command=True,
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("baseline-suppressions.md"),
-)
-@click.pass_context
-def baseline_group(ctx):
-    """The findings this repository already knows about.
-
-    A baseline is committed with the code and classifies every finding the
-    linter or the review raises as `new`, `existing`, `resolved`, `ignored` or
-    `accepted_debt`. Only `new` blocks, so a legacy tree can adopt GitPR without
-    a first run that is red for reasons nobody in this change caused.
-
-    `show` and `validate` only read. `create`, `update`, `suppress` and
-    `unsuppress` write to .gitpr/baseline.json and ask before they do.
-    """
-    if ctx.invoked_subcommand is None:
-        click.echo(ctx.get_help())
-
-
-@baseline_group.command(
-    "create",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Records the findings of the current diff as the baseline."),
-)
-@click.option(
-    "--refresh",
-    is_flag=True,
-    help=__("Reviews the diff again instead of reusing the cached review."),
-)
-@click.option(
-    "--base",
-    "base_ref",
-    metavar="<ref>",
-    default=None,
-    help=__("Records the diff against this ref instead of the working tree."),
-)
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["text", "json"], case_sensitive=False),
-    default="text",
-    help=__("Output format: human text (default) or structured json."),
-)
-def baseline_create(refresh, base_ref, yes, output_format):
-    """Writes the baseline this repository starts from.
-
-    Over an existing file this replaces the record, so the prompt says which
-    decisions that would drop: `update` is the command that keeps them.
-    """
-    from src.application.use_cases.create_baseline import create_baseline
-    from src.domain.baseline import BaselineError
-    from src.infrastructure.baseline.local_baseline_repository import (
-        baseline_path,
-        read_manifest_raw,
-    )
-
-    settings = _baseline_settings()
-    configured = _baseline_file(settings)
-    path = baseline_path(None, configured)
-
-    if not _is_json(output_format):
-        previous, problems = read_manifest_raw(None, configured)
-        if previous is None:
-            click.secho(
-                __("A baseline will be written to {path}.", path=path), fg="cyan"
-            )
-        else:
-            click.secho(
-                __(
-                    "The baseline at {path} will be replaced by what this diff shows.",
-                    path=path,
-                ),
-                fg="cyan",
-            )
-            decided = [
-                entry
-                for entry in previous.entries
-                if entry.suppressed or entry.is_debt()
-            ]
-            if decided:
-                click.secho(
-                    __(
-                        "⚠️ {count} suppression(s) or accepted debt(s) would be "
-                        "dropped — 'gitpr baseline update' keeps them.",
-                        count=len(decided),
-                    ),
-                    fg="yellow",
-                )
-        for problem in problems:
-            _baseline_warning(problem)
-        click.echo(
-            __(
-                "Findings come from the linter on this diff, plus the AI findings of "
-                "the last review of the same diff (--refresh reviews it again)."
-            )
-        )
-
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-
-    try:
-        run = create_baseline(refresh=refresh, base=base_ref, configured_path=configured)
-    except BaselineError as error:
-        _command_error(error)
-
-    if _is_json(output_format):
-        _baseline_json(
-            {
-                "path": run.path,
-                "created": run.created,
-                "written": run.written,
-                "ai_findings": run.ai_findings,
-                "counts": run.counts,
-                "warnings": run.warnings,
-            }
-        )
-        return
-
-    click.secho(__("✅ Baseline written to {path}", path=run.path), fg="green", bold=True)
-    click.echo(f"🧾 {__('Baseline: {counts}', counts=_counts_summary(run.counts))}")
-    if run.ai_findings:
-        click.echo(
-            __(
-                "   {count} finding(s) came from the AI review and carry no rule id.",
-                count=run.ai_findings,
-            )
-        )
-    for warning in run.warnings:
-        _baseline_warning(warning)
-
-
-@baseline_group.command(
-    "show",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Shows what the baseline records and what was decided about it."),
-)
-@click.option(
-    "--status",
-    "status_filter",
-    type=click.Choice(
-        ["existing", "ignored", "accepted_debt", "resolved"], case_sensitive=False
-    ),
-    default=None,
-    help=__("Lists only the findings in this status."),
-)
-@click.option(
-    "--rule",
-    "rule_filter",
-    metavar="<rule-id>",
-    default=None,
-    help=__("Lists only the findings of this rule (or category:<name>)."),
-)
-@click.option(
-    "--file",
-    "file_filter",
-    metavar="<path>",
-    default=None,
-    help=__("Lists only the findings in this path — a glob is accepted."),
-)
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["text", "json"], case_sensitive=False),
-    default="text",
-    help=__("Output format: human text (default) or structured json."),
-)
-def baseline_show(status_filter, rule_filter, file_filter, output_format):
-    """Reads the baseline, with the override layers already applied.
-
-    Without a filter it lists the findings that carry a decision — the part
-    worth auditing — and counts the rest.
-    """
-    import fnmatch
-
-    from src.domain.baseline import (
-        BaselineError,
-        overdue_decisions,
-        status_of_entry,
-    )
-    from src.infrastructure.baseline.local_baseline_repository import (
-        read_baseline,
-        read_overrides,
-    )
-
-    settings = _baseline_settings()
-    snapshot = read_baseline(None, _baseline_file(settings))
-    if not snapshot.exists:
-        _command_error(
-            BaselineError(
-                __(
-                    "There is no baseline to show at {path} — create one with "
-                    "'gitpr baseline create'.",
-                    path=snapshot.path,
-                ),
-                path=snapshot.path,
-            )
-        )
-    if not snapshot.is_usable:
-        # Showing a file the gate would refuse would answer for a record nobody
-        # is judged against; `validate` is the command that says what is wrong
-        # with it, so this one points there instead of guessing.
-        _command_error(
-            BaselineError(
-                __(
-                    "{path} cannot be read: {problem} Run 'gitpr baseline validate' "
-                    "for every problem it has, or 'gitpr baseline update --recompute' "
-                    "to rebuild it.",
-                    path=snapshot.path,
-                    problem=snapshot.first_problem(),
-                ),
-                path=snapshot.path,
-            )
-        )
-
-    try:
-        overrides, _ = read_overrides(None)
-    except BaselineError:
-        overrides = None
-    # The pack's block is part of what silences a finding, so it is part of what
-    # this shows: a decision the reader cannot see is a decision nobody audits.
-    overrides = _with_pack_layers(overrides)
-
-    filtered = [
-        entry
-        for entry in snapshot.manifest.entries
-        if _kept(entry, status_filter, rule_filter, file_filter, overrides)
-    ]
-    counts = _baseline_status_counts(snapshot.manifest.entries, overrides)
-    late = overdue_decisions(snapshot.manifest.entries, overrides)
-
-    if _is_json(output_format):
-        _baseline_json(
-            {
-                "path": snapshot.path,
-                "exists": True,
-                "usable": True,
-                "schema_version": snapshot.manifest.schema_version,
-                "fingerprint_version": snapshot.manifest.fingerprint_version,
-                "gitpr_version": snapshot.manifest.gitpr_version,
-                "policy_name": snapshot.manifest.policy_name,
-                "policy_version": snapshot.manifest.policy_version,
-                "created_at": snapshot.manifest.created_at,
-                "updated_at": snapshot.manifest.updated_at,
-                "problems": snapshot.problems,
-                "counts": counts,
-                "overdue": [entry.fingerprint for entry, _applied in late],
-                "entries": [entry.to_dict() for entry in filtered],
-            }
-        )
-        for problem in snapshot.problems:
-            _baseline_warning(problem)
-        return
-
-    click.secho(f"🔎 {__('Baseline')} {snapshot.path}", fg="cyan", bold=True)
-    click.echo(
-        "   "
-        + __(
-            "schema {schema} · fingerprints {fingerprints} · GitPR {version}",
-            schema=snapshot.manifest.schema_version,
-            fingerprints=snapshot.manifest.fingerprint_version,
-            version=snapshot.manifest.gitpr_version or "?",
-        )
-    )
-    tag = _manifest_policy_tag(snapshot.manifest)
-    click.echo(
-        "   "
-        + __(
-            "created {created} · updated {updated}",
-            created=(snapshot.manifest.created_at or "?")[:10],
-            updated=(snapshot.manifest.updated_at or "?")[:10],
-        )
-        + (f" · policy {tag}" if tag else "")
-    )
-    click.echo(
-        "   "
-        + __(
-            "{total} finding(s): {counts}",
-            total=len(snapshot.manifest.entries),
-            counts=_counts_summary(counts) or __("none"),
-        )
-    )
-    for problem in snapshot.problems:
-        _baseline_warning(problem)
-    for entry, applied in late:
-        _baseline_warning(
-            __(
-                "{fingerprint} in {path} is past its due date ({due}) — owner {owner}.",
-                fingerprint=_short_fingerprint(entry.fingerprint),
-                path=entry.file_path,
-                due=applied.due_date,
-                owner=applied.owner,
-            )
-        )
-    if status_filter or rule_filter or file_filter:
-        click.secho(__("Matching findings"), fg="cyan")
-        if not filtered:
-            click.echo("  " + __("Nothing in the baseline matches that filter."))
-            return
-        for entry in filtered:
-            applied = status_of_entry(entry, overrides)
-            click.echo(f"  {_entry_line(entry, applied)}")
-            note = _decision_note(entry, applied)
-            if note:
-                click.echo(f"      {note}")
-        return
-
-    # No filter: the decisions are what a reader came for. The rest is already
-    # counted above, and a list of every `existing` finding belongs in the file.
-    decided = [
-        (entry, status_of_entry(entry, overrides))
-        for entry in snapshot.manifest.entries
-    ]
-    decided = [(entry, applied) for entry, applied in decided if applied is not None]
-    if not decided:
-        return
-    click.secho(__("Decisions recorded"), fg="cyan")
-    for entry, applied in decided:
-        click.echo(f"  {_entry_line(entry, applied)}")
-        click.echo(f"      {_decision_note(entry, applied)}")
-
-
-@baseline_group.command(
-    "validate",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Checks the baseline and the overrides for defects, or names them."),
-)
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["text", "json"], case_sensitive=False),
-    default="text",
-    help=__("Output format: human text (default) or structured json."),
-)
-def baseline_validate(output_format):
-    """Reports every problem the file can have, and exits non-zero on any.
-
-    A file that is missing counts as a problem here, unlike everywhere else in
-    GitPR: this command is asked whether the record is sound, and "there is no
-    record" is not a sound one. Overdue accepted debt is a problem for the same
-    reason — the classification warns about it and never fails on it, but a
-    deadline that has passed is exactly what an audit is looking for.
-    """
-    from src.domain.baseline import BaselineError, overdue_decisions
-    from src.infrastructure.baseline.local_baseline_repository import (
-        read_baseline,
-        read_overrides,
-    )
-
-    settings = _baseline_settings()
-    # The strict reader, whatever `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH`
-    # says: that setting decides whether a divergent file is *applied*, and this
-    # command exists to judge the file itself.
-    snapshot = read_baseline(None, _baseline_file(settings))
-    problems = list(snapshot.problems)
-
-    if not snapshot.exists:
-        problems.insert(
-            0,
-            __(
-                "There is no baseline at {path} — create one with "
-                "'gitpr baseline create'.",
-                path=snapshot.path,
-            ),
-        )
-
-    late = []
-    try:
-        layers = _with_pack_layers(read_overrides(None)[0])
-    except BaselineError as error:
-        # The overrides file is not readable, so its deadlines cannot be checked
-        # either — the problem below says so, and the entry's own are still read.
-        problems.append(str(error))
-        layers = _with_pack_layers(None)
-
-    if snapshot.is_usable:
-        late = overdue_decisions(snapshot.manifest.entries, layers)
-        for entry, applied in late:
-            problems.append(
-                __(
-                    "Accepted debt in {path}:{line} is past its due date ({due}) — "
-                    "owner {owner}.",
-                    path=entry.file_path,
-                    line=entry.line_start,
-                    due=applied.due_date,
-                    owner=applied.owner,
-                )
-            )
-
-    valid = not problems
-    if _is_json(output_format):
-        _baseline_json(
-            {
-                "path": snapshot.path,
-                "exists": snapshot.exists,
-                "usable": snapshot.is_usable,
-                "valid": valid,
-                "overdue": [entry.fingerprint for entry, _applied in late],
-                "problems": problems,
-            }
-        )
-        if not valid:
-            raise click.exceptions.Exit(1)
-        return
-
-    click.secho(f"🔎 {__('Validating')} {snapshot.path}", fg="cyan", bold=True)
-    for problem in problems:
-        click.secho(f"❌ {problem}", fg="red")
-    if valid:
-        click.secho(__("✅ The baseline is sound."), fg="green", bold=True)
-        return
-    click.secho(
-        __("❌ {count} problem(s) found.", count=len(problems)), fg="red", bold=True
-    )
-    raise click.exceptions.Exit(1)
-
-
-@baseline_group.command(
-    "update",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Moves the baseline forward over the current diff, keeping decisions."),
-)
-@click.option(
-    "--recompute",
-    is_flag=True,
-    help=__("Reads and rewrites a file the fingerprint version no longer matches."),
-)
-@click.option(
-    "--base",
-    "base_ref",
-    metavar="<ref>",
-    default=None,
-    help=__("Moves the baseline over the diff against this ref instead of the working tree."),
-)
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-def baseline_update(recompute, base_ref, yes):
-    """Keeps what the entry already knows and records what this diff changed.
-
-    An entry seen again keeps its first_seen date and its decision, one whose
-    file the diff touched and whose finding is gone is stamped resolved, and one
-    in a file the diff never touched is left alone. A checksum that diverged
-    stops it: `--recompute` is the deliberate way past that.
-    """
-    from src.application.use_cases.create_baseline import update_baseline
-    from src.domain.baseline import BaselineError
-    from src.infrastructure.baseline.local_baseline_repository import (
-        baseline_path,
-        read_baseline,
-    )
-
-    settings = _baseline_settings()
-    configured = _baseline_file(settings)
-    path = baseline_path(None, configured)
-
-    snapshot = read_baseline(None, configured)
-    if not snapshot.exists:
-        click.secho(
-            __("There is no baseline at {path} yet — this run will create one.", path=path),
-            fg="cyan",
-        )
-    elif not snapshot.is_usable and not recompute:
-        _command_error(
-            BaselineError(
-                __(
-                    "The baseline on disk cannot be updated in place: {problem} Review "
-                    "the file, then run 'gitpr baseline update --recompute' to accept "
-                    "what is in it.",
-                    problem=snapshot.first_problem(),
-                ),
-                path=snapshot.path,
-            )
-        )
-    else:
-        click.secho(
-            __("The baseline at {path} will be moved forward over this diff.", path=path),
-            fg="cyan",
-        )
-
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-
-    try:
-        run = update_baseline(
-            recompute=recompute, base=base_ref, configured_path=configured
-        )
-    except BaselineError as error:
-        _command_error(error)
-
-    for warning in run.warnings:
-        _baseline_warning(warning)
-    if not run.written:
-        click.secho(__("Nothing was written."), fg="yellow")
-        return
-    click.secho(__("✅ Baseline updated at {path}", path=run.path), fg="green", bold=True)
-    click.echo(f"🧾 {__('Baseline: {counts}', counts=_counts_summary(run.counts))}")
-
-
-@baseline_group.command(
-    "suppress",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Records why a finding is not work this change has to do."),
-)
-@click.argument("finding_id", metavar="<finding-id>")
-@click.option(
-    "--reason",
-    required=True,
-    help=__("Why the finding is being silenced. Required."),
-)
-@click.option(
-    "--scope",
-    type=click.Choice(_suppression_scopes(), case_sensitive=False),
-    default="finding",
-    help=__("How wide the decision reaches: one finding, a line range, a file, a rule."),
-)
-@click.option(
-    "--debt", is_flag=True, help=__("Records accepted debt with an owner instead of a suppression.")
-)
-@click.option("--owner", metavar="<owner>", help=__("Who owns the debt. Required with --debt."))
-@click.option(
-    "--due-date",
-    "due_date",
-    metavar="<YYYY-MM-DD>",
-    help=__("When the debt should be gone. Optional, and a passed date is a warning."),
-)
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-def baseline_suppress(finding_id, reason, scope, debt, owner, due_date, yes):
-    """A decision about one finding, or about everything a rule or file raises.
-
-    A `finding` scope is written on the entry in .gitpr/baseline.json; the wider
-    scopes go to .gitpr/baseline.overrides.yml, where they reach findings that
-    have no entry yet — which is the point of asking for them.
-    """
-    from src.application.use_cases.suppress_finding import suppress_finding
-    from src.domain.baseline import BaselineError, SuppressionScope
-
-    settings = _baseline_settings()
-    try:
-        _, entry = _baseline_entry_or_die(finding_id, settings)
-    except BaselineError as error:
-        _command_error(error)
-
-    click.secho(__("Decision about {line}", line=_entry_line(entry)), fg="cyan")
-    if debt:
-        click.secho(
-            __(
-                "Accepted debt, owned by {owner}: \"{reason}\"",
-                owner=owner or __("nobody (--owner is required)"),
-                reason=reason,
-            ),
-            fg="cyan",
-        )
-        if due_date:
-            click.echo("   " + __("Due {due}.", due=due_date))
-    else:
-        click.secho(
-            __(
-                "Suppression with '{scope}' scope: \"{reason}\"",
-                scope=str(scope).lower(),
-                reason=reason,
-            ),
-            fg="cyan",
-        )
-        if str(scope).lower() != "finding":
-            click.secho(
-                __(
-                    "It is written to .gitpr/baseline.overrides.yml and covers every "
-                    "finding that rule raises there, not only this one."
-                ),
-                fg="yellow",
-            )
-
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-
-    try:
-        result = suppress_finding(
-            finding_id,
-            reason=reason,
-            scope=SuppressionScope(scope.lower()),
-            debt=debt,
-            owner=owner,
-            due_date=due_date,
-            configured_path=_baseline_file(settings),
-        )
-    except BaselineError as error:
-        _command_error(error)
-
-    for warning in result.warnings:
-        _baseline_warning(warning)
-    click.secho(
-        __(
-            "✅ {what} recorded in {path}",
-            what=__("Accepted debt") if result.is_debt else __("Suppression"),
-            path=result.path,
-        ),
-        fg="green",
-        bold=True,
-    )
-
-
-@baseline_group.command(
-    "unsuppress",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    help=__("Takes back a decision recorded about a finding."),
-)
-@click.argument("finding_id", metavar="<finding-id>")
-@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
-def baseline_unsuppress(finding_id, yes):
-    """Removes the decision, leaving the finding in the baseline as `existing`.
-
-    A wider suppression that also covers the finding is reported, never removed:
-    it is a statement about a rule, a file or a range, and taking it back here
-    would un-silence every other finding it covers.
-    """
-    from src.application.use_cases.suppress_finding import unsuppress_finding
-    from src.domain.baseline import BaselineError, ORIGIN_ENTRY, status_of_entry
-    from src.infrastructure.baseline.local_baseline_repository import read_overrides
-
-    settings = _baseline_settings()
-    try:
-        _, entry = _baseline_entry_or_die(finding_id, settings)
-    except BaselineError as error:
-        _command_error(error)
-
-    try:
-        overrides, _ = read_overrides(None)
-    except BaselineError as error:
-        _command_error(error)
-    applied = status_of_entry(entry, _with_pack_layers(overrides))
-    if applied is None:
-        _command_error(
-            BaselineError(
-                __(
-                    "{fingerprint} carries no decision in the baseline — there is "
-                    "nothing to take back.",
-                    fingerprint=_short_fingerprint(entry.fingerprint),
-                )
-            )
-        )
-
-    click.secho(
-        __(
-            "Taking back the decision about {line}: {note}",
-            line=_entry_line(entry, applied),
-            note=_decision_note(entry, applied),
-        ),
-        fg="cyan",
-    )
-    if applied.origin == ORIGIN_ENTRY and entry.suppressed:
-        click.secho(
-            __("The finding stays in the baseline as 'existing'."), fg="cyan"
-        )
-
-    if not _may_write(yes):
-        click.confirm(__("Proceed?"), abort=True, default=False)
-
-    try:
-        result = unsuppress_finding(
-            finding_id, configured_path=_baseline_file(settings)
-        )
-    except BaselineError as error:
-        _command_error(error)
-
-    click.secho(
-        __("✅ Removed {removed} from {path}", removed=", ".join(result.removed), path=result.path),
-        fg="green",
-        bold=True,
-    )
-    for warning in result.warnings:
-        _baseline_warning(warning)
-
-
-def _manifest_policy_tag(manifest):
-    """`name@version` of the pack the baseline was written under, or ""."""
-    if not manifest.policy_name:
-        return ""
-    if not manifest.policy_version:
-        return manifest.policy_name
-    return f"{manifest.policy_name}@{manifest.policy_version}"
-
-
-def _with_pack_layers(overrides):
-    """The repository's decisions plus the active pack's, or None when unreadable."""
-    from src.application.use_cases.baseline_gate import pack_layers
-    from src.domain.baseline import apply_overrides
-
-    pack = pack_layers()
-    if pack is None:
-        return overrides
-    return apply_overrides(overrides, pack=pack)
-
-
-def _kept(entry, status_filter, rule_filter, file_filter, overrides):
-    """Whether an entry survives the three filters `show` accepts."""
-    import fnmatch
-
-    from src.domain.baseline import normalize_path, status_of_entry
-
-    if rule_filter:
-        identity = entry.rule_id or entry.identity()
-        if rule_filter not in (entry.rule_id, identity):
-            return False
-    if file_filter:
-        pattern = normalize_path(file_filter)
-        path = normalize_path(entry.file_path)
-        if not (fnmatch.fnmatch(path, pattern) or pattern in path):
-            return False
-    if status_filter:
-        applied = status_of_entry(entry, overrides)
-        current = applied.status if applied is not None else entry.status
-        if current.value != str(status_filter).lower():
-            return False
-    return True
-
-
-@cli.group(
-    "tests",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    invoke_without_command=False,
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("tests-generate.md"),
-)
-def tests_group():
-    """AI-powered test suite generation and scaffolding."""
-    pass
-
-
-
-@tests_group.command(
-    "generate",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("tests-generate.md"),
-)
-@click.option(
-    "--file",
-    "target_file",
-    type=click.Path(),
-    help=__("Generates tests specifically for this file instead of the full diff."),
-)
-@click.option(
-    "--finding",
-    "finding_id",
-    type=str,
-    help=__("Generates tests targeting a specific review finding ID (e.g. FIX-001)."),
-)
-@click.option(
-    "--framework",
-    "framework_override",
-    type=str,
-    help=__("Forces the test framework (pest, phpunit, jest, vitest, pytest)."),
-)
-@click.option(
-    "--apply",
-    "apply_flag",
-    is_flag=True,
-    help=__("Writes the generated test file directly to disk."),
-)
-@click.option(
-    "--provider",
-    "ai_provider",
-    metavar="<name>",
-    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
-)
-def tests_generate(target_file, finding_id, framework_override, apply_flag, ai_provider):
-    """Generates complete, executable test files for current changes or specific targets."""
-    from src.application.use_cases.generate_test_file import generate_test_file
-    from src.domain.tests_generation.test_content_types import TestGenerationTarget
-    from src.core import get_git_diff
-    import subprocess
-    import os
-
-    source_type = "diff"
-    diff_content = ""
-
-    if finding_id:
-        source_type = "finding"
-        # Find context from last review findings if available
-        try:
-            from src.fix.apply_fix import collect_candidates, find_candidate, resolve_review
-            record = resolve_review()
-            candidates = collect_candidates(record, quiet=True)
-            cand = find_candidate(candidates, finding_id)
-            target_file = cand.finding.file_path
-            diff_content = (
-                f"Finding: {cand.finding.id} - {cand.finding.message}\n"
-                f"File: {cand.finding.file_path}:{cand.finding.line_start}-{cand.finding.line_end}\n"
-                f"Severity: {cand.finding.severity} | Category: {cand.finding.category}\n"
-                f"Suggested Test: {cand.suggested_test}\n"
-                f"Diff:\n{cand.diff_unified or '(No diff available)'}"
-            )
-        except Exception as e:
-            click.secho(f"⚠️ {e}", fg="yellow")
-            diff_content = f"Finding ID: {finding_id}"
-    elif target_file:
-        source_type = "file"
-        try:
-            res = subprocess.run(
-                ["git", "diff", "HEAD", "--", target_file],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
-            from src.diff_parser import collapse_binary_hunks
-            diff_content = collapse_binary_hunks(res.stdout) if res.returncode == 0 else ""
-            if not diff_content.strip() and os.path.exists(target_file):
-                # Fallback to reading file content if no diff
-                with open(target_file, "r", encoding="utf-8", errors="replace") as f:
-                    diff_content = f.read()
-        except Exception:
-            diff_content = ""
-    else:
-        diff_content = get_git_diff() or ""
-
-    if not diff_content.strip():
-        click.secho(__("❌ No changes or target content found to generate tests."), fg="red")
-        raise click.exceptions.Exit(1)
-
-    target = TestGenerationTarget(
-        source_type=source_type,
-        file_path=target_file,
-        finding_id=finding_id,
-        diff_content=diff_content,
-    )
-
-    click.secho("🧪 " + __("Analyzing diff and generating test file..."), fg="cyan")
-    gen_result = generate_test_file(
-        target=target,
-        repo_path=".",
-        ai_provider=ai_provider,
-        framework_override=framework_override,
-        apply=False,  # dry-run first
-        quiet=False,
-    )
-
-    for warning in gen_result.warnings:
-        click.secho(f"⚠️ {warning}", fg="yellow")
-
-    if not gen_result.content:
-        click.secho(__("❌ Test generation failed."), fg="red")
-        raise click.exceptions.Exit(1)
-
-    click.echo()
-    click.secho(f"📋 {__('Target Framework:')} {gen_result.scaffold.framework.value.upper()}", fg="green", bold=True)
-    click.secho(f"📂 {__('Target Test Path:')} {gen_result.scaffold.target_test_path}", fg="green", bold=True)
-    if finding_id:
-        click.secho(f"🎯 {__('Target Finding:')} {finding_id}", fg="cyan")
-
-    if gen_result.covered_scenarios:
-        click.echo()
-        click.secho(__("🧪 Covered Scenarios:"), fg="cyan", bold=True)
-        for sc in gen_result.covered_scenarios:
-            click.echo(f"  • {sc}")
-
-    click.echo()
-    click.secho("--- " + __("Generated Test Code") + " ---", fg="bright_black")
-    click.echo(gen_result.content)
-    click.secho("---", fg="bright_black")
-    click.echo()
-
-    if not apply_flag:
-        click.secho(__("ℹ️ Dry-run mode. Run with --apply to write to disk."), fg="yellow")
-        return
-
-    # Mode --apply
-    if gen_result.scaffold.already_exists:
-        click.secho(
-            __(
-                "⚠️ Warning: Target test file '{path}' already exists.",
-                path=gen_result.scaffold.target_test_path,
-            ),
-            fg="yellow",
-            bold=True,
-        )
-        if not click.confirm(__("❓ Overwrite existing test file?"), default=False):
-            click.secho(__("❌ Overwrite cancelled by user."), fg="yellow")
-            return
-
-    if not click.confirm(__("❓ Write test file to disk?"), default=True):
-        click.secho(__("❌ Operation cancelled by user."), fg="yellow")
-        return
-
-    dest_path = os.path.normpath(gen_result.scaffold.target_test_path)
-    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
-    with open(dest_path, "w", encoding="utf-8", errors="replace") as f:
-        f.write(gen_result.content)
-
-    click.secho(
-        __("✅ Test file successfully created at '{path}'!", path=gen_result.scaffold.target_test_path),
-        fg="green",
-        bold=True,
-    )
-
-
-@cli.command(
-    "explain",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("explain-pr.md"),
-)
-@click.option(
-    "--provider",
-    "ai_provider",
-    metavar="<name>",
-    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
-)
-def explain(ai_provider):
-    """Generates a concise reviewer guide explaining what changes, why, and where to focus."""
-    from src.application.use_cases.generate_pr_explanation import generate_pr_explanation
-    from src.core import get_git_diff
-
-    diff_text = get_git_diff()
-    if not diff_text or not diff_text.strip():
-        click.secho(__("⚠️ No diff found. Make some changes before running the command."), fg="yellow")
-        raise click.exceptions.Exit(1)
-
-    click.secho("🧐 " + __("Analyzing diff from reviewer perspective..."), fg="cyan")
-    explanation = generate_pr_explanation(diff_text, ai_provider=ai_provider, quiet=False)
-
-    if not explanation.markdown:
-        click.secho(__("❌ Failed to generate PR explanation."), fg="red")
-        raise click.exceptions.Exit(1)
-
-    click.echo()
-    click.secho("=" * 60, fg="cyan", bold=True)
-    click.secho("  " + __("REVIEWER GUIDE (Explain My PR)"), fg="cyan", bold=True)
-    click.secho("=" * 60, fg="cyan", bold=True)
-    click.echo()
-
-    click.secho("🔍 " + __("What changes:"), fg="green", bold=True)
-    click.echo(f"  {explanation.what_changes}")
-    click.echo()
-
-    click.secho("💡 " + __("Why it changes:"), fg="green", bold=True)
-    click.echo(f"  {explanation.why_it_changes}")
-    click.echo()
-
-    if explanation.reviewer_focus_points:
-        click.secho("🎯 " + __("Where to focus review:"), fg="yellow", bold=True)
-        for pt in explanation.reviewer_focus_points:
-            loc = f" [{pt.file_path}:{pt.related_line}]" if pt.file_path and pt.related_line else (f" [{pt.file_path}]" if pt.file_path else "")
-            click.echo(f"  • {pt.description}{loc}")
-        click.echo()
-
-    if explanation.regression_risk:
-        click.secho("⚠️ " + __("Regression Risk:"), fg="red", bold=True)
-        click.echo(f"  {explanation.regression_risk}")
-        click.echo()
-
-    if not explanation.has_sufficient_evidence:
-        click.secho(
-            __("⚠️ Notice: Inferred with partial context. Some fields contain placeholders to complete."),
-            fg="yellow",
-            dim=True,
-        )
-
-
-@cli.command(
-    "mentor",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("mentor-mode.md"),
-)
-@click.option(
-    "--finding",
-    "finding_id",
-    metavar="<id>",
-    help=__("Explains only this finding of the last review (e.g. FIX-002)."),
-)
-@click.option(
-    "--provider",
-    "ai_provider",
-    metavar="<name>",
-    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
-)
-def mentor(finding_id, ai_provider):
-    """Provides pedagogical and didactic guidance on findings from the last code review."""
-    from src.application.use_cases.generate_mentor_explanation import (
-        MentorError,
-        explain_review,
-    )
-    from src.fix.apply_fix import FixError, resolve_review
-
-    try:
-        record = resolve_review()
-    except FixError as exc:
-        click.secho(str(exc), fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    try:
-        click.secho("🎓 " + __("Analyzing findings in Junior Mentor mode..."), fg="cyan")
-        run = explain_review(
-            record=record,
-            finding_id=finding_id,
-            ai_provider=ai_provider,
-            quiet=False,
-        )
-    except MentorError as exc:
-        click.secho(str(exc), fg="red", err=True)
-        raise click.exceptions.Exit(1) from exc
-
-    if not run or not run.explanations:
-        click.secho(__("ℹ️ The review raised no fixable findings."), fg="yellow")
-        return
-
-    click.echo()
-    click.secho("=" * 60, fg="cyan", bold=True)
-    click.secho("  " + __("JUNIOR MENTOR GUIDANCE"), fg="cyan", bold=True)
-    click.secho("=" * 60, fg="cyan", bold=True)
-    click.echo()
-
-    for item in run.explanations:
-        click.echo(item.markdown)
-        click.echo()
-        click.secho("-" * 40, fg="white", dim=True)
-        click.echo()
-
-    if run.skipped_ids:
-        click.secho(
-            __(
-                "ℹ️ {count} additional finding(s) not expanded here. Run 'gitpr mentor --finding <id>' to inspect them individually.",
-                count=len(run.skipped_ids),
-            )
-            + f" ({', '.join(run.skipped_ids)})",
-            fg="yellow",
-            dim=True,
-        )
-
-
-@cli.command(
-    "risk",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("risk-scoring.md"),
-)
-@click.option(
-    "--file",
-    "target_file",
-    metavar="<path>",
-    help=__("Calculates risk breakdown for a specific file."),
-)
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["text", "json"], case_sensitive=False),
-    default="text",
-    help=__("Output format: human text (default) or structured json."),
-)
-@click.option(
-    "--base",
-    "base_ref",
-    metavar="<ref>",
-    default=None,
-    help=__("Calculate risk against an explicit git base ref."),
-)
-@click.option(
-    "--no-history",
-    is_flag=True,
-    default=False,
-    help=__("Disables git history extraction for faster evaluation."),
-)
-def risk(target_file, output_format, base_ref, no_history):
-    """Calculates deterministic and explainable risk scores for the current diff or files."""
-    import json
-    import re
-    from src.application.use_cases.calculate_risk import execute_calculate_risk
-    from src.core import SMART_EXCLUDES
-    from src.domain.risk.risk_explanation import format_evidence_line
-    from src.domain.risk.risk_types import RiskLevel
-    from src.domain.finding.finding_types import NormalizedFinding
-    from src.linter_engine import lint_findings, parse_diff_and_lint
-    from src.review.diff_source import DiffOrigin, DiffSource
-
-    # A subcommand never runs the root callback, so the baseline is resolved
-    # here — and `required` because a risk score is a verdict: one built on a
-    # file that cannot be applied answers for findings it never read.
-    baseline_gate = _resolve_baseline_or_die(required=True)
-
-    if base_ref:
-        cmd = ["git", "diff", "-U1", "-w", "-M", "-B", base_ref, "--"] + SMART_EXCLUDES
-        res = subprocess.run(
-            cmd,
-            capture_output=True,
-            stdin=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        from src.diff_parser import collapse_binary_hunks
-        diff_text = collapse_binary_hunks(res.stdout) if res.returncode == 0 else ""
-    else:
-        diff_text = get_git_diff(quiet=True)
-        if not diff_text or not diff_text.strip():
-            diff_text = get_git_full_diff()
-
-    diff_text = diff_text or ""
-    diff_source = DiffSource(
-        origin=DiffOrigin.LOCAL,
-        content=diff_text,
-        identifier="head" if not base_ref else base_ref,
-    )
-
-    if not diff_text.strip():
-        click.secho(__("⚠️ No diff found to calculate risk score."), fg="yellow")
-        if output_format.lower() == "json":
-            click.echo(
-                json.dumps(
-                    {
-                        "score": 0.0,
-                        "level": "low",
-                        "files": [],
-                        "evidence": [],
-                        "warnings": ["Empty diff"],
-                    },
-                    indent=2,
-                )
-            )
-        return
-
-    # I8: with a baseline the regex below could not match anything anyway. A
-    # rendered alert carries neither the rule name nor the digest of the line,
-    # and both are part of a fingerprint — so the legacy path would hand the
-    # score findings that classify as `new` forever. The structured findings the
-    # engine hands over are the same linter, the same rules and the same diff,
-    # and they are what the baseline can answer for.
-    findings = []
-    compared = []
-    if baseline_gate.is_active:
-        from src.application.use_cases.baseline_gate import new_findings
-
-        compared = _classify_with_baseline(
-            baseline_gate, lint_findings(diff_text, skip_external=True)
-        )
-        findings = new_findings(compared)
-    else:
-        try:
-            alerts = parse_diff_and_lint(diff_text, skip_external=True)
-            loc_pattern = re.compile(
-                r"in\s+([^\s\(\)]+)\s+\(Line\s+(\d+)\)|\(([^\s\(\)]+),\s+Line\s+(\d+)\)",
-                re.IGNORECASE,
-            )
-            for sev, msgs in (("error", alerts.get("errors", [])), ("warning", alerts.get("warnings", []))):
-                for msg in msgs:
-                    m = loc_pattern.search(msg)
-                    f_path = (m.group(1) or m.group(3)) if m else ""
-                    line_no = int(m.group(2) or m.group(4)) if m else 1
-                    findings.append(
-                        NormalizedFinding(
-                            severity=sev,
-                            category="security" if ("secret" in msg.lower() or "security" in msg.lower()) else "lint",
-                            file_path=f_path,
-                            line_start=line_no,
-                            line_end=line_no,
-                            message=msg,
-                            source="linter",
-                        )
-                    )
-        except Exception:
-            pass
-
-    pr_risk = execute_calculate_risk(
-        diff_source=diff_source,
-        target_file=target_file,
-        findings=findings,
-        include_history=not no_history,
-    )
-
-    # Zero points, by definition: what the baseline already knew about does not
-    # count against this change. It is still written onto the file it belongs
-    # to, so the report can say "legacy, suppressed by alice, due 2026-12-31"
-    # where a run without it would look like it never found anything.
-    if compared:
-        from src.application.use_cases.baseline_gate import (
-            attach_informational_evidence,
-        )
-
-        attach_informational_evidence(pr_risk, compared)
-
-    if output_format.lower() == "json":
-        click.echo(json.dumps(pr_risk.to_dict(), indent=2))
-        return
-
-    click.echo()
-    click.secho("=" * 65, fg="cyan", bold=True)
-    click.secho("  ⚡ " + __("GITPR LOCAL RISK ASSESSMENT"), fg="cyan", bold=True)
-    click.secho("=" * 65, fg="cyan", bold=True)
-    click.echo()
-
-    _print_baseline_line(compared)
-
-    level_colors = {
-        RiskLevel.CRITICAL: "red",
-        RiskLevel.HIGH: "bright_red",
-        RiskLevel.MEDIUM: "yellow",
-        RiskLevel.LOW: "green",
-    }
-    badge_color = level_colors.get(pr_risk.level, "white")
-
-    click.echo("  " + __("Risk Level:") + "  ", nl=False)
-    click.secho(f"[{pr_risk.level.value.upper()}]", fg=badge_color, bold=True, nl=False)
-    click.echo("  |  " + __("Score:") + f" {pr_risk.score}/100 (v{pr_risk.analysis_version})")
-    click.echo(
-        f"  {pr_risk.total_changed_files} "
-        + __("file(s) changed")
-        + f", {pr_risk.total_changed_lines} "
-        + __("line(s) changed")
-    )
-    test_status_str = __("Detected") if pr_risk.tests_changed else __("None")
-    test_color = "green" if pr_risk.tests_changed else "yellow"
-    click.echo("  " + __("Test changes:") + " ", nl=False)
-    click.secho(test_status_str, fg=test_color, bold=True)
-    click.echo()
-
-    if pr_risk.evidence:
-        click.secho("🔍 " + __("Top Contributing Risk Factors:"), fg="cyan", bold=True)
-        for ev in pr_risk.evidence[:6]:
-            click.echo(f"  {format_evidence_line(ev)}")
-        click.echo()
-
-    if pr_risk.files:
-        click.secho("📁 " + __("Files by Risk Score:"), fg="cyan", bold=True)
-        for f in pr_risk.files:
-            f_color = level_colors.get(f.level, "white")
-            score_str = f"[{f.score:>4.1f}]".rjust(7)
-            click.secho(f"  {score_str} ", fg=f_color, bold=True, nl=False)
-            click.echo(f"{f.file_path} ({f.changed_lines} lines)")
-            if target_file and f.evidence:
-                for ev in f.evidence:
-                    click.echo(f"      {format_evidence_line(ev)}")
-        click.echo()
-
-    if pr_risk.warnings:
-        click.secho("⚠️ " + __("Notices:"), fg="yellow")
-        for w in pr_risk.warnings:
-            click.echo(f"  • {w}")
-        click.echo()
-
-
-def _env_flag(name, default="false"):
-    """Reads a boolean environment variable (true/1/yes/y)."""
-    return os.getenv(name, default).lower() in ("true", "1", "yes", "y")
-
-
-def _print_unstaged_summary(categorized, quiet=False):
-    """Prints the 3-category unstaged summary to the console. No AI, no network."""
-    if not any(categorized.values()):
-        return
-    for label, emoji, fg in (
-        ("new", __("➕ New files"), "green"),
-        ("modified", __("✏️ Modified files"), "yellow"),
-        ("deleted", __("🗑️ Deleted files"), "red"),
-    ):
-        items = categorized.get(label, [])
-        if items:
-            click.secho(f"  {emoji} ({len(items)}):", fg=fg, bold=True)
-            for f in items:
-                click.echo(f"    - {f}")
-
-
-def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive=True):
-    """Unstaged-files verification run before AI commands.
-
-    Returns True to proceed, False to abort (only a TUI cancel aborts).
-
-    - skip_check=True or GITPR_SKIP_UNSTAGED_CHECK=true → no-op, return True.
-    - 'pr'/'issue' → interactive TUI/auto-stage flow.
-    - 'commit' → warn that the commit will NOT include unstaged files;
-      auto-stages when GITPR_AUTO_STAGE=true.
-    - 'review'/'fullreview' → informational warn only, never stages.
-    """
-    if skip_check or _env_flag("GITPR_SKIP_UNSTAGED_CHECK"):
-        return True
-
-    from src.core import get_unstaged_categorized, get_unstaged_files, stage_files
-
-    unstaged = get_unstaged_files()
-    if not unstaged:
-        if not quiet:
-            click.secho(
-                __("✅ No unstaged files found. Proceeding..."), fg="green", dim=True
-            )
-        return True
-
-    if action_type in ("pr", "issue"):
-        # ── Interactive flow (TUI or auto-stage) ──
-        click.secho(__("🔍 Checking unversioned files..."), fg="cyan")
-        if _env_flag("GITPR_AUTO_STAGE"):
-            click.secho(
-                __("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan"
-            )
-            ok, err = stage_files([f for f, _ in unstaged])
-            if ok:
-                click.secho(__("✅ Files added to stage."), fg="green")
-            else:
-                click.secho(
-                    __("❌ Failed to stage files: {error}", error=err), fg="red"
-                )
-            return True
-        click.secho(__("📋 Opening file selection..."), fg="cyan")
-        from src.ui.pr_publish_app import StageFilesApp
-
-        app = StageFilesApp(unstaged_files=unstaged)
-        app.run()
-        if app.result == "cancel":
-            click.secho(__("❌ Operation cancelled by user."), fg="red")
-            return False
-        if app.result == "stage":
-            ok, err = stage_files(app.selected_files)
-            count = len(app.selected_files) if app.selected_files else 0
-            if ok and count:
-                click.secho(
-                    __("✅ {count} file(s) added to stage.", count=count), fg="green"
-                )
-            elif not ok:
-                click.secho(
-                    __("❌ Failed to stage files: {error}", error=err), fg="red"
-                )
-            else:
-                click.secho(__("⏭️ No files selected. Proceeding..."), fg="yellow")
-        else:
-            click.secho(__("⏭️ Files ignored. Proceeding..."), fg="yellow")
-        return True
-
-    # ── Non-interactive informational path for commit/review/fullreview ──
-    categorized = get_unstaged_categorized()
-    if action_type == "commit":
-        click.secho(
-            __(
-                "⚠️ {count} file(s) are not staged and will NOT be included in the commit.",
-                count=len(unstaged),
-            ),
-            fg="yellow",
-            bold=True,
-        )
-        if _env_flag("GITPR_AUTO_STAGE"):
-            click.secho(
-                __("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan"
-            )
-            ok, err = stage_files([f for f, _ in unstaged])
-            if ok:
-                click.secho(__("✅ Files added to stage."), fg="green")
-            else:
-                click.secho(
-                    __("❌ Failed to stage files: {error}", error=err), fg="red"
-                )
-            return True
-    else:
-        click.secho(
-            __(
-                "ℹ️ {count} file(s) are not staged. They will still be included in this analysis.",
-                count=len(unstaged),
-            ),
-            fg="yellow",
-        )
-    _print_unstaged_summary(categorized, quiet=quiet)
-    click.secho(
-        __(
-            "💡 Tip: Use 'git add <file>' to stage them, or pass --no-unstaged-check to skip this verification."
-        ),
-        fg="cyan",
-        dim=True,
-    )
-    return True
-
-
-def _run_auto_commit_cli(provider):
-    """Auto-commit flow for --no-edit mode. Returns True if commit succeeded or no changes."""
-    from src.core import (
-        append_coauthor_trailer,
-        execute_git_commit,
-        get_git_diff,
-        generate_pr_content,
-        has_uncommitted_changes,
-    )
-    from src.linter_engine import parse_diff_and_lint
-
-    if not has_uncommitted_changes():
-        return True  # nothing to commit, proceed
-
-    skip_lint = os.getenv("GITPR_SKIP_LINT", "false").lower() in (
-        "true",
-        "1",
-        "yes",
-        "y",
-    )
-    auto_commit = os.getenv("GITPR_AUTO_COMMIT", "false").lower() in (
-        "true",
-        "1",
-        "yes",
-        "y",
-    )
-
-    # ── Linter ──
-    no_verify = False
-    if not skip_lint:
-        click.secho("🔍 " + __("Running linter..."), fg="cyan")
-        diff_text = get_git_diff()
-        linter_results = parse_diff_and_lint(diff_text)
-        has_errors = len(linter_results["errors"]) > 0
-        has_warnings = len(linter_results["warnings"]) > 0
-
-        if has_warnings:
-            click.secho(
-                __(
-                    "\n⚠️ Linter generated {count} warning(s):",
-                    count=len(linter_results["warnings"]),
-                ),
-                fg="yellow",
-            )
-            for w in linter_results["warnings"]:
-                click.echo(f"  - {w}")
-
-        if has_errors:
-            click.secho(
-                __(
-                    "\n🚨 Linter found {count} error(s):",
-                    count=len(linter_results["errors"]),
-                ),
-                fg="red",
-            )
-            for e in linter_results["errors"]:
-                click.echo(f"  - {e}")
-            if click.confirm(__("\n⚠ Commit with --no-verify anyway?"), default=False):
-                no_verify = True
-            else:
-                click.secho(__("❌ Commit aborted by user."), fg="red")
-                return False
-        else:
-            if has_warnings:
-                click.secho(__("✅ Linter passed with warnings."), fg="green")
-            else:
-                click.secho(__("✅ Linter passed — no violations."), fg="green")
-
-    # ── Generate commit message via AI ──
-    click.secho("📝 " + __("Generating commit message..."), fg="cyan")
-
-    diff_text = get_git_diff()
-    commit_data = generate_pr_content("commit", "commit", diff_text, provider)
-    commit_msg = append_coauthor_trailer(
-        commit_data.get("commit_message", __("Code update"))
-        if commit_data
-        else __("Code update")
-    )
-
-    click.secho(__("\n📝 Commit Message:\n"), fg="green", bold=True)
-    click.echo(commit_msg)
-    click.echo("")
-
-    if not auto_commit:
-        if not click.confirm(__("Proceed with this commit message?"), default=True):
-            click.secho(__("❌ Commit cancelled by user."), fg="red")
-            return False
-
-    # ── Execute commit ──
-    click.secho("📦 " + __("Executing commit..."), fg="cyan")
-    success, output = execute_git_commit(commit_msg, no_verify=no_verify)
-    if success:
-        click.secho(__("✅ Commit executed successfully!"), fg="green")
-        return True
-    else:
-        click.secho(__("❌ Commit failed: {output}", output=output), fg="red")
-        return False
-
-
-def _reviewer_suggestion_view(result, provider, repo=None):
-    """Map a ReviewerSuggestionResult to the dict consumed by PrPublishApp.
-
-    Resolves each candidate to a forge login (commit author first, then the
-    noreply-address parse and the user search API); the resolved handles
-    prefill the reviewer field and the people left without a login are flagged
-    in the hint lines, under their author name. Non-GitHub forges get a
-    local-only view — suggestions are displayed, never submitted, because
-    those forges have no reviewer-request API (see ADR-002). Returns None when
-    there is nothing to show.
-    """
-    from src.infrastructure.scm import (
-        provider_display_name,
-        provider_is_github,
-    )
-    from src.reviewer_resolution import resolve_candidates
-    from src.suggest_reviewers import format_suggestion_lines
-
-    if result is None or not result.candidates:
-        return None
-
-    submittable = provider_is_github(provider)
-    handles = []
-    who_map = {}
-    no_login = []
-    resolutions = []
-    if submittable:
-        resolutions = resolve_candidates(result.candidates, provider, repo)
-        for resolution in resolutions:
-            if not resolution.login:
-                no_login.append(resolution.key)
-                continue
-            who_map[resolution.key] = f"@{resolution.login}"
-            if resolution.login not in handles:
-                handles.append(resolution.login)
-    lines = format_suggestion_lines(result, who_map=who_map, no_login=no_login)
-    note = None
-    if not submittable:
-        note = __(
-            "Reviewer suggestions are displayed locally only — {provider} cannot attach reviewers to pull requests.",
-            provider=provider_display_name(provider),
-        )
-    return {
-        "handles": handles,
-        "lines": lines,
-        "submittable": submittable,
-        "note": note,
-        "resolutions": resolutions,
-    }
-
-
-def _scm_access_canceled_message(provider):
-    """Error shown when the user cancels or fails to provide a forge token."""
-    from src.infrastructure.scm import provider_display_name, provider_is_github
-
-    if provider_is_github(provider):
-        return __("❌ Access canceled. GitHub Token is mandatory for this action.")
-    return __(
-        "❌ Access canceled. {provider} token is mandatory for this action.",
-        provider=provider_display_name(provider),
-    )
-
-
-def _prepare_close_issue(flags, base, may_ask):
-    """Reads the local record early and decides the closing line (ADR-005).
-
-    Called before the stage TUI, so the question comes before the description
-    exists. Only a record can make the feature cost anything — provider
-    resolution, the forge check and the question all hang off it; without one
-    the run is byte-for-byte the old flow.
-
-    GITPR_ISSUE_AUTOCLOSE is checked before the record is touched: constructing
-    the registry runs ``git rev-parse``, so a disabled feature must not even
-    build one. ``--close-issue`` does not override the switch; the use case
-    applies the same order.
-
-    Returns ``(decision, registry, scm_context)``. ``registry`` is what the
-    publication clearing uses afterwards; ``scm_context`` is the
-    provider/repository pair resolved here for the rest of the flow to reuse,
-    or ``None`` when nothing needed it.
-
-    The outcome is also reported once to the local ledger as an
-    ``issue_autoclose`` row (``asked``, ``accepted``, ``skipped_reason``).
-    """
-    from src.config import get_issue_autoclose_timeout, issue_autoclose_enabled
-    from src.issue_autoclose.issue_registry import IssueRegistry
-    from src.issue_autoclose.resolve_close_issue import resolve_close_issue
-    from src.metrics import log_command_metric
-
-    if flags.disabled:
-        return None, None, None
-
-    if not issue_autoclose_enabled():
-        return None, None, None
-
-    registry = IssueRegistry()
-    try:
-        loaded = registry.load()
-    except Exception:
-        # An unreadable record still deserves the early path: the use case
-        # reloads it and reports the warning itself.
-        loaded = None
-    if loaded is not None and loaded.issue is None and not loaded.error:
-        return None, None, None
-
-    provider, repo_ref = _resolve_scm_context()
-    scm_context = (provider, repo_ref)
-    if provider is None:
-        return None, None, scm_context
-
-    # The question's warning only needs the configured target, not the
-    # validated one: the real resolution (origin check and base picker) stays
-    # where publishing happens.
-    target_branch = ""
-    if may_ask and not flags.accept:
-        try:
-            from src.project_config import resolve_pull_request_base
-
-            target_branch = resolve_pull_request_base(base, verify=False).branch
-        except Exception:
-            target_branch = ""
-
-    outcome = resolve_close_issue(
-        provider,
-        registry,
-        repo_ref,
-        flags=flags,
-        is_tty=may_ask,
-        target_branch=target_branch,
-        ask=lambda question, default=True: click.confirm(question, default=default),
-        timeout=get_issue_autoclose_timeout(),
-    )
-    if outcome.warning:
-        click.secho(outcome.warning, fg="yellow", err=True)
-    # Q14: one row per decision the use case reached. The helper's own
-    # short-circuits never engaged the feature and stay out of the ledger.
-    log_command_metric(
-        command="issue_autoclose",
-        provider="git",
-        asked=outcome.asked,
-        accepted=outcome.accepted,
-        skipped_reason=outcome.skipped_reason,
-    )
-    return outcome.decision, registry, scm_context
-
-
-def _resolve_scm_context():
-    """Resolve the SCM forge (provider) + repository reference for the flows.
-
-    Reads the origin remote URL, detects the forge when no GITPR_SCM_PROVIDER
-    is configured, builds the provider through the factory (which falls back
-    to the legacy GitHub token when needed) and parses the repository ref.
-
-    Returns (provider, repo_ref), or (None, None) after printing an error when
-    the remote cannot be identified or parsed.
-    """
-    from src.config import get_scm_settings
-    from src.core import get_origin_remote_url
-    from src.infrastructure.scm import detect_provider_from_remote
-
-    raw_remote = get_origin_remote_url()
-    if not raw_remote:
-        click.secho(
-            __(
-                "❌ Remote repository not identified to create the pull request via API."
-            ),
-            fg="red",
-        )
-        return None, None
-
-    settings = get_scm_settings()
-    if not settings.get("provider"):
-        settings["provider"] = detect_provider_from_remote(raw_remote)
-
-    try:
-        from src.infrastructure.scm import ScmProviderError, resolve_scm_provider
-
-        provider = resolve_scm_provider(settings)
-        repo_ref = provider.parse_repo_ref(raw_remote)
-    except (ValueError, ScmProviderError) as e:
-        # ValueError: remote does not parse for the detected forge.
-        # ScmProviderError: provider fail-fast (e.g. Azure DevOps without the
-        # GITPR_SCM_ORGANIZATION/GITPR_SCM_PROJECT extras) — message guides
-        # the user to 'gitpr --init'.
-        click.secho(f"⚠️ {e}", fg="red")
-        return None, None
-
-    return provider, repo_ref
-
-
-def _clear_close_issue_record(registry, decision):
-    """Forgets the recorded issue once the published PR carries the line.
-
-    ADR-007: only a publication that actually sent the body clears it. A
-    bookkeeping failure must never break the flow — the file is local state
-    and the next run overwrites it.
-    """
-    if registry is None or decision is None:
-        return
-    try:
-        registry.clear()
-    except Exception:
-        pass
-
-
-def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename):
-    """Publish PR directly to the forge without TUI (for --no-edit mode).
-
-    Returns True only when the forge created the pull request, so the caller
-    can clear the issue record (ADR-007).
-    """
-    from src.application.use_cases.publish_pull_request import (
-        format_recommended_commit_body,
-        publish_pull_request_use_case,
-    )
-    from src.core import get_current_branch
-    from src.infrastructure.scm import (
-        provider_display_name,
-        provider_is_github,
-    )
-
-    github_flow = provider_is_github(provider)
-    label = provider_display_name(provider)
-    commit_msg = pr_data.get("commit_message", "")
-    pr_body = pr_data.get("pr_description", "")
-
-    full_body = format_recommended_commit_body(commit_msg, pr_body)
-    head_branch = get_current_branch()
-
-    # This path publishes a body the user never saw, so it says what went into
-    # it. The TUI needs no such line: the badge is in the text area there.
-    from src.branding.badge_builder import has_badge
-
-    if has_badge(pr_body):
-        click.secho(
-            __(
-                "🏷️ A GitPR badge was added to the PR body. Set GITPR_BADGE=false to publish without it."
-            ),
-            dim=True,
-        )
-
-    if github_flow:
-        click.secho("🚀 " + __("Publishing Pull Request to GitHub..."), fg="cyan")
-    else:
-        click.secho(
-            "🚀 " + __("Publishing Pull Request to {provider}...", provider=label),
-            fg="cyan",
-        )
-
-    outcome = publish_pull_request_use_case(
-        provider=provider,
-        repo_ref=repo_ref,
-        title=commit_msg,
-        description=full_body,
-        source_branch=head_branch,
-        target_branch=target_base,
-        draft=False,
-        check_remote_state=False,
-    )
-
-    if outcome.status != "success":
-        if outcome.http_status == 401:
-            if github_flow:
-                click.secho(
-                    __(
-                        "🔐 GitHub token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively."
-                    ),
-                    fg="red",
-                )
-            else:
-                click.secho(
-                    __(
-                        "🔐 {provider} token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively.",
-                        provider=label,
-                    ),
-                    fg="red",
-                )
-            return False
-        if github_flow:
-            click.secho(
-                __(
-                    "❌ GitHub API Error ({code}): {msg}",
-                    code=outcome.http_status,
-                    msg=outcome.message,
-                ),
-                fg="red",
-            )
-        else:
-            click.secho(
-                __(
-                    "❌ {provider} API Error ({code}): {msg}",
-                    provider=label,
-                    code=outcome.http_status,
-                    msg=outcome.message,
-                ),
-                fg="red",
-            )
-        return False
-
-    pr_url = outcome.url
-    if github_flow:
-        click.secho(
-            __("✅ PR successfully created on GitHub:\n👉 {pr_url}", pr_url=pr_url),
-            fg="green",
-            bold=True,
-        )
-    else:
-        click.secho(
-            __(
-                "✅ PR successfully created on {provider}:\n👉 {pr_url}",
-                provider=label,
-                pr_url=pr_url,
-            ),
-            fg="green",
-            bold=True,
-        )
-    from src.metrics import log_command_metric
-
-    log_command_metric(command="pr:publish", status="success", provider=provider.name)
-    if click.confirm(__("🔗 Open the Pull Request in your browser?")):
-        import webbrowser
-
-        webbrowser.open(pr_url)
-    click.secho(
-        f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}",
-        fg="cyan",
-    )
-    return True
-
-
-@cli.command(
-    "check",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    epilog="\b\n"
-    + __(">> Full documentation:")
-    + "\n"
-    + get_doc_url("check-ci.md"),
-)
-@click.option(
-    "--base",
-    "base",
-    metavar="<ref>",
-    default=None,
-    help=__("Base git reference for diff comparison (e.g. origin/main)."),
-)
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["sarif", "json", "junit"], case_sensitive=False),
-    default=None,
-    help=__("Output artifact format (sarif, json, junit)."),
-)
-@click.option(
-    "-o",
-    "--output",
-    "output_path",
-    metavar="<path>",
-    default=None,
-    help=__("Path to write output artifact file."),
-)
-@click.option(
-    "--fail-on",
-    "fail_on",
-    type=click.Choice(
-        ["info", "warning", "error", "minor", "major", "critical", "blocker"],
-        case_sensitive=False,
-    ),
-    default=None,
-    help=__("Minimum finding severity that causes exit code 1."),
-)
-@click.option(
-    "--no-ia",
-    is_flag=True,
-    default=None,
-    help=__("Disables AI review for faster, zero-cost CI checks."),
-)
-@click.option(
-    "--ia-only-high-risk",
-    is_flag=True,
-    default=None,
-    help=__("Restricts AI review only to files identified as high risk."),
-)
-@click.option(
-    "--baseline",
-    "baseline_path",
-    metavar="<path>",
-    default=None,
-    help=__("Path to baseline JSON manifest."),
-)
-@click.option(
-    "--policy",
-    "policy",
-    metavar="<name>@<version>",
-    default=None,
-    help=__("Pin an explicit Policy Pack for this run."),
-)
-def check(
-    base,
-    output_format,
-    output_path,
-    fail_on,
-    no_ia,
-    ia_only_high_risk,
-    baseline_path,
-    policy,
-):
-    """Unified CI check command: linter, secrets, optional AI, risk, and baseline."""
-    from src.application.use_cases.run_check import execute_check
-    from src.domain.check.check_config import load_check_config
-    from src.domain.check.check_output import format_check_output, write_check_output
-
-    cli_args = {
-        "base": base,
-        "format": output_format,
-        "output": output_path,
-        "fail_on": fail_on,
-        "no_ia": no_ia,
-        "ia_only_high_risk": ia_only_high_risk,
-        "baseline": baseline_path,
-        "policy": policy,
-    }
-    cli_args = {k: v for k, v in cli_args.items() if v is not None}
-
-    config = load_check_config(cli_args)
-    result = execute_check(config)
-
-    formatted = format_check_output(result)
-
-    if config.output_path:
-        write_check_output(formatted, config.output_path)
-        click.echo(
-            __(
-                "Artifact written to {path} ({format}) with exit code {code}",
-                path=config.output_path,
-                format=result.output_format.value,
-                code=result.exit_code,
-            ),
-            file=sys.stderr,
-        )
-    else:
-        sys.stdout.write(formatted)
-        if not formatted.endswith("\n"):
-            sys.stdout.write("\n")
-        sys.stdout.flush()
-
-    for w in result.warnings:
-        click.echo(f"⚠️ {w}", file=sys.stderr)
-
-    from src.metrics import log_command_metric
-
-    log_command_metric(
-        command="check",
-        status="success" if result.exit_code == 0 else "failed",
-        exit_code=result.exit_code,
-        findings_total=result.summary.total,
-        findings_errors=result.summary.errors,
-    )
-
-    sys.exit(result.exit_code)
-
-
-if __name__ == "__main__":
-    cli()
+import os
+import sys
+from datetime import datetime
+
+import click
+
+# Reconfigure stdout to utf-8 to prevent UnicodeEncodeError with emojis on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+# stderr needs the same: Python encodes it with backslashreplace, so an error
+# message carrying an emoji reached the console as a literal `❌` — worst
+# on the messages that matter most, the ones saying why a command refused to run.
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+# Internal module imports
+import subprocess
+
+from src.chat_memory import ChatMemoryManager
+from src.config import (
+    check_internet_connection,
+    get_ai_provider,
+    get_reviewer_suggestion_settings,
+    get_split_settings,
+    risk_scoring_in_review_enabled,
+    setup_environment,
+    suggest_reviewers_enabled,
+)
+from src.core import (
+    append_coauthor_trailer,
+    check_and_update_hooks_scripts,
+    ensure_release_skill_template,
+    generate_pr_content,
+    generate_skill_template,
+    seed_project_configuration,
+    get_branch_history_text,
+    get_current_branch,
+    get_doc_url,
+    get_git_diff,
+    get_git_full_diff,
+    get_split_diff,
+    get_uncommitted_summary,
+    install_git_hooks,
+    is_merge_in_progress,
+    resolve_output_path,
+    run_install_wizard,
+    run_scm_init_wizard,
+)
+from src.i18n import __
+from src.linter_engine import generate_linter_report_content, parse_diff_and_lint
+from src.review.render import render_review_result
+from src.ui.chat_app import ChatApp
+from src.updater import __version__, check_and_update, enforce_update_required
+from src.usage_log import log_usage
+
+
+def _may_ask_the_user(quiet=False, hook=False, mcp=False):
+    """Whether this run may stop and ask a question in a TUI.
+
+    False for the modes that exist precisely so that nothing blocks: the hooks
+    (--quiet), the MCP stdio server (whose stdout is a JSON-RPC stream), and any
+    run without a terminal to draw on — a pipe, a cron job, CI.
+    """
+    if quiet or hook or mcp:
+        return False
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except Exception:
+        return False
+
+
+def _subcommand_help_in_argv(argv=None):
+    """Whether the raw command line asks for help.
+
+    Click clears the group context arguments before this callback runs, so by
+    the time the update gate below executes, ``gitpr release -h`` is
+    indistinguishable from ``gitpr release``. The raw tokens are the only
+    surviving record. The scan fails open, which costs at most one skipped gate.
+    """
+    tokens = sys.argv[1:] if argv is None else argv
+    return any(token in ("-h", "--help") for token in tokens)
+
+
+def _resolve_subcommand_tokens(ctx):
+    """The raw argument tokens trailing the invoked subcommand.
+
+    Click clears the group context arguments before the group callback runs,
+    so tokens after the subcommand must be recovered from Group.invoke's frame
+    or from sys.argv.
+    """
+    for depth in range(1, 6):
+        try:
+            f = sys._getframe(depth)
+            if (
+                f.f_code.co_name == "invoke"
+                and "cmd_name" in f.f_locals
+                and "args" in f.f_locals
+            ):
+                raw_args = f.f_locals.get("args")
+                if isinstance(raw_args, (list, tuple)):
+                    return list(raw_args)
+        except Exception:
+            break
+    if ctx.invoked_subcommand and ctx.invoked_subcommand in sys.argv:
+        idx = sys.argv.index(ctx.invoked_subcommand)
+        return sys.argv[idx + 1 :]
+    return list(getattr(ctx, "args", []) or [])
+
+
+def print_banner():
+    """Displays the project ASCII Art signature"""
+    banner = r"""
+ ,----.   ,--.  ,--.  ,------. ,------.
+'  .-./   `--',-'  '-.|  .--. '|  .--. '
+|  | .---.,--.'-.  .-'|  '--' ||  '--'.'
+'  '--'  ||  |  |  |  |  | --' |  |\  \
+ `------' `--'  `--'  `--'     `--' '--'
+
+"""
+    click.secho(banner, fg="cyan", bold=True)
+    click.secho(
+        __("  🚀 Intelligent PR Automation with AI (v{version})", version=__version__),
+        fg="yellow",
+        bold=True,
+    )
+    click.secho(
+        __(
+            "  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | --init | -is,--issue | --no-publish | --no-edit | --base | --plugins | -h,--help (use -h --flag for contextual help)\n"
+        ),
+        fg="white",
+        dim=True,
+    )
+
+
+# ============================================================
+# Contextual help mapping (flag -> doc URL and description)
+# ============================================================
+HELP_MAP: dict[str, dict[str, str]] = {
+    "commit": {
+        "url": get_doc_url("commit-message-ia.md"),
+        "title": __("AI Commit Message Generation"),
+        "description": __(
+            "Generates commit messages in the Conventional Commits format automatically using AI. Supports integration with Git Hooks (prepare-commit-msg) for direct injection into the editor."
+        ),
+    },
+    "review": {
+        "url": get_doc_url("code-review-ia.md"),
+        "title": __("AI Code Review (Local Changes)"),
+        "description": __(
+            "Performs smart code review of uncommitted local changes (git diff HEAD). Automatically integrates the Static Linter (.gitpr.linter.yml) at the top of the report."
+        ),
+    },
+    "fullreview": {
+        "url": get_doc_url("code-review-ia.md"),
+        "title": __("Full AI Code Review (Full Diff)"),
+        "description": __(
+            "Performs a deep review comparing the current branch with the remote main branch (origin/main). Runs git fetch before analysis. Ideal for reviewing before opening a Pull Request."
+        ),
+    },
+    "input": {
+        "url": get_doc_url("code-review-ia.md"),
+        "title": __("Specific File Analysis (--input)"),
+        "description": __(
+            "Analyzes an entire file from the local system, ignoring the Git diff. REQUIRES --review (-r) or --fullreview (-f) to work. Excellent for auditing legacy code and refactoring."
+        ),
+    },
+    "linter": {
+        "url": get_doc_url("linter-regras-customizadas.md"),
+        "title": __("Customizable Static Linter"),
+        "description": __(
+            "Local static analysis engine that checks rules defined in the .gitpr.linter.yml file. Does not consume AI quotas or require internet. Ideal for CI/CD and pre-commit hooks."
+        ),
+    },
+    "skill": {
+        "url": get_doc_url("skill-template.md"),
+        "title": __("Skills and Templates System (--skill)"),
+        "description": __(
+            "Downloads template files (.gitpr.*.md and .gitpr.linter.yml) from the official repository into the project's .gitpr/skill/ folder. These files allow customizing the AI behavior according to your team's rules. NEVER overwrites existing local files."
+        ),
+    },
+    "seed": {
+        "url": get_doc_url("install-wizard.md"),
+        "title": __("Project Configuration Seed (seed / --seed)"),
+        "description": __(
+            "Seeds project-local configuration files into .gitpr/conf/ (PR base branch, Smart Excludes) and .gitpr/skill/ (.gitpr.linter.yml). Supports --force to overwrite and --all to include all AI skill templates."
+        ),
+    },
+    "update": {
+        "url": get_doc_url("auto-update.md"),
+        "title": __("GitPR Auto-Update"),
+        "description": __(
+            "Checks PyPI for a newer version of GitPR and displays the command to upgrade via pip. GitPR always requires the latest published version to run."
+        ),
+    },
+    "installhooks": {
+        "url": get_doc_url("git-hooks-locais.md"),
+        "title": __("Install Local Git Hooks"),
+        "description": __(
+            "Installs pre-commit (automatic static linter) and prepare-commit-msg (AI message generation) hooks in the local repository. Adopts the Shift Left practice for pre-push validation."
+        ),
+    },
+    "install": {
+        "url": get_doc_url("install-wizard.md"),
+        "title": __("Interactive Setup Wizard (--install)"),
+        "description": __(
+            "Guided setup that downloads skill templates, installs Git hooks, configures MCP for your editors, and verifies your AI provider API key."
+        ),
+    },
+    "blame": {
+        "url": get_doc_url("blame-arqueologo.md"),
+        "title": __("Code Archeologist (AI Git Blame)"),
+        "description": __(
+            "Tracks the origin and evolution of business rules in the code using git blame with AI classification (ORIGIN vs REFACTORING). Supports direct mode (file:10-20) and interactive mode. Can feed technical debt Issues context with --issue."
+        ),
+    },
+    "issue": {
+        "url": get_doc_url("issue-tui-help.md"),
+        "title": __("Issue Generation with Interactive TUI"),
+        "description": __(
+            "Generates standardized issues (What / Why / Where / How) using AI and opens an interactive terminal interface (Textual) for review. Has 3 context engines: current diff, branch history (--history), and code archeology (--blame). Allows saving local .md or publishing directly to GitHub via API."
+        ),
+    },
+    "history": {
+        "url": get_doc_url("issue-tui-help.md"),
+        "title": __("History Context for Issues (--history)"),
+        "description": __(
+            "Modifier for --issue (-is): uses the entire history of the current branch (git log + previous PRs cache) as context to generate the issue. Ideal for documenting epics, releases, and large features with multiple commits over days."
+        ),
+    },
+    "close_issue": {
+        "url": get_doc_url("issue-autoclose.md"),
+        "title": __("Automatic Issue Closure (--close-issue)"),
+        "description": __(
+            "Adds the closing line (close #N) for the issue recorded by gitpr -is to the Pull Request description without asking. The issue is still checked on the forge before the line is added; a closed or deleted issue is ignored."
+        ),
+    },
+    "no_close_issue": {
+        "url": get_doc_url("issue-autoclose.md"),
+        "title": __("Skip the Automatic Issue Closure (--no-close-issue)"),
+        "description": __(
+            "Skips the automatic issue closure for this run: no local record is read and no forge call is made. The record is kept for a later run."
+        ),
+    },
+    "provider": {
+        "url": get_doc_url("providers-ia.md"),
+        "title": __("AI Provider Selection (--provider)"),
+        "description": __(
+            "Forces the use of a specific AI provider for this execution: gemini (Google Gemini), deepseek (DeepSeek) or ollama (Local). Temporarily overrides the default provider defined in the .env file."
+        ),
+    },
+    "chat": {
+        "url": get_doc_url("understanding_chat_functionality.md"),
+        "title": __("Interactive Pair Programming Chat (--chat)"),
+        "description": __(
+            "Opens an interactive terminal (TUI) to chat with the AI about the current uncommitted changes. Features memory, auto-patching (F5), and live diff refresh (F2)."
+        ),
+    },
+    "lang": {
+        "url": get_doc_url("providers-ia.md"),
+        "title": __("Language Override (--lang)"),
+        "description": __(
+            "Forces the interface language for this execution (e.g.: en_us, pt_br). Overrides the GITPR_LANG environment variable and OS locale detection."
+        ),
+    },
+    "no-publish": {
+        "url": get_doc_url("pull-request-publication.md"),
+        "title": __("Skip Interactive Publisher (--no-publish)"),
+        "description": __(
+            "Generates the PR description and saves it locally without opening the interactive TUI."
+        ),
+    },
+    "no-edit": {
+        "url": get_doc_url("pull-request-publication.md"),
+        "title": __("Direct Publish with Auto-Commit (--no-edit)"),
+        "description": __(
+            "Generates the PR, auto-commits pending changes (with lint validation), and publishes directly to GitHub without opening the TUI."
+        ),
+    },
+    "plugins": {
+        "url": get_doc_url("plugins-system.md"),
+        "title": __("Plugin System (--plugins)"),
+        "description": __(
+            "Lists all globally installed custom linter packs and MCP prompts loaded from ~/.gitpr/plugins/."
+        ),
+    },
+    "status": {
+        "url": get_doc_url("git-status.md"),
+        "title": __("Uncommitted File Status (--status)"),
+        "description": __(
+            "Lists uncommitted file changes categorized as new (untracked), modified (unstaged edits) and deleted — fast, no AI, no network."
+        ),
+    },
+    "no-unstaged-check": {
+        "url": get_doc_url("git-status.md"),
+        "title": __("Skip Unstaged Check (--no-unstaged-check)"),
+        "description": __(
+            "Skips the unstaged-files verification that runs before PR, commit, review, full review and issue generation. Equivalent to GITPR_SKIP_UNSTAGED_CHECK=true for one run."
+        ),
+    },
+    "no-suggest-reviewers": {
+        "url": get_doc_url("suggested-reviewers.md"),
+        "title": __("Skip Suggested Reviewers (--no-suggest-reviewers)"),
+        "description": __(
+            "Disables the reviewer suggestion computation (git blame over the added lines) before the interactive publisher opens. Suggestions stay ON by default; set GITPR_SUGGEST_REVIEWERS=false in ~/.gitpr/.env to disable globally. On GitHub the accepted list is requested on the created PR."
+        ),
+    },
+    "linter-setup": {
+        "url": get_doc_url("linter-regras-customizadas.md"),
+        "title": __("External Linter Wizard (--linter-setup)"),
+        "description": __(
+            "Interactive wizard to configure external linters (ESLint, PHPCS, etc.) via Checkstyle XML integration."
+        ),
+    },
+    "explain": {
+        "url": get_doc_url("explain-pr.md"),
+        "title": __("Reviewer Guide (--explain / gitpr explain)"),
+        "description": __(
+            "Generates a concise reviewer-centric summary (What changes, Why it changes, Where to focus, and Regression risk)."
+        ),
+    },
+    "mentor": {
+        "url": get_doc_url("mentor-mode.md"),
+        "title": __("Junior Mentor Mode (--mentor / gitpr mentor)"),
+        "description": __(
+            "Enriches code reviews with pedagogical explanations (what is happening, why it matters, analogies, and concepts to learn) designed for junior engineers."
+        ),
+    },
+    "risk": {
+        "url": get_doc_url("risk-scoring.md"),
+        "title": __("Local Risk Scoring (gitpr risk)"),
+        "description": __(
+            "Calculates deterministic, explainable risk scores for the diff and files without AI, highlighting critical paths, missing tests, migrations, and bug history."
+        ),
+    },
+}
+
+# Priority for contextual help when multiple flags are used with -h
+# Lower value = higher priority
+HELP_PRIORITY: dict[str, int] = {
+    "linter": 1,
+    "skill": 2,
+    "update": 3,
+    "installhooks": 4,
+    "install": 14,
+    "issue": 5,
+    "blame": 6,
+    "commit": 7,
+    "fullreview": 8,
+    "review": 9,
+    "mentor": 9,
+    "explain": 9,
+    "risk": 10,
+    "input": 11,
+    "history": 12,
+    "provider": 12,
+    "lang": 13,
+    "no-publish": 16,
+    "no-edit": 17,
+    "plugins": 18,
+    "status": 19,
+    "no-unstaged-check": 20,
+    "no-suggest-reviewers": 21,
+    "linter-setup": 22,
+}
+
+
+def _resolve_policy_or_die(announce=True):
+    """Resolves the repository's policy pack once, or refuses to run at all.
+
+    Every mode that produces review output calls this before it reads a skill
+    file, a linter rule or a risk weight. A pack that cannot be resolved — the
+    directory was removed, the pinned version vanished after an upgrade, an
+    asset was edited behind the checksum — aborts rather than degrading,
+    because the output would still carry the policy's name over rules that are
+    not its own.
+
+    *announce* is off for the MCP server, whose stdout is the JSON-RPC stream.
+    """
+    from src.application.use_cases.resolve_effective_policy import (
+        resolve_effective_policy,
+    )
+    from src.domain.policy import PolicyError
+
+    try:
+        policy = resolve_effective_policy()
+    except PolicyError as error:
+        click.secho(f"❌ {error}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from error
+
+    if announce and policy.is_active:
+        click.secho(
+            __("🧭 Policy: {policy}", policy=policy.policy_tag()),
+            fg="blue",
+        )
+    return policy
+
+
+def _resolve_baseline_or_die(required=False):
+    """Resolves the repository's baseline, or refuses to run on one it cannot apply.
+
+    Called right after the policy pack, and for the same reason: both decide how
+    the rest of the run reads a finding. *required* is the whole difference — a
+    flow that enforces the baseline (the linter, the review, the full review, the
+    file audit, the remote pull request) stops when the file cannot be applied,
+    because classifying every legacy finding as `new` and handing that back as a
+    verdict is worse than not running at all. Every other flow passes nothing,
+    reads nothing, and prints nothing: `-c`, the PR flows, blame, the issue
+    flows, chat, release, split and fix behave exactly as they did before this
+    feature existed.
+
+    Nothing is announced here. The line §8.4 asks for is the counts line printed
+    once the findings *have* been classified, and a file that is read but says
+    nothing about this diff has nothing worth a terminal line.
+    """
+    from src.application.use_cases.baseline_gate import load_baseline
+    from src.domain.baseline import BaselineError
+
+    try:
+        gate = load_baseline(required=required)
+    except BaselineError as error:
+        click.secho(f"❌ {error}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from error
+
+    # stderr: `risk --format json` is read by machine, and a notice about the
+    # baseline belongs beside the document, never inside it.
+    for warning in gate.warnings:
+        click.secho(f"⚠️ {warning}", fg="yellow", err=True)
+    return gate
+
+
+def _classify_with_baseline(gate, findings):
+    """This run's findings read against the baseline, or [] when there is none.
+
+    The empty list is the answer both for a flow that has no baseline and for
+    one that found nothing: an inactive gate is never asked to classify, so no
+    call site has to tell the two apart before calling.
+    """
+    if not gate.is_active or not findings:
+        return []
+    from src.application.use_cases.baseline_gate import classify_findings_for_gate
+
+    return classify_findings_for_gate(findings, gate)
+
+
+def _print_baseline_line(compared, quiet=False):
+    """The one-line summary §8.4 asks for, printed only when there is one."""
+    from src.application.use_cases.baseline_gate import status_line
+
+    line = status_line(compared) if compared else ""
+    if line and not quiet:
+        click.secho(f"🧾 {line}", fg="blue", dim=True)
+
+
+def _resolve_pr_target(base, quiet):
+    """Resolves the PR target, repairing a project base that is the current branch.
+
+    A pull request cannot target the branch it is opened from. When the value
+    comes from the project file (or from the fallback chain) and the run is
+    interactive, the picker asks for a replacement, saves it in the project
+    file and the resolution runs again. A ``--base`` flag naming the current
+    branch is a deliberate choice, not stale configuration, so it is reported
+    instead of silently overridden — and so is a non-interactive run, where
+    there is no one to ask.
+    """
+    from src.project_config import (
+        BASE_BRANCH_FIELD,
+        CurrentBranchError,
+        current_branch,
+        list_branches,
+        project_config_path,
+        resolve_pull_request_base,
+        write_project_field_values,
+    )
+
+    try:
+        return resolve_pull_request_base(base)
+    except CurrentBranchError as exc:
+        if base or quiet or not sys.stdin.isatty():
+            raise
+        from src.ui.pr_base_app import prompt_for_base_branch
+
+        chosen = prompt_for_base_branch(current_branch(), list_branches())
+        if not chosen:
+            raise
+        try:
+            write_project_field_values(
+                {BASE_BRANCH_FIELD: chosen}, path=project_config_path()
+            )
+        except Exception:
+            # The file could not be written — the original refusal stands.
+            raise exc
+        click.secho(
+            __(
+                "✅ Project base branch set to '{branch}' for this repository.",
+                branch=chosen,
+            ),
+            fg="green",
+            err=True,
+        )
+        return resolve_pull_request_base(base)
+
+
+# Native Click configuration to accept -h in addition to --help. The root is a
+# group so `gitpr release` (ADR-002) exists as a subcommand: without one, the
+# callback below routes to the legacy ~29-flag dispatch unchanged.
+@click.group(invoke_without_command=True)
+@click.version_option(
+    version=__version__, prog_name="gitpr", message="%(prog)s v%(version)s"
+)
+@click.option(
+    "-c",
+    "--commit",
+    is_flag=True,
+    help=__("Generates only the commit message and displays it in the console."),
+)
+@click.option(
+    "-r",
+    "--review",
+    is_flag=True,
+    help=__("Performs a code review of local changes (git diff)."),
+)
+@click.option(
+    "-f",
+    "--fullreview",
+    is_flag=True,
+    help=__(
+        "Performs a code review of all changes since the remote main branch (origin/main)."
+    ),
+)
+@click.option(
+    "-l",
+    "--linter",
+    is_flag=True,
+    help=__("Runs only the local static linter (ideal for CI/CD)."),
+)
+@click.option(
+    "-s",
+    "--skill",
+    is_flag=True,
+    help=__("Downloads the skill template files into the .gitpr/skill/ folder."),
+)
+@click.option(
+    "-sd",
+    "--seed",
+    is_flag=True,
+    help=__("Seeds project-local configuration files into .gitpr/conf/ and .gitpr/skill/."),
+)
+@click.option(
+    "-u",
+    "--update",
+    is_flag=True,
+    help=__("Checks for a newer version of GitPR and shows how to update it."),
+)
+@click.option(
+    "-ih",
+    "--installhooks",
+    is_flag=True,
+    help=__("Automatically installs validation Git Hooks in the project."),
+)
+@click.option(
+    "--install",
+    is_flag=True,
+    help=__(
+        "Interactive setup wizard: downloads templates, installs hooks, configures MCP, and checks API key."
+    ),
+)
+@click.option(
+    "--init",
+    is_flag=True,
+    help=__(
+        "Interactive SCM forge wizard: detects the repository's forge, configures the provider, and stores the access token encrypted."
+    ),
+)
+@click.option(
+    "--hook",
+    type=click.Path(),
+    hidden=True,
+    help=__("Commit file path (internal hook use)."),
+)
+@click.option(
+    "-q",
+    "--quiet",
+    is_flag=True,
+    hidden=True,
+    help=__("Hides banner and non-essential logs (internal use)."),
+)
+@click.option(
+    "--pre-save",
+    is_flag=True,
+    hidden=True,
+    help=__(
+        "Saves the full AI payload (system + prompt) to a JSON file before each AI call (debug)."
+    ),
+)
+@click.option(
+    "-i",
+    "--input",
+    type=click.Path(),
+    help=__("Path to a specific file for full analysis."),
+)
+@click.option(
+    "-b",
+    "--blame",
+    type=str,
+    help=__(
+        "Analyzes the origin of a business rule (e.g., file.py:10-20 or just file.py)."
+    ),
+)
+@click.option(
+    "-ht",
+    "--history",
+    is_flag=True,
+    help=__(
+        "Uses the entire branch history (Git Log + PR Cache) as context to generate the issue."
+    ),
+)
+@click.option(
+    "-is",
+    "--issue",
+    is_flag=True,
+    help=__(
+        "Generates a standardized Issue from current changes and opens the interactive interface."
+    ),
+)
+@click.option(
+    "-ch",
+    "--chat",
+    is_flag=True,
+    help=__("Opens the interactive Pair Programming chat with AI."),
+)
+@click.option(
+    "-p",
+    "--provider",
+    type=click.Choice(["gemini", "deepseek", "ollama"]),
+    help=__("Forces the use of a specific AI provider for this execution."),
+)
+@click.option(
+    "--lang",
+    type=str,
+    help=__("Forces the interface language for this execution (e.g.: en_us, pt_br)."),
+)
+@click.option(
+    "--mcp",
+    is_flag=True,
+    hidden=True,
+    help=__(
+        "Start the MCP server for integration with VS Code, Cursor, Claude Desktop, etc."
+    ),
+)
+@click.option(
+    "--base",
+    type=str,
+    help=__(
+        "Target base branch for the Pull Request (overrides the project configuration and PR_DEFAULT_BASE)."
+    ),
+)
+@click.option(
+    "--no-publish",
+    is_flag=True,
+    help=__("Saves the PR file locally without opening the interactive publisher."),
+)
+@click.option(
+    "--no-edit",
+    is_flag=True,
+    help=__(
+        "Skips the interactive editor and publishes the Pull Request directly (with auto-commit)."
+    ),
+)
+@click.option(
+    "--explain",
+    "explain",
+    is_flag=True,
+    help=__(
+        "Includes the Reviewer Guide section ('Explain my PR') in the Pull Request description."
+    ),
+)
+@click.option(
+    "--close-issue",
+    is_flag=True,
+    help=__(
+        "Adds the closing line (close #N) to the Pull Request description without asking; the issue is still checked."
+    ),
+)
+@click.option(
+    "--no-close-issue",
+    is_flag=True,
+    help=__(
+        "Skips the automatic issue closure for this run (no record is read and no forge call is made)."
+    ),
+)
+@click.option(
+    "--mentor",
+    "mentor_flag",
+    is_flag=True,
+    help=__(
+        "Adds a didactic Mentor section to the code review (-r / -f)."
+    ),
+)
+@click.option(
+    "--plugins",
+    is_flag=True,
+    help=__("Lists all active global plugins (linters and prompts)."),
+)
+@click.option(
+    "--status",
+    is_flag=True,
+    help=__(
+        "Lists uncommitted file changes (new/modified/deleted) without AI processing."
+    ),
+)
+@click.option(
+    "--no-unstaged-check",
+    is_flag=True,
+    help=__("Skips the unstaged files verification before AI processing."),
+)
+@click.option(
+    "--no-suggest-reviewers",
+    is_flag=True,
+    help=__(
+        "Disables the suggested reviewers computation in the interactive publisher (default ON)."
+    ),
+)
+@click.option(
+    "--linter-setup",
+    is_flag=True,
+    help=__("Interactive wizard to configure external linters (ESLint, PHPCS, etc)."),
+)
+@click.option(
+    "-h",
+    "--help",
+    "help_flag",
+    is_flag=True,
+    help=__(
+        "Shows this message and exits. Use with another flag for contextual help (e.g., -h --issue)."
+    ),
+)
+@click.pass_context
+def cli(
+    ctx,
+    commit,
+    review,
+    fullreview,
+    linter,
+    skill,
+    seed,
+    update,
+    installhooks,
+    install,
+    init,
+    hook,
+    quiet,
+    pre_save,
+    provider,
+    input,
+    blame,
+    history,
+    issue,
+    chat,
+    help_flag,
+    lang,
+    mcp,
+    base,
+    no_publish,
+    no_edit,
+    explain,
+    close_issue,
+    no_close_issue,
+    mentor_flag,
+    plugins,
+    status,
+    no_unstaged_check,
+    no_suggest_reviewers,
+    linter_setup,
+):
+    """
+    GitPR CLI - Intelligent PR Automation and AI Code Review.
+
+    DEFAULT BEHAVIOR (No options):
+    Fetches, compares with the remote main branch, generates a Markdown (.md) file, and opens an interactive TUI to review, edit, and publish the Pull Request directly to GitHub.
+    """
+
+    # Record the invocation first: this is the one point every flag, every
+    # subcommand and every -h path reaches. Silent and best-effort, so it
+    # cannot disturb anything below.
+    log_usage()
+
+    # The two flags answer the same question, so accepting both would make the
+    # answer ambiguous. Rejected before the ledger migration prompt and the
+    # project-file seed: a usage error must not ask anything or write a file.
+    # Help wins over the error so `-h` always shows the flags it was given.
+    if close_issue and no_close_issue and not help_flag:
+        click.secho(
+            __("❌ --close-issue and --no-close-issue cannot be used together."),
+            fg="red",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
+
+    # How much of a terminal this run may use, and — on the first run after an
+    # upgrade — the question of what becomes of the pre-ledger event files. The
+    # question belongs here rather than at the first write: it decides whether a
+    # screen appears, and a screen that appears after the command has done its
+    # work is a screen nobody is looking at.
+    from src import ledger
+
+    may_ask = _may_ask_the_user(quiet=quiet, hook=hook, mcp=mcp)
+    ledger.configure_terminal(interactive=may_ask, quiet=quiet)
+
+    # `gitpr metrics` takes the same one-time migration in its own callback,
+    # where the reason for its one exemption (`migrate` asks on purpose) is
+    # visible next to the action that needs it.
+    if ctx.invoked_subcommand != "metrics":
+        ledger.ensure_ledger(interactive=may_ask)
+
+    # Project-local configuration, versioned with the repository: seeded on
+    # every invocation inside a repository, never overwritten. Help paths are
+    # the one exception — a help screen must not write files — and the test
+    # suite opts out through the environment variable so `pytest` never seeds
+    # the developer's checkout.
+    project_seed = None
+    if (
+        not help_flag
+        and not _subcommand_help_in_argv()
+        and not os.getenv("GITPR_SKIP_PROJECT_CONFIG_SEED")
+    ):
+        from src.project_config import ensure_project_config
+
+        project_seed = ensure_project_config()
+
+    # Subcommand dispatch (gitpr release …): Click invokes this group callback
+    # first, so everything below runs only when NO subcommand was requested —
+    # the legacy flag surface stays byte-for-byte intact (ADR-002).
+    if ctx.invoked_subcommand is not None:
+        if help_flag:
+            cmd = cli.get_command(ctx, ctx.invoked_subcommand)
+            if cmd is not None:
+                sub_ctx = cmd.make_context(
+                    ctx.invoked_subcommand, [], parent=ctx
+                )
+                curr_cmd = cmd
+                curr_ctx = sub_ctx
+                remaining_args = _resolve_subcommand_tokens(ctx)
+                while isinstance(curr_cmd, click.Group) and remaining_args:
+                    sub_name = remaining_args[0]
+                    nested_cmd = curr_cmd.get_command(curr_ctx, sub_name)
+                    if nested_cmd is None:
+                        break
+                    remaining_args.pop(0)
+                    curr_ctx = nested_cmd.make_context(
+                        sub_name, [], parent=curr_ctx
+                    )
+                    curr_cmd = nested_cmd
+
+                click.echo(curr_cmd.get_help(curr_ctx))
+                ctx.exit(0)
+            click.echo(ctx.get_help())
+            ctx.exit(0)
+
+        # The mandatory update gate covers subcommands too, but only when the
+        # run may stop and ask the user: a release in CI, a pipe or a hook must
+        # never be blocked. Help tokens are read from the raw argv because
+        # Click clears the context arguments before this callback runs.
+        if may_ask and not update and not _subcommand_help_in_argv():
+            if enforce_update_required():
+                sys.exit(1)
+        return
+
+    # ============================================================
+    # CONTEXTUAL HELP HANDLER
+    # ============================================================
+    if help_flag:
+        # Identifica quais outras flags estao ativas (excluindo hidden: hook, quiet)
+        active_flags: list[str] = []
+        for param_name, help_info in HELP_MAP.items():
+            # Click converts hyphens into underscores for function parameter names
+            value = locals().get(param_name.replace("-", "_"))
+            # Trata tanto flags booleanas (True) quanto parametros string (blame, input, provider)
+            if value:
+                active_flags.append(param_name)
+
+        if not active_flags:
+            # gitpr -h puro (sem outras flags): mostra help padrao do Click
+            ctx = click.get_current_context()
+            click.secho(f"gitpr v{__version__}", fg="cyan", bold=True)
+            click.echo(ctx.get_help())
+            ctx.exit()
+
+        # Ordena por prioridade e seleciona a flag mais especifica
+        active_flags.sort(key=lambda f: HELP_PRIORITY.get(f, 99))
+        primary_flag = active_flags[0]
+        help_info = HELP_MAP.get(primary_flag)
+
+        if help_info:
+            click.secho(f"\n{'=' * 60}", bold=True)
+            click.secho(f"  {help_info['title']}", fg="cyan", bold=True)
+            click.secho(f"{'=' * 60}\n", bold=True)
+            click.echo(help_info["description"])
+            click.echo("")
+            click.secho(__(">> Full documentation:"), fg="green")
+            click.secho(f"  {help_info['url']}", fg="blue", underline=True)
+            click.echo("")
+
+            if len(active_flags) > 1:
+                click.secho(
+                    __(">> Tip: For help on a single option, use -h with it only."),
+                    fg="yellow",
+                    dim=True,
+                )
+
+            # Display the main GitPR documentation URL as a footer
+            click.secho(
+                __(">> Repository: https://github.com/gitpr-cli/gitpr.git"),
+                fg="bright_black",
+            )
+            click.echo("")
+        else:
+            # Fallback: mostra help padrao (nao deveria acontecer)
+            ctx = click.get_current_context()
+            click.echo(ctx.get_help())
+
+        # Garante saida limpa apos exibir ajuda contextual
+        ctx = click.get_current_context()
+        ctx.exit()
+
+    # Language override via --lang flag (one-shot, does not persist to .env)
+    if lang:
+        from src.i18n import set_lang
+        from src.spinner import reload_thinking_words
+
+        set_lang(lang)
+        reload_thinking_words(lang)
+
+    # Announce the project file, unless this run is quiet, a hook, the MCP
+    # server or the install wizard (which reports the same seed itself). The
+    # subcommand path never reaches this point, so `gitpr config` stays silent.
+    if (
+        project_seed is not None
+        and project_seed.created
+        and not install
+        and not quiet
+        and not hook
+        and not mcp
+    ):
+        click.secho(
+            __("📄 Project configuration created: {path}", path=project_seed.path),
+            fg="green",
+        )
+        click.secho(
+            __("Version it with git so the whole team targets the same base branch."),
+            dim=True,
+        )
+        if project_seed.ignored:
+            click.secho(
+                __(
+                    "⚠️ {path} is ignored by .gitignore and will not be versioned.",
+                    path=project_seed.path,
+                ),
+                fg="yellow",
+            )
+
+    # Mandatory update gate: GitPR is distributed exclusively through PyPI, so a
+    # published newer version blocks the run and the user is told to upgrade.
+    # Skipped for internal invocations (--quiet, --hook, --mcp), for the --update
+    # flag itself (it is the command that explains how to upgrade) and for the
+    # contextual help path, so automation, hooks and help never get locked out.
+    if not quiet and not hook and not mcp and not update and not help_flag:
+        if enforce_update_required():
+            sys.exit(1)
+
+    # Auto-sync Git hooks (version + language gated — silent when up to date).
+    # Skipped for internal invocations (--quiet, --hook, --mcp) so hooks
+    # never update themselves mid-flight and MCP startup stays fast.
+    if not quiet and not hook and not mcp:
+        check_and_update_hooks_scripts()
+
+    # MCP Server Mode — start stdio MCP server (handled before any interactive setup)
+    if mcp:
+        # The MCP tools call the same review, linter and risk code as the CLI, so
+        # the pack has to be in force here too: without this the IDE would answer
+        # from the GitPR defaults while the terminal answered from the pack, about
+        # the same repository. The label is suppressed because stdout is the
+        # JSON-RPC stream and anything printed there corrupts it.
+        _resolve_policy_or_die(announce=False)
+
+        from src.mcp_server import main as mcp_main
+
+        mcp_main()
+        return
+
+    if plugins:
+        from src.config import get_linter_plugins, get_prompt_plugins
+
+        linter_plugins = get_linter_plugins()
+        prompt_plugins = get_prompt_plugins()
+
+        click.secho(__("\n🧩 GitPR Plugin System"), fg="cyan", bold=True)
+
+        click.secho(
+            __("\n🔍 Linter Packs ({count}):", count=len(linter_plugins)),
+            fg="yellow",
+            bold=True,
+        )
+        if linter_plugins:
+            for p in linter_plugins:
+                click.echo(f"  - {os.path.basename(p)}")
+        else:
+            click.echo(__("  No global linter plugins installed."))
+
+        click.secho(
+            __("\n💬 Custom Prompts ({count}):", count=len(prompt_plugins)),
+            fg="yellow",
+            bold=True,
+        )
+        if prompt_plugins:
+            for p in prompt_plugins:
+                click.echo(f"  - {os.path.basename(p)}")
+        else:
+            click.echo(__("  No global prompt plugins installed."))
+
+        click.secho(f"\n💡 {__('Plugin directory:')} ~/.gitpr/plugins/", dim=True)
+        return
+
+    if status:
+        from src.core import get_unstaged_categorized
+
+        data = get_unstaged_categorized()
+        if not any(data.values()):
+            click.secho(
+                __("✅ Working tree clean. No uncommitted changes found."), fg="green"
+            )
+            return
+        click.secho(__("📂 Uncommitted changes (no AI):"), fg="cyan", bold=True)
+        _print_unstaged_summary(data, quiet=quiet)
+        return
+
+    # Resolve the policy pack once, here — before the banner and before any
+    # prompt, linter rule or risk weight is read — and publish it to the
+    # module-level global those three consult. Every command below this line
+    # runs under it.
+    #
+    # `gitpr policy` is the exception. It is the set of commands that repairs a
+    # broken lockfile, so it must run *when resolution fails*; it reads the
+    # repository non-strictly and reports what it finds itself.
+    if ctx.invoked_subcommand != "policy":
+        _resolve_policy_or_die(announce=not quiet)
+
+    # …and the baseline beside it, resolved once per run and before any finding
+    # is produced. The three flows named here are the ones that *enforce* it: on
+    # a file that cannot be applied they stop rather than report. Everything
+    # else in this file gets an inactive gate and never touches the disk.
+    baseline_gate = _resolve_baseline_or_die(
+        required=bool(linter or review or fullreview or input)
+    )
+
+    # Silencia o banner se estiver no modo quiet ou via hook
+    if not quiet and not hook:
+        print_banner()
+
+    # Enable AI payload dump for inspection (hidden debug flag)
+    if pre_save:
+        from src.ai_providers import set_pre_save
+
+        set_pre_save(True)
+
+    if linter:
+        diff_text = get_git_diff()
+
+        if not diff_text or not diff_text.strip():
+            if not quiet:
+                click.secho(__("✅ Nothing to validate (empty diff)."), fg="green")
+            return
+
+        # One lint, two views: the alert strings the report has always been
+        # built from, and the structured findings beside them. Only a baseline
+        # reads the second one, and a run without a baseline never looks at it.
+        linted = []
+        linter_results = parse_diff_and_lint(diff_text, findings_out=linted)
+        has_warnings = len(linter_results["warnings"]) > 0
+        has_errors = len(linter_results["errors"]) > 0
+
+        compared = _classify_with_baseline(baseline_gate, linted)
+        # No baseline, or nothing to classify: every error blocks, exactly as it
+        # always has. With one, only the errors *this change* introduced do — a
+        # legacy tree that baselined its findings can go green.
+        blocking = has_errors
+        if compared:
+            from src.application.use_cases.baseline_gate import (
+                alert_status_index,
+                annotate_alerts,
+                blocking_errors,
+            )
+
+            # The statuses are written onto the alerts themselves, so the
+            # report, the console and the TUI tell one story about one finding.
+            linter_results = annotate_alerts(
+                linter_results, alert_status_index(compared)
+            )
+            blocking = bool(blocking_errors(compared))
+        _print_baseline_line(compared, quiet=quiet)
+
+        # 1. Generate and save the Markdown report (only when violations are found)
+        if has_warnings or has_errors:
+            branch_name = get_current_branch()
+            safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
+            current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+
+            report_path = resolve_output_path(
+                "OUTPUT_FILE_NAME_LINTER",
+                "{branch}_{datetime}_LINTER.md",
+                safe_branch_name,
+                current_time,
+            )
+
+            try:
+                with open(report_path, "w", encoding="utf-8", errors="replace") as f:
+                    f.write(generate_linter_report_content(linter_results))
+                if not quiet:
+                    click.secho(
+                        __("📄 Linter report saved to: {path}", path=report_path),
+                        fg="blue",
+                        dim=True,
+                    )
+            except Exception as e:
+                click.secho(
+                    __("❌ Error saving linter report: {error}", error=str(e)), fg="red"
+                )
+
+        # Fire-and-forget linter metric
+        from src.metrics import log_command_metric
+
+        log_command_metric(
+            command="linter",
+            status="error" if has_errors else "success",
+            linter_errors=len(linter_results.get("errors", [])),
+            linter_warnings=len(linter_results.get("warnings", [])),
+        )
+
+        # 2. Display TUI if there are errors and NOT in a hook/quiet mode. Every
+        #    error is still shown, baselined ones included, carrying their
+        #    status in front — hiding a legacy error would be the reviewers'
+        #    problem, not the baseline's.
+        if has_errors and not quiet and not hook:
+            from src.ui.linter_app import LinterApp
+
+            app = LinterApp(alerts=linter_results)
+            app.run()
+        elif blocking:
+            # Hook safety: print to the terminal only. Only when the run is
+            # actually failing: the sentence says "validation failed", and with
+            # a baseline every error in the diff can be a known one.
+            click.secho(
+                __(
+                    "\n🚨 Validation failed! Found {count} critical error(s):",
+                    count=len(linter_results["errors"]),
+                ),
+                fg="red",
+                bold=True,
+            )
+            for alert in linter_results["errors"]:
+                click.echo(f"  - {alert}")
+
+        # The exit code follows the baseline: an error the repository recorded
+        # does not fail the run, one this change introduced does. With no
+        # baseline `blocking` is `has_errors`, which is the `sys.exit(1)` every
+        # version before this one took here.
+        if blocking:
+            sys.exit(1)
+
+        # 3. Warning processing (best-practice advisories only)
+        if has_warnings and not quiet:
+            click.secho(
+                __(
+                    "\n⚠️ The Linter generated {count} best practice warning(s):",
+                    count=len(linter_results["warnings"]),
+                ),
+                fg="yellow",
+                bold=True,
+            )
+            for alert in linter_results["warnings"]:
+                click.echo(f"  - {alert}")
+            click.secho(
+                __("\n✅ Code approved with warnings. The commit will proceed."),
+                fg="green",
+            )
+        elif not quiet and not has_errors:
+            # `has_errors` is what keeps the sentence true: with a baseline a
+            # diff can carry errors that do not fail the run, and the line above
+            # has just listed them. Without one, `blocking` already exited.
+            click.secho(
+                __("\n✅ Clean code! No violations found by the local Linter."),
+                fg="green",
+                bold=True,
+            )
+
+        return
+
+    # Connection Guardian (Failing Fast)
+    check_internet_connection()
+
+    # Update Module (Pip-Aware)
+    if update:
+        click.secho(__("🔍 Checking for updates..."), fg="cyan")
+        check_and_update()
+        from src.metrics import log_command_metric
+
+        log_command_metric(command="update", status="success", provider="git")
+        return
+
+    # --install option: Interactive setup wizard
+    if install:
+        run_install_wizard()
+        from src.metrics import log_command_metric
+
+        log_command_metric(command="install", status="success", provider="git")
+        return
+
+    # --init option: SCM forge configuration wizard
+    if init:
+        run_scm_init_wizard()
+        return
+
+    # --linter-setup option: External linter wizard
+    if linter_setup:
+        from src.linter_wizard import run_linter_setup_wizard
+
+        run_linter_setup_wizard()
+        return
+
+    # --skill option: Generate template and exit
+    if skill:
+        generate_skill_template()
+        from src.metrics import log_command_metric
+
+        log_command_metric(command="skill", status="success", provider="git")
+        return
+
+    # --seed option: Seed project configuration and exit
+    if seed:
+        seed_project_configuration()
+        from src.metrics import log_command_metric
+
+        log_command_metric(command="seed", status="success", provider="local")
+        return
+
+    if installhooks:
+        hooks_ok = install_git_hooks()
+        if hooks_ok:
+            click.secho(
+                "\n" + __("✅ Git Hooks successfully installed!"), fg="green", bold=True
+            )
+            click.echo(__("The Linter will now run automatically before each commit."))
+
+            click.echo("\n---")
+            click.echo(__(">> Usage Guides:"))
+
+            # General Hooks documentation link
+            click.echo(__("• How to use Git Hooks:"))
+            click.secho(f"  {get_doc_url('git-hooks-locais.md')}", fg="blue")
+
+            # New link: Custom Rules Documentation
+            click.echo(__("• How to create new Linter rules (.gitpr.linter.yml):"))
+            click.secho(f"  {get_doc_url('linter-regras-customizadas.md')}", fg="blue")
+            click.echo("---\n")
+        from src.metrics import log_command_metric
+
+        log_command_metric(
+            command="installhooks",
+            status="success" if hooks_ok else "error",
+            provider="git",
+        )
+        return
+
+    # Archaeologist Module (--blame)
+    if blame and not issue:
+        # Parser to separate file from lines
+        if ":" in blame:
+            # Direct Mode: gitpr --blame file:10-20
+            file_path, lines = blame.split(":", 1)
+            try:
+                if "-" in lines:
+                    start_line, end_line = lines.split("-")
+                else:
+                    start_line = end_line = lines
+            except ValueError:
+                click.secho(
+                    __("❌ Invalid line format. Use start-end (e.g., 10-20)."), fg="red"
+                )
+                return
+        else:
+            # Interactive Mode: gitpr --blame file
+            file_path = blame
+            if not os.path.exists(file_path):
+                click.secho(
+                    __("❌ The file '{file_path}' was not found.", file_path=file_path),
+                    fg="red",
+                )
+                return
+
+            click.secho(
+                __(">> Selected file: {file_path}", file_path=file_path),
+                fg="cyan",
+                bold=True,
+            )
+            lines_input = click.prompt(
+                __("Which lines do you want to investigate? (E.g., 10-20 or just 45)")
+            )
+
+            if "-" in lines_input:
+                start_line, end_line = lines_input.split("-")
+            else:
+                start_line = end_line = lines_input
+
+        # Final file validation
+        if not os.path.exists(file_path):
+            click.secho(
+                __("❌ The file '{file_path}' was not found.", file_path=file_path),
+                fg="red",
+            )
+            return
+
+        # Trigger the engine
+        from src.blame_engine import run_blame_analysis
+
+        run_blame_analysis(file_path.strip(), start_line.strip(), end_line.strip())
+        from src.metrics import log_command_metric
+
+        log_command_metric(command="blame", status="success", provider="git")
+        return
+
+    # Issue Module (Hybrid)
+    if issue:
+        from src.issue_engine import generate_issue_content
+        from src.tui_issue import validate_or_request_scm_token
+        from src.ui.issue_app import IssueApp
+        from src.core import describe_repo
+
+        setup_environment()
+
+        # ── Unstaged files check (all 3 modes: diff, history, blame) ──
+        if not check_unstaged_files(
+            "issue", skip_check=no_unstaged_check, quiet=quiet, interactive=False
+        ):
+            return
+
+        context_text = ""
+        context_type = "diff"
+
+        # Intelligent Context Router
+        if history:
+            context_type = "history"
+            context_text = get_branch_history_text()
+            # Check if history is empty by comparing against possible EN variations
+            _no_commits = [
+                __("No exclusive commits"),
+                __("No exclusive commits found"),
+                __("No unique commits found."),
+            ]
+            _no_prs = [
+                __("No previous PR"),
+                __("No previous Pull Request"),
+                __("No previous AI-generated PR"),
+                __("No AI-generated PR found in cache"),
+            ]
+            _no_commits_found = any(phrase in context_text for phrase in _no_commits)
+            _no_prs_found = any(phrase in context_text for phrase in _no_prs)
+            if not context_text or (_no_commits_found and _no_prs_found):
+                click.secho(__("\n⚠️ No history found for this branch.\n"), fg="yellow")
+                return
+
+        elif blame:
+            context_type = "blame"
+            # Reuse the file/line parser from the blame option
+            if ":" in blame:
+                file_path, lines = blame.split(":", 1)
+                try:
+                    start_line, end_line = (
+                        lines.split("-") if "-" in lines else (lines, lines)
+                    )
+                except ValueError:
+                    click.secho(
+                        __("❌ Invalid line format. Use start-end (e.g., 10-20)."),
+                        fg="red",
+                    )
+                    return
+            else:
+                file_path = blame
+                if not os.path.exists(file_path):
+                    click.secho(
+                        __(
+                            "❌ The file '{file_path}' was not found.",
+                            file_path=file_path,
+                        ),
+                        fg="red",
+                    )
+                    return
+                click.secho(
+                    __(">> Selected file: {file_path}", file_path=file_path),
+                    fg="cyan",
+                    bold=True,
+                )
+                lines_input = click.prompt(
+                    __("Which lines do you want to investigate? (E.g.: 10-20)")
+                )
+                start_line, end_line = (
+                    lines_input.split("-")
+                    if "-" in lines_input
+                    else (lines_input, lines_input)
+                )
+
+            if not os.path.exists(file_path.strip()):
+                click.secho(
+                    __("❌ The file '{file_path}' was not found.", file_path=file_path),
+                    fg="red",
+                )
+                return
+
+            from src.blame_engine import run_blame_analysis
+
+            click.secho(
+                __("🔍 Extracting archaeological timeline in background..."), fg="cyan"
+            )
+
+            # Trigger the archaeologist in silent mode
+            timeline = run_blame_analysis(
+                file_path.strip(),
+                start_line.strip(),
+                end_line.strip(),
+                return_data=True,
+            )
+
+            if not timeline:
+                click.secho(
+                    __("\n⚠️ No traceable history to feed the issue.\n"), fg="yellow"
+                )
+                return
+
+            # Translate the dictionary list into AI-readable text
+            formatted_timeline = []
+            for item in timeline:
+                formatted_timeline.append(
+                    f"{__('[{date}] Commit {hash} by {author}:', date=item['raw_date'], hash=item['hash'], author=item['info']['author'])}\n"
+                    f"{__('Action: {status}', status=item['status'])}\n"
+                    f"{__('AI Reason: {reason}', reason=item['motivo'])}\n"
+                )
+            context_text = "\n".join(formatted_timeline)
+
+        else:
+            context_type = "diff"
+            context_text = get_git_diff()
+            if not context_text or not context_text.strip():
+                click.secho(
+                    __(
+                        "\n⚠️ No new code found. Make some changes before generating the issue.\n"
+                    ),
+                    fg="yellow",
+                )
+                return
+
+        # Generate content with AI using the correct language
+        issue_data = generate_issue_content(context_text, context_type=context_type)
+        if not issue_data:
+            return
+
+        # Resolve the SCM forge context (provider + repository reference)
+        provider, repo_ref = _resolve_scm_context()
+        if provider is None:
+            return
+
+        repo_info = describe_repo(repo_ref)
+
+        # Validate or request the forge token
+        github_token, provider = validate_or_request_scm_token(provider, repo_info)
+
+        if not github_token:
+            click.secho(_scm_access_canceled_message(provider), fg="red")
+            return
+
+        # Run the Terminal Graphical Interface (with reauth loop for expired tokens)
+        while True:
+            app = IssueApp(
+                issue_data=issue_data,
+                repo_info=repo_info,
+                github_token=github_token,
+                provider=provider,
+                repo_ref=repo_ref,
+            )
+            app.run()
+
+            # If token expired during the TUI session, re-prompt and relaunch
+            if app.final_action == "reauth":
+                click.secho(f"\n{app.final_message}\n", fg="yellow")
+                github_token, provider = validate_or_request_scm_token(
+                    provider, repo_info
+                )
+                if not github_token:
+                    click.secho(_scm_access_canceled_message(provider), fg="red")
+                    return
+                # Restart TUI with the same issue data and new token
+                continue
+
+            # Display return message after closing the TUI
+            if app.final_message:
+                cor = "green" if app.final_action in ["saved", "created"] else "red"
+                click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
+
+            break
+
+        return
+
+    # Chat Module (Pair Programming TUI)
+    if chat:
+        from src.config import get_api_key
+        from src.issue_engine import get_github_repo_info
+
+        setup_environment()
+
+        diff_text = get_git_diff()
+        if not diff_text or not diff_text.strip():
+            click.secho(
+                __(
+                    "\n⚠️ No new code found. Make some changes before starting the chat.\n"
+                ),
+                fg="yellow",
+            )
+            click.secho(
+                f"📚 {__('Chat documentation:')} {get_doc_url('understanding_chat_functionality.md')}",
+                fg="cyan",
+            )
+            return
+
+        active_provider = provider if provider else get_ai_provider()
+        api_key = get_api_key(active_provider)
+
+        if not api_key:
+            click.secho(__("❌ AI Provider API Key missing or invalid."), fg="red")
+            return
+
+        repo_info = get_github_repo_info() or "local-repo"
+        branch_name = get_current_branch()
+
+        try:
+            git_user = subprocess.run(
+                ["git", "config", "user.name"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            ).stdout.strip()
+            git_email = subprocess.run(
+                ["git", "config", "user.email"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            ).stdout.strip()
+        except Exception:
+            git_user, git_email = "Dev", "dev@local"
+
+        memory = ChatMemoryManager(
+            repo_info, branch_name, diff_text, git_user, git_email
+        )
+
+        system_instruction = __(
+            "You are a Senior Software Engineer acting as a Pair Programmer. Analyze the code provided and answer the user's questions clearly, objectively, and technically. Use Markdown to format code blocks. The current git diff is:\n\n{diff}",
+            diff=diff_text,
+        )
+
+        # Use the primary model configured in .env
+        env_model_key = f"{active_provider.upper()}_API_MODEL_PRIMARY"
+        api_model = os.getenv(env_model_key)
+        if not api_model:
+            click.secho(
+                __(
+                    "❌ Model configuration not found for provider {provider}.",
+                    provider=active_provider,
+                ),
+                fg="red",
+            )
+            return
+
+        app = ChatApp(
+            memory_manager=memory,
+            provider=active_provider,
+            api_key=api_key,
+            api_model=api_model,
+            system_instruction=system_instruction,
+        )
+        app.run()
+        from src.metrics import log_command_metric
+
+        log_command_metric(command="chat", status="success", provider=active_provider)
+        click.secho(
+            f"📚 {__('Chat documentation:')} {get_doc_url('understanding_chat_functionality.md')}",
+            fg="cyan",
+        )
+        return
+
+    # Input Mode validation (with guard to not interfere with contextual -h)
+    if input and not help_flag:
+        if not os.path.exists(input):
+            click.secho(
+                __("\n❌ Error: The file '{input}' was not found.", input=input),
+                fg="red",
+                bold=True,
+            )
+            return
+
+        if not (review or fullreview):
+            click.secho(
+                __(
+                    "\n❌ Error: The --input (-i) option can only be used with --review (-r) or --fullreview (-f)."
+                ),
+                fg="red",
+                bold=True,
+            )
+            return
+
+    # Ensure environment and keys are configured
+    setup_environment()
+
+    # Determine the AI provider to use (command line option takes priority)
+    active_provider = provider if provider else get_ai_provider()
+
+    # Determine the action type and which diff to capture
+    action_type = "pr"
+    diff_text = ""
+
+    if input:
+        # FILE REVIEW MODE: Read the physical file instead of git diff
+        action_type = "filereview"
+        try:
+            with open(input, "r", encoding="utf-8") as f:
+                diff_text = f.read()
+            click.secho(
+                __("📄 File Mode: Analyzing full content of '{input}'...", input=input),
+                fg="blue",
+            )
+        except Exception as e:
+            click.secho(__("❌ Error reading file: {error}", error=str(e)), fg="red")
+            return
+    elif commit:
+        action_type = "commit"
+        if hook:
+            if is_merge_in_progress():
+                return  # merge in progress: git owns the message, skip AI silently
+            diff_text = get_git_diff()
+        else:
+            # Interactive commit TUI flow
+            from src.ui.commit_app import CommitApp
+
+            app = CommitApp(
+                provider=active_provider, skip_unstaged=no_unstaged_check
+            )
+            app.run()
+            if app.result == "no_changes":
+                click.secho(
+                    __(
+                        "\n⚠️ No new code found. Make some changes or check your branch before running the command.\n"
+                    ),
+                    fg="yellow",
+                )
+            elif app.result == "committed":
+                click.secho(
+                    __("\n✅ Commit created successfully!\n"), fg="green", bold=True
+                )
+                if app._commit_output and app._commit_output.strip():
+                    click.echo(app._commit_output.strip() + "\n")
+            return
+    elif review:
+        action_type = "review"
+        if not hook and not check_unstaged_files(
+            "review", skip_check=no_unstaged_check, quiet=quiet, interactive=False
+        ):
+            return
+        diff_text = get_git_diff()
+    elif fullreview:
+        action_type = "fullreview"
+        if not hook and not check_unstaged_files(
+            "fullreview", skip_check=no_unstaged_check, quiet=quiet, interactive=False
+        ):
+            return
+        diff_text = get_git_full_diff()
+    else:
+        # Default: PR Description using Full Diff against the remote main
+        action_type = "pr"
+        # ADR-005: the close-issue decision is made before the stage TUI, and
+        # only a local record can make it cost anything. `scm_context` lets the
+        # rest of the flow reuse the provider/repository resolved here.
+        from src.issue_autoclose.resolve_close_issue import CloseIssueFlags
+
+        close_issue_decision, close_issue_registry, scm_context = _prepare_close_issue(
+            CloseIssueFlags(accept=close_issue, disabled=no_close_issue), base, may_ask
+        )
+        if not check_unstaged_files(
+            "pr", skip_check=no_unstaged_check, quiet=quiet, interactive=True
+        ):
+            return
+        click.secho(__("🚀 Starting pull request generation..."), fg="cyan")
+        diff_text = get_git_full_diff()
+
+    # A git failure is not an empty diff. get_git_full_diff()/get_git_diff()
+    # return None when git fails; folding that into "no new code found" hides it.
+    # Exit non-zero so scripts can tell the two apart. Hook mode fails open: a
+    # non-zero prepare-commit-msg hook makes git abort the user's commit.
+    if diff_text is None:
+        if hook:
+            return
+        raise click.exceptions.Exit(1)
+
+    # CRITICAL: Warn the user before exiting if there are no changes
+    if not diff_text.strip():
+        click.secho(
+            __(
+                "\n⚠️ No new code found. Make some changes or check your branch before running the command.\n"
+            ),
+            fg="yellow",
+        )
+        return
+
+    # Call AI according to active_provider using the new function signature.
+    # The two branch-review modes record their diff so `gitpr fix` patches
+    # against the revision that was reviewed, not against a later working tree.
+    data = generate_pr_content(
+        action_type,
+        action_type,
+        diff_text,
+        active_provider,
+        store_diff=action_type in ("review", "fullreview"),
+    )
+    if not data:
+        return
+
+    # Output Processing
+    branch_name = get_current_branch()
+    safe_branch_name = branch_name.replace("/", "-").replace("\\", "-")
+    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+
+    # Commit only in console
+    if action_type == "commit":
+        msg = append_coauthor_trailer(data.get("commit_message", __("Code update")))
+
+        if hook:
+            # HOOK MODE: Inject message directly into Git file
+            try:
+                with open(hook, "r", encoding="utf-8") as f:
+                    original_content = f.read()
+
+                # Place suggestion at the top, keeping original Git comments below
+                with open(hook, "w", encoding="utf-8") as f:
+                    f.write(f"{msg}\n\n{original_content}")
+
+                click.secho(
+                    __("✅ Message successfully injected into the editor!"), fg="green"
+                )
+            except Exception as e:
+                click.secho(
+                    __("❌ Error injecting into hook: {error}", error=str(e)), fg="red"
+                )
+        else:
+            # CONSOLE MODE: The original existing behavior
+            click.secho(
+                __("\n>> Tip: Use without --commit to generate the full PR.\n"),
+                fg="yellow",
+            )
+            click.secho(__("\n📝 Commit Suggestion:\n"), fg="green", bold=True)
+            click.echo(msg)
+            click.echo("\n")
+        return
+
+    # Code Review and File Review
+    if action_type in ["review", "fullreview", "filereview"]:
+        if fullreview:
+            output_filename = resolve_output_path(
+                "OUTPUT_FILE_NAME_FULLREVIEW",
+                "{branch}_{datetime}_PR_FULLREVIEW.txt",
+                safe_branch_name,
+                current_time,
+            )
+        elif action_type == "filereview":
+            output_filename = resolve_output_path(
+                "OUTPUT_FILE_NAME_FILEREVIEW",
+                "{branch}_{datetime}_FILE_REVIEW.txt",
+                safe_branch_name,
+                current_time,
+            )
+        else:
+            output_filename = resolve_output_path(
+                "OUTPUT_FILE_NAME_REVIEW",
+                "{branch}_{datetime}_PR_REVIEW.txt",
+                safe_branch_name,
+                current_time,
+            )
+        content = data.get("review", __("No analysis generated."))
+        from src.config import mentor_mode_enabled
+        if action_type in ("review", "fullreview") and (mentor_flag or mentor_mode_enabled()):
+            content = _append_mentor_section(content, action_type, diff_text, active_provider)
+        elif mentor_flag:
+            click.secho(
+                __("⚠️ Notice: --mentor option is only supported for -r (--review) and -f (--fullreview)."),
+                fg="yellow",
+                dim=True,
+            )
+
+        # Run the Linter. If "filereview", enable full-file mode.
+        linted = []
+        if action_type == "filereview":
+            linter_results = parse_diff_and_lint(
+                diff_text, is_full_file=True, file_path=input, findings_out=linted
+            )
+        else:
+            linter_results = parse_diff_and_lint(diff_text, findings_out=linted)
+
+        # The statuses reach the report file, the console and the risk section
+        # from this one classification. A review has never exited non-zero over
+        # a finding, and a baseline does not change that — it changes what a
+        # reader is told about one.
+        compared = _classify_with_baseline(baseline_gate, linted)
+        if compared:
+            from src.application.use_cases.baseline_gate import (
+                alert_status_index,
+                annotate_alerts,
+            )
+
+            linter_results = annotate_alerts(
+                linter_results, alert_status_index(compared)
+            )
+        _print_baseline_line(compared, quiet=quiet)
+
+        risk_section = None
+        if action_type in ("review", "fullreview") and risk_scoring_in_review_enabled():
+            try:
+                from src.application.use_cases.baseline_gate import (
+                    attach_informational_evidence,
+                    new_findings,
+                    status_line,
+                )
+                from src.application.use_cases.calculate_risk import execute_calculate_risk
+                from src.domain.risk.risk_explanation import format_risk_review_section
+                from src.review.diff_source import DiffOrigin, DiffSource
+
+                r_diff_source = DiffSource(
+                    origin=DiffOrigin.LOCAL,
+                    content=diff_text,
+                    identifier="head",
+                )
+                # With a baseline the score is this change's alone: the legacy
+                # findings travel as zero-weight evidence instead of raising it.
+                r_risk = execute_calculate_risk(
+                    r_diff_source, findings=new_findings(compared) if compared else None
+                )
+                if compared:
+                    attach_informational_evidence(r_risk, compared)
+                risk_section = format_risk_review_section(r_risk)
+                line = status_line(compared) if compared else ""
+                if line:
+                    risk_section = f"**{line}**\n\n{risk_section}"
+            except Exception:
+                risk_section = None
+
+        render_review_result(content, linter_results, output_filename, risk_assessment_text=risk_section)
+        return
+
+    # Default Pull Request (.md file)
+    output_filename = resolve_output_path(
+        "OUTPUT_FILE_NAME",
+        "{branch}_{datetime}_PR_DESC.md",
+        safe_branch_name,
+        current_time,
+    )
+
+    pr_desc_body = data.get("pr_description", __("No detailed description."))
+
+    from src.config import explain_enabled_by_default
+    if explain or explain_enabled_by_default():
+        from src.application.use_cases.generate_pr_explanation import generate_pr_explanation
+        click.secho("🧐 " + __("Generating Reviewer Guide (Explain my PR)..."), fg="cyan", dim=True)
+        explanation = generate_pr_explanation(diff_text, ai_provider=active_provider, quiet=True)
+        if explanation and explanation.markdown:
+            pr_desc_body = f"{pr_desc_body.rstrip()}\n\n---\n\n{explanation.markdown}"
+
+    # ADR-004: the closing line joins the body here, after the reviewer guide
+    # and before the .md and pr_data — so every publisher receives it, and the
+    # badge attached later lands after it.
+    from src.issue_autoclose.insert_close_line import insert_close_line
+
+    pr_desc_body = insert_close_line(pr_desc_body, close_issue_decision)
+
+    markdown_content = (
+        __("# 🚀 Pull Request Suggestion\n\n**Recommended Commit Message:**\n")
+        + "```text\n"
+        + f"{data.get('commit_message', __('Code update'))}\n"
+        + "```\n\n---\n\n"
+        + pr_desc_body
+    )
+
+    try:
+        with open(output_filename, "w", encoding="utf-8") as f:
+            f.write(markdown_content)
+        click.secho(
+            __(
+                "\n✅ Success! The file '{output_filename}' was generated in the current folder.",
+                output_filename=output_filename,
+            ),
+            fg="green",
+            bold=True,
+        )
+    except Exception as e:
+        click.secho("\n" + __("❌ Error saving file: {error}", error=str(e)), fg="red")
+
+    # ── PR Publisher logic ──
+    from src.core import describe_repo
+
+    # A record already made the early path resolve this once; reuse it — the
+    # tuple is truthy even on failure, so the error is never printed twice.
+    provider, repo_ref = scm_context or _resolve_scm_context()
+    if provider is None:
+        return
+
+    repo_info = describe_repo(repo_ref)
+    head_branch = branch_name
+
+    pr_data = {
+        "commit_message": data.get("commit_message", ""),
+        "pr_description": pr_desc_body,
+    }
+
+    # ── --no-publish: save locally and exit ──
+    if no_publish:
+        return
+
+    # One resolver for every source: --base, the project file, PR_DEFAULT_BASE,
+    # origin/HEAD. Validation happens here — before --no-edit commits anything —
+    # but only on paths that actually publish.
+    from src.project_config import BaseBranchError
+
+    try:
+        resolved_base = _resolve_pr_target(base, quiet)
+    except BaseBranchError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1)
+    for warning in resolved_base.warnings:
+        click.secho(warning, fg="yellow", err=True)
+    target_base = resolved_base.branch
+
+    # The badge goes on here, before either publisher reads `pr_data`: on screen
+    # in the TUI, and in the request `--no-edit` sends. Nothing is attached when
+    # the user opted out or when the linter had no rules to run.
+    from src.branding.badge_builder import attach_pr_badge
+
+    attach_pr_badge(pr_data, diff_text)
+
+    # ── --no-edit: auto-commit + direct publish ──
+    if no_edit:
+        from src.tui_issue import validate_or_request_scm_token
+
+        if not _run_auto_commit_cli(active_provider):
+            return
+
+        github_token, provider = validate_or_request_scm_token(provider, repo_info)
+        if not github_token:
+            click.secho(_scm_access_canceled_message(provider), fg="red")
+            return
+
+        if _publish_pr_directly(
+            pr_data, provider, repo_ref, target_base, output_filename
+        ):
+            _clear_close_issue_record(close_issue_registry, close_issue_decision)
+        return
+
+    # ── Default: Open TUI ──
+    from src.tui_issue import validate_or_request_scm_token
+    from src.ui.pr_publish_app import PrPublishApp
+
+    github_token, provider = validate_or_request_scm_token(provider, repo_info)
+    if not github_token:
+        click.secho(_scm_access_canceled_message(provider), fg="red")
+        return
+
+    # ── Suggested reviewers (default TUI flow only, never blocking) ──
+    # Blame of the diff's added lines against the working tree. Any failure
+    # (missing identity, shallow repo, git error) degrades to a yellow note
+    # and the publisher opens without suggestions.
+    reviewer_suggestion = None
+    if not no_suggest_reviewers and suggest_reviewers_enabled():
+        from src.cache import get_git_user_info
+        from src.suggest_reviewers import compute_reviewer_suggestions
+
+        click.secho(__("🔍 Searching for suggested reviewers..."), fg="cyan", dim=True)
+        try:
+            settings = get_reviewer_suggestion_settings()
+            user_name, user_email = get_git_user_info()
+            suggestion_result = compute_reviewer_suggestions(
+                diff_text,
+                pr_author_email=user_email,
+                pr_author_name=user_name,
+                top_n=settings["top_n"],
+                excluded_authors=settings["excluded"],
+            )
+        except Exception as e:
+            suggestion_result = None
+            click.secho(
+                __("⚠️ Could not compute reviewer suggestions: {error}", error=str(e)),
+                fg="yellow",
+                dim=True,
+            )
+        if suggestion_result:
+            if suggestion_result.files_without_blame:
+                click.secho(
+                    __(
+                        "ℹ️ Blame analysis: {with_count} file(s) with blame, {without_count} without blame (new or binary).",
+                        with_count=len(suggestion_result.files_with_blame),
+                        without_count=len(suggestion_result.files_without_blame),
+                    ),
+                    fg="yellow",
+                    dim=True,
+                )
+            for warning in suggestion_result.warnings:
+                click.secho(f"  ⚠️ {warning}", fg="yellow", dim=True)
+            reviewer_suggestion = _reviewer_suggestion_view(
+                suggestion_result, provider, repo_ref
+            )
+
+    # Interactive TUI with reauth loop
+    while True:
+        app = PrPublishApp(
+            pr_data=pr_data,
+            repo_info=repo_info,
+            github_token=github_token,
+            provider=provider,
+            repo_ref=repo_ref,
+            base_branch=target_base,
+            output_filename=output_filename,
+            reviewer_suggestion=reviewer_suggestion,
+        )
+        app.run()
+
+        if app.final_action == "reauth":
+            click.secho(f"\n{app.final_message}\n", fg="yellow")
+            github_token, provider = validate_or_request_scm_token(provider, repo_info)
+            if not github_token:
+                click.secho(_scm_access_canceled_message(provider), fg="red")
+                break
+            continue
+
+        # The record survives everything that did not put the line on the
+        # forge: a declined question, Esc, a failed publish, or merely opening
+        # an existing PR (which also reports "created").
+        if app.body_published:
+            _clear_close_issue_record(close_issue_registry, close_issue_decision)
+
+        if app.final_message:
+            cor = (
+                "green" if app.final_action in ["saved", "created", "merged"] else "red"
+            )
+            click.secho(f"\n{app.final_message}\n", fg=cor, bold=True)
+
+        if (
+            app.final_action in ["created", "merged", "merge_failed"]
+            and app.final_pr_url
+        ):
+            if click.confirm(__("🔗 Open the Pull Request in your browser?")):
+                import webbrowser
+
+                webbrowser.open(app.final_pr_url)
+        click.secho(
+            f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}",
+            fg="cyan",
+        )
+        break
+
+
+# ============================================================
+# gitpr release — changelog / release notes (first subcommand, ADR-002)
+# ============================================================
+def _preview_release(result, max_lines=40):
+    """Prints a terminal preview of the generated changelog section (grill Q4/Q5)."""
+    lines = result.markdown.rstrip("\n").splitlines()
+    if len(lines) > max_lines:
+        click.echo("\n".join(lines[:max_lines]))
+        click.echo(__("… and {more} more lines", more=len(lines) - max_lines))
+    else:
+        click.echo(result.markdown.rstrip("\n"))
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("install-wizard.md"),
+)
+@click.option(
+    "--force",
+    "-f",
+    is_flag=True,
+    help=__(
+        "Forces overwriting existing project configuration files with default templates."
+    ),
+)
+@click.option(
+    "--all",
+    "-a",
+    "include_all",
+    is_flag=True,
+    help=__(
+        "Also downloads all AI prompt skill templates (.gitpr.*.md) into .gitpr/skill/."
+    ),
+)
+def seed(force, include_all):
+    """Seeds project-local configuration files (.gitpr/conf/ and linter).
+
+    Initializes the repository's local configuration files:
+      - .gitpr/conf/gitpr.config.yml (PR base branch)
+      - .gitpr/conf/gitpr.smart-excludes.json (Smart Excludes pathspecs)
+      - .gitpr/skill/.gitpr.linter.yml (Local regex linter rules)
+
+    Never overwrites existing files unless --force is specified.
+    """
+    from src.metrics import log_command_metric
+
+    try:
+        seed_project_configuration(force=force, include_all_skills=include_all, quiet=False)
+        log_command_metric(command="seed", status="success", provider="local")
+    except Exception:
+        log_command_metric(command="seed", status="error", provider="local")
+        raise
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("release-notes.md"),
+)
+@click.option(
+    "--since",
+    "since_tag",
+    metavar="<tag>",
+    help=__(
+        "Range origin: tag or reference from where commits are collected (default: the latest reachable tag, or the first commit when no tag exists)."
+    ),
+)
+@click.option(
+    "--version",
+    "target_version",
+    metavar="<x.y.z>",
+    help=__(
+        "Target version of the release (default: automatic semantic bump suggestion)."
+    ),
+)
+@click.option(
+    "--publish",
+    is_flag=True,
+    help=__(
+        "After generating, publish the release on the configured forge (asks for confirmation)."
+    ),
+)
+@click.option(
+    "--draft",
+    is_flag=True,
+    help=__(
+        "Create the release as a draft on the forge (GitHub). Only applies together with --publish; GitLab has no draft concept."
+    ),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["markdown", "json"], case_sensitive=False),
+    default="markdown",
+    show_default=True,
+    help=__(
+        "json prints the full result to stdout without touching files or publishing."
+    ),
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help=__(
+        "Regenerate the version section when it already exists in the changelog (idempotency override)."
+    ),
+)
+def release(since_tag, target_version, publish, draft, output_format, force):
+    """Generates the changelog / release notes of the current repository.
+
+    Scans the commits between --since (default: the latest reachable tag) and
+    HEAD, classifies them by Conventional Commits, suggests a semantic version
+    bump, optionally adds an AI executive summary and prepends the new section
+    to CHANGELOG.md.
+
+    Local generation is the default — nothing is published and no local tags or
+    version files are touched. With --publish the release is created on the
+    forge after an explicit confirmation; GitHub auto-creates the tag on its
+    default branch, GitLab requires the tag to already exist there.
+
+    On the first run the ``.gitpr.release.md`` skill template is downloaded
+    (language-aware, never overwriting) and used as the system instruction of
+    the AI executive summary — edit it locally to customize the summary.
+    """
+    import json
+
+    from src.config import get_release_settings, get_scm_settings
+    from src.infrastructure.scm.base import ScmNotSupportedError, ScmProviderError
+    from src.infrastructure.scm.factory import resolve_scm_provider
+    from src.release_engine import (
+        ReleaseNotesError,
+        generate_release_notes,
+        get_repo_root,
+        publish_release,
+        result_to_json,
+        upsert_changelog,
+    )
+
+    settings = get_release_settings()
+    json_mode = output_format.lower() == "json"
+
+    if json_mode and publish:
+        click.secho(
+            __("⚠️ --format json is stdout-only: --publish is ignored."),
+            fg="yellow",
+        )
+    if draft and not publish:
+        click.secho(
+            __(
+                "⚠️ --draft only applies together with --publish: generating the changelog locally."
+            ),
+            fg="yellow",
+        )
+
+    # R4: first-use auto-download of the .gitpr.release.md skill template.
+    # CLI layer only (never the engine), skipped on --format json because that
+    # mode is stdout-only and must not touch the filesystem.
+    if not json_mode:
+        ensure_release_skill_template()
+
+    try:
+        result = generate_release_notes(
+            repo_path=".",
+            since_tag=since_tag,
+            target_version=target_version,
+            ai_summary=settings["ai_summary"],
+            auto_bump=settings["auto_bump"],
+            quiet=json_mode,
+            ask_version=not json_mode,
+            changelog_path=settings["changelog_path"],
+        )
+    except ReleaseNotesError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    # Warnings live inside the JSON result too — never pollute the stdout stream.
+    if not json_mode:
+        for warning in result.warnings:
+            click.secho(f"  ⚠️ {warning}", fg="yellow", dim=True)
+
+    if json_mode:
+        click.echo(json.dumps(result_to_json(result), indent=2, ensure_ascii=False))
+        return
+
+    repo_root = get_repo_root(".")
+    changelog_path = settings["changelog_path"]
+    if not os.path.isabs(changelog_path):
+        changelog_path = os.path.join(repo_root, changelog_path)
+
+    try:
+        status = upsert_changelog(
+            changelog_path, result.version, result.markdown, force=force
+        )
+    except ReleaseNotesError as exc:
+        click.secho(str(exc), fg="red")
+        raise click.exceptions.Exit(1) from exc
+
+    if status == "replaced":
+        click.secho(
+            __("🔄 Existing section for version {version} regenerated.",
+               version=result.version),
+            fg="cyan",
+        )
+    else:
+        click.secho(
+            __("✅ Changelog updated: {path}", path=changelog_path),
+            fg="green",
+            bold=True,
+        )
+
+    # R5: per-run artifact under .gitpr/reports/release/ (best-effort — a
+    # failure here warns but never fails the command; the changelog upsert
+    # above already ruled the release generation).
+    try:
+        branch = get_current_branch()
+        safe_branch = branch.replace("/", "-").replace("\\", "-")
+        artifact_path = resolve_output_path(
+            "OUTPUT_FILE_NAME_RELEASE",
+            "{branch}_{datetime}_RELEASE.md",
+            safe_branch,
+            datetime.now().strftime("%Y%m%d%H%M%S"),
+        )
+        with open(artifact_path, "w", encoding="utf-8", errors="replace") as f:
+            f.write(result.markdown)
+        click.secho(
+            __("📄 Release notes artifact saved to: {path}", path=artifact_path),
+            fg="blue",
+            dim=True,
+        )
+    except Exception as exc:
+        click.secho(
+            __(
+                "⚠️ Warning: Could not save the release notes artifact: {error}",
+                error=str(exc),
+            ),
+            fg="yellow",
+        )
+
+    click.echo("")
+    _preview_release(result)
+
+    if not publish:
+        click.secho(
+            __("ℹ️ To publish this release on the forge, run again with --publish."),
+            fg="cyan",
+            dim=True,
+        )
+        return
+
+    effective_draft = draft or settings["publish_draft_by_default"]
+    scm_provider = resolve_scm_provider(get_scm_settings())
+    from src.core import get_origin_remote_url
+
+    remote_url = get_origin_remote_url()
+    if not remote_url:
+        click.secho(
+            __("❌ No git remote 'origin' found. Cannot publish the release."),
+            fg="red",
+        )
+        raise click.exceptions.Exit(1)
+    try:
+        repo_ref = scm_provider.parse_repo_ref(remote_url)
+    except ValueError as exc:
+        click.secho(str(exc), fg="red")
+        raise click.exceptions.Exit(1) from exc
+
+    if not click.confirm(
+        __(
+            "❓ Publish release {version} on {provider}?",
+            version=result.version,
+            provider=scm_provider.name,
+        ),
+        default=False,
+    ):
+        click.secho(
+            __("⏭️ Publication skipped — the changelog was generated locally."),
+            fg="yellow",
+        )
+        return
+
+    try:
+        url = publish_release(
+            result, scm_provider, repo_ref, draft=effective_draft
+        )
+    except ScmNotSupportedError as exc:
+        click.secho(
+            __(
+                "⚠️ Release publishing is not supported on {provider}. The changelog was generated locally — publish it manually.",
+                provider=exc.provider,
+            ),
+            fg="yellow",
+        )
+        return
+    except ScmProviderError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    click.secho(
+        __("✅ Release {version} published: {url}",
+           version=result.version, url=url),
+        fg="green",
+        bold=True,
+    )
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("config-tui.md"),
+)
+def config():
+    """Opens the interactive configuration screen for ~/.gitpr/.env.
+
+    Master-detail interface: the categories on the left, the settings of the
+    selected one on the right, edited in place. F2 validates and saves, Ctrl+R
+    removes the line so the built-in default applies again, and / searches a
+    variable or a label across every category.
+
+    Changes are written only when you save, and secrets are stored encrypted.
+    The screen shows the value from the file; when an environment variable
+    shadows it the field is flagged, because the environment wins at runtime.
+
+    Works on a clean machine — with no file yet the screen opens on the
+    built-in defaults.
+    """
+    # setup_environment() is deliberately NOT called: it prompts for a missing
+    # API key on stdin, which would fight the screen for the terminal. Nothing
+    # else in the startup path is needed, and the root callback already returns
+    # early for subcommands, so no banner is printed either.
+    from src.ui.config_app import launch_config_app
+
+    launch_config_app()
+
+
+# ============================================================
+# gitpr demo — guided tour over a recorded example
+# ============================================================
+
+
+@cli.command(
+    "demo",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("demo.md"),
+)
+@click.option(
+    "--scenario",
+    "scenario_name",
+    metavar="<name>",
+    help=__("Example to walk through. Without it, the first one is used."),
+)
+@click.option(
+    "--lang",
+    "lang",
+    metavar="<lang>",
+    help=__("Language for this run (en_us, pt_br, pt_pt, es_es, fr_fr)."),
+)
+@click.option(
+    "--no-tui",
+    "no_tui",
+    is_flag=True,
+    help=__("Prints the tour as plain text instead of opening the screen."),
+)
+def demo(scenario_name, lang, no_tui):
+    """Guided tour of GitPR over an example diff.
+
+    Walks through the three things GitPR does with a change — the commit
+    message, the code review and the pull request description — using an
+    example that ships with the tool. Nothing is generated and nothing is sent:
+    the answers were recorded once and are replayed, so the tour needs no API
+    key, no Git repository and no connection.
+
+    This is the second way to use GitPR. For the real thing, run ``gitpr --init``
+    to configure a provider and a forge token.
+    """
+    # The root callback returns before its --lang handler for every subcommand,
+    # so the flag has to be applied here. reload_thinking_words() is
+    # deliberately not called: the tour never spins, and it would download.
+    if lang:
+        from src.i18n import set_lang
+
+        set_lang(lang)
+
+    from src.demo.demo_runner import run_demo
+    from src.demo.scenarios import DemoScenarioError
+
+    try:
+        run_demo(scenario_name, tui=not no_tui)
+    except DemoScenarioError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+
+@cli.command(
+    "badge",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("badge.md"),
+)
+@click.option(
+    "--readme",
+    "readme",
+    is_flag=True,
+    help=__("Prints only the snippet, ready to paste into a README."),
+)
+@click.option(
+    "--style",
+    "style",
+    metavar="<style>",
+    default="flat",
+    show_default=True,
+    help=__("shields.io style: flat, flat-square or for-the-badge."),
+)
+def badge(readme, style):
+    """Adoption badge for a project's README.
+
+    Prints the Markdown for a static badge. Nothing is written to your README —
+    the snippet is printed so you can paste it where you want it.
+    """
+    from src.branding.badge_builder import (
+        DEFAULT_STYLE,
+        VALID_STYLES,
+        build_readme_badge,
+    )
+
+    if style not in VALID_STYLES:
+        click.secho(
+            __(
+                "⚠️ Unknown style '{style}' — falling back to '{default}'.",
+                style=style,
+                default=DEFAULT_STYLE,
+            ),
+            fg="yellow",
+            err=True,
+        )
+
+    snippet = build_readme_badge(style)
+
+    # --readme is the pipe-friendly form: the snippet and nothing else.
+    if readme:
+        click.echo(snippet)
+        return
+
+    click.secho("🏷️  " + __("GitPR badge for your README"), fg="cyan", bold=True)
+    click.echo("")
+    click.echo(snippet)
+    click.echo("")
+    click.secho(
+        __(
+            "Pull requests published by GitPR carry a badge too, with the linter counts of the diff."
+        ),
+        dim=True,
+    )
+
+
+# ============================================================
+# gitpr fix — review findings applied as reviewable diffs (ADR-004)
+# ============================================================
+_FIX_SAFETY_COLORS = {"safe": "green", "review_required": "yellow", "experimental": "red"}
+
+
+def _fix_reason(reason_code):
+    """The translated reason behind a classification code.
+
+    The classifier reports a code and never a sentence, so the wording lives
+    here — and the MCP tool keeps reporting the code, because its callers match
+    on a stable string instead of reading prose.
+
+    One literal __() per code rather than a table of sentences: the i18n test
+    scans the source for __() literals, so a sentence reached through a variable
+    would be looked up by nothing and silently stay English.
+    """
+    if reason_code == "apply_check_failed":
+        return __("it does not apply to the current tree")
+    if reason_code == "multi_file":
+        return __("it changes more than one file")
+    if reason_code == "low_confidence":
+        return __("the AI declared low confidence in it")
+    if reason_code == "excluded_path":
+        return __("it touches a configured sensitive path")
+    if reason_code == "multiple_hunks":
+        return __("it spans more than one hunk")
+    if reason_code == "too_many_lines":
+        return __("it changes more lines than the configured limit")
+    if reason_code == "removes_call":
+        return __("it deletes a line that looks like a call")
+    return reason_code
+
+
+def _fix_location(finding):
+    """``path:line`` for a finding, or just the path when it carries no line."""
+    if finding.line_start:
+        return f"{finding.file_path}:{finding.line_start}"
+    return finding.file_path
+
+
+def _print_fix_candidate(candidate):
+    """One candidate as a terminal block: class, location, finding, patch id."""
+    finding = candidate.finding
+    click.secho(f"  {finding.id}", fg="cyan", bold=True, nl=False)
+    click.secho(
+        f"  [{candidate.safety.value}]",
+        fg=_FIX_SAFETY_COLORS.get(candidate.safety.value, "white"),
+        nl=False,
+    )
+    click.secho(f"  {_fix_location(finding)}")
+    if finding.message:
+        click.echo(f"     {finding.message}")
+    line = f"     ↳ {candidate.patch_id}"
+    if candidate.safety.value != "safe":
+        line += f" — {_fix_reason(candidate.safety_reason)}"
+    click.secho(line, fg="white", dim=True)
+
+
+def _print_fix_diff(diff_text):
+    """A unified diff in the terminal colours the rest of the project uses."""
+    for line in diff_text.rstrip("\n").splitlines():
+        if line.startswith(("+++", "---")):
+            click.secho(f"   {line}", fg="cyan")
+        elif line.startswith("@@"):
+            click.secho(f"   {line}", fg="magenta")
+        elif line.startswith("+"):
+            click.secho(f"   {line}", fg="green")
+        elif line.startswith("-"):
+            click.secho(f"   {line}", fg="red")
+        else:
+            click.echo(f"   {line}")
+
+
+def _print_fix_left_out(candidates, selected):
+    """The candidates a batch did not take, with the id that brings them back."""
+    for candidate in candidates:
+        if candidate not in selected:
+            click.secho(
+                __(
+                    "⏭️ {finding_id} not applied — {safety}: {reason}",
+                    finding_id=candidate.finding.id,
+                    safety=candidate.safety.value,
+                    reason=_fix_reason(candidate.safety_reason),
+                ),
+                fg="white",
+                dim=True,
+            )
+
+
+def _append_mentor_section(content, action_type, diff_text, active_provider):
+    """Generates and appends pedagogical mentor explanations to a code review."""
+    from src.application.use_cases.generate_mentor_explanation import (
+        MentorError,
+        explain_review,
+    )
+
+    synthetic_record = {
+        "response": {"review": content},
+        "diff": diff_text,
+        "action_type": action_type,
+    }
+
+    try:
+        click.secho("🎓 " + __("Generating Mentor guidance for review findings..."), fg="cyan", dim=True)
+        run = explain_review(
+            record=synthetic_record,
+            finding_id=None,
+            ai_provider=active_provider,
+            quiet=False,
+        )
+        if run and run.markdown:
+            click.secho(
+                __("🎓 Mentor: {count} finding(s) explained successfully.", count=len(run.explanations)),
+                fg="green",
+                dim=True,
+            )
+            if run.skipped_ids:
+                click.secho(
+                    __(
+                        "ℹ️ {count} additional finding(s) not expanded. Run 'gitpr mentor --finding <id>' to view.",
+                        count=len(run.skipped_ids),
+                    ),
+                    fg="yellow",
+                    dim=True,
+                )
+            return f"{content.rstrip()}\n\n---\n\n{run.markdown}"
+    except MentorError as exc:
+        click.secho(f"⚠️ {exc}", fg="yellow", dim=True)
+    except Exception as exc:
+        click.secho(
+            __(
+                "⚠️ Warning: Failed to generate mentor section ({error})",
+                error=str(exc),
+            ),
+            fg="yellow",
+            dim=True,
+        )
+
+    return content
+
+
+@cli.command(
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("fix-command.md"),
+)
+@click.argument("finding_id", required=False, metavar="[<finding-id>]")
+@click.option(
+    "--list",
+    "list_only",
+    is_flag=True,
+    help=__("Lists the fix candidates of the last review — what the command does with no arguments."),
+)
+@click.option(
+    "--apply",
+    "apply_changes",
+    is_flag=True,
+    help=__("Writes the patch into the working tree. Without it the run is a dry run that touches nothing."),
+)
+@click.option(
+    "--all-safe",
+    "all_safe",
+    is_flag=True,
+    help=__("Selects every patch classified as safe. Writing them still requires --apply."),
+)
+@click.option(
+    "--create-branch",
+    "branch_name",
+    metavar="<name>",
+    help=__("Creates and switches to this branch before applying the patches."),
+)
+@click.option(
+    "--no-branch",
+    is_flag=True,
+    help=__("Applies on the current branch even when the configuration would create one."),
+)
+@click.option(
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help=__("Skips the confirmation prompt. It never bypasses --force."),
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help=__("Applies a patch that is not safe, after a typed confirmation phrase."),
+)
+@click.option(
+    "--rollback",
+    "rollback_id",
+    metavar="<patch-id>",
+    help=__("Undoes a patch applied earlier, reading its diff from the local history."),
+)
+def fix(
+    finding_id,
+    list_only,
+    apply_changes,
+    all_safe,
+    branch_name,
+    no_branch,
+    assume_yes,
+    force,
+    rollback_id,
+):
+    """Turns the last code review into patches you read before they touch your tree.
+
+    Reads the most recent review of this repository and branch (``gitpr -r``),
+    asks the AI for the smallest unified diff that fixes each problem the review
+    raised, and classifies every patch by how much it can be trusted.
+
+    Nothing is written by default: with no arguments the candidates are listed,
+    and a dry run prints the diff. Writing requires --apply, and a patch that is
+    not classified as safe additionally requires --force with a typed phrase.
+
+    The diff is re-derived with the same function that produced the review, so
+    the patch is written against the tree in front of you now. Every applied
+    patch is recorded in ``.gitpr/fix_history.json`` and can be undone with
+    --rollback, which needs no commit because the whole diff is stored.
+    """
+    from src.config import get_fix_settings
+    from src.fix.apply_fix import (
+        FixError,
+        apply_candidates,
+        collect_candidates,
+        find_candidate,
+        resolve_review,
+        select_safe,
+    )
+    from src.fix.rollback_fix import rollback_fix as undo_patch
+
+    settings = get_fix_settings()
+
+    if rollback_id:
+        if finding_id or apply_changes or all_safe:
+            click.secho(
+                __("❌ --rollback takes no finding id and cannot be combined with --apply or --all-safe."),
+                fg="red",
+            )
+            raise click.exceptions.Exit(1)
+        try:
+            entry = undo_patch(rollback_id)
+        except FixError as exc:
+            click.secho(str(exc), fg="red", err=True)
+            raise click.exceptions.Exit(1) from exc
+        click.secho(
+            __(
+                "ℹ️ Undone patch {patch_id}: {files} restored.",
+                patch_id=entry.get("patch_id"),
+                files=", ".join(entry.get("files_changed") or []),
+            ),
+            fg="green",
+        )
+        return
+
+    if force and all_safe:
+        click.secho(
+            __("⚠️ --force has no effect with --all-safe: only safe patches are selected."),
+            fg="yellow",
+        )
+
+    if not finding_id and not all_safe:
+        if apply_changes:
+            click.secho(
+                __("⚠️ Nothing was selected: name a finding id or add --all-safe."),
+                fg="yellow",
+            )
+        list_only = True
+
+    try:
+        candidates = collect_candidates(
+            resolve_review(),
+            max_lines_changed=settings["safe_max_lines_changed"],
+            excluded_paths=settings["safe_excluded_paths"],
+        )
+        if all_safe:
+            selected = select_safe(candidates)
+        elif finding_id:
+            selected = (find_candidate(candidates, finding_id),)
+        else:
+            selected = ()
+    except FixError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    if not candidates:
+        click.secho(__("ℹ️ The review raised no fixable findings."), fg="yellow")
+        return
+
+    if all_safe and not selected:
+        click.secho(
+            __("ℹ️ None of the candidates is safe. Apply one by id with 'gitpr fix <id> --apply'."),
+            fg="yellow",
+        )
+        return
+
+    if list_only:
+        click.secho(__("🔎 Fix candidates from the last review:"), fg="cyan", bold=True)
+        for candidate in candidates:
+            _print_fix_candidate(candidate)
+        click.secho(
+            __(
+                "ℹ️ Apply one with 'gitpr fix <id> --apply'; the safe ones can be batched with '--all-safe --apply'."
+            ),
+            fg="cyan",
+            dim=True,
+        )
+        return
+
+    branch = None
+    if branch_name:
+        branch = branch_name
+    elif all_safe and not no_branch and settings["create_branch_on_all_safe"]:
+        branch = settings["branch_name_template"].format(
+            branch=get_current_branch() or "",
+            datetime=datetime.now().strftime("%Y%m%d%H%M%S"),
+        )
+
+    if not apply_changes:
+        # Dry run: the diff and the classification are the whole point, and
+        # apply_candidates(dry_run=True) is the one path that writes nothing.
+        results = apply_candidates(selected, dry_run=True)
+        for candidate, result in zip(selected, results):
+            _print_fix_candidate(candidate)
+            _print_fix_diff(result.dry_run_diff)
+            for warning in result.warnings:
+                click.secho(f"   {warning}", fg="yellow")
+        if branch:
+            click.secho(
+                __(
+                    "ℹ️ Branch '{branch}' would be created before the patches are applied.",
+                    branch=branch,
+                ),
+                fg="cyan",
+                dim=True,
+            )
+        if all_safe:
+            _print_fix_left_out(candidates, selected)
+        click.secho(
+            __("ℹ️ Dry run — nothing was written. Add --apply to write it."),
+            fg="cyan",
+            dim=True,
+        )
+        return
+
+    # A patch that is not safe is never written by a plain --apply: --force is
+    # the only door, and it opens on a typed phrase rather than a y/n.
+    unsafe = [candidate for candidate in selected if candidate.safety.value != "safe"]
+    if unsafe and not force:
+        for candidate in unsafe:
+            click.secho(
+                __(
+                    "❌ {finding_id} is {safety} ({reason}) — re-run with --force to apply it anyway.",
+                    finding_id=candidate.finding.id,
+                    safety=candidate.safety.value,
+                    reason=_fix_reason(candidate.safety_reason),
+                ),
+                fg="red",
+            )
+        raise click.exceptions.Exit(1)
+
+    if unsafe:
+        phrase = f"apply {unsafe[0].finding.id}"
+        typed = click.prompt(
+            __(
+                "❗ {safety} patch: {reason}. Type '{phrase}' to confirm",
+                safety=unsafe[0].safety.value,
+                reason=_fix_reason(unsafe[0].safety_reason),
+                phrase=phrase,
+            )
+        )
+        if typed.strip().lower() != phrase.lower():
+            click.secho(
+                __("❌ The confirmation phrase does not match. Nothing was applied."),
+                fg="red",
+            )
+            raise click.exceptions.Exit(1)
+    elif settings["require_confirmation"] and not assume_yes:
+        question = (
+            __("❓ Apply {finding_id} to the working tree?", finding_id=finding_id)
+            if finding_id
+            else __("❓ Apply the selected patches to the working tree?")
+        )
+        if not click.confirm(question, default=False):
+            click.secho(__("❌ Operation cancelled by user."), fg="yellow")
+            return
+
+    try:
+        results = apply_candidates(selected, dry_run=False, branch=branch)
+    except FixError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    if branch:
+        click.secho(
+            __("✅ Branch '{branch}' created for the batch.", branch=branch), fg="green"
+        )
+    for candidate, result in zip(selected, results):
+        if result.applied:
+            click.secho(
+                __(
+                    "✅ Patch applied: {patch_id} ({files})",
+                    patch_id=result.patch_id,
+                    files=", ".join(result.files_changed) or _fix_location(candidate.finding),
+                ),
+                fg="green",
+                bold=True,
+            )
+        for warning in result.warnings:
+            click.secho(f"   {warning}", fg="yellow")
+    if all_safe:
+        _print_fix_left_out(candidates, selected)
+
+
+@cli.command(
+    "review-pr",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("review-pr.md"),
+)
+@click.argument("pr_number", type=int, metavar="<number>")
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+@click.option(
+    "--post-comment",
+    "post_comment",
+    is_flag=True,
+    help=__(
+        "Publishes the review as a comment on the pull request. Without it the forge is never written to."
+    ),
+)
+def review_pr(pr_number, ai_provider, post_comment):
+    """Reviews a pull request that is already open, without checking it out.
+
+    Fetches the diff straight from the forge and runs the same review engine as
+    ``gitpr -r``, so the report, the linter alerts and the saved .txt are the
+    same — only the diff's origin differs. Built for reviewing someone else's
+    pull request, where the branch is not and need not be local.
+
+    Nothing is published on the forge unless --post-comment is given.
+    """
+    from src.domain.baseline import BaselineError
+    from src.infrastructure.scm.base import ScmProviderError
+    from src.review.remote_pr import ReviewPrError, review_remote_pr
+
+    # A subcommand never runs the root callback, so the pack has to be resolved
+    # here or this flow would lint and score from the defaults while the
+    # terminal answered from the pack — about the same repository. The baseline
+    # is resolved inside the use case, before its first network call.
+    _resolve_policy_or_die()
+
+    provider, repo_ref = _resolve_scm_context()
+    if not provider or not repo_ref:
+        raise click.exceptions.Exit(1)
+
+    active_provider = ai_provider or get_ai_provider()
+
+    try:
+        result = review_remote_pr(
+            pr_number, provider, repo_ref, active_provider, post_comment
+        )
+    except ReviewPrError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+    except BaselineError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+    except ScmProviderError as exc:
+        click.secho(f"❌ {exc}", fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    for warning in result.warnings:
+        click.secho(f"⚠️  {warning}", fg="yellow")
+
+    # The {branch} slot carries the PR's source branch: the report belongs to
+    # the revision being reviewed, not to whatever branch is checked out.
+    safe_branch_name = (result.diff_source.head_branch or f"pr-{pr_number}").replace(
+        "/", "-"
+    ).replace("\\", "-")
+    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
+    output_filename = resolve_output_path(
+        "OUTPUT_FILE_NAME_REVIEW",
+        "{branch}_{datetime}_PR_REVIEW.txt",
+        safe_branch_name,
+        current_time,
+    )
+
+    compared = getattr(result, "compared", None) or []
+    _print_baseline_line(compared)
+
+    risk_section = None
+    if risk_scoring_in_review_enabled() and result.diff_source:
+        try:
+            from src.application.use_cases.baseline_gate import (
+                attach_informational_evidence,
+                new_findings,
+                status_line,
+            )
+            from src.application.use_cases.calculate_risk import execute_calculate_risk
+            from src.domain.risk.risk_explanation import format_risk_review_section
+
+            # Same reading as the local review: with a baseline the score is
+            # this pull request's own findings, and the rest of what the linter
+            # saw travels as evidence worth nothing.
+            r_risk = execute_calculate_risk(
+                result.diff_source, findings=new_findings(compared) if compared else None
+            )
+            if compared:
+                attach_informational_evidence(r_risk, compared)
+            risk_section = format_risk_review_section(r_risk)
+            line = status_line(compared) if compared else ""
+            if line:
+                risk_section = f"**{line}**\n\n{risk_section}"
+        except Exception:
+            risk_section = None
+
+    render_review_result(result.review, result.linter_results, output_filename, risk_assessment_text=risk_section)
+
+
+@cli.command(
+    "split",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("split-command.md"),
+)
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    help=__("Prints the plan and stops. Never prompts and never writes."),
+)
+@click.option(
+    "--apply",
+    "apply_flag",
+    is_flag=True,
+    help=__("Stages and commits each group of the plan."),
+)
+@click.option(
+    "--yes",
+    "assume_yes",
+    is_flag=True,
+    help=__("Skips the confirmation prompt. It never bypasses the per-group check."),
+)
+@click.option(
+    "--max-groups",
+    "max_groups",
+    type=int,
+    metavar="<n>",
+    help=__("Upper limit on how many commits the plan may propose."),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def split(dry_run, apply_flag, assume_yes, max_groups, ai_provider):
+    """Turns a working tree holding several concerns into atomic commits.
+
+    Reads the uncommitted changes, asks the AI to group them by intent, and
+    proposes one commit per group — each with a message written for that group
+    alone. The working tree is never written to: the files end up byte-identical
+    to how they started, with the work redistributed across commits.
+
+    Without a flag the plan is printed and you are offered the chance to apply
+    it. --dry-run prints it and stops. --apply prints it, confirms once, and
+    stages and commits every group.
+    """
+    from src.infrastructure.git.patch_applier import is_git_repository
+    from src.split.apply_split_plan import apply_split_plan
+    from src.split.generate_split_plan import generate_split_plan
+    from src.split.split_plan import SplitError
+
+    if dry_run and apply_flag:
+        click.secho(
+            __("❌ --dry-run and --apply cannot be used together."), fg="red", err=True
+        )
+        raise click.exceptions.Exit(1)
+
+    if not is_git_repository():
+        click.secho(__("❌ Not a Git repository."), fg="red", err=True)
+        raise click.exceptions.Exit(1)
+
+    settings = get_split_settings()
+
+    try:
+        plan = generate_split_plan(
+            get_split_diff(),
+            untracked=get_uncommitted_summary()["untracked"],
+            max_groups=max_groups or settings["max_groups"],
+            max_units=settings["max_units"],
+            provider=ai_provider,
+        )
+    except SplitError as exc:
+        click.secho(str(exc), fg="yellow", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    _print_split_plan(plan)
+    for warning in plan.warnings:
+        click.secho(f"   {warning}", fg="yellow")
+
+    if dry_run:
+        click.echo()
+        click.secho(__("ℹ️ Dry run: nothing was staged and nothing was committed."), fg="cyan")
+        return
+
+    # Bare mode always asks, whatever the configuration says. With --apply the
+    # user has already stated the intent, so GITPR_SPLIT_REQUIRE_CONFIRMATION can
+    # legitimately skip the question; with no flag at all the question *is* the
+    # command, and skipping it would make `gitpr split` commit on its own.
+    ask = not apply_flag or settings["require_confirmation"]
+    if ask and not assume_yes:
+        if not click.confirm(
+            __("❓ Stage and commit these {count} group(s)?", count=plan.total_groups),
+            default=False,
+        ):
+            click.secho(__("❌ Operation cancelled by user."), fg="yellow")
+            return
+
+    try:
+        result = apply_split_plan(plan)
+    except SplitError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    _report_split_result(result)
+
+
+def _print_split_plan(plan):
+    """The plan, as the user reads it before anything happens.
+
+    Every group is shown with its files and its units, because the plan is the
+    deliverable and the user is being asked to trust it with a commit. The
+    ungrouped units are listed too: they are not in any commit, and a plan that
+    quietly omitted them would read as complete when it is not.
+    """
+    click.echo()
+    click.secho(
+        __(
+            "📦 Split plan: {count} commit(s) proposed",
+            count=plan.total_groups,
+        ),
+        fg="cyan",
+        bold=True,
+    )
+    for group in plan.groups:
+        click.echo()
+        click.secho(f"  {group.group_id}  {group.intent_label}", fg="green", bold=True)
+        click.echo(
+            "      "
+            + __(
+                "{units} change unit(s) in {files}",
+                units=len(group.units),
+                files=", ".join(group.file_paths),
+            )
+        )
+        if group.justification:
+            click.secho(f"      {group.justification}", dim=True)
+        if group.generated_commit_message:
+            click.secho(
+                "      "
+                + __("message: {message}", message=group.generated_commit_message),
+                fg="cyan",
+            )
+
+    if plan.ungrouped_units:
+        click.echo()
+        click.secho(
+            __(
+                "  Not grouped ({count} unit(s), left in the working tree):",
+                count=len(plan.ungrouped_units),
+            ),
+            fg="yellow",
+        )
+        for unit in plan.ungrouped_units:
+            click.echo(f"      {unit.id}  {unit.file_path}")
+    click.echo()
+
+
+def _report_split_result(result):
+    """What the run did, including the groups that did not make it.
+
+    A failure is reported in full — which group the run stopped at, git's own
+    words about why, and the one thing the user cannot infer afterwards: whether
+    the index is clean or is holding that group staged. Silence about a partial
+    run would leave them to reconstruct it from ``git status``.
+    """
+    if result.commits:
+        click.echo()
+        click.secho(
+            __("✅ {count} commit(s) created:", count=result.total_commits),
+            fg="green",
+            bold=True,
+        )
+        for group_id, sha in result.commits:
+            click.echo(f"  {group_id}  {sha[:10]}")
+
+    if result.completed:
+        return
+
+    click.echo()
+    click.secho(
+        __(
+            "🛑 The run stopped at {group_id}: {error}",
+            group_id=result.stopped_at,
+            error=result.error,
+        ),
+        fg="red",
+        bold=True,
+    )
+    if result.staged_but_not_committed:
+        click.secho(
+            __(
+                "   That group is staged and was not committed. Commit it once the cause is fixed, or run 'git reset' to unstage it."
+            ),
+            fg="yellow",
+        )
+    else:
+        click.secho(
+            __("   Its changes were unstaged and are back in the working tree."),
+            fg="yellow",
+        )
+    if result.commits:
+        click.secho(
+            __(
+                "   The {count} commit(s) above are real and are left in place; 'git reset' undoes them.",
+                count=result.total_commits,
+            ),
+            fg="yellow",
+        )
+    if result.uncommitted_units:
+        click.secho(
+            __(
+                "   Still uncommitted: {count} change unit(s).",
+                count=len(result.uncommitted_units),
+            ),
+            fg="yellow",
+        )
+
+
+# ============================================================
+# gitpr metrics — the local usage ledger
+# ============================================================
+
+
+def _echo_sections(sections):
+    """Prints the (style, text) lines the dashboard also draws.
+
+    The styles come from src/metrics.py, where each section is rendered once:
+    the terminal maps them onto click's palette and the dashboard onto Textual
+    markup, so the two surfaces cannot tell different stories about one ledger.
+    """
+    from src.metrics import TITLE, WARN
+
+    # The terminal's spelling of the two intents the renderer names: a section
+    # header, and a line the reader should not skim past.
+    styles = {TITLE: {"fg": "cyan", "bold": True}, WARN: {"fg": "yellow"}}
+    for style, text in sections:
+        click.secho(text, **styles.get(style, {}))
+
+
+def _metrics_summary_lines(summary, window=None, cost=None, token_trend=None,
+                           quality=None, latency=None,
+                           debt=None, breakdown=None, cycle=None):
+    """Renders the summary once, so every caller prints the same numbers.
+
+    The same sections the dashboard draws, in text: a metric is computed
+    once (see the readers in src/metrics.py) and rendered wherever it is read,
+    so the terminal and the TUI cannot drift apart.
+    """
+    from src.metrics import (
+        cost_lines,
+        cycle_lines,
+        module_lines,
+        provider_lines,
+        quality_lines,
+        latency_lines,
+        token_trend_lines,
+    )
+
+    click.secho(__("\n📊 Local Telemetry Summary"), fg="cyan", bold=True)
+    click.echo(f"  {__('Path')}: {summary['path']}")
+    # The scope is said out loud because the surfaces do not share one: this
+    # summary answers "what did this machine do" (the cost question), while
+    # `export` and `dashboard` narrow to the repository you are standing in.
+    click.echo(f"  {__('Repository')}: {__('All repositories')}")
+    click.echo(f"  {__('Events')}: {summary['total_events']}")
+    if window and any(window):
+        since, until = window
+        click.echo(f"  {__('Window')}: {since or '…'} → {until or '…'}")
+    if summary["backfilled_events"]:
+        click.echo(
+            f"  {__('Reconstructed from cache')}: {summary['backfilled_events']}"
+        )
+    click.echo(f"  {__('Disk usage')}: {summary['disk_usage']}")
+    if summary["pending_legacy_files"]:
+        click.secho(
+            __(
+                "  ⚠ {count} event files are not imported yet — run `gitpr metrics migrate`.",
+                count=summary["pending_legacy_files"],
+            ),
+            fg="yellow",
+        )
+
+    for section in (
+        cost_lines(cost),
+        token_trend_lines(token_trend),
+        quality_lines(quality),
+        latency_lines(latency),
+        module_lines(debt),
+        provider_lines(breakdown),
+        cycle_lines(cycle),
+    ):
+        if section:
+            click.echo()
+            _echo_sections(section)
+
+
+def _window_options(command):
+    """The same three window flags, on every reading sub-action.
+
+    Declared per subcommand instead of inherited from the group because Click
+    parses a group's options before the subcommand name: `gitpr metrics --days 7
+    export` would set a window the export never sees. One definition, applied
+    wherever a read happens, so no surface can quietly go without it.
+    """
+    options = [
+        click.option(
+            "--days",
+            type=int,
+            help=__("Limits every number below to the last N days."),
+        ),
+        click.option("--since", type=str, help=__("Start of the window (YYYY-MM-DD).")),
+        click.option("--until", type=str, help=__("End of the window (YYYY-MM-DD).")),
+    ]
+    for option in reversed(options):
+        command = option(command)
+    return command
+
+
+@cli.group(
+    "metrics",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True,
+    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("metricas-telemetria.md"),
+)
+@_window_options
+@click.pass_context
+def metrics_group(ctx, days, since, until):
+    """Local usage telemetry: what ran, how often, and what it cost.
+
+    Everything here reads ~/.gitpr/metrics/telemetry.db, which records one row
+    per executed command. With no action it prints the summary; `export` writes
+    the CSV/JSON other people can read, `bundle` and `merge` move rows between
+    machines, `dashboard` opens the TUI, `migrate` imports the event files
+    written before the ledger existed, and `prune` and `purge` are the two ways
+    to delete rows.
+    """
+    from src import ledger
+
+    # The same one-time migration the rest of the CLI takes at startup, minus
+    # the action that *is* the migration: `migrate` asks on purpose, and asking
+    # twice in one invocation would be asking the same question twice. Every
+    # other action reads the ledger, so they all need the rows to be in it —
+    # `gitpr metrics export` answering "nothing to export" while the files sit
+    # on disk would be true and useless.
+    if ctx.invoked_subcommand != "migrate":
+        ledger.ensure_ledger(interactive=ledger.interactive())
+
+    if ctx.invoked_subcommand is None:
+        from src.metrics import (
+            cost_report,
+            cycle_report,
+            module_debt,
+            provider_breakdown,
+            quality_report,
+            resolve_window,
+            show_metrics_summary,
+            latency_report,
+            token_trend_report,
+        )
+
+        since, until = resolve_window(days=days, since=since, until=until)
+        window = {"since": since, "until": until}
+        _metrics_summary_lines(
+            show_metrics_summary(**window),
+            window=(since, until),
+            cost=cost_report(**window),
+            token_trend=token_trend_report(**window),
+            quality=quality_report(**window),
+            latency=latency_report(**window),
+            debt=module_debt(**window),
+            breakdown=provider_breakdown(**window),
+            cycle=cycle_report(**window),
+        )
+        click.echo()
+        click.echo(
+            __(
+                "Use `gitpr metrics export` to consolidate, `gitpr metrics prune` to clean."
+            )
+        )
+
+@metrics_group.command(
+    "export",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Exports consolidated metrics to CSV and JSON in the current folder."),
+)
+@_window_options
+def metrics_export(days, since, until):
+    from src.infrastructure.git.identity import working_context
+    from src.metrics import export_metrics, resolve_window
+
+    since, until = resolve_window(days=days, since=since, until=until)
+    csv_path, json_path, count = export_metrics(
+        repo_filter=working_context().repo or None, since=since, until=until
+    )
+    if count > 0:
+        click.secho(
+            __("✅ Metrics exported: {count} events.", count=count),
+            fg="green",
+            bold=True,
+        )
+        if csv_path:
+            click.echo(f"  CSV: {csv_path}")
+        if json_path:
+            click.echo(f"  JSON: {json_path}")
+    else:
+        click.secho(__("No new metrics to export."), fg="yellow")
+
+
+@metrics_group.command(
+    "bundle",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Writes a slice of the ledger as a .db file to hand to someone else."),
+)
+@_window_options
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    type=click.Path(),
+    help=__("Where to write the bundle (default: ./.gitpr/metrics/export/)."),
+)
+def metrics_bundle(days, since, until, output_path):
+    """The transport for a team: the receiver merges it and the rows are theirs.
+
+    The CSV/JSON export stays the human-readable surface — this is the one path
+    that writes a binary, and only because rows must arrive with their UUIDs
+    intact.
+    """
+    from src import ledger
+    from src.infrastructure.git.identity import working_context
+    from src.metrics import resolve_window
+
+    since, until = resolve_window(days=days, since=since, until=until)
+    destination = output_path or ledger.default_bundle_path()
+
+    if os.path.exists(destination):
+        if not click.confirm(
+            __("⚠ {path} already exists. Replace it?", path=destination)
+        ):
+            click.secho(__("Bundle cancelled."), fg="yellow")
+            return
+        os.remove(destination)
+
+    try:
+        rows = ledger.build_bundle(
+            destination,
+            repo=working_context().repo or None,
+            since=since,
+            until=until,
+        )
+    except ledger.LedgerError as exc:
+        click.secho(f"❌ {exc}", fg="red")
+        return
+
+    click.secho(__("✅ Bundle written: {count} events.", count=rows), fg="green", bold=True)
+    click.echo(f"  {destination}")
+
+
+@metrics_group.command(
+    "merge",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Merges bundle files into the local ledger, skipping rows it already has."),
+)
+@click.argument("bundles", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+def metrics_merge(bundles):
+    """Folds someone else's numbers into yours.
+
+    Rows are keyed by UUID, so merging the same bundle twice changes nothing —
+    and a bundle written by a newer GitPR is refused before anything is
+    attached, leaving the local ledger exactly as it was.
+    """
+    from src import ledger
+
+    if not bundles:
+        click.secho(__("Name at least one bundle file to merge."), fg="yellow")
+        return
+
+    try:
+        merged, skipped = ledger.merge_bundles(bundles)
+    except ledger.LedgerVersionError as exc:
+        click.secho(
+            __(
+                "❌ {path} was written by a newer GitPR (schema {found}); this one "
+                "understands {supported}. Upgrade GitPR to merge it.",
+                path=bundles[0],
+                found=exc.found,
+                supported=exc.supported,
+            ),
+            fg="red",
+        )
+        return
+    except ledger.LedgerError as exc:
+        click.secho(f"❌ {exc}", fg="red")
+        return
+
+    click.secho(
+        __(
+            "✅ Merged {count} events ({skipped} already present).",
+            count=merged,
+            skipped=skipped,
+        ),
+        fg="green",
+        bold=True,
+    )
+
+
+@metrics_group.command(
+    "dashboard",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Opens the interactive metrics dashboard (TUI)."),
+)
+@_window_options
+def metrics_dashboard(days, since, until):
+    from src.infrastructure.git.identity import working_context
+    from src.metrics import resolve_window
+    from src.ui.metrics_app import launch_metrics_dashboard
+
+    since, until = resolve_window(days=days, since=since, until=until)
+    # The working copy's own label, not get_repo_name(): the latter hardcodes
+    # github.com and answers "unknown/repo" everywhere else, so filtering the
+    # ledger by it would show an empty dashboard on GitLab, Bitbucket and
+    # Azure — the same defect the hooks had.
+    launch_metrics_dashboard(
+        repo_filter=working_context().repo or None, since=since, until=until
+    )
+
+
+@metrics_group.command(
+    "migrate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Imports the pre-ledger event files into the ledger."),
+)
+def metrics_migrate():
+    """The way back in for anyone who declined the wizard.
+
+    It asks on purpose — typing the command *is* the answer — so the skip marker
+    written by an earlier refusal does not suppress it. Without a terminal there
+    is nobody to ask, so the import happens with progress on stderr.
+    """
+    from src import ledger
+
+    files = ledger.pending_legacy_files()
+    if not files:
+        click.secho(__("Nothing to import."), fg="yellow")
+        return
+
+    if _may_ask_the_user():
+        from src.ui.metrics_migration_app import run_migration_wizard
+
+        run_migration_wizard(legacy_files=files)
+        return
+
+    absorbed, _already = ledger.absorb_legacy_files(files=files)
+    click.secho(__("✅ Imported {count} events.", count=absorbed), fg="green")
+
+
+@metrics_group.command(
+    "prune",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Deletes metric records older than a date."),
+)
+@click.option(
+    "--before",
+    type=str,
+    required=True,
+    help=__("Deletes records written before this date (YYYY-MM-DD). Required."),
+)
+@click.option(
+    "--source",
+    type=str,
+    help=__("Restricts the deletion to one source (execution or cache_backfill)."),
+)
+def metrics_prune(before, source):
+    """There is no automatic expiry: a calendar that deletes on its own would
+    change last year's answer without anyone asking."""
+    from src.metrics import prune_metrics
+
+    if not click.confirm(
+        __("⚠ This will permanently delete records written before {date}. Continue?", date=before)
+    ):
+        click.secho(__("Purge cancelled."), fg="yellow")
+        return
+
+    removed = prune_metrics(before, source=source)
+    click.secho(
+        __("✅ {count} records removed.", count=removed), fg="green"
+    )
+
+
+@metrics_group.command(
+    "purge",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Deletes every local metric record, and the pre-ledger files with it."),
+)
+def metrics_purge():
+    from src.metrics import purge_metrics
+
+    if click.confirm(
+        __("⚠ This will permanently delete all local metric records. Continue?")
+    ):
+        removed = purge_metrics()
+        click.secho(
+            __("✅ Metrics purged ({count} records removed).", count=removed),
+            fg="green",
+        )
+    else:
+        click.secho(__("Purge cancelled."), fg="yellow")
+
+
+@metrics_group.command(
+    "hook-event",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    hidden=True,
+    help=__("Internal: logs a git hook event name."),
+)
+@click.argument("event_name", metavar="<name>")
+def metrics_hook_event(event_name):
+    """Fire-and-forget event logging, called by the installed Git hooks.
+
+    Hidden because it is not a user-facing action: the whole process is "start,
+    write one row, exit", and the hooks guard the call with `command -v gitpr`.
+    """
+    from src.metrics import log_command_metric
+
+    log_command_metric(command=f"hook:{event_name}", status="fired", provider="git")
+
+
+# ============================================================
+# gitpr policy — the shared quality policy of a repository
+# ============================================================
+
+# Which bundled pack a stack suggests. The detector only looks at files that
+# are unambiguous on their own: a composer.json alone is a PHP project of no
+# particular framework, so it suggests php-security; artisan next to it makes it
+# Laravel. Keeping this list here rather than reusing the test-generation
+# framework detector keeps one question ("what is this repository") answered in
+# one place per feature that actually asks it.
+POLICY_STACKS = {
+    "laravel": ("gitpr/laravel-quality", ("artisan", "composer.json")),
+    "php": ("gitpr/php-security", ("composer.json",)),
+    "vue": ("gitpr/vue-quality", ("vue.config.js", "vite.config.js", "vite.config.ts")),
+    "node": ("gitpr/node-quality", ("package.json",)),
+}
+
+
+def _detect_policy_stack(repo_path=None):
+    """The stack a repository looks like, or None.
+
+    Order matters: Laravel is a PHP project and a Vue app is a Node project, so
+    the more specific marker is asked first. ``package.json`` returning node
+    after ``vue.config.js`` returned vue is the whole point of the ladder.
+    """
+    root = repo_path or os.getcwd()
+    for stack in ("laravel", "vue", "php", "node"):
+        pack, markers = POLICY_STACKS[stack]
+        if all(os.path.exists(os.path.join(root, marker)) for marker in markers):
+            return stack
+    # A Vue project built with Vite has no vue.config.js — the dependency is the
+    # only evidence there is, and reading it is cheaper than missing the pack.
+    package_json = os.path.join(root, "package.json")
+    if os.path.isfile(package_json):
+        try:
+            with open(package_json, "r", encoding="utf-8", errors="replace") as f:
+                if "vue" in f.read():
+                    return "vue"
+        except OSError:
+            pass
+    return None
+
+
+def _command_error(error):
+    """Prints a domain failure the way every other command prints a failure.
+
+    Shared by the policy and baseline groups: a domain error is already a
+    sentence written for the user, so both only have to decide where it goes —
+    stderr — and what the process says about it — nothing, then exit 1.
+    """
+    click.secho(f"❌ {error}", fg="red", err=True)
+    raise click.exceptions.Exit(1)
+
+
+def _may_write(yes, quiet=False, hook=False, mcp=False):
+    """Whether a command that writes to the record is allowed to, refusing rather than hanging.
+
+    ``--yes`` answers the question, and only the question: every check that
+    decides *whether* the write is legal has already run and is not skipped by
+    it. Without ``--yes`` and without a terminal there is nobody to answer, so
+    the command fails with the instruction instead of waiting on a prompt that
+    no one will ever see.
+
+    The refusal says "writes files" rather than "writes to the repository"
+    because ``install`` writes to the user's own pack store instead — and a
+    wrong destination in the message is worse than a vague one.
+    """
+    if yes:
+        return True
+    if not _may_ask_the_user(quiet=quiet, hook=hook, mcp=mcp):
+        click.secho(
+            __(
+                "❌ This command writes files and there is no terminal to "
+                "confirm it. Re-run it with --yes."
+            ),
+            fg="red",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
+    return False
+
+
+@cli.group(
+    "policy",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True,
+    epilog="\b\n" + __(">> Full documentation:") + "\n" + get_doc_url("policy-packs.md"),
+)
+@click.pass_context
+def policy_group(ctx):
+    """The shared quality policy this repository follows.
+
+    A policy pack is a versioned YAML manifest that carries skills, linter rules,
+    severity overrides, critical paths and risk weights for a whole stack. The
+    repository records the one it follows in .gitpr/policy.lock.yml, so the
+    choice is reviewed and versioned with the code it applies to.
+
+    `list`, `validate` and `show` only read. `use`, `install`, `init` and `off`
+    write to the repository and ask before they do.
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@policy_group.command(
+    "list",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Lists the packs available on this machine and the one in force."),
+)
+def policy_list():
+    from src.infrastructure.policy import discover_packs, read_lockfile
+
+    active = read_lockfile() or {}
+    active_root = (active.get("root") or {}).get("name")
+
+    click.secho(__("🔒 Active policy"), fg="cyan", bold=True)
+    if not active:
+        click.echo(__("  None. This repository runs on the GitPR defaults."))
+    else:
+        for pack in active.get("packs", []):
+            marker = "→" if pack.get("name") == active_root else " "
+            click.echo(
+                f"  {marker} {pack.get('name')}@{pack.get('version')} "
+                f"[{pack.get('source', '?')}]"
+            )
+        click.secho(
+            __("  Recorded in {path}", path=os.path.join(".gitpr", "policy.lock.yml")),
+            dim=True,
+        )
+
+    click.secho(__("\n📦 Available packs"), fg="cyan", bold=True)
+    packs = discover_packs()
+    if not packs:
+        click.secho(__("  No packs found."), fg="yellow")
+        return
+    labels = {
+        "local_path": __("project"),
+        "installed": __("installed"),
+        "bundled": __("bundled"),
+    }
+    for pack in packs:
+        source = labels.get(pack.source.value, pack.source.value)
+        if pack.error:
+            click.secho(
+                __(
+                    "  {name} [{source}] — unusable: {reason}",
+                    name=pack.name,
+                    source=source,
+                    reason=pack.error,
+                ),
+                fg="yellow",
+            )
+            continue
+        reference = pack.reference
+        click.echo(f"  {reference.name}@{reference.version} [{source}]")
+        if reference.path:
+            click.secho(f"      {reference.path}", dim=True)
+
+
+@policy_group.command(
+    "validate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Validates a pack: schema, compatibility, skills, dependencies and checksum."),
+)
+@click.argument("target", metavar="<pack-or-path>")
+def policy_validate(target):
+    from src.application.use_cases.validate_policy_pack import validate_policy_pack
+
+    report = validate_policy_pack(target)
+
+    def line(ok, text):
+        click.secho(f"  {'✅' if ok else '❌'} {text}", fg="green" if ok else "red")
+
+    click.secho(__("🔍 {target}", target=report["target"]), fg="cyan", bold=True)
+    if not report["ok"]:
+        for error in report["errors"]:
+            line(False, error)
+        raise click.exceptions.Exit(1)
+
+    pack = report["pack"]
+    click.echo(
+        __(
+            "{name}@{version} from {source}",
+            name=pack["name"],
+            version=pack["version"],
+            source=report["source"],
+        )
+    )
+    line(
+        True,
+        __(
+            "Schema {version} is valid, and compatible with GitPR {gitpr}.",
+            version=report["schema"]["schema_version"],
+            gitpr=report["schema"]["gitpr_version"],
+        ),
+    )
+
+    for skill in report["skills"]:
+        line(
+            True,
+            __(
+                "Skill {name}: {characters} characters of context.",
+                name=skill["name"],
+                characters=skill["characters"],
+            ),
+        )
+
+    linter = report["linter"]
+    line(
+        linter["rules_file_found"] or not linter["rules_file"],
+        __(
+            "Linter: {count} rule(s) from {packs}.",
+            count=linter["rules_count"],
+            packs=", ".join(linter["packs_contributing_rules"]) or __("none"),
+        ),
+    )
+    for override in linter["severity_overrides"]:
+        click.echo(
+            "    "
+            + __(
+                "{rule} → {level} (from {origin})",
+                rule=override["rule_name"],
+                level=override["level"],
+                origin=override["from"],
+            )
+        )
+        if override["reason"]:
+            click.secho(f"        {override['reason']}", dim=True)
+
+    baseline = report["baseline"]
+    if baseline["suppressions"] or baseline["accepted_debt"]:
+        # Said with the counts and nothing else: the entries themselves are in
+        # `gitpr baseline show`, where they can be read against the findings they
+        # silence — a suppression listed here would be a decision out of context.
+        line(
+            True,
+            __(
+                "Baseline: {suppressions} suppression(s) and {debt} accepted debt(s) "
+                "come with this pack.",
+                suppressions=len(baseline["suppressions"]),
+                debt=len(baseline["accepted_debt"]),
+            ),
+        )
+
+    for dependency in report["dependencies"]:
+        click.echo(
+            "    "
+            + __(
+                "depends on {name} {range}",
+                name=dependency["name"],
+                range=dependency["range"] or __("any version"),
+            )
+            + (
+                __(" (resolved to {version})", version=dependency["resolved"])
+                if dependency["resolved"]
+                else ""
+            )
+        )
+
+    click.echo(__("Checksum: {checksum}", checksum=pack["checksum"]))
+    for warning in report["warnings"]:
+        click.secho(f"  ⚠️ {warning}", fg="yellow")
+
+
+@policy_group.command(
+    "show",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Shows the policy in force, with the origin of every value."),
+)
+def policy_show():
+    from src.application.use_cases.resolve_effective_policy import (
+        resolve_effective_policy,
+    )
+
+    policy = resolve_effective_policy(strict=False, publish=False)
+    if not policy.is_active:
+        click.secho(
+            __("No policy pack is active in this repository."), fg="yellow"
+        )
+        for warning in policy.warnings:
+            click.secho(f"  ⚠️ {warning}", fg="yellow")
+        return
+
+    click.secho(
+        __("🧭 {policy}", policy=policy.policy_tag()), fg="cyan", bold=True
+    )
+
+    click.secho(__("\nPrecedence, lowest first:"), bold=True)
+    for position, pack in enumerate(policy.packs, start=1):
+        click.echo(
+            f"  {position}. {pack.name}@{pack.version} [{pack.source.value}]"
+        )
+    click.echo(f"  {' ' * len(str(len(policy.packs) + 1))}. policy.overrides.yml")
+
+    click.secho(__("\nEffective configuration:"), bold=True)
+    for key in sorted(policy.provenance):
+        origin = policy.provenance[key]
+        value = _policy_value(policy, key)
+        click.echo(f"  {key} = {value}")
+        click.secho(f"      ← {origin}", dim=True)
+
+    if policy.warnings:
+        click.secho(__("\nWarnings:"), bold=True)
+        for warning in policy.warnings:
+            click.secho(f"  ⚠️ {warning}", fg="yellow")
+
+
+def _policy_render(value, indent="      "):
+    """One provenance value as the few words a line can carry.
+
+    The linter catalogue is a list of rule dictionaries: printing it would put
+    fifteen rules with their regexes on one line and bury every other field, so
+    it is summarised by count and names. A context that is prose keeps its line
+    breaks, indented under its key.
+    """
+    if isinstance(value, (list, tuple)) and value and isinstance(value[0], dict):
+        names = [str(item["name"]) for item in value if isinstance(item, dict) and item.get("name")]
+        return __(
+            "{count} item(s): {names}", count=len(value), names=", ".join(names)
+        )
+    if isinstance(value, (list, tuple)):
+        return ", ".join(str(item) for item in value)
+    if value is None:
+        return ""
+    text = str(value)
+    if "\n" in text:
+        return f"\n{indent}".join(text.splitlines())
+    return text
+
+
+def _policy_value(policy, key):
+    """The composed value behind a provenance key, for `policy show`.
+
+    The provenance map keys are the dotted paths the composer writes as it goes,
+    so reading one back is a walk down the same path. A severity override is
+    answered by its level, because the level is the decision the line reports.
+    """
+    def walk(source, parts):
+        for part in parts:
+            if isinstance(source, dict):
+                source = source.get(part)
+            else:
+                return None
+        return source
+
+    for group, attribute in (
+        ("linter", "linter_config"),
+        ("risk", "risk_config"),
+        ("pr", "pr_config"),
+        ("commit", "commit_config"),
+    ):
+        if key == group or key.startswith(f"{group}."):
+            parts = key.split(".")
+            if group == "linter" and parts[1:2] == ["severity_overrides"]:
+                override = policy.severity_overrides.get(".".join(parts[2:]))
+                return override.level if override else "?"
+            return _policy_render(walk(getattr(policy, attribute), parts[1:]))
+
+    if key.startswith("baseline."):
+        # Named by rule — or by fingerprint for debt, which covers one finding
+        # and has no rule to be named after. The reason and the origin are in
+        # `gitpr baseline show`, one command away from the finding itself.
+        entries = policy.baseline_dict().get(key.split(".", 1)[1], [])
+        return _policy_render(
+            [item.get("rule_id") or item.get("fingerprint") or "?" for item in entries]
+        )
+
+    if key.startswith("skills."):
+        return _policy_render(policy.skill_context_for(key.split(".")[1]) or "")
+    if key == "protected_paths":
+        return _policy_render(policy.protected_paths)
+    return ""
+
+
+@policy_group.command(
+    "use",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Pins a pack for this repository, writing .gitpr/policy.lock.yml."),
+)
+@click.argument("reference", metavar="<name>[@<version>]")
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_use(reference, yes):
+    from src.application.use_cases.activate_policy_pack import (
+        activate_policy_pack,
+        build_lockfile,
+        describe_lockfile,
+    )
+    from src.domain.policy import PolicyError
+
+    try:
+        data = build_lockfile(reference)
+    except PolicyError as error:
+        _command_error(error)
+
+    click.secho(
+        __("This repository will follow {summary}.", summary=describe_lockfile(data)),
+        fg="cyan",
+    )
+    for pack in data.get("packs", []):
+        click.echo(f"  {pack['name']}@{pack['version']} [{pack['source']}]")
+    click.echo(
+        __("Written to {path}", path=os.path.join(".gitpr", "policy.lock.yml"))
+    )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    try:
+        activate_policy_pack(reference)
+    except PolicyError as error:
+        _command_error(error)
+    click.secho(__("✅ Policy activated."), fg="green", bold=True)
+
+
+@policy_group.command(
+    "off",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Stops following the pack, removing .gitpr/policy.lock.yml."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_off(yes):
+    from src.application.use_cases.activate_policy_pack import deactivate_policy_pack
+    from src.infrastructure.policy import lockfile_path
+
+    if not os.path.isfile(lockfile_path()):
+        click.secho(
+            __("No policy pack is active in this repository."), fg="yellow"
+        )
+        return
+    click.secho(
+        __(
+            "The pack and the overrides file are kept; only the lockfile is removed, "
+            "so every command returns to the GitPR defaults."
+        ),
+        fg="cyan",
+    )
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    deactivate_policy_pack()
+    click.secho(__("✅ Policy deactivated."), fg="green", bold=True)
+
+
+@policy_group.command(
+    "install",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Copies a pack from a local directory into ~/.gitpr/policies."),
+)
+@click.argument("source", metavar="<path>", type=click.Path(exists=True, file_okay=False))
+@click.option(
+    "--force", is_flag=True, help=__("Replaces an installation that is already there.")
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_install(source, force, yes):
+    from src.application.use_cases.install_policy_pack import (
+        install_policy_pack,
+        load_source_pack,
+    )
+    from src.domain.policy import PolicyError
+    from src.infrastructure.policy import installed_pack_dir
+
+    try:
+        pack = load_source_pack(source)
+    except PolicyError as error:
+        _command_error(error)
+
+    manifest = pack.manifest
+    click.secho(
+        __(
+            "{name}@{version} will be copied to {destination}.",
+            name=manifest.name,
+            version=manifest.version,
+            destination=installed_pack_dir(manifest.name),
+        ),
+        fg="cyan",
+    )
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    try:
+        destination = install_policy_pack(source, overwrite=force)
+    except PolicyError as error:
+        _command_error(error)
+    click.secho(
+        __("✅ Installed to {path}", path=destination), fg="green", bold=True
+    )
+
+
+@policy_group.command(
+    "init",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Suggest and activate the official pack for this project's stack."),
+)
+@click.option(
+    "--stack",
+    "stack",
+    metavar="<stack>",
+    help=__("laravel, vue, php or node. Detected from the project when omitted."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def policy_init(stack, yes):
+    from src.application.use_cases.activate_policy_pack import (
+        activate_policy_pack,
+        build_lockfile,
+        describe_lockfile,
+    )
+    from src.domain.policy import PolicyError
+
+    if not stack:
+        stack = _detect_policy_stack()
+        if not stack:
+            click.secho(
+                __(
+                    "❌ Could not tell what this project is. Name the stack with "
+                    "--stack laravel|vue|php|node."
+                ),
+                fg="red",
+                err=True,
+            )
+            raise click.exceptions.Exit(1)
+        click.secho(__("Detected stack: {stack}", stack=stack), fg="cyan")
+
+    if stack not in POLICY_STACKS:
+        click.secho(
+            __(
+                "❌ Unknown stack {stack}. Choose one of: {known}.",
+                stack=stack,
+                known=", ".join(sorted(POLICY_STACKS)),
+            ),
+            fg="red",
+            err=True,
+        )
+        raise click.exceptions.Exit(1)
+
+    reference = POLICY_STACKS[stack][0]
+    try:
+        data = build_lockfile(reference)
+    except PolicyError as error:
+        _command_error(error)
+
+    click.secho(
+        __("This repository will follow {summary}.", summary=describe_lockfile(data)),
+        fg="cyan",
+    )
+    for pack in data.get("packs", []):
+        click.echo(f"  {pack['name']}@{pack['version']} [{pack['source']}]")
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+    try:
+        activate_policy_pack(reference)
+    except PolicyError as error:
+        _command_error(error)
+    click.secho(__("✅ Policy activated."), fg="green", bold=True)
+
+
+def _baseline_settings():
+    """The `GITPR_BASELINE_*` keys, read once per command."""
+    from src.config import get_baseline_settings
+
+    return get_baseline_settings()
+
+
+def _baseline_file(settings):
+    """`GITPR_BASELINE_PATH`, or None to mean `.gitpr/baseline.json`.
+
+    The empty string is not a filename, and None is how every reader in the
+    repository spells "use the default" — so the conversion happens here, once,
+    rather than in each command.
+    """
+    return settings["path"] or None
+
+
+def _suppression_scopes():
+    """The four scopes, taken from the enum that defines them.
+
+    Called while the module is imported, because `click.Choice` reads its
+    arguments at decoration time — which is why the import is inside it.
+    """
+    from src.domain.baseline import SuppressionScope
+
+    return [scope.value for scope in SuppressionScope]
+
+
+def _baseline_entry_or_die(identifier, settings):
+    """The entry an id names, resolved without writing anything.
+
+    A prompt has to describe the decision it is about to record, and an
+    auditable suppression whose subject is invisible is not one. The resolution
+    is the same one the use case performs — same prefix rule, same refusal of a
+    resolved entry, same strictness about the file — done once more so the
+    question can name the finding.
+    """
+    from src.domain.baseline import (
+        BaselineError,
+        BaselineStatus,
+        resolve_fingerprint_prefix,
+    )
+    from src.infrastructure.baseline.local_baseline_repository import read_baseline
+
+    snapshot = read_baseline(None, _baseline_file(settings))
+    if not snapshot.exists:
+        raise BaselineError(
+            __(
+                "There is no baseline in this repository — run "
+                "'gitpr baseline create' first."
+            ),
+            path=snapshot.path,
+        )
+    if not snapshot.is_usable:
+        raise BaselineError(
+            __(
+                "{path} cannot be read: {problem} Run 'gitpr baseline update "
+                "--recompute' to rebuild it from the working tree.",
+                path=snapshot.path,
+                problem=snapshot.first_problem(),
+            ),
+            path=snapshot.path,
+        )
+
+    manifest = snapshot.manifest
+    fingerprint = resolve_fingerprint_prefix(
+        identifier, [entry.fingerprint for entry in manifest.entries]
+    )
+    entry = manifest.entry_for(fingerprint)
+    if entry.status is BaselineStatus.RESOLVED:
+        raise BaselineError(
+            __(
+                "{fingerprint} was resolved — {path} in {file} is not in the tree "
+                "any more, so there is nothing to decide about it.",
+                fingerprint=fingerprint,
+                path=entry.file_path,
+                file=entry.rule_id or entry.category,
+            )
+        )
+    return snapshot, entry
+
+
+def _short_fingerprint(fingerprint):
+    """The id a person copies out of `show` and pastes into `suppress`."""
+    return fingerprint if len(fingerprint) <= 19 else fingerprint[:19]
+
+
+def _entry_line(entry, applied=None):
+    """One entry as a line: its id, its rule, where it is, and its status."""
+    status = applied.status.value if applied else entry.status.value
+    identity = entry.rule_id or f"category:{entry.category}"
+    location = f"{entry.file_path}:{entry.line_start}"
+    return f"{_short_fingerprint(entry.fingerprint)}  {identity}  {location}  [{status}]"
+
+
+def _decision_note(entry, applied):
+    """Why a decision was made, where it lives, and who signed it."""
+    if applied is None:
+        return ""
+    from src.domain.baseline import ORIGIN_ENTRY
+
+    parts = [applied.reason, applied.scope.value, applied.origin]
+    if applied.origin == ORIGIN_ENTRY:
+        if entry.suppressed_by:
+            parts.append(__("by {author}", author=entry.suppressed_by))
+        if entry.suppressed_at:
+            parts.append(entry.suppressed_at)
+    if applied.owner:
+        parts.append(__("owner {owner}", owner=applied.owner))
+    if applied.due_date:
+        parts.append(__("due {due}", due=applied.due_date))
+    return " · ".join(part for part in parts if part)
+
+
+def _baseline_warning(warning):
+    """A baseline notice, printed beside the document rather than inside it."""
+    click.secho(f"⚠️ {warning}", fg="yellow", err=True)
+
+
+def _baseline_json(payload):
+    import json
+
+    click.echo(json.dumps(payload, indent=2, ensure_ascii=False))
+
+
+def _is_json(output_format):
+    return str(output_format).lower() == "json"
+
+
+def _baseline_status_counts(entries, overrides):
+    """One count per persisted status, each entry read through the overrides."""
+    from src.domain.baseline import BaselineStatus, status_of_entry
+
+    counts = {status.value: 0 for status in BaselineStatus}
+    for entry in entries:
+        applied = status_of_entry(entry, overrides)
+        status = applied.status if applied is not None else entry.status
+        counts[status.value] += 1
+    return counts
+
+
+def _counts_summary(counts):
+    """`9 existing, 2 ignored` — the statuses that have something to say."""
+    from src.domain.baseline import BaselineStatus
+
+    parts = [
+        f"{counts.get(status.value, 0)} {status.value}"
+        for status in BaselineStatus
+        if counts.get(status.value)
+    ]
+    return ", ".join(parts)
+
+
+@cli.group(
+    "baseline",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True,
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("baseline-suppressions.md"),
+)
+@click.pass_context
+def baseline_group(ctx):
+    """The findings this repository already knows about.
+
+    A baseline is committed with the code and classifies every finding the
+    linter or the review raises as `new`, `existing`, `resolved`, `ignored` or
+    `accepted_debt`. Only `new` blocks, so a legacy tree can adopt GitPR without
+    a first run that is red for reasons nobody in this change caused.
+
+    `show` and `validate` only read. `create`, `update`, `suppress` and
+    `unsuppress` write to .gitpr/baseline.json and ask before they do.
+    """
+    if ctx.invoked_subcommand is None:
+        click.echo(ctx.get_help())
+
+
+@baseline_group.command(
+    "create",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Records the findings of the current diff as the baseline."),
+)
+@click.option(
+    "--refresh",
+    is_flag=True,
+    help=__("Reviews the diff again instead of reusing the cached review."),
+)
+@click.option(
+    "--base",
+    "base_ref",
+    metavar="<ref>",
+    default=None,
+    help=__("Records the diff against this ref instead of the working tree."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+def baseline_create(refresh, base_ref, yes, output_format):
+    """Writes the baseline this repository starts from.
+
+    Over an existing file this replaces the record, so the prompt says which
+    decisions that would drop: `update` is the command that keeps them.
+    """
+    from src.application.use_cases.create_baseline import create_baseline
+    from src.domain.baseline import BaselineError
+    from src.infrastructure.baseline.local_baseline_repository import (
+        baseline_path,
+        read_manifest_raw,
+    )
+
+    settings = _baseline_settings()
+    configured = _baseline_file(settings)
+    path = baseline_path(None, configured)
+
+    if not _is_json(output_format):
+        previous, problems = read_manifest_raw(None, configured)
+        if previous is None:
+            click.secho(
+                __("A baseline will be written to {path}.", path=path), fg="cyan"
+            )
+        else:
+            click.secho(
+                __(
+                    "The baseline at {path} will be replaced by what this diff shows.",
+                    path=path,
+                ),
+                fg="cyan",
+            )
+            decided = [
+                entry
+                for entry in previous.entries
+                if entry.suppressed or entry.is_debt()
+            ]
+            if decided:
+                click.secho(
+                    __(
+                        "⚠️ {count} suppression(s) or accepted debt(s) would be "
+                        "dropped — 'gitpr baseline update' keeps them.",
+                        count=len(decided),
+                    ),
+                    fg="yellow",
+                )
+        for problem in problems:
+            _baseline_warning(problem)
+        click.echo(
+            __(
+                "Findings come from the linter on this diff, plus the AI findings of "
+                "the last review of the same diff (--refresh reviews it again)."
+            )
+        )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        run = create_baseline(refresh=refresh, base=base_ref, configured_path=configured)
+    except BaselineError as error:
+        _command_error(error)
+
+    if _is_json(output_format):
+        _baseline_json(
+            {
+                "path": run.path,
+                "created": run.created,
+                "written": run.written,
+                "ai_findings": run.ai_findings,
+                "counts": run.counts,
+                "warnings": run.warnings,
+            }
+        )
+        return
+
+    click.secho(__("✅ Baseline written to {path}", path=run.path), fg="green", bold=True)
+    click.echo(f"🧾 {__('Baseline: {counts}', counts=_counts_summary(run.counts))}")
+    if run.ai_findings:
+        click.echo(
+            __(
+                "   {count} finding(s) came from the AI review and carry no rule id.",
+                count=run.ai_findings,
+            )
+        )
+    for warning in run.warnings:
+        _baseline_warning(warning)
+
+
+@baseline_group.command(
+    "show",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Shows what the baseline records and what was decided about it."),
+)
+@click.option(
+    "--status",
+    "status_filter",
+    type=click.Choice(
+        ["existing", "ignored", "accepted_debt", "resolved"], case_sensitive=False
+    ),
+    default=None,
+    help=__("Lists only the findings in this status."),
+)
+@click.option(
+    "--rule",
+    "rule_filter",
+    metavar="<rule-id>",
+    default=None,
+    help=__("Lists only the findings of this rule (or category:<name>)."),
+)
+@click.option(
+    "--file",
+    "file_filter",
+    metavar="<path>",
+    default=None,
+    help=__("Lists only the findings in this path — a glob is accepted."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+def baseline_show(status_filter, rule_filter, file_filter, output_format):
+    """Reads the baseline, with the override layers already applied.
+
+    Without a filter it lists the findings that carry a decision — the part
+    worth auditing — and counts the rest.
+    """
+    import fnmatch
+
+    from src.domain.baseline import (
+        BaselineError,
+        overdue_decisions,
+        status_of_entry,
+    )
+    from src.infrastructure.baseline.local_baseline_repository import (
+        read_baseline,
+        read_overrides,
+    )
+
+    settings = _baseline_settings()
+    snapshot = read_baseline(None, _baseline_file(settings))
+    if not snapshot.exists:
+        _command_error(
+            BaselineError(
+                __(
+                    "There is no baseline to show at {path} — create one with "
+                    "'gitpr baseline create'.",
+                    path=snapshot.path,
+                ),
+                path=snapshot.path,
+            )
+        )
+    if not snapshot.is_usable:
+        # Showing a file the gate would refuse would answer for a record nobody
+        # is judged against; `validate` is the command that says what is wrong
+        # with it, so this one points there instead of guessing.
+        _command_error(
+            BaselineError(
+                __(
+                    "{path} cannot be read: {problem} Run 'gitpr baseline validate' "
+                    "for every problem it has, or 'gitpr baseline update --recompute' "
+                    "to rebuild it.",
+                    path=snapshot.path,
+                    problem=snapshot.first_problem(),
+                ),
+                path=snapshot.path,
+            )
+        )
+
+    try:
+        overrides, _ = read_overrides(None)
+    except BaselineError:
+        overrides = None
+    # The pack's block is part of what silences a finding, so it is part of what
+    # this shows: a decision the reader cannot see is a decision nobody audits.
+    overrides = _with_pack_layers(overrides)
+
+    filtered = [
+        entry
+        for entry in snapshot.manifest.entries
+        if _kept(entry, status_filter, rule_filter, file_filter, overrides)
+    ]
+    counts = _baseline_status_counts(snapshot.manifest.entries, overrides)
+    late = overdue_decisions(snapshot.manifest.entries, overrides)
+
+    if _is_json(output_format):
+        _baseline_json(
+            {
+                "path": snapshot.path,
+                "exists": True,
+                "usable": True,
+                "schema_version": snapshot.manifest.schema_version,
+                "fingerprint_version": snapshot.manifest.fingerprint_version,
+                "gitpr_version": snapshot.manifest.gitpr_version,
+                "policy_name": snapshot.manifest.policy_name,
+                "policy_version": snapshot.manifest.policy_version,
+                "created_at": snapshot.manifest.created_at,
+                "updated_at": snapshot.manifest.updated_at,
+                "problems": snapshot.problems,
+                "counts": counts,
+                "overdue": [entry.fingerprint for entry, _applied in late],
+                "entries": [entry.to_dict() for entry in filtered],
+            }
+        )
+        for problem in snapshot.problems:
+            _baseline_warning(problem)
+        return
+
+    click.secho(f"🔎 {__('Baseline')} {snapshot.path}", fg="cyan", bold=True)
+    click.echo(
+        "   "
+        + __(
+            "schema {schema} · fingerprints {fingerprints} · GitPR {version}",
+            schema=snapshot.manifest.schema_version,
+            fingerprints=snapshot.manifest.fingerprint_version,
+            version=snapshot.manifest.gitpr_version or "?",
+        )
+    )
+    tag = _manifest_policy_tag(snapshot.manifest)
+    click.echo(
+        "   "
+        + __(
+            "created {created} · updated {updated}",
+            created=(snapshot.manifest.created_at or "?")[:10],
+            updated=(snapshot.manifest.updated_at or "?")[:10],
+        )
+        + (f" · policy {tag}" if tag else "")
+    )
+    click.echo(
+        "   "
+        + __(
+            "{total} finding(s): {counts}",
+            total=len(snapshot.manifest.entries),
+            counts=_counts_summary(counts) or __("none"),
+        )
+    )
+    for problem in snapshot.problems:
+        _baseline_warning(problem)
+    for entry, applied in late:
+        _baseline_warning(
+            __(
+                "{fingerprint} in {path} is past its due date ({due}) — owner {owner}.",
+                fingerprint=_short_fingerprint(entry.fingerprint),
+                path=entry.file_path,
+                due=applied.due_date,
+                owner=applied.owner,
+            )
+        )
+    if status_filter or rule_filter or file_filter:
+        click.secho(__("Matching findings"), fg="cyan")
+        if not filtered:
+            click.echo("  " + __("Nothing in the baseline matches that filter."))
+            return
+        for entry in filtered:
+            applied = status_of_entry(entry, overrides)
+            click.echo(f"  {_entry_line(entry, applied)}")
+            note = _decision_note(entry, applied)
+            if note:
+                click.echo(f"      {note}")
+        return
+
+    # No filter: the decisions are what a reader came for. The rest is already
+    # counted above, and a list of every `existing` finding belongs in the file.
+    decided = [
+        (entry, status_of_entry(entry, overrides))
+        for entry in snapshot.manifest.entries
+    ]
+    decided = [(entry, applied) for entry, applied in decided if applied is not None]
+    if not decided:
+        return
+    click.secho(__("Decisions recorded"), fg="cyan")
+    for entry, applied in decided:
+        click.echo(f"  {_entry_line(entry, applied)}")
+        click.echo(f"      {_decision_note(entry, applied)}")
+
+
+@baseline_group.command(
+    "validate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Checks the baseline and the overrides for defects, or names them."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+def baseline_validate(output_format):
+    """Reports every problem the file can have, and exits non-zero on any.
+
+    A file that is missing counts as a problem here, unlike everywhere else in
+    GitPR: this command is asked whether the record is sound, and "there is no
+    record" is not a sound one. Overdue accepted debt is a problem for the same
+    reason — the classification warns about it and never fails on it, but a
+    deadline that has passed is exactly what an audit is looking for.
+    """
+    from src.domain.baseline import BaselineError, overdue_decisions
+    from src.infrastructure.baseline.local_baseline_repository import (
+        read_baseline,
+        read_overrides,
+    )
+
+    settings = _baseline_settings()
+    # The strict reader, whatever `GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH`
+    # says: that setting decides whether a divergent file is *applied*, and this
+    # command exists to judge the file itself.
+    snapshot = read_baseline(None, _baseline_file(settings))
+    problems = list(snapshot.problems)
+
+    if not snapshot.exists:
+        problems.insert(
+            0,
+            __(
+                "There is no baseline at {path} — create one with "
+                "'gitpr baseline create'.",
+                path=snapshot.path,
+            ),
+        )
+
+    late = []
+    try:
+        layers = _with_pack_layers(read_overrides(None)[0])
+    except BaselineError as error:
+        # The overrides file is not readable, so its deadlines cannot be checked
+        # either — the problem below says so, and the entry's own are still read.
+        problems.append(str(error))
+        layers = _with_pack_layers(None)
+
+    if snapshot.is_usable:
+        late = overdue_decisions(snapshot.manifest.entries, layers)
+        for entry, applied in late:
+            problems.append(
+                __(
+                    "Accepted debt in {path}:{line} is past its due date ({due}) — "
+                    "owner {owner}.",
+                    path=entry.file_path,
+                    line=entry.line_start,
+                    due=applied.due_date,
+                    owner=applied.owner,
+                )
+            )
+
+    valid = not problems
+    if _is_json(output_format):
+        _baseline_json(
+            {
+                "path": snapshot.path,
+                "exists": snapshot.exists,
+                "usable": snapshot.is_usable,
+                "valid": valid,
+                "overdue": [entry.fingerprint for entry, _applied in late],
+                "problems": problems,
+            }
+        )
+        if not valid:
+            raise click.exceptions.Exit(1)
+        return
+
+    click.secho(f"🔎 {__('Validating')} {snapshot.path}", fg="cyan", bold=True)
+    for problem in problems:
+        click.secho(f"❌ {problem}", fg="red")
+    if valid:
+        click.secho(__("✅ The baseline is sound."), fg="green", bold=True)
+        return
+    click.secho(
+        __("❌ {count} problem(s) found.", count=len(problems)), fg="red", bold=True
+    )
+    raise click.exceptions.Exit(1)
+
+
+@baseline_group.command(
+    "update",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Moves the baseline forward over the current diff, keeping decisions."),
+)
+@click.option(
+    "--recompute",
+    is_flag=True,
+    help=__("Reads and rewrites a file the fingerprint version no longer matches."),
+)
+@click.option(
+    "--base",
+    "base_ref",
+    metavar="<ref>",
+    default=None,
+    help=__("Moves the baseline over the diff against this ref instead of the working tree."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def baseline_update(recompute, base_ref, yes):
+    """Keeps what the entry already knows and records what this diff changed.
+
+    An entry seen again keeps its first_seen date and its decision, one whose
+    file the diff touched and whose finding is gone is stamped resolved, and one
+    in a file the diff never touched is left alone. A checksum that diverged
+    stops it: `--recompute` is the deliberate way past that.
+    """
+    from src.application.use_cases.create_baseline import update_baseline
+    from src.domain.baseline import BaselineError
+    from src.infrastructure.baseline.local_baseline_repository import (
+        baseline_path,
+        read_baseline,
+    )
+
+    settings = _baseline_settings()
+    configured = _baseline_file(settings)
+    path = baseline_path(None, configured)
+
+    snapshot = read_baseline(None, configured)
+    if not snapshot.exists:
+        click.secho(
+            __("There is no baseline at {path} yet — this run will create one.", path=path),
+            fg="cyan",
+        )
+    elif not snapshot.is_usable and not recompute:
+        _command_error(
+            BaselineError(
+                __(
+                    "The baseline on disk cannot be updated in place: {problem} Review "
+                    "the file, then run 'gitpr baseline update --recompute' to accept "
+                    "what is in it.",
+                    problem=snapshot.first_problem(),
+                ),
+                path=snapshot.path,
+            )
+        )
+    else:
+        click.secho(
+            __("The baseline at {path} will be moved forward over this diff.", path=path),
+            fg="cyan",
+        )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        run = update_baseline(
+            recompute=recompute, base=base_ref, configured_path=configured
+        )
+    except BaselineError as error:
+        _command_error(error)
+
+    for warning in run.warnings:
+        _baseline_warning(warning)
+    if not run.written:
+        click.secho(__("Nothing was written."), fg="yellow")
+        return
+    click.secho(__("✅ Baseline updated at {path}", path=run.path), fg="green", bold=True)
+    click.echo(f"🧾 {__('Baseline: {counts}', counts=_counts_summary(run.counts))}")
+
+
+@baseline_group.command(
+    "suppress",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Records why a finding is not work this change has to do."),
+)
+@click.argument("finding_id", metavar="<finding-id>")
+@click.option(
+    "--reason",
+    required=True,
+    help=__("Why the finding is being silenced. Required."),
+)
+@click.option(
+    "--scope",
+    type=click.Choice(_suppression_scopes(), case_sensitive=False),
+    default="finding",
+    help=__("How wide the decision reaches: one finding, a line range, a file, a rule."),
+)
+@click.option(
+    "--debt", is_flag=True, help=__("Records accepted debt with an owner instead of a suppression.")
+)
+@click.option("--owner", metavar="<owner>", help=__("Who owns the debt. Required with --debt."))
+@click.option(
+    "--due-date",
+    "due_date",
+    metavar="<YYYY-MM-DD>",
+    help=__("When the debt should be gone. Optional, and a passed date is a warning."),
+)
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def baseline_suppress(finding_id, reason, scope, debt, owner, due_date, yes):
+    """A decision about one finding, or about everything a rule or file raises.
+
+    A `finding` scope is written on the entry in .gitpr/baseline.json; the wider
+    scopes go to .gitpr/baseline.overrides.yml, where they reach findings that
+    have no entry yet — which is the point of asking for them.
+    """
+    from src.application.use_cases.suppress_finding import suppress_finding
+    from src.domain.baseline import BaselineError, SuppressionScope
+
+    settings = _baseline_settings()
+    try:
+        _, entry = _baseline_entry_or_die(finding_id, settings)
+    except BaselineError as error:
+        _command_error(error)
+
+    click.secho(__("Decision about {line}", line=_entry_line(entry)), fg="cyan")
+    if debt:
+        click.secho(
+            __(
+                "Accepted debt, owned by {owner}: \"{reason}\"",
+                owner=owner or __("nobody (--owner is required)"),
+                reason=reason,
+            ),
+            fg="cyan",
+        )
+        if due_date:
+            click.echo("   " + __("Due {due}.", due=due_date))
+    else:
+        click.secho(
+            __(
+                "Suppression with '{scope}' scope: \"{reason}\"",
+                scope=str(scope).lower(),
+                reason=reason,
+            ),
+            fg="cyan",
+        )
+        if str(scope).lower() != "finding":
+            click.secho(
+                __(
+                    "It is written to .gitpr/baseline.overrides.yml and covers every "
+                    "finding that rule raises there, not only this one."
+                ),
+                fg="yellow",
+            )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        result = suppress_finding(
+            finding_id,
+            reason=reason,
+            scope=SuppressionScope(scope.lower()),
+            debt=debt,
+            owner=owner,
+            due_date=due_date,
+            configured_path=_baseline_file(settings),
+        )
+    except BaselineError as error:
+        _command_error(error)
+
+    for warning in result.warnings:
+        _baseline_warning(warning)
+    click.secho(
+        __(
+            "✅ {what} recorded in {path}",
+            what=__("Accepted debt") if result.is_debt else __("Suppression"),
+            path=result.path,
+        ),
+        fg="green",
+        bold=True,
+    )
+
+
+@baseline_group.command(
+    "unsuppress",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=__("Takes back a decision recorded about a finding."),
+)
+@click.argument("finding_id", metavar="<finding-id>")
+@click.option("--yes", is_flag=True, help=__("Skips the confirmation prompt."))
+def baseline_unsuppress(finding_id, yes):
+    """Removes the decision, leaving the finding in the baseline as `existing`.
+
+    A wider suppression that also covers the finding is reported, never removed:
+    it is a statement about a rule, a file or a range, and taking it back here
+    would un-silence every other finding it covers.
+    """
+    from src.application.use_cases.suppress_finding import unsuppress_finding
+    from src.domain.baseline import BaselineError, ORIGIN_ENTRY, status_of_entry
+    from src.infrastructure.baseline.local_baseline_repository import read_overrides
+
+    settings = _baseline_settings()
+    try:
+        _, entry = _baseline_entry_or_die(finding_id, settings)
+    except BaselineError as error:
+        _command_error(error)
+
+    try:
+        overrides, _ = read_overrides(None)
+    except BaselineError as error:
+        _command_error(error)
+    applied = status_of_entry(entry, _with_pack_layers(overrides))
+    if applied is None:
+        _command_error(
+            BaselineError(
+                __(
+                    "{fingerprint} carries no decision in the baseline — there is "
+                    "nothing to take back.",
+                    fingerprint=_short_fingerprint(entry.fingerprint),
+                )
+            )
+        )
+
+    click.secho(
+        __(
+            "Taking back the decision about {line}: {note}",
+            line=_entry_line(entry, applied),
+            note=_decision_note(entry, applied),
+        ),
+        fg="cyan",
+    )
+    if applied.origin == ORIGIN_ENTRY and entry.suppressed:
+        click.secho(
+            __("The finding stays in the baseline as 'existing'."), fg="cyan"
+        )
+
+    if not _may_write(yes):
+        click.confirm(__("Proceed?"), abort=True, default=False)
+
+    try:
+        result = unsuppress_finding(
+            finding_id, configured_path=_baseline_file(settings)
+        )
+    except BaselineError as error:
+        _command_error(error)
+
+    click.secho(
+        __("✅ Removed {removed} from {path}", removed=", ".join(result.removed), path=result.path),
+        fg="green",
+        bold=True,
+    )
+    for warning in result.warnings:
+        _baseline_warning(warning)
+
+
+def _manifest_policy_tag(manifest):
+    """`name@version` of the pack the baseline was written under, or ""."""
+    if not manifest.policy_name:
+        return ""
+    if not manifest.policy_version:
+        return manifest.policy_name
+    return f"{manifest.policy_name}@{manifest.policy_version}"
+
+
+def _with_pack_layers(overrides):
+    """The repository's decisions plus the active pack's, or None when unreadable."""
+    from src.application.use_cases.baseline_gate import pack_layers
+    from src.domain.baseline import apply_overrides
+
+    pack = pack_layers()
+    if pack is None:
+        return overrides
+    return apply_overrides(overrides, pack=pack)
+
+
+def _kept(entry, status_filter, rule_filter, file_filter, overrides):
+    """Whether an entry survives the three filters `show` accepts."""
+    import fnmatch
+
+    from src.domain.baseline import normalize_path, status_of_entry
+
+    if rule_filter:
+        identity = entry.rule_id or entry.identity()
+        if rule_filter not in (entry.rule_id, identity):
+            return False
+    if file_filter:
+        pattern = normalize_path(file_filter)
+        path = normalize_path(entry.file_path)
+        if not (fnmatch.fnmatch(path, pattern) or pattern in path):
+            return False
+    if status_filter:
+        applied = status_of_entry(entry, overrides)
+        current = applied.status if applied is not None else entry.status
+        if current.value != str(status_filter).lower():
+            return False
+    return True
+
+
+@cli.group(
+    "tests",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=False,
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("tests-generate.md"),
+)
+def tests_group():
+    """AI-powered test suite generation and scaffolding."""
+    pass
+
+
+
+@tests_group.command(
+    "generate",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("tests-generate.md"),
+)
+@click.option(
+    "--file",
+    "target_file",
+    type=click.Path(),
+    help=__("Generates tests specifically for this file instead of the full diff."),
+)
+@click.option(
+    "--finding",
+    "finding_id",
+    type=str,
+    help=__("Generates tests targeting a specific review finding ID (e.g. FIX-001)."),
+)
+@click.option(
+    "--framework",
+    "framework_override",
+    type=str,
+    help=__("Forces the test framework (pest, phpunit, jest, vitest, pytest)."),
+)
+@click.option(
+    "--apply",
+    "apply_flag",
+    is_flag=True,
+    help=__("Writes the generated test file directly to disk."),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def tests_generate(target_file, finding_id, framework_override, apply_flag, ai_provider):
+    """Generates complete, executable test files for current changes or specific targets."""
+    from src.application.use_cases.generate_test_file import generate_test_file
+    from src.domain.tests_generation.test_content_types import TestGenerationTarget
+    from src.core import get_git_diff
+    import subprocess
+    import os
+
+    source_type = "diff"
+    diff_content = ""
+
+    if finding_id:
+        source_type = "finding"
+        # Find context from last review findings if available
+        try:
+            from src.fix.apply_fix import collect_candidates, find_candidate, resolve_review
+            record = resolve_review()
+            candidates = collect_candidates(record, quiet=True)
+            cand = find_candidate(candidates, finding_id)
+            target_file = cand.finding.file_path
+            diff_content = (
+                f"Finding: {cand.finding.id} - {cand.finding.message}\n"
+                f"File: {cand.finding.file_path}:{cand.finding.line_start}-{cand.finding.line_end}\n"
+                f"Severity: {cand.finding.severity} | Category: {cand.finding.category}\n"
+                f"Suggested Test: {cand.suggested_test}\n"
+                f"Diff:\n{cand.diff_unified or '(No diff available)'}"
+            )
+        except Exception as e:
+            click.secho(f"⚠️ {e}", fg="yellow")
+            diff_content = f"Finding ID: {finding_id}"
+    elif target_file:
+        source_type = "file"
+        try:
+            res = subprocess.run(
+                ["git", "diff", "HEAD", "--", target_file],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            from src.diff_parser import collapse_binary_hunks
+            diff_content = collapse_binary_hunks(res.stdout) if res.returncode == 0 else ""
+            if not diff_content.strip() and os.path.exists(target_file):
+                # Fallback to reading file content if no diff
+                with open(target_file, "r", encoding="utf-8", errors="replace") as f:
+                    diff_content = f.read()
+        except Exception:
+            diff_content = ""
+    else:
+        diff_content = get_git_diff() or ""
+
+    if not diff_content.strip():
+        click.secho(__("❌ No changes or target content found to generate tests."), fg="red")
+        raise click.exceptions.Exit(1)
+
+    target = TestGenerationTarget(
+        source_type=source_type,
+        file_path=target_file,
+        finding_id=finding_id,
+        diff_content=diff_content,
+    )
+
+    click.secho("🧪 " + __("Analyzing diff and generating test file..."), fg="cyan")
+    gen_result = generate_test_file(
+        target=target,
+        repo_path=".",
+        ai_provider=ai_provider,
+        framework_override=framework_override,
+        apply=False,  # dry-run first
+        quiet=False,
+    )
+
+    for warning in gen_result.warnings:
+        click.secho(f"⚠️ {warning}", fg="yellow")
+
+    if not gen_result.content:
+        click.secho(__("❌ Test generation failed."), fg="red")
+        raise click.exceptions.Exit(1)
+
+    click.echo()
+    click.secho(f"📋 {__('Target Framework:')} {gen_result.scaffold.framework.value.upper()}", fg="green", bold=True)
+    click.secho(f"📂 {__('Target Test Path:')} {gen_result.scaffold.target_test_path}", fg="green", bold=True)
+    if finding_id:
+        click.secho(f"🎯 {__('Target Finding:')} {finding_id}", fg="cyan")
+
+    if gen_result.covered_scenarios:
+        click.echo()
+        click.secho(__("🧪 Covered Scenarios:"), fg="cyan", bold=True)
+        for sc in gen_result.covered_scenarios:
+            click.echo(f"  • {sc}")
+
+    click.echo()
+    click.secho("--- " + __("Generated Test Code") + " ---", fg="bright_black")
+    click.echo(gen_result.content)
+    click.secho("---", fg="bright_black")
+    click.echo()
+
+    if not apply_flag:
+        click.secho(__("ℹ️ Dry-run mode. Run with --apply to write to disk."), fg="yellow")
+        return
+
+    # Mode --apply
+    if gen_result.scaffold.already_exists:
+        click.secho(
+            __(
+                "⚠️ Warning: Target test file '{path}' already exists.",
+                path=gen_result.scaffold.target_test_path,
+            ),
+            fg="yellow",
+            bold=True,
+        )
+        if not click.confirm(__("❓ Overwrite existing test file?"), default=False):
+            click.secho(__("❌ Overwrite cancelled by user."), fg="yellow")
+            return
+
+    if not click.confirm(__("❓ Write test file to disk?"), default=True):
+        click.secho(__("❌ Operation cancelled by user."), fg="yellow")
+        return
+
+    dest_path = os.path.normpath(gen_result.scaffold.target_test_path)
+    os.makedirs(os.path.dirname(dest_path) or ".", exist_ok=True)
+    with open(dest_path, "w", encoding="utf-8", errors="replace") as f:
+        f.write(gen_result.content)
+
+    click.secho(
+        __("✅ Test file successfully created at '{path}'!", path=gen_result.scaffold.target_test_path),
+        fg="green",
+        bold=True,
+    )
+
+
+@cli.command(
+    "explain",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("explain-pr.md"),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def explain(ai_provider):
+    """Generates a concise reviewer guide explaining what changes, why, and where to focus."""
+    from src.application.use_cases.generate_pr_explanation import generate_pr_explanation
+    from src.core import get_git_diff
+
+    diff_text = get_git_diff()
+    if not diff_text or not diff_text.strip():
+        click.secho(__("⚠️ No diff found. Make some changes before running the command."), fg="yellow")
+        raise click.exceptions.Exit(1)
+
+    click.secho("🧐 " + __("Analyzing diff from reviewer perspective..."), fg="cyan")
+    explanation = generate_pr_explanation(diff_text, ai_provider=ai_provider, quiet=False)
+
+    if not explanation.markdown:
+        click.secho(__("❌ Failed to generate PR explanation."), fg="red")
+        raise click.exceptions.Exit(1)
+
+    click.echo()
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.secho("  " + __("REVIEWER GUIDE (Explain My PR)"), fg="cyan", bold=True)
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.echo()
+
+    click.secho("🔍 " + __("What changes:"), fg="green", bold=True)
+    click.echo(f"  {explanation.what_changes}")
+    click.echo()
+
+    click.secho("💡 " + __("Why it changes:"), fg="green", bold=True)
+    click.echo(f"  {explanation.why_it_changes}")
+    click.echo()
+
+    if explanation.reviewer_focus_points:
+        click.secho("🎯 " + __("Where to focus review:"), fg="yellow", bold=True)
+        for pt in explanation.reviewer_focus_points:
+            loc = f" [{pt.file_path}:{pt.related_line}]" if pt.file_path and pt.related_line else (f" [{pt.file_path}]" if pt.file_path else "")
+            click.echo(f"  • {pt.description}{loc}")
+        click.echo()
+
+    if explanation.regression_risk:
+        click.secho("⚠️ " + __("Regression Risk:"), fg="red", bold=True)
+        click.echo(f"  {explanation.regression_risk}")
+        click.echo()
+
+    if not explanation.has_sufficient_evidence:
+        click.secho(
+            __("⚠️ Notice: Inferred with partial context. Some fields contain placeholders to complete."),
+            fg="yellow",
+            dim=True,
+        )
+
+
+@cli.command(
+    "mentor",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("mentor-mode.md"),
+)
+@click.option(
+    "--finding",
+    "finding_id",
+    metavar="<id>",
+    help=__("Explains only this finding of the last review (e.g. FIX-002)."),
+)
+@click.option(
+    "--provider",
+    "ai_provider",
+    metavar="<name>",
+    help=__("Forces the AI provider for this run (gemini, deepseek or ollama)."),
+)
+def mentor(finding_id, ai_provider):
+    """Provides pedagogical and didactic guidance on findings from the last code review."""
+    from src.application.use_cases.generate_mentor_explanation import (
+        MentorError,
+        explain_review,
+    )
+    from src.fix.apply_fix import FixError, resolve_review
+
+    try:
+        record = resolve_review()
+    except FixError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    try:
+        click.secho("🎓 " + __("Analyzing findings in Junior Mentor mode..."), fg="cyan")
+        run = explain_review(
+            record=record,
+            finding_id=finding_id,
+            ai_provider=ai_provider,
+            quiet=False,
+        )
+    except MentorError as exc:
+        click.secho(str(exc), fg="red", err=True)
+        raise click.exceptions.Exit(1) from exc
+
+    if not run or not run.explanations:
+        click.secho(__("ℹ️ The review raised no fixable findings."), fg="yellow")
+        return
+
+    click.echo()
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.secho("  " + __("JUNIOR MENTOR GUIDANCE"), fg="cyan", bold=True)
+    click.secho("=" * 60, fg="cyan", bold=True)
+    click.echo()
+
+    for item in run.explanations:
+        click.echo(item.markdown)
+        click.echo()
+        click.secho("-" * 40, fg="white", dim=True)
+        click.echo()
+
+    if run.skipped_ids:
+        click.secho(
+            __(
+                "ℹ️ {count} additional finding(s) not expanded here. Run 'gitpr mentor --finding <id>' to inspect them individually.",
+                count=len(run.skipped_ids),
+            )
+            + f" ({', '.join(run.skipped_ids)})",
+            fg="yellow",
+            dim=True,
+        )
+
+
+@cli.command(
+    "risk",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("risk-scoring.md"),
+)
+@click.option(
+    "--file",
+    "target_file",
+    metavar="<path>",
+    help=__("Calculates risk breakdown for a specific file."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"], case_sensitive=False),
+    default="text",
+    help=__("Output format: human text (default) or structured json."),
+)
+@click.option(
+    "--base",
+    "base_ref",
+    metavar="<ref>",
+    default=None,
+    help=__("Calculate risk against an explicit git base ref."),
+)
+@click.option(
+    "--no-history",
+    is_flag=True,
+    default=False,
+    help=__("Disables git history extraction for faster evaluation."),
+)
+def risk(target_file, output_format, base_ref, no_history):
+    """Calculates deterministic and explainable risk scores for the current diff or files."""
+    import json
+    import re
+    from src.application.use_cases.calculate_risk import execute_calculate_risk
+    from src.core import SMART_EXCLUDES
+    from src.domain.risk.risk_explanation import format_evidence_line
+    from src.domain.risk.risk_types import RiskLevel
+    from src.domain.finding.finding_types import NormalizedFinding
+    from src.linter_engine import lint_findings, parse_diff_and_lint
+    from src.review.diff_source import DiffOrigin, DiffSource
+
+    # A subcommand never runs the root callback, so the baseline is resolved
+    # here — and `required` because a risk score is a verdict: one built on a
+    # file that cannot be applied answers for findings it never read.
+    baseline_gate = _resolve_baseline_or_die(required=True)
+
+    if base_ref:
+        cmd = ["git", "diff", "-U1", "-w", "-M", "-B", base_ref, "--"] + SMART_EXCLUDES
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        from src.diff_parser import collapse_binary_hunks
+        diff_text = collapse_binary_hunks(res.stdout) if res.returncode == 0 else ""
+    else:
+        diff_text = get_git_diff(quiet=True)
+        if not diff_text or not diff_text.strip():
+            diff_text = get_git_full_diff()
+
+    diff_text = diff_text or ""
+    diff_source = DiffSource(
+        origin=DiffOrigin.LOCAL,
+        content=diff_text,
+        identifier="head" if not base_ref else base_ref,
+    )
+
+    if not diff_text.strip():
+        click.secho(__("⚠️ No diff found to calculate risk score."), fg="yellow")
+        if output_format.lower() == "json":
+            click.echo(
+                json.dumps(
+                    {
+                        "score": 0.0,
+                        "level": "low",
+                        "files": [],
+                        "evidence": [],
+                        "warnings": ["Empty diff"],
+                    },
+                    indent=2,
+                )
+            )
+        return
+
+    # I8: with a baseline the regex below could not match anything anyway. A
+    # rendered alert carries neither the rule name nor the digest of the line,
+    # and both are part of a fingerprint — so the legacy path would hand the
+    # score findings that classify as `new` forever. The structured findings the
+    # engine hands over are the same linter, the same rules and the same diff,
+    # and they are what the baseline can answer for.
+    findings = []
+    compared = []
+    if baseline_gate.is_active:
+        from src.application.use_cases.baseline_gate import new_findings
+
+        compared = _classify_with_baseline(
+            baseline_gate, lint_findings(diff_text, skip_external=True)
+        )
+        findings = new_findings(compared)
+    else:
+        try:
+            alerts = parse_diff_and_lint(diff_text, skip_external=True)
+            loc_pattern = re.compile(
+                r"in\s+([^\s\(\)]+)\s+\(Line\s+(\d+)\)|\(([^\s\(\)]+),\s+Line\s+(\d+)\)",
+                re.IGNORECASE,
+            )
+            for sev, msgs in (("error", alerts.get("errors", [])), ("warning", alerts.get("warnings", []))):
+                for msg in msgs:
+                    m = loc_pattern.search(msg)
+                    f_path = (m.group(1) or m.group(3)) if m else ""
+                    line_no = int(m.group(2) or m.group(4)) if m else 1
+                    findings.append(
+                        NormalizedFinding(
+                            severity=sev,
+                            category="security" if ("secret" in msg.lower() or "security" in msg.lower()) else "lint",
+                            file_path=f_path,
+                            line_start=line_no,
+                            line_end=line_no,
+                            message=msg,
+                            source="linter",
+                        )
+                    )
+        except Exception:
+            pass
+
+    pr_risk = execute_calculate_risk(
+        diff_source=diff_source,
+        target_file=target_file,
+        findings=findings,
+        include_history=not no_history,
+    )
+
+    # Zero points, by definition: what the baseline already knew about does not
+    # count against this change. It is still written onto the file it belongs
+    # to, so the report can say "legacy, suppressed by alice, due 2026-12-31"
+    # where a run without it would look like it never found anything.
+    if compared:
+        from src.application.use_cases.baseline_gate import (
+            attach_informational_evidence,
+        )
+
+        attach_informational_evidence(pr_risk, compared)
+
+    if output_format.lower() == "json":
+        click.echo(json.dumps(pr_risk.to_dict(), indent=2))
+        return
+
+    click.echo()
+    click.secho("=" * 65, fg="cyan", bold=True)
+    click.secho("  ⚡ " + __("GITPR LOCAL RISK ASSESSMENT"), fg="cyan", bold=True)
+    click.secho("=" * 65, fg="cyan", bold=True)
+    click.echo()
+
+    _print_baseline_line(compared)
+
+    level_colors = {
+        RiskLevel.CRITICAL: "red",
+        RiskLevel.HIGH: "bright_red",
+        RiskLevel.MEDIUM: "yellow",
+        RiskLevel.LOW: "green",
+    }
+    badge_color = level_colors.get(pr_risk.level, "white")
+
+    click.echo("  " + __("Risk Level:") + "  ", nl=False)
+    click.secho(f"[{pr_risk.level.value.upper()}]", fg=badge_color, bold=True, nl=False)
+    click.echo("  |  " + __("Score:") + f" {pr_risk.score}/100 (v{pr_risk.analysis_version})")
+    click.echo(
+        f"  {pr_risk.total_changed_files} "
+        + __("file(s) changed")
+        + f", {pr_risk.total_changed_lines} "
+        + __("line(s) changed")
+    )
+    test_status_str = __("Detected") if pr_risk.tests_changed else __("None")
+    test_color = "green" if pr_risk.tests_changed else "yellow"
+    click.echo("  " + __("Test changes:") + " ", nl=False)
+    click.secho(test_status_str, fg=test_color, bold=True)
+    click.echo()
+
+    if pr_risk.evidence:
+        click.secho("🔍 " + __("Top Contributing Risk Factors:"), fg="cyan", bold=True)
+        for ev in pr_risk.evidence[:6]:
+            click.echo(f"  {format_evidence_line(ev)}")
+        click.echo()
+
+    if pr_risk.files:
+        click.secho("📁 " + __("Files by Risk Score:"), fg="cyan", bold=True)
+        for f in pr_risk.files:
+            f_color = level_colors.get(f.level, "white")
+            score_str = f"[{f.score:>4.1f}]".rjust(7)
+            click.secho(f"  {score_str} ", fg=f_color, bold=True, nl=False)
+            click.echo(f"{f.file_path} ({f.changed_lines} lines)")
+            if target_file and f.evidence:
+                for ev in f.evidence:
+                    click.echo(f"      {format_evidence_line(ev)}")
+        click.echo()
+
+    if pr_risk.warnings:
+        click.secho("⚠️ " + __("Notices:"), fg="yellow")
+        for w in pr_risk.warnings:
+            click.echo(f"  • {w}")
+        click.echo()
+
+
+def _env_flag(name, default="false"):
+    """Reads a boolean environment variable (true/1/yes/y)."""
+    return os.getenv(name, default).lower() in ("true", "1", "yes", "y")
+
+
+def _print_unstaged_summary(categorized, quiet=False):
+    """Prints the 3-category unstaged summary to the console. No AI, no network."""
+    if not any(categorized.values()):
+        return
+    for label, emoji, fg in (
+        ("new", __("➕ New files"), "green"),
+        ("modified", __("✏️ Modified files"), "yellow"),
+        ("deleted", __("🗑️ Deleted files"), "red"),
+    ):
+        items = categorized.get(label, [])
+        if items:
+            click.secho(f"  {emoji} ({len(items)}):", fg=fg, bold=True)
+            for f in items:
+                click.echo(f"    - {f}")
+
+
+def check_unstaged_files(action_type, skip_check=False, quiet=False, interactive=True):
+    """Unstaged-files verification run before AI commands.
+
+    Returns True to proceed, False to abort (only a TUI cancel aborts).
+
+    - skip_check=True or GITPR_SKIP_UNSTAGED_CHECK=true → no-op, return True.
+    - 'pr'/'issue' → interactive TUI/auto-stage flow.
+    - 'commit' → warn that the commit will NOT include unstaged files;
+      auto-stages when GITPR_AUTO_STAGE=true.
+    - 'review'/'fullreview' → informational warn only, never stages.
+    """
+    if skip_check or _env_flag("GITPR_SKIP_UNSTAGED_CHECK"):
+        return True
+
+    from src.core import get_unstaged_categorized, get_unstaged_files, stage_files
+
+    unstaged = get_unstaged_files()
+    if not unstaged:
+        if not quiet:
+            click.secho(
+                __("✅ No unstaged files found. Proceeding..."), fg="green", dim=True
+            )
+        return True
+
+    if action_type in ("pr", "issue"):
+        # ── Interactive flow (TUI or auto-stage) ──
+        click.secho(__("🔍 Checking unversioned files..."), fg="cyan")
+        if _env_flag("GITPR_AUTO_STAGE"):
+            click.secho(
+                __("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan"
+            )
+            ok, err = stage_files([f for f, _ in unstaged])
+            if ok:
+                click.secho(__("✅ Files added to stage."), fg="green")
+            else:
+                click.secho(
+                    __("❌ Failed to stage files: {error}", error=err), fg="red"
+                )
+            return True
+        click.secho(__("📋 Opening file selection..."), fg="cyan")
+        from src.ui.pr_publish_app import StageFilesApp
+
+        app = StageFilesApp(unstaged_files=unstaged)
+        app.run()
+        if app.result == "cancel":
+            click.secho(__("❌ Operation cancelled by user."), fg="red")
+            return False
+        if app.result == "stage":
+            ok, err = stage_files(app.selected_files)
+            count = len(app.selected_files) if app.selected_files else 0
+            if ok and count:
+                click.secho(
+                    __("✅ {count} file(s) added to stage.", count=count), fg="green"
+                )
+            elif not ok:
+                click.secho(
+                    __("❌ Failed to stage files: {error}", error=err), fg="red"
+                )
+            else:
+                click.secho(__("⏭️ No files selected. Proceeding..."), fg="yellow")
+        else:
+            click.secho(__("⏭️ Files ignored. Proceeding..."), fg="yellow")
+        return True
+
+    # ── Non-interactive informational path for commit/review/fullreview ──
+    categorized = get_unstaged_categorized()
+    if action_type == "commit":
+        click.secho(
+            __(
+                "⚠️ {count} file(s) are not staged and will NOT be included in the commit.",
+                count=len(unstaged),
+            ),
+            fg="yellow",
+            bold=True,
+        )
+        if _env_flag("GITPR_AUTO_STAGE"):
+            click.secho(
+                __("📋 Auto-staging {count} file(s)...", count=len(unstaged)), fg="cyan"
+            )
+            ok, err = stage_files([f for f, _ in unstaged])
+            if ok:
+                click.secho(__("✅ Files added to stage."), fg="green")
+            else:
+                click.secho(
+                    __("❌ Failed to stage files: {error}", error=err), fg="red"
+                )
+            return True
+    else:
+        click.secho(
+            __(
+                "ℹ️ {count} file(s) are not staged. They will still be included in this analysis.",
+                count=len(unstaged),
+            ),
+            fg="yellow",
+        )
+    _print_unstaged_summary(categorized, quiet=quiet)
+    click.secho(
+        __(
+            "💡 Tip: Use 'git add <file>' to stage them, or pass --no-unstaged-check to skip this verification."
+        ),
+        fg="cyan",
+        dim=True,
+    )
+    return True
+
+
+def _run_auto_commit_cli(provider):
+    """Auto-commit flow for --no-edit mode. Returns True if commit succeeded or no changes."""
+    from src.core import (
+        append_coauthor_trailer,
+        execute_git_commit,
+        get_git_diff,
+        generate_pr_content,
+        has_uncommitted_changes,
+    )
+    from src.linter_engine import parse_diff_and_lint
+
+    if not has_uncommitted_changes():
+        return True  # nothing to commit, proceed
+
+    skip_lint = os.getenv("GITPR_SKIP_LINT", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+        "y",
+    )
+    auto_commit = os.getenv("GITPR_AUTO_COMMIT", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+        "y",
+    )
+
+    # ── Linter ──
+    no_verify = False
+    if not skip_lint:
+        click.secho("🔍 " + __("Running linter..."), fg="cyan")
+        diff_text = get_git_diff()
+        linter_results = parse_diff_and_lint(diff_text)
+        has_errors = len(linter_results["errors"]) > 0
+        has_warnings = len(linter_results["warnings"]) > 0
+
+        if has_warnings:
+            click.secho(
+                __(
+                    "\n⚠️ Linter generated {count} warning(s):",
+                    count=len(linter_results["warnings"]),
+                ),
+                fg="yellow",
+            )
+            for w in linter_results["warnings"]:
+                click.echo(f"  - {w}")
+
+        if has_errors:
+            click.secho(
+                __(
+                    "\n🚨 Linter found {count} error(s):",
+                    count=len(linter_results["errors"]),
+                ),
+                fg="red",
+            )
+            for e in linter_results["errors"]:
+                click.echo(f"  - {e}")
+            if click.confirm(__("\n⚠ Commit with --no-verify anyway?"), default=False):
+                no_verify = True
+            else:
+                click.secho(__("❌ Commit aborted by user."), fg="red")
+                return False
+        else:
+            if has_warnings:
+                click.secho(__("✅ Linter passed with warnings."), fg="green")
+            else:
+                click.secho(__("✅ Linter passed — no violations."), fg="green")
+
+    # ── Generate commit message via AI ──
+    click.secho("📝 " + __("Generating commit message..."), fg="cyan")
+
+    diff_text = get_git_diff()
+    commit_data = generate_pr_content("commit", "commit", diff_text, provider)
+    commit_msg = append_coauthor_trailer(
+        commit_data.get("commit_message", __("Code update"))
+        if commit_data
+        else __("Code update")
+    )
+
+    click.secho(__("\n📝 Commit Message:\n"), fg="green", bold=True)
+    click.echo(commit_msg)
+    click.echo("")
+
+    if not auto_commit:
+        if not click.confirm(__("Proceed with this commit message?"), default=True):
+            click.secho(__("❌ Commit cancelled by user."), fg="red")
+            return False
+
+    # ── Execute commit ──
+    click.secho("📦 " + __("Executing commit..."), fg="cyan")
+    success, output = execute_git_commit(commit_msg, no_verify=no_verify)
+    if success:
+        click.secho(__("✅ Commit executed successfully!"), fg="green")
+        return True
+    else:
+        click.secho(__("❌ Commit failed: {output}", output=output), fg="red")
+        return False
+
+
+def _reviewer_suggestion_view(result, provider, repo=None):
+    """Map a ReviewerSuggestionResult to the dict consumed by PrPublishApp.
+
+    Resolves each candidate to a forge login (commit author first, then the
+    noreply-address parse and the user search API); the resolved handles
+    prefill the reviewer field and the people left without a login are flagged
+    in the hint lines, under their author name. Non-GitHub forges get a
+    local-only view — suggestions are displayed, never submitted, because
+    those forges have no reviewer-request API (see ADR-002). Returns None when
+    there is nothing to show.
+    """
+    from src.infrastructure.scm import (
+        provider_display_name,
+        provider_is_github,
+    )
+    from src.reviewer_resolution import resolve_candidates
+    from src.suggest_reviewers import format_suggestion_lines
+
+    if result is None or not result.candidates:
+        return None
+
+    submittable = provider_is_github(provider)
+    handles = []
+    who_map = {}
+    no_login = []
+    resolutions = []
+    if submittable:
+        resolutions = resolve_candidates(result.candidates, provider, repo)
+        for resolution in resolutions:
+            if not resolution.login:
+                no_login.append(resolution.key)
+                continue
+            who_map[resolution.key] = f"@{resolution.login}"
+            if resolution.login not in handles:
+                handles.append(resolution.login)
+    lines = format_suggestion_lines(result, who_map=who_map, no_login=no_login)
+    note = None
+    if not submittable:
+        note = __(
+            "Reviewer suggestions are displayed locally only — {provider} cannot attach reviewers to pull requests.",
+            provider=provider_display_name(provider),
+        )
+    return {
+        "handles": handles,
+        "lines": lines,
+        "submittable": submittable,
+        "note": note,
+        "resolutions": resolutions,
+    }
+
+
+def _scm_access_canceled_message(provider):
+    """Error shown when the user cancels or fails to provide a forge token."""
+    from src.infrastructure.scm import provider_display_name, provider_is_github
+
+    if provider_is_github(provider):
+        return __("❌ Access canceled. GitHub Token is mandatory for this action.")
+    return __(
+        "❌ Access canceled. {provider} token is mandatory for this action.",
+        provider=provider_display_name(provider),
+    )
+
+
+def _prepare_close_issue(flags, base, may_ask):
+    """Reads the local record early and decides the closing line (ADR-005).
+
+    Called before the stage TUI, so the question comes before the description
+    exists. Only a record can make the feature cost anything — provider
+    resolution, the forge check and the question all hang off it; without one
+    the run is byte-for-byte the old flow.
+
+    GITPR_ISSUE_AUTOCLOSE is checked before the record is touched: constructing
+    the registry runs ``git rev-parse``, so a disabled feature must not even
+    build one. ``--close-issue`` does not override the switch; the use case
+    applies the same order.
+
+    Returns ``(decision, registry, scm_context)``. ``registry`` is what the
+    publication clearing uses afterwards; ``scm_context`` is the
+    provider/repository pair resolved here for the rest of the flow to reuse,
+    or ``None`` when nothing needed it.
+
+    The outcome is also reported once to the local ledger as an
+    ``issue_autoclose`` row (``asked``, ``accepted``, ``skipped_reason``).
+    """
+    from src.config import get_issue_autoclose_timeout, issue_autoclose_enabled
+    from src.issue_autoclose.issue_registry import IssueRegistry
+    from src.issue_autoclose.resolve_close_issue import resolve_close_issue
+    from src.metrics import log_command_metric
+
+    if flags.disabled:
+        return None, None, None
+
+    if not issue_autoclose_enabled():
+        return None, None, None
+
+    registry = IssueRegistry()
+    try:
+        loaded = registry.load()
+    except Exception:
+        # An unreadable record still deserves the early path: the use case
+        # reloads it and reports the warning itself.
+        loaded = None
+    if loaded is not None and loaded.issue is None and not loaded.error:
+        return None, None, None
+
+    provider, repo_ref = _resolve_scm_context()
+    scm_context = (provider, repo_ref)
+    if provider is None:
+        return None, None, scm_context
+
+    # The question's warning only needs the configured target, not the
+    # validated one: the real resolution (origin check and base picker) stays
+    # where publishing happens.
+    target_branch = ""
+    if may_ask and not flags.accept:
+        try:
+            from src.project_config import resolve_pull_request_base
+
+            target_branch = resolve_pull_request_base(base, verify=False).branch
+        except Exception:
+            target_branch = ""
+
+    outcome = resolve_close_issue(
+        provider,
+        registry,
+        repo_ref,
+        flags=flags,
+        is_tty=may_ask,
+        target_branch=target_branch,
+        ask=lambda question, default=True: click.confirm(question, default=default),
+        timeout=get_issue_autoclose_timeout(),
+    )
+    if outcome.warning:
+        click.secho(outcome.warning, fg="yellow", err=True)
+    # Q14: one row per decision the use case reached. The helper's own
+    # short-circuits never engaged the feature and stay out of the ledger.
+    log_command_metric(
+        command="issue_autoclose",
+        provider="git",
+        asked=outcome.asked,
+        accepted=outcome.accepted,
+        skipped_reason=outcome.skipped_reason,
+    )
+    return outcome.decision, registry, scm_context
+
+
+def _resolve_scm_context():
+    """Resolve the SCM forge (provider) + repository reference for the flows.
+
+    Reads the origin remote URL, detects the forge when no GITPR_SCM_PROVIDER
+    is configured, builds the provider through the factory (which falls back
+    to the legacy GitHub token when needed) and parses the repository ref.
+
+    Returns (provider, repo_ref), or (None, None) after printing an error when
+    the remote cannot be identified or parsed.
+    """
+    from src.config import get_scm_settings
+    from src.core import get_origin_remote_url
+    from src.infrastructure.scm import detect_provider_from_remote
+
+    raw_remote = get_origin_remote_url()
+    if not raw_remote:
+        click.secho(
+            __(
+                "❌ Remote repository not identified to create the pull request via API."
+            ),
+            fg="red",
+        )
+        return None, None
+
+    settings = get_scm_settings()
+    if not settings.get("provider"):
+        settings["provider"] = detect_provider_from_remote(raw_remote)
+
+    try:
+        from src.infrastructure.scm import ScmProviderError, resolve_scm_provider
+
+        provider = resolve_scm_provider(settings)
+        repo_ref = provider.parse_repo_ref(raw_remote)
+    except (ValueError, ScmProviderError) as e:
+        # ValueError: remote does not parse for the detected forge.
+        # ScmProviderError: provider fail-fast (e.g. Azure DevOps without the
+        # GITPR_SCM_ORGANIZATION/GITPR_SCM_PROJECT extras) — message guides
+        # the user to 'gitpr --init'.
+        click.secho(f"⚠️ {e}", fg="red")
+        return None, None
+
+    return provider, repo_ref
+
+
+def _clear_close_issue_record(registry, decision):
+    """Forgets the recorded issue once the published PR carries the line.
+
+    ADR-007: only a publication that actually sent the body clears it. A
+    bookkeeping failure must never break the flow — the file is local state
+    and the next run overwrites it.
+    """
+    if registry is None or decision is None:
+        return
+    try:
+        registry.clear()
+    except Exception:
+        pass
+
+
+def _publish_pr_directly(pr_data, provider, repo_ref, target_base, output_filename):
+    """Publish PR directly to the forge without TUI (for --no-edit mode).
+
+    Returns True only when the forge created the pull request, so the caller
+    can clear the issue record (ADR-007).
+    """
+    from src.application.use_cases.publish_pull_request import (
+        format_recommended_commit_body,
+        publish_pull_request_use_case,
+    )
+    from src.core import get_current_branch
+    from src.infrastructure.scm import (
+        provider_display_name,
+        provider_is_github,
+    )
+
+    github_flow = provider_is_github(provider)
+    label = provider_display_name(provider)
+    commit_msg = pr_data.get("commit_message", "")
+    pr_body = pr_data.get("pr_description", "")
+
+    full_body = format_recommended_commit_body(commit_msg, pr_body)
+    head_branch = get_current_branch()
+
+    # This path publishes a body the user never saw, so it says what went into
+    # it. The TUI needs no such line: the badge is in the text area there.
+    from src.branding.badge_builder import has_badge
+
+    if has_badge(pr_body):
+        click.secho(
+            __(
+                "🏷️ A GitPR badge was added to the PR body. Set GITPR_BADGE=false to publish without it."
+            ),
+            dim=True,
+        )
+
+    if github_flow:
+        click.secho("🚀 " + __("Publishing Pull Request to GitHub..."), fg="cyan")
+    else:
+        click.secho(
+            "🚀 " + __("Publishing Pull Request to {provider}...", provider=label),
+            fg="cyan",
+        )
+
+    outcome = publish_pull_request_use_case(
+        provider=provider,
+        repo_ref=repo_ref,
+        title=commit_msg,
+        description=full_body,
+        source_branch=head_branch,
+        target_branch=target_base,
+        draft=False,
+        check_remote_state=False,
+    )
+
+    if outcome.status != "success":
+        if outcome.http_status == 401:
+            if github_flow:
+                click.secho(
+                    __(
+                        "🔐 GitHub token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively."
+                    ),
+                    fg="red",
+                )
+            else:
+                click.secho(
+                    __(
+                        "🔐 {provider} token expired or invalid. Use 'gitpr' (without --no-edit) to re-authenticate interactively.",
+                        provider=label,
+                    ),
+                    fg="red",
+                )
+            return False
+        if github_flow:
+            click.secho(
+                __(
+                    "❌ GitHub API Error ({code}): {msg}",
+                    code=outcome.http_status,
+                    msg=outcome.message,
+                ),
+                fg="red",
+            )
+        else:
+            click.secho(
+                __(
+                    "❌ {provider} API Error ({code}): {msg}",
+                    provider=label,
+                    code=outcome.http_status,
+                    msg=outcome.message,
+                ),
+                fg="red",
+            )
+        return False
+
+    pr_url = outcome.url
+    if github_flow:
+        click.secho(
+            __("✅ PR successfully created on GitHub:\n👉 {pr_url}", pr_url=pr_url),
+            fg="green",
+            bold=True,
+        )
+    else:
+        click.secho(
+            __(
+                "✅ PR successfully created on {provider}:\n👉 {pr_url}",
+                provider=label,
+                pr_url=pr_url,
+            ),
+            fg="green",
+            bold=True,
+        )
+    from src.metrics import log_command_metric
+
+    log_command_metric(command="pr:publish", status="success", provider=provider.name)
+    if click.confirm(__("🔗 Open the Pull Request in your browser?")):
+        import webbrowser
+
+        webbrowser.open(pr_url)
+    click.secho(
+        f"📚 {__('PR publication documentation:')} {get_doc_url('pull-request-publication.md')}",
+        fg="cyan",
+    )
+    return True
+
+
+@cli.command(
+    "check",
+    context_settings={"help_option_names": ["-h", "--help"]},
+    epilog="\b\n"
+    + __(">> Full documentation:")
+    + "\n"
+    + get_doc_url("check-ci.md"),
+)
+@click.option(
+    "--base",
+    "base",
+    metavar="<ref>",
+    default=None,
+    help=__("Base git reference for diff comparison (e.g. origin/main)."),
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["sarif", "json", "junit"], case_sensitive=False),
+    default=None,
+    help=__("Output artifact format (sarif, json, junit)."),
+)
+@click.option(
+    "-o",
+    "--output",
+    "output_path",
+    metavar="<path>",
+    default=None,
+    help=__("Path to write output artifact file."),
+)
+@click.option(
+    "--fail-on",
+    "fail_on",
+    type=click.Choice(
+        ["info", "warning", "error", "minor", "major", "critical", "blocker"],
+        case_sensitive=False,
+    ),
+    default=None,
+    help=__("Minimum finding severity that causes exit code 1."),
+)
+@click.option(
+    "--no-ia",
+    is_flag=True,
+    default=None,
+    help=__("Disables AI review for faster, zero-cost CI checks."),
+)
+@click.option(
+    "--ia-only-high-risk",
+    is_flag=True,
+    default=None,
+    help=__("Restricts AI review only to files identified as high risk."),
+)
+@click.option(
+    "--baseline",
+    "baseline_path",
+    metavar="<path>",
+    default=None,
+    help=__("Path to baseline JSON manifest."),
+)
+@click.option(
+    "--policy",
+    "policy",
+    metavar="<name>@<version>",
+    default=None,
+    help=__("Pin an explicit Policy Pack for this run."),
+)
+def check(
+    base,
+    output_format,
+    output_path,
+    fail_on,
+    no_ia,
+    ia_only_high_risk,
+    baseline_path,
+    policy,
+):
+    """Unified CI check command: linter, secrets, optional AI, risk, and baseline."""
+    from src.application.use_cases.run_check import execute_check
+    from src.domain.check.check_config import load_check_config
+    from src.domain.check.check_output import format_check_output, write_check_output
+
+    cli_args = {
+        "base": base,
+        "format": output_format,
+        "output": output_path,
+        "fail_on": fail_on,
+        "no_ia": no_ia,
+        "ia_only_high_risk": ia_only_high_risk,
+        "baseline": baseline_path,
+        "policy": policy,
+    }
+    cli_args = {k: v for k, v in cli_args.items() if v is not None}
+
+    config = load_check_config(cli_args)
+    result = execute_check(config)
+
+    formatted = format_check_output(result)
+
+    if config.output_path:
+        write_check_output(formatted, config.output_path)
+        click.echo(
+            __(
+                "Artifact written to {path} ({format}) with exit code {code}",
+                path=config.output_path,
+                format=result.output_format.value,
+                code=result.exit_code,
+            ),
+            file=sys.stderr,
+        )
+    else:
+        sys.stdout.write(formatted)
+        if not formatted.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+
+    for w in result.warnings:
+        click.echo(f"⚠️ {w}", file=sys.stderr)
+
+    from src.metrics import log_command_metric
+
+    log_command_metric(
+        command="check",
+        status="success" if result.exit_code == 0 else "failed",
+        exit_code=result.exit_code,
+        findings_total=result.summary.total,
+        findings_errors=result.summary.errors,
+    )
+
+    sys.exit(result.exit_code)
+
+
+if __name__ == "__main__":
+    cli()
