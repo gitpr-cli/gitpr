@@ -143,3 +143,14 @@ minified assets, generated artifacts) and documentation prose from the git diff
 before it is sent to the AI. Composed of three layers: Core Exclusions (global),
 Documentation Exclusions (global), and Project-Local Exclusions (`.gitpr/conf/gitpr.smart-excludes.json`).
 _Avoid_: diff ignore, ignore patterns, gitignore filter
+
+**Seeded configuration field**:
+A configuration variable declared in the schema that is auto-written to `~/.gitpr/.env`
+on first run with its default value if absent from the environment.
+_Avoid_: default env entry, auto-populated key, config constant
+
+**CI Check**:
+The unified pipeline command (`gitpr check`) that orchestrates static analysis,
+secrets scanning, risk evaluation, baseline suppressions, and optional AI review
+to produce standard machine-readable artifacts and deterministic exit codes.
+_Avoid_: check mode, CI runner, CI linter

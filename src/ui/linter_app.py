@@ -7,6 +7,8 @@ from src.i18n import __
 class LinterApp(App):
     """TUI for displaying Linter errors."""
 
+    ENABLE_COMMAND_PALETTE = False
+
     CSS = """
     Screen { background: $surface; }
     .alert-container { margin: 1 2; }

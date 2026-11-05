@@ -127,6 +127,9 @@ class ConfigField:
     # File this value belongs to: STORE_ENV or STORE_PROJECT. Every field that
     # exists today is an .env key, so the default keeps them there.
     store: str = STORE_ENV
+    # Whether this field is automatically written to ~/.gitpr/.env on first run
+    # with its default value if absent from the environment.
+    seeded: bool = False
 
 
 @dataclass(frozen=True)
@@ -231,6 +234,14 @@ CATEGORIES = (
             "Pre-existing findings recorded once, so only what this change introduces is new."
         ),
         doc="baseline-suppressions.md",
+    ),
+    Category(
+        "check",
+        __("CI Check"),
+        __(
+            "Unified pipeline checks, output formats, thresholds, and execution limits."
+        ),
+        doc="check-ci.md",
     ),
     Category(
         "scm",
@@ -340,6 +351,7 @@ FIELDS = (
         category="general",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     # ------------------------------------------------------------ AI providers
     # Only the fields of the selected engine are shown — see the show_if rules
@@ -357,6 +369,7 @@ FIELDS = (
         default="gemini",
         choices=("", "gemini", "deepseek", "ollama"),
         choice_labels=(("", __("(not configured)")),),
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_AI_TIMEOUT",
@@ -367,6 +380,7 @@ FIELDS = (
         category="ai",
         kind=KIND_INT,
         default="180",
+        seeded=True,
     ),
     ConfigField(
         key="GEMINI_API_MODEL_PRIMARY",
@@ -376,6 +390,7 @@ FIELDS = (
         kind=KIND_STR,
         default="gemini-pro-latest",
         show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
+        seeded=True,
     ),
     ConfigField(
         key="GEMINI_API_MODEL_SECONDARY",
@@ -385,6 +400,7 @@ FIELDS = (
         kind=KIND_STR,
         default="gemini-flash-lite-latest",
         show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
+        seeded=True,
     ),
     ConfigField(
         key="GEMINI_API_KEY_ENCRYPTED",
@@ -406,6 +422,7 @@ FIELDS = (
         kind=KIND_STR,
         default="deepseek-v4-pro",
         show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
+        seeded=True,
     ),
     ConfigField(
         key="DEEPSEEK_API_MODEL_SECONDARY",
@@ -415,6 +432,7 @@ FIELDS = (
         kind=KIND_STR,
         default="deepseek-v4-flash",
         show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
+        seeded=True,
     ),
     ConfigField(
         key="DEEPSEEK_API_KEY_ENCRYPTED",
@@ -436,6 +454,7 @@ FIELDS = (
         kind=KIND_STR,
         default="llama3",
         show_if=(("DEFAULT_AI_PROVIDER", ("ollama",)),),
+        seeded=True,
     ),
     ConfigField(
         key="OLLAMA_API_MODEL_SECONDARY",
@@ -445,6 +464,7 @@ FIELDS = (
         kind=KIND_STR,
         default="llama3",
         show_if=(("DEFAULT_AI_PROVIDER", ("ollama",)),),
+        seeded=True,
     ),
     # ----------------------------------------------------------- Pull request
     ConfigField(
@@ -456,6 +476,7 @@ FIELDS = (
         category="pr",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_PR_DESC.md",
+        seeded=True,
     ),
     ConfigField(
         key="PR_DEFAULT_BASE",
@@ -467,6 +488,7 @@ FIELDS = (
         category="pr",
         kind=KIND_STR,
         default="",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_AUTO_COMMIT",
@@ -477,6 +499,7 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="false",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SKIP_LINT",
@@ -487,6 +510,7 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="false",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_AUTO_STAGE",
@@ -497,6 +521,7 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="false",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SKIP_UNSTAGED_CHECK",
@@ -507,6 +532,7 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="false",
+        seeded=True,
     ),
     ConfigField(
         key="PR_PUBLISH_LOG",
@@ -517,6 +543,7 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_AUTO_MERGE",
@@ -527,6 +554,7 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="false",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SUGGEST_REVIEWERS",
@@ -537,6 +565,7 @@ FIELDS = (
         category="pr",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_REVIEWER_SUGGESTION_TOP_N",
@@ -545,6 +574,7 @@ FIELDS = (
         category="pr",
         kind=KIND_INT,
         default="3",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_REVIEWER_SUGGESTION_EXCLUDED",
@@ -555,6 +585,7 @@ FIELDS = (
         category="pr",
         kind=KIND_STR,
         default="",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_EXPLAIN_BY_DEFAULT",
@@ -615,6 +646,7 @@ FIELDS = (
         category="review",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_PR_REVIEW.txt",
+        seeded=True,
     ),
     ConfigField(
         key="OUTPUT_FILE_NAME_FULLREVIEW",
@@ -625,6 +657,7 @@ FIELDS = (
         category="review",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_PR_FULLREVIEW.txt",
+        seeded=True,
     ),
     ConfigField(
         key="OUTPUT_FILE_NAME_FILEREVIEW",
@@ -635,6 +668,7 @@ FIELDS = (
         category="review",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_FILE_REVIEW.txt",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_REVIEW_MENTOR_MODE",
@@ -645,6 +679,7 @@ FIELDS = (
         category="review",
         kind=KIND_BOOL,
         default="false",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_MENTOR_INCLUDE_ANALOGY",
@@ -655,6 +690,7 @@ FIELDS = (
         category="review",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_RISK_INCLUDE_IN_REVIEW",
@@ -665,6 +701,7 @@ FIELDS = (
         category="review",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     # ------------------------------------------------------------------- Issue
     ConfigField(
@@ -676,6 +713,7 @@ FIELDS = (
         category="issue",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_ISSUE.md",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_ISSUE_AUTOCLOSE",
@@ -710,6 +748,7 @@ FIELDS = (
         category="blame",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_BLAME_REPORT.md",
+        seeded=True,
     ),
     # ------------------------------------------------------------------ Linter
     ConfigField(
@@ -721,6 +760,7 @@ FIELDS = (
         category="linter",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_LINTER.md",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_LINTER_TIMEOUT",
@@ -731,6 +771,7 @@ FIELDS = (
         category="linter",
         kind=KIND_INT,
         default="120",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_LINTER_SECURITY",
@@ -741,6 +782,7 @@ FIELDS = (
         category="linter",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_LINTER_SECURITY_DISABLED_RULES",
@@ -751,6 +793,7 @@ FIELDS = (
         category="linter",
         kind=KIND_STR,
         default="",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SAST_SEMGREP_ENABLED",
@@ -792,6 +835,7 @@ FIELDS = (
         category="release",
         kind=KIND_PATH,
         default="CHANGELOG.md",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_RELEASE_AI_SUMMARY",
@@ -802,6 +846,7 @@ FIELDS = (
         category="release",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_RELEASE_AUTO_BUMP",
@@ -812,6 +857,7 @@ FIELDS = (
         category="release",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_RELEASE_PUBLISH_DRAFT_BY_DEFAULT",
@@ -822,6 +868,7 @@ FIELDS = (
         category="release",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="OUTPUT_FILE_NAME_RELEASE",
@@ -832,6 +879,7 @@ FIELDS = (
         category="release",
         kind=KIND_TEMPLATE,
         default="{branch}_{datetime}_RELEASE.md",
+        seeded=True,
     ),
     # --------------------------------------------------------------------- Fix
     ConfigField(
@@ -843,6 +891,7 @@ FIELDS = (
         category="fix",
         kind=KIND_INT,
         default="5",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_FIX_SAFE_EXCLUDED_PATHS",
@@ -855,6 +904,7 @@ FIELDS = (
         default=(
             "database/migrations/**;**/*.ci.yml;docker/**;terraform/**;.github/workflows/**"
         ),
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_FIX_REQUIRE_CONFIRMATION",
@@ -865,6 +915,7 @@ FIELDS = (
         category="fix",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_FIX_CREATE_BRANCH_ON_ALL_SAFE",
@@ -875,6 +926,7 @@ FIELDS = (
         category="fix",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_FIX_BRANCH_NAME_TEMPLATE",
@@ -885,6 +937,7 @@ FIELDS = (
         category="fix",
         kind=KIND_TEMPLATE,
         default="fix/gitpr-{datetime}",
+        seeded=True,
     ),
     # ------------------------------------------------------------------- Split
     ConfigField(
@@ -896,6 +949,7 @@ FIELDS = (
         category="split",
         kind=KIND_INT,
         default="5",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SPLIT_REQUIRE_CONFIRMATION",
@@ -906,6 +960,7 @@ FIELDS = (
         category="split",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SPLIT_MAX_HUNKS",
@@ -916,6 +971,7 @@ FIELDS = (
         category="split",
         kind=KIND_INT,
         default="50",
+        seeded=True,
     ),
     # ------------------------------------------------------------- Policy Packs
     # Which pack is active is NOT here: it belongs to the repository, and lives
@@ -930,6 +986,7 @@ FIELDS = (
         category="policy",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_POLICY_CONTEXT_MAX_CHARACTERS",
@@ -940,6 +997,7 @@ FIELDS = (
         category="policy",
         kind=KIND_INT,
         default="12000",
+        seeded=True,
     ),
     # ---------------------------------------------------------------- Baseline
     # The record belongs to the repository (.gitpr/baseline.json and
@@ -954,6 +1012,7 @@ FIELDS = (
         category="baseline",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_BASELINE_PATH",
@@ -964,6 +1023,7 @@ FIELDS = (
         category="baseline",
         kind=KIND_PATH,
         default="",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_BASELINE_REQUIRE_LOCKFILE_CHECKSUM_MATCH",
@@ -974,6 +1034,7 @@ FIELDS = (
         category="baseline",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_BASELINE_ALLOW_LOCAL_OVERRIDES",
@@ -984,6 +1045,108 @@ FIELDS = (
         category="baseline",
         kind=KIND_BOOL,
         default="true",
+        seeded=True,
+    ),
+    # ----------------------------------------------------------------- CI Check
+    ConfigField(
+        key="GITPR_CHECK_BASE",
+        label=__("Check Base Branch"),
+        description=__(
+            "Base git reference for diff comparison (e.g. origin/main, HEAD)."
+        ),
+        category="check",
+        kind=KIND_STR,
+        default="",
+    ),
+    ConfigField(
+        key="GITPR_CHECK_FORMAT",
+        label=__("Check Output Format"),
+        description=__(
+            "Format of the output artifact: sarif, json, or junit."
+        ),
+        category="check",
+        kind=KIND_ENUM,
+        default="sarif",
+        choices=("sarif", "json", "junit"),
+    ),
+    ConfigField(
+        key="GITPR_CHECK_OUTPUT",
+        label=__("Check Output Path"),
+        description=__(
+            "Path to write output artifact file. When omitted, writes to stdout."
+        ),
+        category="check",
+        kind=KIND_PATH,
+        default="",
+    ),
+    ConfigField(
+        key="GITPR_CHECK_FAIL_ON",
+        label=__("Check Fail-On Severity"),
+        description=__(
+            "Minimum finding severity that causes exit code 1."
+        ),
+        category="check",
+        kind=KIND_ENUM,
+        default="error",
+        choices=(
+            "info",
+            "warning",
+            "error",
+            "minor",
+            "major",
+            "critical",
+            "blocker",
+        ),
+    ),
+    ConfigField(
+        key="GITPR_CHECK_NO_IA",
+        label=__("Check Disable AI"),
+        description=__(
+            "Disables AI review for faster, zero-cost CI checks."
+        ),
+        category="check",
+        kind=KIND_BOOL,
+        default="false",
+    ),
+    ConfigField(
+        key="GITPR_CHECK_IA_ONLY_HIGH_RISK",
+        label=__("Check AI Only High Risk"),
+        description=__(
+            "Restricts AI review only to files identified as high or critical risk."
+        ),
+        category="check",
+        kind=KIND_BOOL,
+        default="false",
+    ),
+    ConfigField(
+        key="GITPR_CHECK_BASELINE_PATH",
+        label=__("Check Baseline Path"),
+        description=__(
+            "Path to baseline JSON manifest."
+        ),
+        category="check",
+        kind=KIND_PATH,
+        default="",
+    ),
+    ConfigField(
+        key="GITPR_CHECK_POLICY",
+        label=__("Check Policy Pack"),
+        description=__(
+            "Pin an explicit Policy Pack for check runs (e.g. name@version)."
+        ),
+        category="check",
+        kind=KIND_STR,
+        default="",
+    ),
+    ConfigField(
+        key="GITPR_CHECK_TIMEOUT_SECONDS",
+        label=__("Check Timeout (Seconds)"),
+        description=__(
+            "Global execution deadline for gitpr check in seconds."
+        ),
+        category="check",
+        kind=KIND_INT,
+        default="300",
     ),
     # --------------------------------------------------------------- SCM/Forge
     # The common settings stay ungrouped and always visible; the fields that
@@ -1001,6 +1164,7 @@ FIELDS = (
         kind=KIND_ENUM,
         default="",
         choices=("", "github", "gitlab", "bitbucket", "azure_devops"),
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SCM_TOKEN",
@@ -1012,6 +1176,7 @@ FIELDS = (
         kind=KIND_SECRET,
         default="",
         read_only=True,
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SCM_TOKEN_ENCRYPTED",
@@ -1023,6 +1188,7 @@ FIELDS = (
         kind=KIND_SECRET,
         default="",
         validator=VALIDATOR_SCM_TOKEN,
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SCM_BASE_URL",
@@ -1033,6 +1199,7 @@ FIELDS = (
         category="scm",
         kind=KIND_STR,
         default="",
+        seeded=True,
     ),
     ConfigField(
         key="GITHUB_TOKEN_ENCRYPTED",
@@ -1058,6 +1225,7 @@ FIELDS = (
         default="",
         group="bitbucket",
         show_if=(("GITPR_SCM_PROVIDER", ("bitbucket",)),),
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SCM_ORGANIZATION",
@@ -1068,6 +1236,7 @@ FIELDS = (
         default="",
         group="azure_devops",
         show_if=(("GITPR_SCM_PROVIDER", ("azure_devops",)),),
+        seeded=True,
     ),
     ConfigField(
         key="GITPR_SCM_PROJECT",
@@ -1078,6 +1247,7 @@ FIELDS = (
         default="",
         group="azure_devops",
         show_if=(("GITPR_SCM_PROVIDER", ("azure_devops",)),),
+        seeded=True,
     ),
     # ----------------------------------------------------------- Smart excludes
     ConfigField(
@@ -1265,6 +1435,10 @@ FIELDS = (
 
 # Keyed lookups used by the TUI and the tests.
 FIELDS_BY_KEY = {field.key: field for field in FIELDS}
+
+# The default configuration dictionary for seeding ~/.gitpr/.env on first run.
+# Derived directly from FIELDS marked with seeded=True (Single Source of Truth).
+DEFAULT_CONFIG = {field.key: field.default for field in FIELDS if field.seeded}
 CATEGORIES_BY_ID = {category.id: category for category in CATEGORIES}
 GROUPS_BY_ID = {group.id: group for group in GROUPS}
 GROUP_LABELS = {group.id: group.label for group in GROUPS}
