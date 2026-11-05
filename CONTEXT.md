@@ -154,3 +154,11 @@ The unified pipeline command (`gitpr check`) that orchestrates static analysis,
 secrets scanning, risk evaluation, baseline suppressions, and optional AI review
 to produce standard machine-readable artifacts and deterministic exit codes.
 _Avoid_: check mode, CI runner, CI linter
+
+**Legacy CI action contract**:
+The previous GitHub Action workflow contract where `action.yml` sequentially executed
+discrete commands (gitpr --linter followed by gitpr --fullreview), generated an
+unclassified *_PR_FULLREVIEW.txt text artifact in the workspace, and required manual
+step-summary concatenation. Replaced by the unified CI Check pipeline producing
+SARIF/JSON/JUnit artifacts and deterministic exit codes.
+_Avoid_: old action, linter action, legacy review runner
