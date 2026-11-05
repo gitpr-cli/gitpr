@@ -23,6 +23,7 @@ were the cause and not the symptom:
 import csv
 import json
 import os
+import math
 import statistics
 import subprocess
 from datetime import date, datetime, timedelta, timezone
@@ -599,6 +600,203 @@ def quality_report(repo_filter=None, since=None, until=None):
 
 
 # ---------------------------------------------------------------------------
+# Token trend & latency histogram
+# ---------------------------------------------------------------------------
+
+TOKEN_TREND_MAX_DAYS = 14
+
+LATENCY_BUCKETS = (
+    ("< 1s", 1, 1000),
+    ("1–5s", 1000, 5000),
+    ("5–15s", 5000, 15000),
+    ("15–30s", 15000, 30000),
+    ("≥ 30s", 30000, None),
+)
+
+_SPARK_TICKS = "▁▂▃▄▅▆▇█"
+
+
+def _bar(value, maximum, width=20):
+    """A proportional horizontal bar in Unicode blocks, or empty blocks when 0."""
+    if width <= 0:
+        return ""
+    if value <= 0 or maximum <= 0:
+        return "░" * width
+    filled = round((value / maximum) * width)
+    filled = max(1, min(width, filled))
+    return ("█" * filled) + ("░" * (width - filled))
+
+
+def _sparkline(values):
+    """A compact vertical-block sparkline where zero days read as '·'."""
+    if not values:
+        return ""
+    peak = max(values)
+    if peak <= 0:
+        return "·" * len(values)
+    last_idx = len(_SPARK_TICKS) - 1
+    chars = []
+    for val in values:
+        if val <= 0:
+            chars.append("·")
+        else:
+            idx = round((val / peak) * last_idx)
+            idx = max(0, min(last_idx, idx))
+            chars.append(_SPARK_TICKS[idx])
+    return "".join(chars)
+
+
+def _percentile(sorted_values, q):
+    """Nearest-rank percentile on an already-sorted non-empty list."""
+    if not sorted_values:
+        return None
+    idx = max(0, min(len(sorted_values) - 1, math.ceil(q * len(sorted_values)) - 1))
+    return float(sorted_values[idx])
+
+
+def _duration_ms_label(ms):
+    """Formats a duration in milliseconds into ms, s, or min."""
+    if ms is None:
+        return "0 ms"
+    if ms < 1000:
+        return f"{ms:.0f} ms"
+    seconds = ms / 1000
+    if seconds < 60:
+        return f"{seconds:.1f} s"
+    return f"{seconds / 60:.1f} min"
+
+
+def token_trend_report(
+    repo_filter=None, since=None, until=None, max_days=TOKEN_TREND_MAX_DAYS
+):
+    """Continuous daily token consumption over the active window.
+
+    Days with no token consumption inside the displayed span are preserved with
+    ``tokens = 0`` so that a quiet gap between two heavy days looks like a gap
+    on screen rather than two adjacent days. When the window holds no tokens at
+    all, ``days`` is empty so both the terminal and the dashboard hide the
+    section instead of drawing a row of zeros.
+    """
+    daily_tokens = {}
+    daily_runs = {}
+
+    for row in _execution_rows(repo_filter, since, until):
+        day = _as_day(row.get("day") or row.get("timestamp"))
+        if not day:
+            continue
+        tokens = _row_tokens(row)
+        daily_tokens[day] = daily_tokens.get(day, 0) + tokens
+        daily_runs[day] = daily_runs.get(day, 0) + 1
+
+    active_days = [d for d, tok in daily_tokens.items() if tok > 0]
+    if not active_days:
+        return {
+            "days": [],
+            "total_tokens": 0,
+            "peak_tokens": 0,
+            "average_tokens": 0.0,
+            "sparkline": "",
+        }
+
+    since_day = _as_day(since)
+    until_day = _as_day(until)
+    cap = max(1, int(max_days or TOKEN_TREND_MAX_DAYS))
+
+    if since_day and until_day:
+        s_date = date.fromisoformat(since_day)
+        u_date = date.fromisoformat(until_day)
+        if 0 <= (u_date - s_date).days < cap:
+            start_date = s_date
+            end_date = u_date
+        else:
+            end_date = date.fromisoformat(max(active_days))
+            start_date = max(s_date, end_date - timedelta(days=cap - 1))
+    else:
+        end_date = date.fromisoformat(max(active_days))
+        earliest = (
+            date.fromisoformat(since_day)
+            if since_day
+            else date.fromisoformat(min(active_days))
+        )
+        start_date = max(earliest, end_date - timedelta(days=cap - 1))
+
+    days = []
+    cursor = start_date
+    while cursor <= end_date:
+        d_str = cursor.isoformat()
+        days.append(
+            {
+                "day": d_str,
+                "tokens": daily_tokens.get(d_str, 0),
+                "executions": daily_runs.get(d_str, 0),
+            }
+        )
+        cursor += timedelta(days=1)
+
+    values = [entry["tokens"] for entry in days]
+    total_tokens = sum(values)
+    peak_tokens = max(values) if values else 0
+    average_tokens = (total_tokens / len(days)) if days else 0.0
+
+    return {
+        "days": days,
+        "total_tokens": total_tokens,
+        "peak_tokens": peak_tokens,
+        "average_tokens": average_tokens,
+        "sparkline": _sparkline(values),
+    }
+
+
+def latency_report(repo_filter=None, since=None, until=None):
+    """Distribution of timed executions (duration_ms > 0) across latency buckets.
+
+    Rows with ``duration_ms <= 0`` (hooks, state transitions, unmeasured calls)
+    are excluded so that unmeasured events do not pull the average, median or
+    P95 toward zero or pad the ``< 1s`` bucket.
+    """
+    durations = []
+    for row in _execution_rows(repo_filter, since, until):
+        ms = row.get("duration_ms") or 0
+        if ms > 0:
+            durations.append(int(ms))
+
+    if not durations:
+        return {
+            "count": 0,
+            "average_ms": None,
+            "median_ms": None,
+            "p95_ms": None,
+            "buckets": [],
+        }
+
+    durations.sort()
+    count = len(durations)
+    buckets = []
+    for label, min_ms, max_ms in LATENCY_BUCKETS:
+        if max_ms is None:
+            b_count = sum(1 for d in durations if d >= min_ms)
+        else:
+            b_count = sum(1 for d in durations if min_ms <= d < max_ms)
+        buckets.append(
+            {
+                "label": label,
+                "min_ms": min_ms,
+                "max_ms": max_ms,
+                "count": b_count,
+                "rate": b_count / count,
+            }
+        )
+
+    return {
+        "count": count,
+        "average_ms": sum(durations) / count,
+        "median_ms": float(statistics.median(durations)),
+        "p95_ms": _percentile(durations, 0.95),
+        "buckets": buckets,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Cycle — the one metric the forge answers, not the ledger
 # ---------------------------------------------------------------------------
 
@@ -859,6 +1057,55 @@ def quality_lines(quality):
                 PLAIN,
                 f"  {__('Map-reduce')}: {chunking['chunked']}/{chunking['answered']}"
                 f" ({chunking['rate']:.0%})",
+            )
+        )
+    return lines
+
+
+def token_trend_lines(trend, bar_width=20):
+    """The token trend section: sparkline overview plus daily horizontal bars."""
+    if not trend or not trend.get("days") or not trend.get("total_tokens"):
+        return []
+
+    peak = trend["peak_tokens"]
+    lines = [
+        (TITLE, f"📈 {__('Token Trend')}"),
+        (
+            PLAIN,
+            f"  {trend['sparkline']}  |  {__('Peak')}: {peak:,}"
+            f"  |  {__('Daily avg')}: {trend['average_tokens']:,.0f}",
+        ),
+    ]
+    for entry in trend["days"]:
+        bar = _bar(entry["tokens"], peak, width=bar_width)
+        lines.append(
+            (PLAIN, f"  {entry['day']}  {bar}  {entry['tokens']:,}")
+        )
+    return lines
+
+
+def latency_lines(latency, bar_width=20):
+    """The latency histogram section: summary percentiles plus bucket bars."""
+    if not latency or not latency.get("count"):
+        return []
+
+    max_bucket = max((b["count"] for b in latency["buckets"]), default=0)
+    lines = [
+        (TITLE, f"📊 {__('Latency')}"),
+        (
+            PLAIN,
+            f"  {__('Timed runs')}: {latency['count']}"
+            f"  |  {__('Average')}: {_duration_ms_label(latency['average_ms'])}"
+            f"  |  {__('Median')}: {_duration_ms_label(latency['median_ms'])}"
+            f"  |  P95: {_duration_ms_label(latency['p95_ms'])}",
+        ),
+    ]
+    for bucket in latency["buckets"]:
+        bar = _bar(bucket["count"], max_bucket, width=bar_width)
+        lines.append(
+            (
+                PLAIN,
+                f"  {bucket['label']:<6}  {bar}  {bucket['count']} ({bucket['rate']:.0%})",
             )
         )
     return lines

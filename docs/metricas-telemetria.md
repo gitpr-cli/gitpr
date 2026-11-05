@@ -78,7 +78,9 @@ Under the header come the sections, in the order they are read:
 | Section | What it answers |
 |---------|-----------------|
 | 💰 Cost | How many tokens, and what they cost per model |
+| 📈 Token Trend | Continuous daily token consumption (up to 14 days, preserving zero days) with a Unicode sparkline (`▁▂▃▄▅▆▇█`), peak, daily average, and daily horizontal bars |
 | 🧪 Quality | Linter pass rate, and how often the map-reduce path fired |
+| 📊 Latency | Distribution of timed executions (`duration_ms > 0`) across 5 latency buckets (`< 1s`, `1–5s`, `5–15s`, `15–30s`, `≥ 30s`) with Mean, Median (P50), and P95 |
 | 🧩 Modules | Which modules the runs touched, and how many tokens each took |
 | 🤖 Providers | Runs and tokens per provider — including the ones that never call an AI |
 | ⏱ Cycle | How long the merged pull requests of this repository took, read from the forge |
@@ -251,7 +253,7 @@ Opens a **TUI dashboard** (Textual) scoped to the working copy's repository:
 
 - **Summary bar:** total entries, reconstructed rows, total tokens, total duration, top commands
 - **Events table:** timestamp, command, status, provider, tokens, duration
-- **Sections:** cost, quality, modules, providers and the cycle — the same lines
+- **Sections:** cost, token trend, quality, latency histogram, modules, providers and the cycle — the same lines
   `gitpr metrics` prints, drawn with Textual markup instead of click colours
 - **Status bar:** the time range the table covers and how many entries it holds
 - **Keyboard shortcuts:** `F5` to refresh, `Esc` to exit

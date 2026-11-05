@@ -336,7 +336,9 @@ def _row_from_payload(payload, context=None, source=SOURCE_EXECUTION, event_id=N
     row["day"] = day
     row["command"] = payload.pop("command", "") or ""
     row["status"] = payload.pop("status", "") or ""
-    row["duration_ms"] = payload.pop("duration_ms", 0) or 0
+    row["duration_ms"] = (
+        payload.pop("duration_ms", 0) or meta.get("duration_ms", 0) or 0
+    )
     row["tokens_estimated"] = payload.pop("tokens_estimated", 0) or 0
 
     # Identity comes from the working copy, never from the caller: the hook path

@@ -194,3 +194,15 @@ without a `.md` extension or locale suffix in the path. English links carry no
 query string; localized links append `?lang=pt_br`, `?lang=pt_pt`, `?lang=es`,
 or `?lang=fr` matching the documentation site's language parameter contract.
 _Avoid_: raw GitHub doc URL, blob link, localized doc filename URL
+
+
+**Latency histogram**:
+The distribution of timed ledger executions (`duration_ms > 0`) across fixed
+duration buckets, paired with mean, median, and 95th-percentile latency over the
+active window.
+_Avoid_: time chart, speed graph, duration table
+
+**Token trend**:
+The continuous daily time series of token consumption from ledger executions
+over the active window, with zero-consumption days explicitly preserved.
+_Avoid_: token history, usage sparkline, token graph

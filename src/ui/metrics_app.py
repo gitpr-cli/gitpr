@@ -32,6 +32,10 @@ from src.metrics import (
     cost_report,
     cycle_lines,
     cycle_report,
+    latency_lines,
+    latency_report,
+    token_trend_lines,
+    token_trend_report,
     module_debt,
     module_lines,
     provider_breakdown,
@@ -49,7 +53,9 @@ from src.metrics import (
 # say. ``sections_notice`` stands in for all four while the ledger is absent.
 SECTION_IDS = (
     "section_cost",
+    "section_token_trend",
     "section_quality",
+    "section_latency",
     "section_modules",
     "section_providers",
     "section_cycle",
@@ -81,7 +87,7 @@ class MetricsApp(App):
     }
     #sections {
         height: auto;
-        max-height: 20;
+        max-height: 24;
         margin: 0 2;
     }
     #sections Static {
@@ -238,14 +244,18 @@ class MetricsApp(App):
         }
         readers = (
             cost_report,
+            token_trend_report,
             quality_report,
+            latency_report,
             module_debt,
             provider_breakdown,
             cycle_report,
         )
         renderers = (
             cost_lines,
+            token_trend_lines,
             quality_lines,
+            latency_lines,
             module_lines,
             provider_lines,
             cycle_lines,

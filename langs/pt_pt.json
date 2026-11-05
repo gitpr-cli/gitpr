@@ -1723,5 +1723,10 @@
   "🧪 Covered Scenarios:": "🧪 Cenários Cobertos:",
   "🧭 Policy: {policy}": "🧭 Política: {policy}",
   "🧭 {policy}": "🧭 Em vigor: {policy}",
-  "🧹 Conversation cleared. A new session has started.": "🧹 Conversa limpa. Uma nova sessão foi iniciada."
+  "🧹 Conversation cleared. A new session has started.": "🧹 Conversa limpa. Uma nova sessão foi iniciada.",
+  "Token Trend": "Tendência de Tokens",
+  "Peak": "Pico",
+  "Daily avg": "Média diária",
+  "Latency": "Latência",
+  "Timed runs": "Execuções cronometradas"
 }
