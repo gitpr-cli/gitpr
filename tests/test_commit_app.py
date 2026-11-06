@@ -1,3 +1,5 @@
+from click.testing import CliRunner
+from src.main import cli
 import asyncio
 from unittest.mock import MagicMock, patch
 import pytest
@@ -212,3 +214,35 @@ class TestCommitAppHeadlessFlow:
                 mock_stage.assert_called_once_with(["src/foo.py"])
 
         _run(_test)
+
+
+class TestCliCommitRouting:
+    """Tests for routing gitpr -c between interactive CommitApp and non-interactive console."""
+
+    def test_commit_interactive_launches_commit_app(self):
+        runner = CliRunner()
+        with patch("src.main._may_ask_the_user", return_value=True), \
+             patch("src.main.setup_environment"), \
+             patch("src.ui.commit_app.CommitApp.run") as mock_run:
+            result = runner.invoke(cli, ["-c"])
+            assert mock_run.called
+
+    def test_commit_non_interactive_runs_console_mode(self):
+        runner = CliRunner()
+        with patch("src.main.setup_environment"), \
+             patch("src.main.get_git_diff", return_value="diff --git a/a.py b/a.py\n+x = 1"), \
+             patch("src.main.generate_pr_content", return_value={"commit_message": "feat: test non-interactive"}), \
+             patch("src.main.check_internet_connection", return_value=True):
+            result = runner.invoke(cli, ["-c", "--no-unstaged-check"])
+            assert result.exit_code == 0
+            assert "Commit Suggestion:" in result.output
+            assert "feat: test non-interactive" in result.output
+
+    def test_commit_non_interactive_checks_unstaged_files(self):
+        runner = CliRunner()
+        with patch("src.main.setup_environment"), \
+             patch("src.main.check_unstaged_files", return_value=False) as mock_check, \
+             patch("src.main.check_internet_connection", return_value=True):
+            result = runner.invoke(cli, ["-c"])
+            mock_check.assert_called_once_with("commit", skip_check=False, quiet=False, interactive=False)
+            assert result.exit_code == 0
