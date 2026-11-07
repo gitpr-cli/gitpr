@@ -1,9 +1,11 @@
-"""The local record of the issue created with ``gitpr -is`` (ADR-001).
+"""The local record of the issue created with ``gitpr -is`` (ADR-001, ADR-010).
 
 ``gitpr -is`` creates an issue and the number is otherwise lost; the next pull
 request is the first place that could close it. The record is therefore one
-small file, ``.gitpr/conf/github.yml``, holding the issue that is still a
+small file, ``.gitpr/conf/issue.yml``, holding the issue that is still a
 candidate — the last one wins, which is all a single-PR workflow needs.
+For backward compatibility, a legacy ``.gitpr/conf/github.yml`` is read
+transparently and migrated to ``issue.yml`` on the next write.
 
 The file is local state, not project content: ``record()`` makes sure
 ``git check-ignore`` sees it before the first write and adds exactly one line
@@ -25,13 +27,14 @@ import yaml
 
 from src.infrastructure.git.patch_applier import repo_root, run_git
 
-REGISTRY_RELATIVE_PATH = Path(".gitpr") / "conf" / "github.yml"
+REGISTRY_RELATIVE_PATH = Path(".gitpr") / "conf" / "issue.yml"
+LEGACY_REGISTRY_RELATIVE_PATH = Path(".gitpr") / "conf" / "github.yml"
 
 #: The only version this module writes and the only one it reads.
 SCHEMA_VERSION = 1
 
 #: The single line the first write adds to the user's .gitignore.
-GITIGNORE_ENTRY = ".gitpr/conf/github.yml"
+GITIGNORE_ENTRY = ".gitpr/conf/issue.yml"
 
 
 class IssueRegistryError(Exception):
@@ -48,6 +51,7 @@ class RegisteredIssue:
     url: str
     created_at: str  # ISO 8601
     branch: str | None = None
+    provider: str = "github"
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,13 @@ def registry_path(start_dir=None):
     return base / REGISTRY_RELATIVE_PATH
 
 
+def legacy_registry_path(start_dir=None):
+    """Absolute path of the legacy record, anchored at the repository root."""
+    root = repo_root(start_dir)
+    base = Path(root) if root else Path(start_dir or os.getcwd())
+    return base / LEGACY_REGISTRY_RELATIVE_PATH
+
+
 def _registered_issue(raw):
     """Validates one ``last_issue`` mapping. Raises ValueError when corrupt."""
     if not isinstance(raw, dict):
@@ -99,6 +110,11 @@ def _registered_issue(raw):
     if branch is not None and not isinstance(branch, str):
         raise ValueError("'last_issue.branch' must be text or empty")
 
+    provider = raw.get("provider")
+    if provider is not None and not isinstance(provider, str):
+        raise ValueError("'last_issue.provider' must be text or empty")
+    provider_str = str(provider).strip() if provider else "github"
+
     return RegisteredIssue(
         repo=repo.strip(),
         number=number,
@@ -106,11 +122,12 @@ def _registered_issue(raw):
         url=raw["url"],
         created_at=raw["created_at"],
         branch=branch,
+        provider=provider_str,
     )
 
 
 class IssueRegistry:
-    """Reads and writes the record at ``.gitpr/conf/github.yml``.
+    """Reads and writes the record at ``.gitpr/conf/issue.yml``.
 
     The class carries the path so the PR flow can hold one instance while the
     tests point it at a temporary repository. It never prints: ``load()``
@@ -118,19 +135,27 @@ class IssueRegistry:
     the command that owns the screen decides how to report either.
     """
 
-    def __init__(self, path=None, start_dir=None):
+    def __init__(self, path=None, start_dir=None, legacy_path=None):
         self.path = Path(path) if path else registry_path(start_dir)
+        self.legacy_path = (
+            Path(legacy_path) if legacy_path else legacy_registry_path(start_dir)
+        )
 
     def load(self):
         """The recorded issue, or ``RegistryLoad(error=...)`` when unreadable.
 
         A missing file is not an error — it is simply "no issue recorded".
+        Reads legacy ``github.yml`` if ``issue.yml`` is not present.
         """
-        if not self.path.exists():
-            return RegistryLoad()
+        target = self.path
+        if not target.exists():
+            if self.legacy_path and self.legacy_path.exists():
+                target = self.legacy_path
+            else:
+                return RegistryLoad()
 
         try:
-            with open(self.path, "r", encoding="utf-8", errors="replace") as handle:
+            with open(target, "r", encoding="utf-8", errors="replace") as handle:
                 data = yaml.safe_load(handle)
             if not isinstance(data, dict):
                 raise ValueError("the file is not a YAML mapping")
@@ -147,6 +172,7 @@ class IssueRegistry:
         A file already there is replaced — including one ``load()`` reported as
         corrupt. The write goes to a sibling temporary file and is moved into
         place, so an interrupted run can never leave a truncated record.
+        Cleans up legacy ``github.yml`` if present.
         """
         if not isinstance(issue, RegisteredIssue):
             raise TypeError("record() expects a RegisteredIssue")
@@ -180,26 +206,50 @@ class IssueRegistry:
                 except OSError:
                     pass
                 raise
+
+            if (
+                self.legacy_path
+                and self.legacy_path.exists()
+                and self.legacy_path != self.path
+            ):
+                try:
+                    self.legacy_path.unlink()
+                except OSError:
+                    pass
         except OSError as exc:
             raise IssueRegistryError(f"cannot write {self.path}: {exc}") from exc
 
         return RecordResult(path=self.path, gitignore_updated=self._ensure_gitignored())
 
     def clear(self):
-        """Removes the record. False when there was nothing to remove."""
+        """Removes the record and any legacy record. False when there was nothing to remove."""
+        removed = False
         try:
             self.path.unlink()
-            return True
+            removed = True
         except FileNotFoundError:
-            return False
+            pass
         except OSError as exc:
             raise IssueRegistryError(f"cannot remove {self.path}: {exc}") from exc
+
+        if (
+            self.legacy_path
+            and self.legacy_path.exists()
+            and self.legacy_path != self.path
+        ):
+            try:
+                self.legacy_path.unlink()
+                removed = True
+            except OSError:
+                pass
+
+        return removed
 
     def matches_repo(self, owner_repo):
         """True when the recorded issue belongs to *owner_repo*.
 
-        GitHub owner and repository names are case-insensitive, so the
-        comparison is too; a corrupt or absent record never matches.
+        Repository names are case-insensitive, so the comparison is too;
+        a corrupt or absent record never matches.
         """
         loaded = self.load()
         if loaded.issue is None:

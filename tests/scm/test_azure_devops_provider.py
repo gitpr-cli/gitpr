@@ -651,5 +651,23 @@ class TestNoNetworkOrCredentials(unittest.TestCase):
             )
 
 
+class TestAzureDevOpsIssueAutoclose(unittest.TestCase):
+    @patch("src.infrastructure.scm.azure_devops_provider.requests.get")
+    def test_get_default_branch(self, mock_get):
+        mock_get.return_value = _response(200, {"defaultBranch": "refs/heads/main"})
+        branch = _provider().get_default_branch(_repo())
+        self.assertEqual(branch, "main")
+
+    def test_get_issue_raises_not_supported(self):
+        with self.assertRaises(ScmNotSupportedError) as ctx:
+            _provider().get_issue(_repo(), 42)
+        self.assertEqual(ctx.exception.provider, "azure_devops")
+
+    def test_closing_line_raises_not_supported(self):
+        with self.assertRaises(ScmNotSupportedError) as ctx:
+            _provider().closing_line(42)
+        self.assertEqual(ctx.exception.provider, "azure_devops")
+
+
 if __name__ == "__main__":
     unittest.main()

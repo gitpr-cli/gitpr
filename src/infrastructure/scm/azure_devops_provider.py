@@ -26,6 +26,7 @@ import requests
 
 from src.i18n import __
 from src.infrastructure.scm.base import (
+    IssueInfo,
     IssueRequest,
     IssueResult,
     PullRequestRequest,
@@ -448,6 +449,32 @@ class AzureDevOpsProvider(ScmProvider):
         raise ScmNotSupportedError(
             self.name,
             "Azure DevOps has no issue API resource. Save the issue locally (F2).",
+        )
+
+    def get_issue(
+        self, repo: RepoRef, number: int, timeout: int = 5
+    ) -> IssueInfo:
+        raise ScmNotSupportedError(
+            self.name,
+            "Azure DevOps has work items, not issues — no issue read-back API.",
+        )
+
+    def get_default_branch(self, repo: RepoRef, timeout: int = 5) -> str:
+        """GET .../repositories/{name}?api-version=7.1 → defaultBranch."""
+        response = self._request(
+            "get",
+            self._repo_url(repo),
+            {200},
+            timeout,
+            params={"api-version": "7.1"},
+        )
+        j = response.json()
+        return self._branch_name(str(j.get("defaultBranch") or ""))
+
+    def closing_line(self, number: int) -> str:
+        raise ScmNotSupportedError(
+            self.name,
+            "Azure DevOps has no issue closing keyword.",
         )
 
     # -- connection ------------------------------------------------------

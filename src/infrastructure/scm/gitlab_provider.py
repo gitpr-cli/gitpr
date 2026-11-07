@@ -21,6 +21,7 @@ import requests
 
 from src.i18n import __
 from src.infrastructure.scm.base import (
+    IssueInfo,
     IssueRequest,
     IssueResult,
     PullRequestRequest,
@@ -388,6 +389,39 @@ class GitLabProvider(ScmProvider):
             number=j.get("iid"),
             provider=self.name,
         )
+
+    def get_issue(
+        self, repo: RepoRef, number: int, timeout: int = 5
+    ) -> IssueInfo:
+        """GET /projects/:id/issues/:issue_iid — the closed-issue read-back.
+
+        GitLab issues are separate resources from merge requests, so
+        is_pull_request is always False. State 'opened' is normalized to
+        'open' with is_open=True.
+        """
+        response = self._request(
+            "get", self._project_url(repo, "issues", number), {200}, timeout
+        )
+        j = response.json()
+        raw_state = str(j.get("state") or "").strip().lower()
+        is_open = raw_state == "opened"
+        return IssueInfo(
+            number=int(j.get("iid") or number),
+            title=str(j.get("title") or ""),
+            url=str(j.get("web_url") or ""),
+            state="open" if is_open else raw_state,
+            is_pull_request=False,
+            is_open=is_open,
+        )
+
+    def get_default_branch(self, repo: RepoRef, timeout: int = 5) -> str:
+        """GET /projects/:id → default_branch ("" when absent)."""
+        response = self._request("get", self._project_url(repo), {200}, timeout)
+        return str(response.json().get("default_branch") or "")
+
+    def closing_line(self, number: int) -> str:
+        """GitLab closing keyword syntax: ``Closes #N``."""
+        return f"Closes #{number}"
 
     # -- releases --------------------------------------------------------
 

@@ -25,6 +25,7 @@ import requests
 
 from src.i18n import __
 from src.infrastructure.scm.base import (
+    IssueInfo,
     IssueRequest,
     IssueResult,
     PullRequestRequest,
@@ -394,6 +395,46 @@ class BitbucketProvider(ScmProvider):
             number=issue_id,
             provider=self.name,
         )
+
+    def get_issue(
+        self, repo: RepoRef, number: int, timeout: int = 5
+    ) -> IssueInfo:
+        """GET /2.0/repositories/{workspace}/{repo_slug}/issues/{number}.
+
+        Bitbucket issues are separate resources from pull requests, so
+        is_pull_request is always False. Open states ("new", "open", "on hold")
+        are normalized to "open" with is_open=True. If the repository has the
+        issue tracker disabled, the API returns 404 (ScmProviderError).
+        """
+        response = self._request(
+            "get", self._repo_url(repo, "issues", number), {200}, timeout
+        )
+        j = response.json()
+        raw_state = str(j.get("state") or "").strip().lower()
+        open_states = {"new", "open", "on hold"}
+        is_open = raw_state in open_states
+        links = j.get("links", {})
+        html = links.get("html", {}) if isinstance(links, dict) else {}
+        return IssueInfo(
+            number=int(j.get("id") or number),
+            title=str(j.get("title") or ""),
+            url=str(html.get("href") or ""),
+            state="open" if is_open else raw_state,
+            is_pull_request=False,
+            is_open=is_open,
+        )
+
+    def get_default_branch(self, repo: RepoRef, timeout: int = 5) -> str:
+        """GET /2.0/repositories/{workspace}/{repo_slug} → mainbranch.name."""
+        response = self._request("get", self._repo_url(repo), {200}, timeout)
+        mainbranch = response.json().get("mainbranch")
+        if isinstance(mainbranch, dict):
+            return str(mainbranch.get("name") or "")
+        return ""
+
+    def closing_line(self, number: int) -> str:
+        """Bitbucket closing keyword syntax: ``close #N``."""
+        return f"close #{number}"
 
     # -- connection ------------------------------------------------------
 

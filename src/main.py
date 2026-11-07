@@ -243,493 +243,256 @@ def print_banner():
 """
 
     click.secho(banner, fg="cyan", bold=True)
-
     click.secho(
-
         __("  🚀 Intelligent PR Automation with AI (v{version})", version=__version__),
-
         fg="yellow",
-
         bold=True,
-
     )
 
     click.secho(
-
         __(
-
             "  Options: -c,--commit | -r,--review | -f,--fullreview | -l,--linter | -s,--skill | -u,--update | -ih,--installhooks | --install | --init | -is,--issue | --no-publish | --no-edit | --base | --plugins | -h,--help (use -h --flag for contextual help)\n"
-
         ),
-
         fg="white",
-
         dim=True,
 
     )
 
-
-
-
-
 # ============================================================
-
 # Contextual help mapping (flag -> doc URL and description)
-
 # ============================================================
 
 HELP_MAP: dict[str, dict[str, str]] = {
 
     "commit": {
-
         "url": get_doc_url("commit-message-ia.md"),
-
         "title": __("AI Commit Message Generation"),
-
         "description": __(
-
             "Generates commit messages in the Conventional Commits format automatically using AI. Supports integration with Git Hooks (prepare-commit-msg) for direct injection into the editor."
-
         ),
 
     },
 
     "review": {
-
         "url": get_doc_url("code-review-ia.md"),
-
         "title": __("AI Code Review (Local Changes)"),
-
         "description": __(
-
             "Performs smart code review of uncommitted local changes (git diff HEAD). Automatically integrates the Static Linter (.gitpr.linter.yml) at the top of the report."
-
         ),
 
     },
 
     "fullreview": {
-
         "url": get_doc_url("code-review-ia.md"),
-
         "title": __("Full AI Code Review (Full Diff)"),
-
         "description": __(
-
             "Performs a deep review comparing the current branch with the remote main branch (origin/main). Runs git fetch before analysis. Ideal for reviewing before opening a Pull Request."
-
         ),
-
     },
-
     "input": {
-
         "url": get_doc_url("code-review-ia.md"),
-
         "title": __("Specific File Analysis (--input)"),
-
         "description": __(
-
             "Analyzes an entire file from the local system, ignoring the Git diff. REQUIRES --review (-r) or --fullreview (-f) to work. Excellent for auditing legacy code and refactoring."
-
         ),
-
     },
-
     "linter": {
-
         "url": get_doc_url("linter-regras-customizadas.md"),
-
         "title": __("Customizable Static Linter"),
-
         "description": __(
-
             "Local static analysis engine that checks rules defined in the .gitpr.linter.yml file. Does not consume AI quotas or require internet. Ideal for CI/CD and pre-commit hooks."
-
         ),
-
     },
-
     "skill": {
-
         "url": get_doc_url("skill-template.md"),
-
         "title": __("Skills and Templates System (--skill)"),
-
         "description": __(
-
             "Downloads template files (.gitpr.*.md and .gitpr.linter.yml) from the official repository into the project's .gitpr/skill/ folder. These files allow customizing the AI behavior according to your team's rules. NEVER overwrites existing local files."
-
         ),
-
     },
-
     "seed": {
-
         "url": get_doc_url("install-wizard.md"),
-
         "title": __("Project Configuration Seed (seed / --seed)"),
-
         "description": __(
-
             "Seeds project-local configuration files into .gitpr/conf/ (PR base branch, Smart Excludes) and .gitpr/skill/ (.gitpr.linter.yml). Supports --force to overwrite and --all to include all AI skill templates."
-
         ),
-
     },
-
     "update": {
-
         "url": get_doc_url("auto-update.md"),
-
         "title": __("GitPR Auto-Update"),
-
         "description": __(
-
             "Checks PyPI for a newer version of GitPR and displays the command to upgrade via pip. GitPR always requires the latest published version to run."
-
         ),
-
     },
-
     "installhooks": {
-
         "url": get_doc_url("git-hooks-locais.md"),
-
         "title": __("Install Local Git Hooks"),
-
         "description": __(
-
             "Installs pre-commit (automatic static linter) and prepare-commit-msg (AI message generation) hooks in the local repository. Adopts the Shift Left practice for pre-push validation."
-
         ),
-
     },
-
     "install": {
-
         "url": get_doc_url("install-wizard.md"),
-
         "title": __("Interactive Setup Wizard (--install)"),
-
         "description": __(
-
             "Guided setup that downloads skill templates, installs Git hooks, configures MCP for your editors, and verifies your AI provider API key."
-
         ),
-
     },
-
     "blame": {
-
         "url": get_doc_url("blame-arqueologo.md"),
-
         "title": __("Code Archeologist (AI Git Blame)"),
-
         "description": __(
-
             "Tracks the origin and evolution of business rules in the code using git blame with AI classification (ORIGIN vs REFACTORING). Supports direct mode (file:10-20) and interactive mode. Can feed technical debt Issues context with --issue."
-
         ),
-
     },
-
     "issue": {
-
         "url": get_doc_url("issue-tui-help.md"),
-
         "title": __("Issue Generation with Interactive TUI"),
-
         "description": __(
-
             "Generates standardized issues (What / Why / Where / How) using AI and opens an interactive terminal interface (Textual) for review. Has 3 context engines: current diff, branch history (--history), and code archeology (--blame). Allows saving local .md or publishing directly to GitHub via API."
-
         ),
-
     },
-
     "history": {
-
         "url": get_doc_url("issue-tui-help.md"),
-
         "title": __("History Context for Issues (--history)"),
-
         "description": __(
-
             "Modifier for --issue (-is): uses the entire history of the current branch (git log + previous PRs cache) as context to generate the issue. Ideal for documenting epics, releases, and large features with multiple commits over days."
-
         ),
-
     },
-
     "close_issue": {
-
         "url": get_doc_url("issue-autoclose.md"),
-
         "title": __("Automatic Issue Closure (--close-issue)"),
-
         "description": __(
-
             "Adds the closing line (close #N) for the issue recorded by gitpr -is to the Pull Request description without asking. The issue is still checked on the forge before the line is added; a closed or deleted issue is ignored."
-
         ),
-
     },
-
     "no_close_issue": {
-
         "url": get_doc_url("issue-autoclose.md"),
-
         "title": __("Skip the Automatic Issue Closure (--no-close-issue)"),
-
         "description": __(
-
             "Skips the automatic issue closure for this run: no local record is read and no forge call is made. The record is kept for a later run."
-
         ),
-
     },
-
     "provider": {
-
         "url": get_doc_url("providers-ia.md"),
-
         "title": __("AI Provider Selection (--provider)"),
-
         "description": __(
-
             "Forces the use of a specific AI provider for this execution: gemini (Google Gemini), deepseek (DeepSeek) or ollama (Local). Temporarily overrides the default provider defined in the .env file."
-
         ),
-
     },
-
     "chat": {
-
         "url": get_doc_url("understanding_chat_functionality.md"),
-
         "title": __("Interactive Pair Programming Chat (--chat)"),
-
         "description": __(
-
             "Opens an interactive terminal (TUI) to chat with the AI about the current uncommitted changes. Features memory, auto-patching (F5), and live diff refresh (F2)."
-
         ),
-
     },
-
     "lang": {
-
         "url": get_doc_url("providers-ia.md"),
-
         "title": __("Language Override (--lang)"),
-
         "description": __(
-
             "Forces the interface language for this execution (e.g.: en_us, pt_br). Overrides the GITPR_LANG environment variable and OS locale detection."
-
         ),
-
     },
-
     "no-publish": {
-
         "url": get_doc_url("pull-request-publication.md"),
-
         "title": __("Skip Interactive Publisher (--no-publish)"),
-
         "description": __(
-
             "Generates the PR description and saves it locally without opening the interactive TUI."
-
         ),
-
     },
-
     "no-edit": {
-
         "url": get_doc_url("pull-request-publication.md"),
-
         "title": __("Direct Publish with Auto-Commit (--no-edit)"),
-
         "description": __(
-
             "Generates the PR, auto-commits pending changes (with lint validation), and publishes directly to GitHub without opening the TUI."
-
         ),
-
     },
-
     "plugins": {
-
         "url": get_doc_url("plugins-system.md"),
-
         "title": __("Plugin System (--plugins)"),
-
         "description": __(
-
             "Lists all globally installed custom linter packs and MCP prompts loaded from ~/.gitpr/plugins/."
-
         ),
-
     },
-
     "status": {
-
         "url": get_doc_url("git-status.md"),
-
         "title": __("Uncommitted File Status (--status)"),
-
         "description": __(
-
             "Lists uncommitted file changes categorized as new (untracked), modified (unstaged edits) and deleted — fast, no AI, no network."
-
         ),
-
     },
-
     "no-unstaged-check": {
-
         "url": get_doc_url("git-status.md"),
-
         "title": __("Skip Unstaged Check (--no-unstaged-check)"),
-
         "description": __(
-
             "Skips the unstaged-files verification that runs before PR, commit, review, full review and issue generation. Equivalent to GITPR_SKIP_UNSTAGED_CHECK=true for one run."
-
         ),
-
     },
-
     "no-suggest-reviewers": {
-
         "url": get_doc_url("suggested-reviewers.md"),
-
         "title": __("Skip Suggested Reviewers (--no-suggest-reviewers)"),
-
         "description": __(
-
             "Disables the reviewer suggestion computation (git blame over the added lines) before the interactive publisher opens. Suggestions stay ON by default; set GITPR_SUGGEST_REVIEWERS=false in ~/.gitpr/.env to disable globally. On GitHub the accepted list is requested on the created PR."
-
         ),
-
     },
-
     "linter-setup": {
-
         "url": get_doc_url("linter-regras-customizadas.md"),
-
         "title": __("External Linter Wizard (--linter-setup)"),
-
         "description": __(
-
             "Interactive wizard to configure external linters (ESLint, PHPCS, etc.) via Checkstyle XML integration."
-
         ),
-
     },
-
     "explain": {
-
         "url": get_doc_url("explain-pr.md"),
-
         "title": __("Reviewer Guide (--explain / gitpr explain)"),
-
         "description": __(
-
             "Generates a concise reviewer-centric summary (What changes, Why it changes, Where to focus, and Regression risk)."
-
         ),
-
     },
-
     "mentor": {
-
         "url": get_doc_url("mentor-mode.md"),
-
         "title": __("Junior Mentor Mode (--mentor / gitpr mentor)"),
-
         "description": __(
-
             "Enriches code reviews with pedagogical explanations (what is happening, why it matters, analogies, and concepts to learn) designed for junior engineers."
-
         ),
-
     },
-
     "risk": {
-
         "url": get_doc_url("risk-scoring.md"),
-
         "title": __("Local Risk Scoring (gitpr risk)"),
-
         "description": __(
-
             "Calculates deterministic, explainable risk scores for the diff and files without AI, highlighting critical paths, missing tests, migrations, and bug history."
-
         ),
-
     },
-
 }
 
-
-
 # Priority for contextual help when multiple flags are used with -h
-
 # Lower value = higher priority
-
 HELP_PRIORITY: dict[str, int] = {
-
     "linter": 1,
-
     "skill": 2,
-
     "update": 3,
-
     "installhooks": 4,
-
     "install": 14,
-
     "issue": 5,
-
     "blame": 6,
-
     "commit": 7,
-
     "fullreview": 8,
-
     "review": 9,
-
     "mentor": 9,
-
     "explain": 9,
-
     "risk": 10,
-
     "input": 11,
-
     "history": 12,
-
     "provider": 12,
-
     "lang": 13,
-
     "no-publish": 16,
-
     "no-edit": 17,
-
     "plugins": 18,
-
     "status": 19,
-
     "no-unstaged-check": 20,
-
     "no-suggest-reviewers": 21,
-
     "linter-setup": 22,
-
 }
 
 
@@ -1628,7 +1391,10 @@ def cli(
 
     if ctx.invoked_subcommand != "metrics":
 
-        ledger.ensure_ledger(interactive=may_ask)
+        try:
+            ledger.ensure_ledger(interactive=may_ask)
+        except (PermissionError, OSError):
+            pass
 
 
 

@@ -1,4 +1,4 @@
-"""Tests for the automatic issue-closure decision (T4).
+"""Tests for the automatic issue-closure decision (T4, ADR-010).
 
 The provider and the registry are plain fakes: the decision never touches the
 network or the checkout by itself, and every edge case of the tree — a corrupt
@@ -12,7 +12,12 @@ from unittest.mock import Mock
 
 from click.exceptions import Abort
 
-from src.infrastructure.scm.base import IssueInfo, RepoRef, ScmProviderError
+from src.infrastructure.scm.base import (
+    IssueInfo,
+    RepoRef,
+    ScmNotSupportedError,
+    ScmProviderError,
+)
 from src.issue_autoclose.issue_registry import (
     IssueRegistryError,
     RegisteredIssue,
@@ -36,6 +41,7 @@ REGISTERED = RegisteredIssue(
     url="https://github.com/owner/name/issues/7",
     created_at="2026-11-01T09:00:00-03:00",
     branch="feat/x",
+    provider="github",
 )
 OPEN = IssueInfo(
     number=7,
@@ -43,6 +49,7 @@ OPEN = IssueInfo(
     url="https://github.com/owner/name/issues/7",
     state="open",
     is_pull_request=False,
+    is_open=True,
 )
 
 
@@ -55,6 +62,7 @@ class _Provider:
         info=None,
         error=None,
         line="close #7",
+        line_error=None,
         default_branch="main",
         default_branch_error=None,
     ):
@@ -62,6 +70,7 @@ class _Provider:
         self.info = OPEN if info is None else info
         self.error = error
         self.line = line
+        self.line_error = line_error
         self.default_branch = default_branch
         self.default_branch_error = default_branch_error
         self.issue_calls = []
@@ -82,6 +91,8 @@ class _Provider:
 
     def closing_line(self, number):
         self.line_calls.append(number)
+        if self.line_error is not None:
+            raise self.line_error
         return self.line
 
 
@@ -127,7 +138,7 @@ class ResolveCloseIssueTest(unittest.TestCase):
         timeout=5,
     ):
         return resolve_close_issue(
-            provider or self.provider,
+            self.provider if provider is ... else (provider or self.provider),
             registry or self.registry,
             repo_ref,
             flags=flags,
@@ -156,20 +167,43 @@ class GatesTest(ResolveCloseIssueTest):
         self.assertEqual(self.registry.load_calls, 0)
         self.assertEqual(self.provider.issue_calls, [])
 
-    def test_non_github_provider_is_skipped_without_network(self):
-        outcome = self._resolve(provider=_Provider(name="gitlab"))
-
-        self.assertEqual(outcome.skipped_reason, "not-github")
-        self.assertEqual(self.registry.load_calls, 0)
-        self.assertEqual(self.provider.issue_calls, [])
-
-    def test_flag_disabled_wins_over_a_non_github_provider(self):
-        outcome = self._resolve(
-            provider=_Provider(name="gitlab"),
-            flags=CloseIssueFlags(disabled=True),
+    def test_none_provider_is_skipped_without_touching_registry(self):
+        outcome = resolve_close_issue(
+            None,
+            self.registry,
+            REPO_REF,
+            ask=self.ask,
         )
 
-        self.assertEqual(outcome.skipped_reason, "flag-disabled")
+        self.assertEqual(outcome.skipped_reason, "no-provider")
+        self.assertEqual(self.registry.load_calls, 0)
+
+    def test_gitlab_provider_is_supported_and_asks(self):
+        gitlab_provider = _Provider(name="gitlab", line="Closes #7")
+        outcome = self._resolve(provider=gitlab_provider)
+
+        self.assertEqual(outcome.skipped_reason, "")
+        self.assertTrue(outcome.accepted)
+        self.assertEqual(outcome.decision.line, "Closes #7")
+
+    def test_unsupported_forge_skips_with_not_supported(self):
+        azure_provider = _Provider(
+            name="azure_devops",
+            error=ScmNotSupportedError("azure_devops", "no issues"),
+        )
+        outcome = self._resolve(provider=azure_provider)
+
+        self.assertEqual(outcome.skipped_reason, "not-supported")
+        self.assertIsNone(outcome.decision)
+
+    def test_unsupported_closing_line_skips_with_not_supported(self):
+        provider = _Provider(
+            line_error=ScmNotSupportedError("forge", "no closing keyword"),
+        )
+        outcome = self._resolve(provider=provider)
+
+        self.assertEqual(outcome.skipped_reason, "not-supported")
+        self.assertIsNone(outcome.decision)
 
 
 class RegistryTest(ResolveCloseIssueTest):
@@ -244,7 +278,7 @@ class VerificationTest(ResolveCloseIssueTest):
 
     def test_closed_issue_is_cleared_silently_without_asking(self):
         outcome = self._resolve(
-            provider=_Provider(info=IssueInfo(7, "Fix", "", state="closed"))
+            provider=_Provider(info=IssueInfo(7, "Fix", "", state="closed", is_open=False))
         )
 
         self.assertEqual(outcome.skipped_reason, "issue-not-open")
@@ -254,13 +288,13 @@ class VerificationTest(ResolveCloseIssueTest):
 
     def test_state_is_compared_case_and_whitespace_insensitively(self):
         outcome = self._resolve(
-            provider=_Provider(info=IssueInfo(7, "Fix", "", state=" OPEN "))
+            provider=_Provider(info=IssueInfo(7, "Fix", "", state=" OPEN ", is_open=True))
         )
 
         self.assertTrue(outcome.accepted)
 
     def test_unknown_state_is_treated_as_not_open(self):
-        outcome = self._resolve(provider=_Provider(info=IssueInfo(7, "Fix", "", state="")))
+        outcome = self._resolve(provider=_Provider(info=IssueInfo(7, "Fix", "", state="", is_open=False)))
 
         self.assertEqual(outcome.skipped_reason, "issue-not-open")
         self.assertEqual(self.registry.clear_calls, 1)
@@ -268,7 +302,7 @@ class VerificationTest(ResolveCloseIssueTest):
     def test_pull_request_number_wins_over_an_open_state(self):
         outcome = self._resolve(
             provider=_Provider(
-                info=IssueInfo(7, "Fix", "", state="open", is_pull_request=True)
+                info=IssueInfo(7, "Fix", "", state="open", is_pull_request=True, is_open=True)
             )
         )
 

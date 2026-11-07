@@ -121,6 +121,8 @@ class IssueApp(App):
 
         title_input = self.query_one("#issue_title", Input)
         body_input = self.query_one("#issue_body", TextArea)
+        provider_name = getattr(self.provider, "name", "github") if self.provider else "github"
+        metric_cmd = f"issue:{provider_name}_create"
 
         if not self.repo_info:
             self.final_message = __(
@@ -128,7 +130,7 @@ class IssueApp(App):
             )
             self.final_action = "error"
             log_command_metric(
-                command="issue:github_create", status="error", provider="github"
+                command=metric_cmd, status="error", provider=provider_name
             )
             self.exit()
             return
@@ -153,27 +155,27 @@ class IssueApp(App):
                     issue_url=result.url,
                 )
             self.final_action = "created"
-            if github_flow:
-                outcome = register_created_issue(
-                    self.provider,
-                    self.repo_ref,
-                    result,
-                    title_input.value,
-                    self.branch,
-                )
-                if outcome.recorded:
-                    if outcome.gitignore_updated:
-                        self.final_message += "\n\n" + __(
-                            "ℹ️ Added {entry} to .gitignore so the local issue record stays out of the repository.",
-                            entry=GITIGNORE_ENTRY,
-                        )
-                else:
+
+            outcome = register_created_issue(
+                self.provider,
+                self.repo_ref,
+                result,
+                title_input.value,
+                self.branch,
+            )
+            if outcome.recorded:
+                if outcome.gitignore_updated:
                     self.final_message += "\n\n" + __(
-                        "⚠️ The issue was created, but it could not be recorded locally for automatic closure: {error}",
-                        error=outcome.error or outcome.skipped_reason,
+                        "ℹ️ Added {entry} to .gitignore so the local issue record stays out of the repository.",
+                        entry=GITIGNORE_ENTRY,
                     )
+            elif outcome.skipped_reason not in ("", "no-provider", "not-github"):
+                self.final_message += "\n\n" + __(
+                    "⚠️ The issue was created, but it could not be recorded locally for automatic closure: {error}",
+                    error=outcome.error or outcome.skipped_reason,
+                )
             log_command_metric(
-                command="issue:github_create", status="success", provider="github"
+                command=metric_cmd, status="success", provider=provider_name
             )
         except ScmNotSupportedError:
             # Forges without an issue API (Azure DevOps): save locally (F2).
@@ -183,7 +185,7 @@ class IssueApp(App):
             )
             self.final_action = "error"
             log_command_metric(
-                command="issue:github_create", status="error", provider="github"
+                command=metric_cmd, status="error", provider=provider_name
             )
         except ScmProviderError as e:
             if e.http_status == 401:
@@ -199,7 +201,7 @@ class IssueApp(App):
                 self.final_action = "reauth"
                 self.needs_new_token = True
                 log_command_metric(
-                    command="issue:github_create", status="reauth", provider="github"
+                    command=metric_cmd, status="reauth", provider=provider_name
                 )
             elif e.http_status > 0:
                 if github_flow:
@@ -217,9 +219,9 @@ class IssueApp(App):
                     )
                 self.final_action = "error"
                 log_command_metric(
-                    command="issue:github_create",
+                    command=metric_cmd,
                     status="error",
-                    provider="github",
+                    provider=provider_name,
                     http_status=e.http_status,
                 )
             else:
@@ -236,7 +238,7 @@ class IssueApp(App):
                     )
                 self.final_action = "error"
                 log_command_metric(
-                    command="issue:github_create", status="error", provider="github"
+                    command=metric_cmd, status="error", provider=provider_name
                 )
         except Exception as e:
             # Unexpected bug — degrade like the legacy inline-POST catch-all.
@@ -252,7 +254,7 @@ class IssueApp(App):
                 )
             self.final_action = "error"
             log_command_metric(
-                command="issue:github_create", status="error", provider="github"
+                command=metric_cmd, status="error", provider=provider_name
             )
 
         self.exit()

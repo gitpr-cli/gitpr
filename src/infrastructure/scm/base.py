@@ -139,6 +139,7 @@ class IssueInfo:
     url: str
     state: str
     is_pull_request: bool = False
+    is_open: bool = True
 
 
 class ScmProviderError(Exception):
