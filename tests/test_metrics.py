@@ -2062,7 +2062,7 @@ def forge(monkeypatch):
         monkeypatch.setattr(
             "src.infrastructure.scm.factory.resolve_scm_provider", lambda config: fake
         )
-        monkeypatch.setattr("src.config.get_scm_settings", lambda: {})
+        monkeypatch.setattr("src.scm_settings.get_scm_settings", lambda **_: {})
         return fake
 
     return _install

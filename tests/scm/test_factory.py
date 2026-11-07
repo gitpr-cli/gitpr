@@ -111,6 +111,28 @@ class TestDetectProviderFromRemote(unittest.TestCase):
     def test_case_insensitive(self):
         self.assertEqual(detect_provider_from_remote("HTTPS://GITLAB.COM/G/P.GIT"), "gitlab")
 
+    def test_an_unknown_host_reports_none_when_asked_to(self):
+        # ADR-016: the resolver has to tell "the remote names no forge" apart
+        # from "the remote names GitHub", so the wizard can ask instead of
+        # silently configuring the wrong host.
+        for url in ("https://example.com/junk/repo.git", "", None):
+            with self.subTest(url=url):
+                self.assertIsNone(detect_provider_from_remote(url, default=None))
+
+    def test_a_recognised_forge_ignores_the_default(self):
+        self.assertEqual(
+            detect_provider_from_remote(
+                "https://gitlab.com/group/proj.git", default=None
+            ),
+            "gitlab",
+        )
+
+    def test_the_default_is_passed_through(self):
+        self.assertEqual(
+            detect_provider_from_remote("https://example.com/junk.git", default="bitbucket"),
+            "bitbucket",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

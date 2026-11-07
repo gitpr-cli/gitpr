@@ -32,6 +32,12 @@ from src.config import (
 )
 from src.ai_providers import call_ai_model
 from src.diff_parser import collapse_binary_hunks
+from src.project_config import (
+    SCM_PROVIDER_FIELD,
+    project_config_path,
+    read_project_config,
+    write_project_field_values,
+)
 from src.doc_links import doc_url
 from src.i18n import __, CURRENT_LANG
 from src.updater import __lang_version__, __scripts_version__
@@ -2270,15 +2276,19 @@ def run_scm_init_wizard():
     """
     Interactive SCM forge configuration wizard (gitpr --init).
 
-    Detects the forge from the origin remote URL, lets the user confirm or
-    override the provider, prompts for the provider extras (organization /
-    project for Azure DevOps, username for Bitbucket, optional API base URL),
-    collects the access token and validates it against the forge API (up to
-    _SCM_INIT_ATTEMPTS attempts; 401 re-prompts, network/server failures abort).
+    Configures the forge of *this repository* (ADR-016). Detects it from the
+    origin remote URL, lets the user confirm or override the provider, prompts
+    for the provider extras (organization / project for Azure DevOps, username
+    for Bitbucket, optional API base URL), collects the access token and
+    validates it against the forge API (up to _SCM_INIT_ATTEMPTS attempts; 401
+    re-prompts, network/server failures abort).
 
-    Configuration is persisted to ~/.gitpr/.env ONLY on success:
-    GITPR_SCM_PROVIDER, GITPR_SCM_TOKEN_ENCRYPTED = encrypt_data(raw) and the
-    extra fields when present. Nothing is written when validation fails.
+    Nothing is written when validation fails. On success the token is stored in
+    the slot of its own forge (GITLAB_TOKEN_ENCRYPTED, …), the base URL and the
+    extras follow, and a project override is recorded in
+    .gitpr/conf/gitpr.config.yml only when the chosen forge is not the one the
+    remote already implies — a repository that relies on detection keeps its
+    project file clean.
     """
     from src.infrastructure.scm import (
         ScmProviderError,
@@ -2286,6 +2296,12 @@ def run_scm_init_wizard():
         provider_display_name,
         provider_is_github,
         resolve_scm_provider,
+    )
+    from src.scm_settings import (
+        BASE_URL_KEYS,
+        EXTRA_ENV_KEYS,
+        TOKEN_KEYS,
+        migrate_legacy_scm_config,
     )
     from src.tui_issue import (
         _error_message,
@@ -2300,9 +2316,13 @@ def run_scm_init_wizard():
     )
     click.echo(
         __(
-            "Configures the forge GitPR uses for pull requests and issues, and stores the access token that authenticates you.\n"
+            "Configures the forge GitPR uses for this repository's pull requests and issues, and stores the access token that authenticates you.\n"
         )
     )
+
+    # Move the legacy global SCM keys first: a repository that was configured
+    # before this wizard changed scope must not look unconfigured here.
+    migrate_legacy_scm_config()
 
     raw_remote = get_origin_remote_url()
     if not raw_remote:
@@ -2316,8 +2336,16 @@ def run_scm_init_wizard():
 
     click.echo(__("Repository: {remote}", remote=raw_remote))
 
-    detected = detect_provider_from_remote(raw_remote)
-    if click.confirm(
+    # default=None keeps "recognised as GitHub" apart from "not recognised":
+    # a self-hosted host must ask instead of silently becoming GitHub.
+    detected = detect_provider_from_remote(raw_remote, default=None)
+    if detected is None:
+        click.secho(
+            __("⚠️ The forge of this remote is not recognised. Choose it below."),
+            fg="yellow",
+        )
+        provider_key = ""
+    elif click.confirm(
         __(
             "Detected forge: {provider}. Configure GitPR to use it for pull requests and issues?",
             provider=provider_display_name(detected),
@@ -2327,12 +2355,22 @@ def run_scm_init_wizard():
         provider_key = detected
     else:
         provider_key = ""
-        while provider_key not in _SCM_INIT_FORGES:
-            provider_key = click.prompt(
-                __("Enter the forge key ({providers}):", providers=", ".join(_SCM_INIT_FORGES))
-            ).strip().lower()
+
+    while provider_key not in _SCM_INIT_FORGES:
+        provider_key = click.prompt(
+            __("Enter the forge key ({providers}):", providers=", ".join(_SCM_INIT_FORGES))
+        ).strip().lower()
 
     label = provider_display_name(provider_key)
+
+    # The override already recorded in the project file, if any. The override
+    # is rewritten below only when it disagrees with what was just chosen.
+    existing_override = (
+        read_project_config().provider or ""
+    ).strip().lower()
+    write_override = provider_key != detected or bool(
+        existing_override and existing_override != provider_key
+    )
 
     # Provider extras — required up-front because fail-fast providers
     # (Azure DevOps organization/project, Bitbucket username) refuse to be
@@ -2346,20 +2384,28 @@ def run_scm_init_wizard():
 
     provider = resolve_scm_provider(dict(provider=provider_key, **extras))
 
-    # API base URL: the cloud default is pre-filled; only a different value
-    # (self-managed / enterprise instance) is persisted.
+    # API base URL: the value already configured for this forge is the default,
+    # so a self-hosted repository is validated against the host its next run
+    # will use. Only a value that differs from the cloud default is persisted;
+    # accepting the cloud default clears a stored override.
     base_url = None
+    clear_base_url = False
     if provider_key != "github":
-        default_base = provider.default_base_url().rstrip("/")
+        cloud_default = provider.default_base_url().rstrip("/")
+        stored_base = (os.getenv(BASE_URL_KEYS[provider_key]) or "").rstrip("/")
         chosen = (
-            click.prompt(__("API base URL:"), default=default_base).strip().rstrip("/")
-            or default_base
+            click.prompt(
+                __("API base URL:"), default=stored_base or cloud_default
+            ).strip().rstrip("/")
+            or cloud_default
         )
-        if chosen != default_base:
+        if chosen != cloud_default:
             base_url = chosen
             provider = resolve_scm_provider(
                 dict(provider=provider_key, base_url=base_url, **extras)
             )
+        elif stored_base:
+            clear_base_url = True
 
     # Access token — instructions first, then a hidden prompt. NOT persisted
     # yet: "persist only on success" means validation must pass first.
@@ -2411,25 +2457,64 @@ def run_scm_init_wizard():
         break
 
     # Persist only on success (validation above passed).
-    set_key(ENV_FILE, "GITPR_SCM_PROVIDER", provider_key)
-    set_key(ENV_FILE, "GITPR_SCM_TOKEN_ENCRYPTED", encrypt_data(raw_token))
-    for env_key, value in (
-        ("GITPR_SCM_BASE_URL", base_url),
-        ("GITPR_SCM_ORGANIZATION", extras.get("organization")),
-        ("GITPR_SCM_PROJECT", extras.get("project")),
-        ("GITPR_SCM_USERNAME", extras.get("username")),
-    ):
-        if value:
-            set_key(ENV_FILE, env_key, value)
+    project_path = project_config_path()
+    if write_override:
+        try:
+            # Preserves pull_request: and every other key in the file.
+            write_project_field_values(
+                {SCM_PROVIDER_FIELD: provider_key}, path=project_path
+            )
+        except (OSError, ValueError) as exc:
+            click.secho(
+                __(
+                    "⚠️ Could not record the forge in the project configuration: {error}",
+                    error=str(exc),
+                ),
+                fg="yellow",
+            )
+
+    try:
+        set_key(ENV_FILE, TOKEN_KEYS[provider_key], encrypt_data(raw_token))
+        if clear_base_url:
+            set_key(ENV_FILE, BASE_URL_KEYS[provider_key], "")
+        for env_key, value in (
+            (BASE_URL_KEYS[provider_key], base_url),
+            (EXTRA_ENV_KEYS["organization"], extras.get("organization")),
+            (EXTRA_ENV_KEYS["project"], extras.get("project")),
+            (EXTRA_ENV_KEYS["username"], extras.get("username")),
+        ):
+            if value:
+                set_key(ENV_FILE, env_key, value)
+    except OSError as exc:
+        click.secho(
+            __(
+                "⚠️ The {provider} token was validated but could not be saved in {path}: {error}",
+                provider=label,
+                path=ENV_FILE,
+                error=str(exc),
+            ),
+            fg="yellow",
+        )
+        return
 
     click.secho(
         __(
-            "✅ SCM forge configured: {provider}! Pull requests and issues will use it from now on.\n",
+            "✅ {provider} is the forge of {repo}! Pull requests and issues will use it from now on.\n",
             provider=label,
+            repo=repo_display or raw_remote,
         ),
         fg="green",
         bold=True,
     )
+
+    if write_override:
+        click.secho(
+            __(
+                "📌 Recorded in {path}. Commit it to share the forge with your team.\n",
+                path=project_path,
+            ),
+            dim=True,
+        )
 
     # Configured forge means pull requests are about to be published, and those
     # carry the GitPR badge. Said here, once, at the moment that starts being

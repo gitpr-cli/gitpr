@@ -94,18 +94,3 @@ def no_api_keys(monkeypatch):
     """The demo runs with nothing configured."""
     for name in _API_KEY_VARIABLES:
         monkeypatch.delenv(name, raising=False)
-
-
-@pytest.fixture(autouse=True)
-def english_interface(monkeypatch):
-    """Pin the interface language so assertions can name the expected text.
-
-    English is the one language that needs no translation file — `__()` falls
-    back to the key itself — so the suite does not depend on whatever the
-    developer's ``~/.gitpr/langs`` happens to hold. A test that wants another
-    language patches ``src.i18n`` itself, which wins over this.
-    """
-    import src.i18n
-
-    monkeypatch.setattr(src.i18n, "CURRENT_LANG", "en_us")
-    monkeypatch.setattr(src.i18n, "TRANSLATIONS", {})

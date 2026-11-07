@@ -9,7 +9,13 @@ keys documented in the glossary:
               to keep the factory cycle-free)
   base_url  — optional API base (self-managed / enterprise)
   organization/project/username — provider extras, passed through as kwargs
+
+Configuration is produced by src.scm_settings, which scopes the forge, the
+token and the base URL to the repository being worked on. This module stays
+free of environment and file reads on purpose.
 """
+
+from typing import Optional
 
 from src.i18n import __
 from src.infrastructure.scm.azure_devops_provider import AzureDevOpsProvider
@@ -61,11 +67,13 @@ def resolve_scm_provider(config: dict) -> ScmProvider:
     return cls(token=token, base_url=config.get("base_url"), **kwargs)
 
 
-def detect_provider_from_remote(remote_url: str) -> str:
+def detect_provider_from_remote(remote_url: str, default: Optional[str] = "github") -> Optional[str]:
     """Guess the forge from a git remote URL (case-insensitive substrings).
 
     Order matters only for URLs that match several hosts — none exist today.
-    Anything unknown defaults to "github" (the current GitPR behavior).
+    Anything unknown returns *default*: "github" reproduces the historical
+    behavior, while ``default=None`` lets a caller tell "recognised as GitHub"
+    apart from "not recognised at all" (self-hosted hosts need the latter).
     """
     url = (remote_url or "").lower()
     if "gitlab" in url:
@@ -74,7 +82,11 @@ def detect_provider_from_remote(remote_url: str) -> str:
         return "bitbucket"
     if "dev.azure.com" in url or "visualstudio.com" in url:
         return "azure_devops"
-    return "github"
+    if default is None:
+        return None
+    if "github" in url:
+        return "github"
+    return default
 
 
 # Human display names used when messages interpolate "{provider}".

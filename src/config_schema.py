@@ -63,6 +63,18 @@ STORE_ENV = "env"
 STORE_PROJECT = "project"
 STORES = (STORE_ENV, STORE_PROJECT)
 
+# Project-file keys of the SCM block. They mirror
+# project_config.SCM_PROVIDER_FIELD and project_config.EFFECTIVE_PROVIDER_FIELD;
+# tests/test_config_schema.py asserts the two agree, which keeps this module
+# free of the YAML layer.
+PROJECT_SCM_PROVIDER = "PROJECT_SCM_PROVIDER"
+PROJECT_EFFECTIVE_PROVIDER = "PROJECT_EFFECTIVE_PROVIDER"
+
+# Read-only rows whose value the screen computes instead of reading from a
+# store. A visibility test must not mistake them for a value that failed to
+# load.
+COMPUTED_CONTROLLERS = frozenset({PROJECT_EFFECTIVE_PROVIDER})
+
 # Which code constant a version marker is compared against by its loader. The
 # TUI shows that constant when the marker is absent, so a read-only box is
 # never blank. Maps to VERSION_SOURCES in ui/config_app.py.
@@ -295,6 +307,7 @@ SKILL_LABELS = {
 # src/infrastructure/scm/factory.py.
 GROUPS = (
     Group("github", "GitHub"),
+    Group("gitlab", "GitLab"),
     Group("bitbucket", "Bitbucket"),
     Group("azure_devops", "Azure DevOps"),
     Group("spinner", __("Spinner")),
@@ -1149,28 +1162,45 @@ FIELDS = (
         default="300",
     ),
     # --------------------------------------------------------------- SCM/Forge
-    # The common settings stay ungrouped and always visible; the fields that
-    # only exist for one forge live under its sub-header and follow the
-    # selected provider. GITPR_SCM_TOKEN is common on purpose: get_scm_token()
-    # reads it for every forge, so hiding it behind the GitHub group would make
-    # it invisible to GitLab/Bitbucket/Azure users who have it set.
+    # The forge belongs to the repository, the credentials belong to the forge
+    # (ADR-016). The provider override is a project-file value; each forge has
+    # its own token and its own API base URL in ~/.gitpr/.env. The four token
+    # rows are always visible on purpose: every forge may legitimately hold a
+    # credential at the same time, and hiding three of four is what made a
+    # single global slot look like the right design.
+    #
+    # GITPR_SCM_TOKEN stays common: it is the raw CI/CD override, read for
+    # every forge.
     ConfigField(
-        key="GITPR_SCM_PROVIDER",
+        key=PROJECT_SCM_PROVIDER,
         label=__("Forge Provider"),
         description=__(
-            "Git hosting service of this repository. Leave it empty to use GitHub."
+            "Git hosting service of this repository. Leave it empty to detect it from the origin remote."
         ),
         category="scm",
         kind=KIND_ENUM,
         default="",
         choices=("", "github", "gitlab", "bitbucket", "azure_devops"),
-        seeded=True,
+        store=STORE_PROJECT,
+    ),
+    ConfigField(
+        key=PROJECT_EFFECTIVE_PROVIDER,
+        label=__("Effective Forge"),
+        description=__(
+            "The forge GitPR will use for this repository now, and where the value comes from."
+        ),
+        category="scm",
+        kind=KIND_ENUM,
+        default="github",
+        choices=("github", "gitlab", "bitbucket", "azure_devops"),
+        read_only=True,
+        store=STORE_PROJECT,
     ),
     ConfigField(
         key="GITPR_SCM_TOKEN",
         label=__("CI/CD Token (raw)"),
         description=__(
-            "Raw token injected by CI/CD. It takes precedence over the encrypted token for every forge, and is configured with `gitpr --init`. The value is never displayed and never written here."
+            "Raw token injected by CI/CD. It takes precedence over the encrypted token of every forge. The value is never displayed and never written here."
         ),
         category="scm",
         kind=KIND_SECRET,
@@ -1179,40 +1209,73 @@ FIELDS = (
         seeded=True,
     ),
     ConfigField(
-        key="GITPR_SCM_TOKEN_ENCRYPTED",
-        label=__("Forge Token"),
-        description=__(
-            "Access token of the configured forge, stored encrypted. The value is never displayed back."
-        ),
-        category="scm",
-        kind=KIND_SECRET,
-        default="",
-        validator=VALIDATOR_SCM_TOKEN,
-        seeded=True,
-    ),
-    ConfigField(
-        key="GITPR_SCM_BASE_URL",
-        label=__("API Base URL"),
-        description=__(
-            "API address of a self managed forge. Leave it empty to use the public service."
-        ),
-        category="scm",
-        kind=KIND_STR,
-        default="",
-        seeded=True,
-    ),
-    ConfigField(
         key="GITHUB_TOKEN_ENCRYPTED",
         label=__("GitHub Token"),
         description=__(
-            "Legacy GitHub personal access token, used when no forge is configured."
+            "GitHub personal access token, stored encrypted. The value is never displayed back."
         ),
         category="scm",
         kind=KIND_SECRET,
         default="",
         validator=VALIDATOR_SCM_TOKEN,
         group="github",
-        show_if=(("GITPR_SCM_PROVIDER", ("", "github")),),
+    ),
+    ConfigField(
+        key="GITHUB_BASE_URL",
+        label=__("API Base URL"),
+        description=__(
+            "API address of a GitHub Enterprise instance. Leave it empty to use github.com."
+        ),
+        category="scm",
+        kind=KIND_STR,
+        default="",
+        group="github",
+    ),
+    ConfigField(
+        key="GITLAB_TOKEN_ENCRYPTED",
+        label=__("GitLab Token"),
+        description=__(
+            "GitLab personal access token, stored encrypted. The value is never displayed back."
+        ),
+        category="scm",
+        kind=KIND_SECRET,
+        default="",
+        validator=VALIDATOR_SCM_TOKEN,
+        group="gitlab",
+    ),
+    ConfigField(
+        key="GITLAB_BASE_URL",
+        label=__("API Base URL"),
+        description=__(
+            "API address of a self managed GitLab. Leave it empty to use gitlab.com."
+        ),
+        category="scm",
+        kind=KIND_STR,
+        default="",
+        group="gitlab",
+    ),
+    ConfigField(
+        key="BITBUCKET_TOKEN_ENCRYPTED",
+        label=__("Bitbucket Token"),
+        description=__(
+            "Bitbucket app password, stored encrypted. The value is never displayed back."
+        ),
+        category="scm",
+        kind=KIND_SECRET,
+        default="",
+        validator=VALIDATOR_SCM_TOKEN,
+        group="bitbucket",
+    ),
+    ConfigField(
+        key="BITBUCKET_BASE_URL",
+        label=__("API Base URL"),
+        description=__(
+            "API address of a Bitbucket server. Leave it empty to use bitbucket.org."
+        ),
+        category="scm",
+        kind=KIND_STR,
+        default="",
+        group="bitbucket",
     ),
     ConfigField(
         key="GITPR_SCM_USERNAME",
@@ -1224,8 +1287,31 @@ FIELDS = (
         kind=KIND_STR,
         default="",
         group="bitbucket",
-        show_if=(("GITPR_SCM_PROVIDER", ("bitbucket",)),),
+        show_if=((PROJECT_EFFECTIVE_PROVIDER, ("bitbucket",)),),
         seeded=True,
+    ),
+    ConfigField(
+        key="AZURE_DEVOPS_TOKEN_ENCRYPTED",
+        label=__("Azure DevOps Token"),
+        description=__(
+            "Azure DevOps personal access token, stored encrypted. The value is never displayed back."
+        ),
+        category="scm",
+        kind=KIND_SECRET,
+        default="",
+        validator=VALIDATOR_SCM_TOKEN,
+        group="azure_devops",
+    ),
+    ConfigField(
+        key="AZURE_DEVOPS_BASE_URL",
+        label=__("API Base URL"),
+        description=__(
+            "API address of an Azure DevOps or TFS instance. Leave it empty to use dev.azure.com."
+        ),
+        category="scm",
+        kind=KIND_STR,
+        default="",
+        group="azure_devops",
     ),
     ConfigField(
         key="GITPR_SCM_ORGANIZATION",
@@ -1235,7 +1321,7 @@ FIELDS = (
         kind=KIND_STR,
         default="",
         group="azure_devops",
-        show_if=(("GITPR_SCM_PROVIDER", ("azure_devops",)),),
+        show_if=((PROJECT_EFFECTIVE_PROVIDER, ("azure_devops",)),),
         seeded=True,
     ),
     ConfigField(
@@ -1246,7 +1332,7 @@ FIELDS = (
         kind=KIND_STR,
         default="",
         group="azure_devops",
-        show_if=(("GITPR_SCM_PROVIDER", ("azure_devops",)),),
+        show_if=((PROJECT_EFFECTIVE_PROVIDER, ("azure_devops",)),),
         seeded=True,
     ),
     # ----------------------------------------------------------- Smart excludes
@@ -1446,8 +1532,13 @@ KNOWN_KEYS = frozenset(FIELDS_BY_KEY)
 
 # Fields whose value decides whether other fields are shown. The TUI re-renders
 # the pane when one of them changes, so this must not drift from the schema.
+#
+# PROJECT_SCM_PROVIDER is listed by hand: the forge sub-sections are gated on
+# the EFFECTIVE forge (which also reflects remote detection), so the row the
+# user actually changes is the project override, not the gate's own key.
 VISIBILITY_CONTROLLERS = frozenset(
-    key for field in FIELDS for key, _allowed in field.show_if
+    [key for field in FIELDS for key, _allowed in field.show_if]
+    + [PROJECT_SCM_PROVIDER]
 )
 
 # Category ids in menu order, for rendering the sidebar.

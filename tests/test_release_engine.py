@@ -725,7 +725,7 @@ class TestContributorLogins(unittest.TestCase):
             provider = SimpleNamespace(email_to_handle=lambda email: "ada")
             with patch("src.release_engine._contributors_cache_path",
                        return_value=Path(cache)), \
-                 patch("src.config.get_scm_settings", return_value={}), \
+                 patch("src.scm_settings.get_scm_settings", return_value={}), \
                  patch("src.infrastructure.scm.factory.resolve_scm_provider",
                        return_value=provider):
                 logins = _resolve_contributor_logins(
@@ -762,7 +762,7 @@ class TestContributorLogins(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
              patch("src.release_engine._contributors_cache_path",
                    return_value=Path(os.path.join(tmp, "contributors.json"))), \
-             patch("src.config.get_scm_settings", return_value={}), \
+             patch("src.scm_settings.get_scm_settings", return_value={}), \
              patch("src.infrastructure.scm.factory.resolve_scm_provider",
                    return_value=provider):
             logins = _resolve_contributor_logins(
@@ -781,7 +781,7 @@ class TestContributorLogins(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
              patch("src.release_engine._contributors_cache_path",
                    return_value=Path(os.path.join(tmp, "contributors.json"))), \
-             patch("src.config.get_scm_settings", return_value={}), \
+             patch("src.scm_settings.get_scm_settings", return_value={}), \
              patch("src.infrastructure.scm.factory.resolve_scm_provider",
                    return_value=provider):
             logins = _resolve_contributor_logins(
@@ -807,7 +807,7 @@ class TestContributorLogins(unittest.TestCase):
             provider = SimpleNamespace(email_to_handle=lambda email: None)
             with patch("src.release_engine._contributors_cache_path",
                        return_value=Path(cache)), \
-                 patch("src.config.get_scm_settings", return_value={}), \
+                 patch("src.scm_settings.get_scm_settings", return_value={}), \
                  patch("src.infrastructure.scm.factory.resolve_scm_provider",
                        return_value=provider):
                 self.assertEqual(
@@ -837,7 +837,7 @@ class TestContributorLogins(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, \
              patch("src.release_engine._contributors_cache_path",
                    return_value=Path(os.path.join(tmp, "contributors.json"))), \
-             patch("src.config.get_scm_settings", return_value={}), \
+             patch("src.scm_settings.get_scm_settings", return_value={}), \
              patch("src.infrastructure.scm.factory.resolve_scm_provider",
                    return_value=provider):
             logins = _resolve_contributor_logins(
@@ -846,7 +846,7 @@ class TestContributorLogins(unittest.TestCase):
         self.assertEqual(logins, {"ada@x.com": "ada"})
 
     def test_no_emails_means_no_lookup(self):
-        with patch("src.config.get_scm_settings",
+        with patch("src.scm_settings.get_scm_settings",
                    side_effect=AssertionError("no email, no provider call")):
             self.assertEqual(
                 _resolve_contributor_logins(self._commits("", None), _ORIGIN), {}

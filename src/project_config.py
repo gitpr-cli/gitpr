@@ -1,11 +1,16 @@
 """Project-local configuration, versioned with the repository.
 
-The only setting so far is the pull request target base branch: the branch the
-forge is asked to merge into. The AI diff baseline is a different concept and
-stays in ``core.get_git_full_diff()``, which always compares against
-``origin/HEAD`` (ADR-015). A project may therefore target ``develop`` while its
-description and review are still built against the detected default branch.
-That divergence is known and deliberate for now.
+Two settings live here. ``pull_request.base_branch`` is the branch the forge is
+asked to merge into; the AI diff baseline is a different concept and stays in
+``core.get_git_full_diff()``, which always compares against ``origin/HEAD``
+(ADR-015). A project may therefore target ``develop`` while its description and
+review are still built against the detected default branch. That divergence is
+known and deliberate for now.
+
+``scm.provider`` is the forge override for hosts the remote detection cannot
+recognise — a self-hosted GitLab at a domain that does not contain "gitlab",
+for instance (ADR-016). It is written only when the resolved forge differs from
+the detected one; a repository that relies on detection keeps the file clean.
 
 Why a separate module instead of ``src/config.py``: the project file has its own
 path resolution (the repository root, not the working directory), its own
@@ -32,7 +37,7 @@ PROJECT_CONFIG_RELATIVE_PATH = Path(".gitpr") / "conf" / "gitpr.config.yml"
 
 HEADER_COMMENT = (
     "# Project configuration for GitPR — versioned with the repository.\n"
-    "# The pull request target base branch for this repository.\n"
+    "# The pull request target base branch and the forge of this repository.\n"
 )
 
 # Keys used by the `gitpr config` TUI. They are project-file keys, not
@@ -41,6 +46,8 @@ HEADER_COMMENT = (
 BASE_BRANCH_FIELD = "PROJECT_BASE_BRANCH"
 CONFIG_FILE_FIELD = "PROJECT_CONFIG_FILE"
 EFFECTIVE_BASE_FIELD = "PROJECT_EFFECTIVE_BASE"
+SCM_PROVIDER_FIELD = "PROJECT_SCM_PROVIDER"
+EFFECTIVE_PROVIDER_FIELD = "PROJECT_EFFECTIVE_PROVIDER"
 
 SOURCE_CLI = "cli"
 SOURCE_PROJECT = "project"
@@ -69,6 +76,7 @@ class ProjectConfig:
 
     path: Path
     base_branch: str = ""
+    provider: str = ""
     error: str = ""
 
 
@@ -152,7 +160,9 @@ def read_project_config(path=None, start_dir=None):
 
     A missing file, an empty file and a file without the key all mean "no
     project value". Anything malformed lands in ``error`` so the caller can
-    warn and keep walking the precedence chain.
+    warn and keep walking the precedence chain. Both sections are read even
+    when one of them is broken: a bad ``scm`` must not hide a good
+    ``pull_request``, and the error still reaches the caller.
     """
     target = Path(path) if path else project_config_path(start_dir)
     try:
@@ -170,30 +180,53 @@ def read_project_config(path=None, start_dir=None):
             path=target, error=__("The file must contain a YAML mapping.")
         )
 
-    pull_request = data.get("pull_request")
-    if pull_request is None:
-        return ProjectConfig(path=target)
-    if not isinstance(pull_request, dict):
-        return ProjectConfig(
-            path=target, error=__("'pull_request' must be a mapping.")
-        )
+    errors = []
 
-    value = pull_request.get("base_branch")
-    if value is None:
-        return ProjectConfig(path=target)
-    if not isinstance(value, str):
-        return ProjectConfig(
-            path=target, error=__("'pull_request.base_branch' must be text.")
-        )
-    return ProjectConfig(path=target, base_branch=value.strip())
+    base_branch = ""
+    pull_request = data.get("pull_request")
+    if pull_request is not None:
+        if not isinstance(pull_request, dict):
+            errors.append(__("'pull_request' must be a mapping."))
+        else:
+            value = pull_request.get("base_branch")
+            if value is not None:
+                if not isinstance(value, str):
+                    errors.append(__("'pull_request.base_branch' must be text."))
+                else:
+                    base_branch = value.strip()
+
+    provider = ""
+    scm = data.get("scm")
+    if scm is not None:
+        if not isinstance(scm, dict):
+            errors.append(__("'scm' must be a mapping."))
+        else:
+            value = scm.get("provider")
+            if value is not None:
+                if not isinstance(value, str):
+                    errors.append(__("'scm.provider' must be text."))
+                else:
+                    provider = value.strip()
+
+    return ProjectConfig(
+        path=target,
+        base_branch=base_branch,
+        provider=provider,
+        error="; ".join(errors),
+    )
 
 
 def load_project_field_values(path=None, start_dir=None):
     """Values for the project-store rows of the configuration screen."""
     config = read_project_config(path=path, start_dir=start_dir)
-    if config.error or not config.base_branch:
+    if config.error:
         return {}
-    return {BASE_BRANCH_FIELD: config.base_branch}
+    values = {}
+    if config.base_branch:
+        values[BASE_BRANCH_FIELD] = config.base_branch
+    if config.provider:
+        values[SCM_PROVIDER_FIELD] = config.provider
+    return values
 
 
 def write_project_field_values(values, removals=(), path=None, start_dir=None):
@@ -241,6 +274,31 @@ def write_project_field_values(values, removals=(), path=None, start_dir=None):
         data["pull_request"] = pull_request
     else:
         data.pop("pull_request", None)
+
+    scm = data.get("scm")
+    if scm is None:
+        scm = {}
+    if not isinstance(scm, dict):
+        raise ValueError(
+            __(
+                "Refusing to overwrite {path}: 'scm' is not a mapping.",
+                path=target,
+            )
+        )
+
+    if SCM_PROVIDER_FIELD in values:
+        provider = (values[SCM_PROVIDER_FIELD] or "").strip().lower()
+        if provider:
+            scm["provider"] = provider
+        else:
+            scm.pop("provider", None)
+    if SCM_PROVIDER_FIELD in removals:
+        scm.pop("provider", None)
+
+    if scm:
+        data["scm"] = scm
+    else:
+        data.pop("scm", None)
 
     target.parent.mkdir(parents=True, exist_ok=True)
     body = yaml.safe_dump(

@@ -377,10 +377,10 @@ def _resolve_contributor_logins(commits, remote):
     if missing:
         provider = repo_ref = None
         try:
-            from src.config import get_scm_settings
+            from src.scm_settings import get_scm_settings
             from src.infrastructure.scm.factory import resolve_scm_provider
 
-            provider = resolve_scm_provider(get_scm_settings())
+            provider = resolve_scm_provider(get_scm_settings(remote_url=remote))
             if remote:
                 repo_ref = provider.parse_repo_ref(remote)
         except Exception:

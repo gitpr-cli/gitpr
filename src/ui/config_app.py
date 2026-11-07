@@ -84,6 +84,8 @@ from src.config_schema import (
     KIND_VERSION,
     KIND_WORDS,
     KNOWN_KEYS,
+    PROJECT_EFFECTIVE_PROVIDER,
+    PROJECT_SCM_PROVIDER,
     SKILL_LABELS,
     STORE_PROJECT,
     VALIDATOR_AI_KEY,
@@ -111,6 +113,15 @@ from src.project_config import (
     resolve_pull_request_base,
     verify_remote_base,
     write_project_field_values,
+)
+from src.infrastructure.scm import provider_display_name
+from src.scm_settings import (
+    BASE_URL_KEYS,
+    EXTRA_ENV_KEYS,
+    TOKEN_KEYS,
+    migrate_legacy_scm_config,
+    origin_remote_url,
+    resolve_provider_choice,
 )
 from src.security import encrypt_data
 
@@ -171,6 +182,15 @@ SKILLS_FOLDER_KEY = "SKILLS_FOLDER"
 
 # Label shown for the empty choice of an enum ("let GitPR decide").
 _AUTOMATIC_LABEL = __("(automatic)")
+
+# Where the effective forge came from, for the read-only row. The labels
+# deliberately differ from the base-branch ones: there "auto-detection" means
+# origin/HEAD, while here it is the remote URL naming the host.
+_PROVIDER_SOURCE_LABELS = {
+    "project": __("project file"),
+    "remote": __("origin remote"),
+    "default": __("default"),
+}
 
 # Secret field -> the AI provider whose endpoint validates it.
 _SECRET_PROVIDERS = {
@@ -546,7 +566,8 @@ class FieldRow(Vertical):
                     (__("{value} (invalid)", value=self.raw_value), self.raw_value)
                 )
             return Select(
-                options, value=self.raw_value, allow_blank=False, id=widget_id
+                options, value=self.raw_value, allow_blank=False, id=widget_id,
+                disabled=self.read_only,
             )
 
         if self.field.kind == KIND_BRANCH:
@@ -720,6 +741,12 @@ class ConfigApp(App):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # The forge belongs to the repository (ADR-016). The one-shot move of
+        # the legacy global keys runs before the file is read, so the screen
+        # shows the migrated state; the remote is read once and every derived
+        # value below reuses it.
+        migrate_legacy_scm_config()
+        self.origin_remote = origin_remote_url()
         self.file_values = read_env_file_values()
         self.shadowed_keys = {
             key
@@ -927,6 +954,8 @@ class ConfigApp(App):
                 raw_value = str(self.project_config_path)
             elif field.key == EFFECTIVE_BASE_FIELD:
                 raw_value = self._effective_base_display()
+            elif field.key == PROJECT_EFFECTIVE_PROVIDER:
+                raw_value = self._effective_provider_display()
         if field.kind == KIND_VERSION and not is_set:
             raw_value = _VERSION_FALLBACKS.get(field.version_source, field.default)
         if field.key == SKILLS_FOLDER_KEY:
@@ -1179,6 +1208,27 @@ class ConfigApp(App):
             source=describe_base_source(resolved.source),
         )
 
+    def _effective_provider_display(self):
+        """The forge in use now, and where it comes from."""
+        choice = self._effective_provider_choice()
+        return __(
+            "{provider} (from {source})",
+            provider=provider_display_name(choice.key),
+            source=_PROVIDER_SOURCE_LABELS.get(choice.source, choice.source),
+        )
+
+    def _effective_provider_choice(self):
+        """The forge the repository would use right now (ADR-016).
+
+        Reads the pending override first, so picking another forge re-filters
+        the provider sub-sections before the file is saved.
+        """
+        project_value = self.pending.get(
+            PROJECT_SCM_PROVIDER,
+            self.project_values.get(PROJECT_SCM_PROVIDER, ""),
+        )
+        return resolve_provider_choice(project_value, self.origin_remote)
+
     def file_value(self, field):
         """The value currently on disk, falling back to the declared default."""
         if field.store == STORE_PROJECT:
@@ -1187,6 +1237,10 @@ class ConfigApp(App):
 
     def effective_value(self, field):
         """The value that would be written: the pending edit, else the file."""
+        if field.key == PROJECT_EFFECTIVE_PROVIDER:
+            # Computed, never stored: it also carries the forge the remote
+            # names, which no file holds.
+            return self._effective_provider_choice().key
         return self.pending.get(field.key, self.file_value(field))
 
     def is_dirty(self, field):
@@ -1937,7 +1991,11 @@ class ConfigApp(App):
                 # current branch is a normal state of a checkout that happens
                 # to be on the target, and blocking every unrelated save
                 # because of it would make the screen unusable.
-                if value and value == self.current_branch:
+                if (
+                    field.key == BASE_BRANCH_FIELD
+                    and value
+                    and value == self.current_branch
+                ):
                     plan["errors"][field.key] = __(
                         "A pull request cannot target the branch you are on. Choose another base branch."
                     )
@@ -2014,22 +2072,37 @@ class ConfigApp(App):
             )
             return ("" if is_valid else kind), message
         if validator == VALIDATOR_SCM_TOKEN:
-            return self._probe_scm_token(plaintext, plan)
+            return self._probe_scm_token(key, plaintext, plan)
         return "", ""
 
-    def _probe_scm_token(self, plaintext, plan):
+    def _probe_scm_token(self, token_key, plaintext, plan):
         """Validates a forge token through the provider's own test_connection.
 
-        The forge comes from the state the save would produce, so switching
-        GITPR_SCM_PROVIDER and typing the new token in the same pass validates
-        against the new forge rather than the one still on disk.
+        The forge is the slot the token belongs to — TOKEN_KEYS maps one to the
+        other — so a GitLab token is checked against GitLab even when another
+        forge is in use in this repository, and every token row validates on
+        its own host.
         """
         from src.infrastructure.scm import ScmProviderError, resolve_scm_provider
 
-        provider_key = self._planned_value("GITPR_SCM_PROVIDER", plan) or "github"
+        provider_key = next(
+            (
+                provider
+                for provider, env_key in TOKEN_KEYS.items()
+                if env_key == token_key
+            ),
+            "",
+        )
+        if not provider_key:
+            return "", ""
         extra = {
-            name: self._planned_value(f"GITPR_SCM_{name.upper()}", plan) or None
-            for name in ("base_url", "organization", "project", "username")
+            name: self._planned_value(env_key, plan) or None
+            for name, env_key in (
+                ("base_url", BASE_URL_KEYS[provider_key]),
+                ("organization", EXTRA_ENV_KEYS["organization"]),
+                ("project", EXTRA_ENV_KEYS["project"]),
+                ("username", EXTRA_ENV_KEYS["username"]),
+            )
         }
 
         try:

@@ -898,48 +898,10 @@ def get_github_token():
     return None
 
 
-def get_scm_token():
-    """Reads and decrypts the multi-forge SCM token (GitLab/Bitbucket/Azure…).
-
-    Mirrors get_api_key's CI-friendly pattern: the raw GITPR_SCM_TOKEN env
-    takes precedence (CI/CD injection), otherwise the Fernet-encrypted
-    GITPR_SCM_TOKEN_ENCRYPTED is decrypted.
-    """
-    load_dotenv(ENV_FILE)
-
-    raw_token = os.getenv("GITPR_SCM_TOKEN")
-    if raw_token:
-        return raw_token
-
-    encrypted_token = os.getenv("GITPR_SCM_TOKEN_ENCRYPTED")
-    if encrypted_token:
-        return decrypt_data(encrypted_token)
-    return None
-
-
-def get_scm_settings():
-    """Returns the multi-forge SCM configuration as a flat dict.
-
-    Empty values are omitted so resolve_scm_provider applies its defaults
-    (provider "github", legacy GITHUB_TOKEN_* fallback for github without an
-    SCM token — zero-migration path for existing users).
-    """
-    load_dotenv(ENV_FILE)
-    settings = {
-        "provider": os.getenv("GITPR_SCM_PROVIDER") or None,
-        "token": get_scm_token(),
-        "base_url": os.getenv("GITPR_SCM_BASE_URL") or None,
-        "organization": os.getenv("GITPR_SCM_ORGANIZATION") or None,
-        "project": os.getenv("GITPR_SCM_PROJECT") or None,
-        "username": os.getenv("GITPR_SCM_USERNAME") or None,
-    }
-    return {key: value for key, value in settings.items() if value}
-
-
-def get_scm_provider():
-    """Returns the configured SCM provider key, or None when not configured."""
-    load_dotenv(ENV_FILE)
-    return os.getenv("GITPR_SCM_PROVIDER") or None
+# The forge and its credentials are resolved per repository by
+# src.scm_settings (ADR-016) — they are not a property of this dotenv layer.
+# get_github_token() above survives because the factory and the legacy
+# github_api shim still fall back to it.
 
 
 def _env_bool_default_true(key):
