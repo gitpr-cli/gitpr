@@ -178,6 +178,16 @@ gitpr release
 
 En la primera ejecución en modo markdown, el CLI descarga la plantilla de skill `.gitpr.release.md` de las plantillas del proyecto. La descarga respeta el idioma actual de la interfaz (las variantes remotas como `gitpr.release.es_es.md` se guardan localmente como `.gitpr.release.md`), nunca sobrescribe un archivo local existente y nunca falla por un error de red — la ejecución continúa con la persona integrada. La descarga se omite por completo en `--format json`, que es stdout-only. El archivo se carga como system instruction de la IA (persona: **Release Manager**, contrato estricto de JSON) — edítelo localmente para personalizar el resumen ejecutivo. Consulte la [documentación de Skills y Templates](skill-template.md) para conocer el mecanismo general.
 
+La skill también puede comenzar con un bloque de front matter YAML que declare el idioma de la sección:
+
+```markdown
+---
+language: en_us
+---
+```
+
+Cuando `language` es `en_us`, `pt_br`, `pt_pt`, `es_es` o `fr_fr`, sobrescribe el idioma de la interfaz en esa ejecución — tanto el prompt del resumen de la IA como los títulos de las categorías — sin cambiar `GITPR_LANG` ni ninguna configuración global. El bloque se elimina antes de que el cuerpo se convierta en la instrucción de sistema, y un valor no admitido se ignora. Sin front matter, el comportamiento no cambia. La plantilla descargada en el primer uso no trae front matter, así que añada el bloque manualmente después de ese primer uso.
+
 ### 4.2 Generación y Degradación Controlada
 
 Los rangos con más de 200 commits se resumen en lotes (Map-Reduce, con un aviso como `📦 Large commit range detected!`), y las respuestas pasan por la caché MD5 estándar de GitPR, de modo que las ejecuciones sin cambios no repiten llamadas de IA. Dos notas: la caché tiene como clave el prompt — editar `.gitpr.release.md` no invalida los resúmenes en caché — y el resumen usa siempre la misma infraestructura de IA que los demás comandos de GitPR (proveedor configurado, salida JSON, reintento automático). Consulte la [documentación de Proveedores de IA](providers-ia.md).

@@ -178,6 +178,16 @@ gitpr release
 
 On the first run in markdown mode, the CLI downloads the `.gitpr.release.md` skill template from the project templates. The download respects the current interface language (remote variants such as `gitpr.release.pt_br.md` are stored locally as `.gitpr.release.md`), never overwrites an existing local file and never fails on a network error — the run proceeds with the built-in persona. The download is skipped entirely in `--format json`, which is stdout-only. The file is loaded as the AI's system instruction (persona: **Release Manager**, strict JSON contract) — edit it locally to customize the executive summary. See the [Skills and Templates documentation](skill-template.md) for the general mechanism.
 
+The skill may also start with a YAML front matter block that declares the language of the section:
+
+```markdown
+---
+language: en_us
+---
+```
+
+When `language` is `en_us`, `pt_br`, `pt_pt`, `es_es` or `fr_fr`, it overrides the interface language for that run — both the AI summary prompt and the category headings — without changing `GITPR_LANG` or any global configuration. The block is stripped before the body becomes the system instruction, and an unsupported value is ignored. Without front matter the behaviour is unchanged. The template downloaded on the first run carries no front matter, so add the block by hand after that first run.
+
 ### 4.2 Generation and Graceful Degradation
 
 Ranges with more than 200 commits are summarized in batches (Map-Reduce, with a notice such as `📦 Large commit range detected!`), and responses go through the standard GitPR MD5 cache, so unchanged runs do not repeat AI calls. Two notes: the cache is keyed on the prompt — editing `.gitpr.release.md` does not invalidate cached summaries — and the summary always uses the same AI infrastructure as the other GitPR commands (configured provider, JSON output, automatic retry). See the [AI Providers documentation](providers-ia.md).

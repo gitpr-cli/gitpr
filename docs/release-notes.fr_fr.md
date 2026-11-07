@@ -178,6 +178,16 @@ gitpr release
 
 Lors de la première exécution en mode markdown, le CLI télécharge le template Skill `.gitpr.release.md` depuis les modèles du projet. Le téléchargement respecte la langue actuelle de l'interface (les variantes distantes comme `gitpr.release.fr_fr.md` sont enregistrées localement comme `.gitpr.release.md`), ne remplace jamais un fichier local existant et n'échoue jamais sur une erreur réseau — l'exécution continue avec la persona intégrée. Le téléchargement est entièrement ignoré en `--format json`, qui est stdout-only. Le fichier est chargé comme system instruction de l'IA (persona : **Release Manager**, contrat JSON strict) — modifiez-le localement pour personnaliser le résumé exécutif. Consultez la [documentation de Skills et Templates](skill-template.md) pour le mécanisme général.
 
+La skill peut également commencer par un bloc de front matter YAML déclarant la langue de la section :
+
+```markdown
+---
+language: en_us
+---
+```
+
+Lorsque `language` vaut `en_us`, `pt_br`, `pt_pt`, `es_es` ou `fr_fr`, il remplace la langue de l'interface pour cette exécution — le prompt du résumé IA comme les titres des catégories — sans modifier `GITPR_LANG` ni aucune configuration globale. Le bloc est retiré avant que le corps ne devienne l'instruction système, et une valeur non prise en charge est ignorée. Sans front matter, le comportement reste inchangé. Le modèle téléchargé au premier usage ne contient pas de front matter : ajoutez le bloc manuellement après cette première exécution.
+
 ### 4.2 Génération et dégradation contrôlée
 
 Les plages de plus de 200 commits sont résumées par lots (Map-Reduce, avec un avis comme `📦 Large commit range detected!`), et les réponses passent par le cache MD5 standard de GitPR : des exécutions inchangées ne répètent donc pas les appels d'IA. Deux remarques : le cache est indexé par le prompt — modifier `.gitpr.release.md` n'invalide pas les résumés en cache — et le résumé utilise toujours la même infrastructure d'IA que les autres commandes de GitPR (fournisseur configuré, sortie JSON, nouvelle tentative automatique). Consultez la [documentation des Fournisseurs d'IA](providers-ia.md).
