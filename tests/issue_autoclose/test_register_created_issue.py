@@ -1,4 +1,4 @@
-"""Tests for recording the issue ``gitpr -is`` just created (T3).
+"""Tests for recording the issue ``gitpr -is`` just created (T3, ADR-010).
 
 The unit tests point the registry at a temporary directory; the two
 git-repository tests run ``git init`` there and never touch the checkout. The
@@ -89,7 +89,7 @@ class RegisterCreatedIssueTest(unittest.TestCase):
 
     def _register(self, provider=None, repo_ref=REPO_REF, result=RESULT, title="Fix the thing", branch="feat/x"):
         return register_created_issue(
-            provider or _Provider(),
+            _Provider() if provider is ... else provider,
             repo_ref,
             result,
             title,
@@ -98,7 +98,7 @@ class RegisterCreatedIssueTest(unittest.TestCase):
         )
 
     def test_github_is_recorded_with_every_field(self):
-        outcome = self._register()
+        outcome = self._register(provider=_Provider())
 
         self.assertTrue(outcome.recorded)
         self.assertEqual(outcome.skipped_reason, "")
@@ -111,21 +111,30 @@ class RegisterCreatedIssueTest(unittest.TestCase):
         self.assertEqual(issue.title, "Fix the thing")
         self.assertEqual(issue.url, "https://github.com/owner/name/issues/7")
         self.assertEqual(issue.branch, "feat/x")
+        self.assertEqual(issue.provider, "github")
         # created_at is an ISO 8601 instant, the format the record re-reads.
         self.assertTrue(issue.created_at)
         self.assertIsNotNone(datetime.fromisoformat(issue.created_at))
 
-    def test_non_github_forge_is_skipped_without_touching_the_registry(self):
+    def test_gitlab_forge_is_recorded_with_provider_name(self):
         outcome = self._register(provider=_Provider(name="gitlab"))
 
+        self.assertTrue(outcome.recorded)
+        self.assertEqual(outcome.skipped_reason, "")
+        self.assertEqual(len(self.registry.recorded), 1)
+        self.assertEqual(self.registry.recorded[0].provider, "gitlab")
+
+    def test_missing_provider_is_skipped(self):
+        outcome = self._register(provider=None)
+
         self.assertFalse(outcome.recorded)
-        self.assertEqual(outcome.skipped_reason, "not-github")
+        self.assertEqual(outcome.skipped_reason, "no-provider")
         self.assertEqual(self.registry.recorded, [])
 
     def test_repository_label_must_be_owner_slash_name(self):
         repo_ref = RepoRef(raw="name", workspace="", name="name", provider="github")
 
-        outcome = self._register(repo_ref=repo_ref)
+        outcome = self._register(provider=_Provider(), repo_ref=repo_ref)
 
         self.assertEqual(outcome.recorded, False)
         self.assertEqual(outcome.skipped_reason, "no-repo")
@@ -140,7 +149,7 @@ class RegisterCreatedIssueTest(unittest.TestCase):
         ]
         for result in cases:
             with self.subTest(number=result.number, url=result.url):
-                outcome = self._register(result=result)
+                outcome = self._register(provider=_Provider(), result=result)
                 self.assertFalse(outcome.recorded)
                 self.assertEqual(outcome.skipped_reason, "invalid-result")
         self.assertEqual(self.registry.recorded, [])
@@ -148,7 +157,7 @@ class RegisterCreatedIssueTest(unittest.TestCase):
     def test_registry_error_becomes_write_failed(self):
         self.registry.error = IssueRegistryError("disk is read-only")
 
-        outcome = self._register()
+        outcome = self._register(provider=_Provider())
 
         self.assertFalse(outcome.recorded)
         self.assertEqual(outcome.skipped_reason, "write-failed")
@@ -158,7 +167,7 @@ class RegisterCreatedIssueTest(unittest.TestCase):
         # Bookkeeping must never break a creation that already succeeded.
         self.registry.error = RuntimeError("boom")
 
-        outcome = self._register()
+        outcome = self._register(provider=_Provider())
 
         self.assertFalse(outcome.recorded)
         self.assertEqual(outcome.skipped_reason, "write-failed")
@@ -167,7 +176,7 @@ class RegisterCreatedIssueTest(unittest.TestCase):
     def test_gitignore_flag_is_propagated(self):
         self.registry.gitignore_updated = True
 
-        outcome = self._register()
+        outcome = self._register(provider=_Provider())
 
         self.assertTrue(outcome.recorded)
         self.assertTrue(outcome.gitignore_updated)
@@ -181,7 +190,7 @@ class RegisterAgainstRealRegistryTest(unittest.TestCase):
         self.root = Path(self._tmp.name)
         _git_init(self.root)
         self.registry = IssueRegistry(
-            path=self.root / ".gitpr" / "conf" / "github.yml"
+            path=self.root / ".gitpr" / "conf" / "issue.yml"
         )
 
     def tearDown(self):
@@ -204,6 +213,7 @@ class RegisterAgainstRealRegistryTest(unittest.TestCase):
                 url=RESULT.url,
                 created_at=loaded.issue.created_at,
                 branch="feat/x",
+                provider="github",
             ),
         )
         # The first write also puts the record out of the repository's sight.
@@ -219,7 +229,7 @@ class _Widget:
 
 
 class IssueAppWiringTest(unittest.TestCase):
-    """``action_create_issue`` must record exactly after a GitHub success."""
+    """``action_create_issue`` records after success on any supported forge."""
 
     def setUp(self):
         self.widgets = {
@@ -266,13 +276,16 @@ class IssueAppWiringTest(unittest.TestCase):
             command="issue:github_create", status="success", provider="github"
         )
 
-    def test_non_github_creation_does_not_record(self):
+    def test_gitlab_creation_records_the_issue(self):
         provider = _Provider(name="gitlab", result=RESULT)
 
         app, register = self._run_create(provider)
 
-        register.assert_not_called()
+        register.assert_called_once()
         self.assertEqual(app.final_action, "created")
+        self.log_metric.assert_called_with(
+            command="issue:gitlab_create", status="success", provider="gitlab"
+        )
 
     def test_failed_recording_warns_and_keeps_the_creation(self):
         provider = _Provider(result=RESULT)

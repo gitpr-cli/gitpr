@@ -367,6 +367,8 @@ class CloseIssueFlagsCliTest(unittest.TestCase):
             "src.main.setup_environment"
         ), patch(
             "src.main.check_and_update_hooks_scripts"
+        ), patch(
+            "src.main.check_internet_connection", return_value=True
         ):
             result = CliRunner().invoke(cli, ["--no-unstaged-check"])
 

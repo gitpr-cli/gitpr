@@ -6,7 +6,14 @@ import tempfile
 import click
 import yaml
 from pathlib import Path
-from dotenv import dotenv_values, load_dotenv, set_key, unset_key
+from dotenv import dotenv_values, load_dotenv as _dotenv_load, set_key, unset_key
+
+
+def load_dotenv(*args, **kwargs):
+    try:
+        return _dotenv_load(*args, **kwargs)
+    except (PermissionError, OSError):
+        return False
 from src.security import encrypt_data, decrypt_data, get_or_create_key
 from src.i18n import __
 

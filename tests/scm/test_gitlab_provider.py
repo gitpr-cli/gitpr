@@ -719,5 +719,53 @@ class TestReviewerAttachNotSupported(unittest.TestCase):
         self.assertEqual(ctx.exception.http_status, 0)
 
 
+class TestGitLabIssueAutoclose(unittest.TestCase):
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_get_issue_open_normalizes_opened(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "iid": 42,
+                "title": "Bug in login",
+                "web_url": "https://gitlab.com/group/proj/-/issues/42",
+                "state": "opened",
+            },
+        )
+        info = _provider().get_issue(_repo(), 42)
+        self.assertEqual(info.number, 42)
+        self.assertEqual(info.title, "Bug in login")
+        self.assertEqual(info.state, "open")
+        self.assertTrue(info.is_open)
+        self.assertFalse(info.is_pull_request)
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_get_issue_closed(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {
+                "iid": 42,
+                "title": "Bug in login",
+                "web_url": "https://gitlab.com/group/proj/-/issues/42",
+                "state": "closed",
+            },
+        )
+        info = _provider().get_issue(_repo(), 42)
+        self.assertEqual(info.state, "closed")
+        self.assertFalse(info.is_open)
+
+    @patch("src.infrastructure.scm.gitlab_provider.requests.get")
+    def test_get_default_branch(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {"default_branch": "main"},
+        )
+        branch = _provider().get_default_branch(_repo())
+        self.assertEqual(branch, "main")
+
+    def test_closing_line(self):
+        line = _provider().closing_line(42)
+        self.assertEqual(line, "Closes #42")
+
+
 if __name__ == "__main__":
     unittest.main()

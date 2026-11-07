@@ -210,7 +210,10 @@ def get_skip_marker() -> Path:
 
 
 def ledger_exists() -> bool:
-    return get_ledger_path().exists()
+    try:
+        return get_ledger_path().exists()
+    except (PermissionError, OSError):
+        return False
 
 
 # ---------------------------------------------------------------------------

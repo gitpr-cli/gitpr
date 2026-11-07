@@ -1,4 +1,4 @@
-"""The decision behind the automatic issue closure (ADR-003, ADR-005).
+"""The decision behind the automatic issue closure (ADR-003, ADR-005, ADR-010).
 
 The PR flow calls :func:`resolve_close_issue` before the stage TUI: the local
 record is read, the forge is asked whether the issue is still open, and the
@@ -28,8 +28,7 @@ prompt instead of being swallowed as a skipped feature.
 from dataclasses import dataclass
 
 from src.i18n import __
-from src.infrastructure.scm.base import ScmProviderError
-from src.infrastructure.scm.factory import provider_is_github
+from src.infrastructure.scm.base import ScmNotSupportedError, ScmProviderError
 
 
 @dataclass(frozen=True)
@@ -75,10 +74,12 @@ def resolve_close_issue(
 ) -> CloseIssueOutcome:
     """Decides whether this pull request should close the recorded issue.
 
-    Gates that cost nothing (flags, config, a non-GitHub forge) run before any
-    disk or network access. The record is read once; only a still-open issue
-    reaches the question, and only the question path fetches the default branch
-    to warn about a merge that would not close the issue.
+    Gates that cost nothing (flags, config) run before any disk or network
+    access. The record is read once; only a still-open issue reaches the
+    question, and only the question path fetches the default branch to warn
+    about a merge that would not close the issue.
+    Forges without issue support raise ScmNotSupportedError and degrade
+    gracefully to skipped_reason="not-supported".
 
     ``timeout`` carries ``GITPR_ISSUE_AUTOCLOSE_TIMEOUT``; the PR flow reads
     ``GITPR_ISSUE_AUTOCLOSE`` earlier and never calls this function when it is
@@ -90,8 +91,8 @@ def resolve_close_issue(
         return CloseIssueOutcome(skipped_reason="flag-disabled")
     if not enabled:
         return CloseIssueOutcome(skipped_reason="disabled")
-    if not provider_is_github(provider):
-        return CloseIssueOutcome(skipped_reason="not-github")
+    if provider is None:
+        return CloseIssueOutcome(skipped_reason="no-provider")
 
     try:
         loaded = registry.load()
@@ -112,6 +113,8 @@ def resolve_close_issue(
 
     try:
         info = provider.get_issue(repo_ref, issue.number, timeout=timeout)
+    except ScmNotSupportedError:
+        return CloseIssueOutcome(skipped_reason="not-supported")
     except ScmProviderError as exc:
         if exc.http_status == 404:
             # The issue is gone: the record can never be used again.
@@ -127,15 +130,22 @@ def resolve_close_issue(
         _clear_quietly(registry)
         return CloseIssueOutcome(skipped_reason="issue-is-pr")
 
-    state = str(getattr(info, "state", "") or "").strip().lower()
-    if state != "open":
+    is_open = getattr(info, "is_open", None)
+    if is_open is None:
+        state = str(getattr(info, "state", "") or "").strip().lower()
+        is_open = state == "open"
+    if not is_open:
         _clear_quietly(registry)
         return CloseIssueOutcome(skipped_reason="issue-not-open")
 
     if not flags.accept and (not is_tty or ask is None):
         return CloseIssueOutcome(skipped_reason="no-tty")
 
-    line = provider.closing_line(issue.number)
+    try:
+        line = provider.closing_line(issue.number)
+    except ScmNotSupportedError:
+        return CloseIssueOutcome(skipped_reason="not-supported")
+
     title = str(getattr(info, "title", "") or "").strip() or issue.title
 
     if flags.accept:

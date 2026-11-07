@@ -1,4 +1,4 @@
-"""Tests for the local issue record (T1).
+"""Tests for the local issue record (T1, ADR-010).
 
 Everything runs against a temporary directory; the two git-repository tests
 run ``git init`` there and never touch the checkout.
@@ -26,6 +26,7 @@ ISSUE = RegisteredIssue(
     url="https://github.com/owner/name/issues/123",
     created_at="2026-11-01T09:00:00-03:00",
     branch="main",
+    provider="github",
 )
 
 
@@ -43,7 +44,7 @@ class RegistryRoundTripTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        self.registry = IssueRegistry(path=self.root / ".gitpr" / "conf" / "github.yml")
+        self.registry = IssueRegistry(path=self.root / ".gitpr" / "conf" / "issue.yml")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -72,7 +73,7 @@ class RegistryRoundTripTest(unittest.TestCase):
         data = yaml.safe_load(text)
         self.assertEqual(
             set(data["last_issue"]),
-            {"repo", "number", "title", "url", "created_at", "branch"},
+            {"repo", "number", "title", "url", "created_at", "branch", "provider"},
         )
 
     def test_clear_removes_the_record(self):
@@ -88,10 +89,11 @@ class RegistryRoundTripTest(unittest.TestCase):
         self.registry.record(ISSUE)
         second = RegisteredIssue(
             repo=ISSUE.repo, number=456, title="Second", url=ISSUE.url,
-            created_at=ISSUE.created_at, branch="main",
+            created_at=ISSUE.created_at, branch="main", provider="gitlab",
         )
         self.registry.record(second)
         self.assertEqual(self.registry.load().issue.number, 456)
+        self.assertEqual(self.registry.load().issue.provider, "gitlab")
 
     def test_matches_repo_is_case_insensitive(self):
         self.registry.record(ISSUE)
@@ -107,11 +109,64 @@ class RegistryRoundTripTest(unittest.TestCase):
             self.registry.record({"repo": "owner/name"})
 
 
+class MigrationFallbackTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.path = self.root / ".gitpr" / "conf" / "issue.yml"
+        self.legacy_path = self.root / ".gitpr" / "conf" / "github.yml"
+        self.registry = IssueRegistry(path=self.path, legacy_path=self.legacy_path)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_reads_legacy_github_yml_when_issue_yml_missing(self):
+        self.legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        import yaml
+        body = yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "last_issue": {
+                    "repo": "owner/name",
+                    "number": 42,
+                    "title": "Legacy",
+                    "url": "https://github.com/owner/name/issues/42",
+                    "created_at": "2026-11-01T09:00:00",
+                    "branch": "main",
+                },
+            }
+        )
+        self.legacy_path.write_text(body, encoding="utf-8")
+
+        loaded = self.registry.load()
+        self.assertIsNotNone(loaded.issue)
+        self.assertEqual(loaded.issue.number, 42)
+        self.assertEqual(loaded.issue.provider, "github")
+
+    def test_record_removes_legacy_github_yml(self):
+        self.legacy_path.parent.mkdir(parents=True, exist_ok=True)
+        self.legacy_path.write_text("dummy", encoding="utf-8")
+        self.assertTrue(self.legacy_path.exists())
+
+        self.registry.record(ISSUE)
+        self.assertTrue(self.path.exists())
+        self.assertFalse(self.legacy_path.exists())
+
+    def test_clear_removes_both_files(self):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path.write_text("dummy1", encoding="utf-8")
+        self.legacy_path.write_text("dummy2", encoding="utf-8")
+
+        self.assertTrue(self.registry.clear())
+        self.assertFalse(self.path.exists())
+        self.assertFalse(self.legacy_path.exists())
+
+
 class CorruptFileTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        self.path = self.root / "github.yml"
+        self.path = self.root / "issue.yml"
         self.registry = IssueRegistry(path=self.path)
 
     def tearDown(self):
@@ -164,7 +219,7 @@ class AtomicWriteTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
-        self.path = self.root / "github.yml"
+        self.path = self.root / "issue.yml"
         self.registry = IssueRegistry(path=self.path)
 
     def tearDown(self):
@@ -198,7 +253,7 @@ class GitignoreTest(unittest.TestCase):
         _git_init(self.root)
         self.gitignore = self.root / ".gitignore"
         self.registry = IssueRegistry(
-            path=self.root / ".gitpr" / "conf" / "github.yml"
+            path=self.root / ".gitpr" / "conf" / "issue.yml"
         )
 
     def tearDown(self):
@@ -245,7 +300,7 @@ class GitignoreTest(unittest.TestCase):
         self._tmp.cleanup()
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
-        self.registry = IssueRegistry(path=root / ".gitpr" / "conf" / "github.yml")
+        self.registry = IssueRegistry(path=root / ".gitpr" / "conf" / "issue.yml")
 
         result = self.registry.record(ISSUE)
         self.assertFalse(result.gitignore_updated)
@@ -255,7 +310,7 @@ class GitignoreTest(unittest.TestCase):
     def test_registry_path_is_anchored_at_the_repository_root(self):
         nested = self.root / "src" / "feature"
         nested.mkdir(parents=True)
-        expected = self.root / ".gitpr" / "conf" / "github.yml"
+        expected = self.root / ".gitpr" / "conf" / "issue.yml"
         self.assertEqual(registry_path(nested), expected)
 
 

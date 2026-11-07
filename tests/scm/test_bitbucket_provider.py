@@ -629,5 +629,66 @@ class TestNoNetworkOrCredentials(unittest.TestCase):
             )
 
 
+class TestBitbucketIssueAutoclose(unittest.TestCase):
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_get_issue_open_states(self, mock_get):
+        for state in ("new", "open", "on hold"):
+            mock_get.return_value = _response(
+                200,
+                {
+                    "id": 15,
+                    "title": "Bug",
+                    "state": state,
+                    "links": {"html": {"href": "https://bitbucket.org/w/r/issues/15"}},
+                },
+            )
+            info = _provider().get_issue(_repo(), 15)
+            self.assertEqual(info.number, 15)
+            self.assertEqual(info.title, "Bug")
+            self.assertEqual(info.state, "open")
+            self.assertTrue(info.is_open)
+            self.assertFalse(info.is_pull_request)
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_get_issue_closed_states(self, mock_get):
+        for state in ("resolved", "closed", "invalid"):
+            mock_get.return_value = _response(
+                200,
+                {
+                    "id": 15,
+                    "title": "Bug",
+                    "state": state,
+                    "links": {"html": {"href": "https://bitbucket.org/w/r/issues/15"}},
+                },
+            )
+            info = _provider().get_issue(_repo(), 15)
+            self.assertEqual(info.state, state)
+            self.assertFalse(info.is_open)
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_get_issue_tracker_disabled_404(self, mock_get):
+        mock_get.return_value = _response(
+            404,
+            {"error": {"message": "Resource not found"}},
+            text="Not Found",
+        )
+        with self.assertRaises(ScmProviderError) as ctx:
+            _provider().get_issue(_repo(), 15)
+        self.assertEqual(ctx.exception.http_status, 404)
+
+    @patch("src.infrastructure.scm.bitbucket_provider.requests.get")
+    def test_get_default_branch(self, mock_get):
+        mock_get.return_value = _response(
+            200,
+            {"mainbranch": {"name": "main"}},
+        )
+        branch = _provider().get_default_branch(_repo())
+        self.assertEqual(branch, "main")
+
+    def test_closing_line(self):
+        line = _provider().closing_line(15)
+        self.assertEqual(line, "close #15")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,18 +1,16 @@
-"""Record the issue ``gitpr -is`` just created (T3, ADR-001).
+"""Record the issue ``gitpr -is`` just created (T3, ADR-001, ADR-010).
 
 The issue number is only known inside ``IssueApp`` right after the forge
 answers; once the TUI closes, it is gone. This module is the single call that
 turns that answer into the local record the pull request flow reads back.
 
-Only GitHub is recorded — the automatic closure is a GitHub feature (ADR-003)
-— and a failure here is deliberately swallowed: the issue already exists on
+A failure here is deliberately swallowed: the issue already exists on
 the forge, so a local bookkeeping problem must never turn a successful
 creation into an error for the user.
 """
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.infrastructure.scm.factory import provider_is_github
 from src.issue_autoclose.issue_registry import (
     IssueRegistry,
     IssueRegistryError,
@@ -33,13 +31,13 @@ class RegistrationOutcome:
 def register_created_issue(provider, repo_ref, result, title, branch, registry=None):
     """Records *result* as the issue the next pull request may close.
 
-    Returns what happened instead of raising: "not-github", "no-repo" and
+    Returns what happened instead of raising: "no-provider", "no-repo" and
     "invalid-result" are expected skips, "write-failed" is the one the caller
     turns into a one-line warning. *branch* is passed in by the TUI, which
     already knows it, and *registry* is injectable for tests.
     """
-    if not provider_is_github(provider):
-        return RegistrationOutcome(skipped_reason="not-github")
+    if provider is None:
+        return RegistrationOutcome(skipped_reason="no-provider")
 
     repo = str(getattr(repo_ref, "display", "") or "")
     if "/" not in repo:
@@ -57,6 +55,8 @@ def register_created_issue(provider, repo_ref, result, title, branch, registry=N
         # no record at all: report the skip and leave the previous one intact.
         return RegistrationOutcome(skipped_reason="invalid-result")
 
+    provider_name = str(getattr(provider, "name", "") or "github")
+
     issue = RegisteredIssue(
         repo=repo,
         number=number,
@@ -64,6 +64,7 @@ def register_created_issue(provider, repo_ref, result, title, branch, registry=N
         url=url,
         created_at=datetime.now().isoformat(timespec="seconds"),
         branch=branch,
+        provider=provider_name,
     )
     registry = registry or IssueRegistry()
 
