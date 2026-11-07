@@ -5,7 +5,7 @@
 **GitPR** is a Python CLI for automating Pull Requests, commits, code review, and issue creation using AI (Google Gemini and DeepSeek). Distributed exclusively via PyPI (`pip install gitpr-cli`) — there is no standalone binary.
 
 - **Author:** Natan Fiuza (contato@natanfiuza.dev.br)
-- **Current version:** 1.5.0 (Canonical SSOT in `src/updater.py`)
+- **Current version:** 1.6.0 (Canonical SSOT in `src/updater.py`)
 - **Python:** >= 3.10
 - **Main branch:** `main`
 - **Development branch:** `develop_natan`
@@ -315,6 +315,7 @@ It must be placed in `docs/claude-code/reports/{branch}/{current_date}_{taskname
 - Language-aware: EN downloads `gitpr.issue.md`, PT-BR downloads `gitpr.issue.pt_br.md`
 - `release` is auto-downloaded on the **first** `gitpr release` run (CLI layer, skipped on `--format json`; language variants limited to EN/pt_br/pt_pt/es_es/fr_fr) — via `ensure_release_skill_template()` in `core.py`, never overwriting
 - `get_skill_context(action_type, quiet=False)` in `core.py` manages fallbacks (tries `.gitpr.<type>.md`, then legacy `.gitpr.md`); `quiet=True` suppresses the "found and loaded" terminal message (mandatory for stdout-only modes)
+- The `release` skill alone reads a YAML front matter block (`src/skill_frontmatter.py`): `language: <code>` (one of `en_us`, `pt_br`, `pt_pt`, `es_es`, `fr_fr`) overrides the interface language for that run — the AI summary prompt **and** the changelog section headings — without `GITPR_LANG`; the block is stripped before the body becomes the system instruction, an unsupported value is ignored, and no front matter keeps the previous behavior
 
 ### User configuration
 - Global directory: `~/.gitpr/`

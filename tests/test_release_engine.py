@@ -8,6 +8,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from src import i18n
 from src.changelog_builder import ChangeCategory
 from src.i18n import CURRENT_LANG, set_lang
 from src.release_engine import (
@@ -97,6 +98,14 @@ class EngineTestCase(unittest.TestCase):
         patcher = patch("src.release_engine._resolve_contributor_logins", return_value={})
         self.addCleanup(patcher.stop)
         self.resolve_logins = patcher.start()
+
+        # The release skill is read even without an AI summary (its front matter
+        # may set the section language); a unit test must never read the
+        # repository's real skill file. Tests that need content re-patch inside
+        # their own ``with``, which wins over this default.
+        skill_patcher = patch("src.release_engine.get_skill_context", return_value="")
+        self.addCleanup(skill_patcher.stop)
+        self.get_skill_context = skill_patcher.start()
 
     def _base_script(self, extra=None):
         script = {
@@ -1069,6 +1078,109 @@ class TestSkillAsSystemInstruction(EngineTestCase):
              patch("src.release_engine.call_ai_model", side_effect=fake_ai):
             generate_release_notes(repo_path=".", ai_summary=True, quiet=True)
         self.assertTrue(captured["quiet"])
+
+
+class TestSkillLanguageDeclaration(EngineTestCase):
+    """The skill front matter declares the language of the whole section."""
+
+    _PT_TRANSLATIONS = {
+        "Summary": "Resumo",
+        "✨ Features": "✨ Funcionalidades",
+        "Contributors": "Contribuidores",
+    }
+
+    def _script(self):
+        log_out = "\x1e" + "d" * 40 + "\x1fAda\x1fada@x.com\x1fd\x1ffeat: shiny thing\x1f"
+        return self._base_script(
+            {
+                ("describe", "--tags", "--abbrev=0"): (0, "v1.2.3\n"),
+                (
+                    "log",
+                    "--no-merges",
+                    "--pretty=format:%x1e%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b",
+                    "v1.2.3..HEAD",
+                ): (0, log_out),
+            }
+        )
+
+    def _generate(self, skill_content, ai_summary=True):
+        """Runs the engine, capturing the prompt and system instruction sent."""
+        captured = {}
+
+        def fake_ai(*args, **kwargs):
+            captured["prompt"] = args[3]
+            captured["system_instruction"] = args[4]
+            return {"summary": "The shiny thing now shines."}
+
+        with patch("src.release_engine.subprocess.run",
+                   side_effect=_fake_run(self._script())), \
+             patch("src.release_engine.click.secho"), \
+             patch("src.release_engine.get_ai_provider", return_value="gemini"), \
+             patch("src.release_engine.get_api_key", return_value="key"), \
+             patch("src.release_engine.get_api_model", return_value="gemini-x"), \
+             patch("src.release_engine.get_cached_response", return_value=None), \
+             patch("src.release_engine.save_cached_response"), \
+             patch("src.release_engine.get_skill_context",
+                   return_value=skill_content), \
+             patch("src.i18n.get_translations",
+                   return_value=dict(self._PT_TRANSLATIONS)), \
+             patch("src.release_engine.call_ai_model", side_effect=fake_ai):
+            result = generate_release_notes(
+                repo_path=".", ai_summary=ai_summary, quiet=True
+            )
+        return result, captured
+
+    def test_front_matter_language_drives_the_prompt_and_the_headings(self):
+        result, captured = self._generate(
+            "---\nlanguage: pt_br\n---\nCustom persona"
+        )
+        self.assertIn("Brazilian Portuguese", captured["prompt"])
+        self.assertIn("### Resumo", result.markdown)
+        self.assertIn("### ✨ Funcionalidades", result.markdown)
+        self.assertIn("**Contribuidores:**", result.markdown)
+
+    def test_front_matter_is_stripped_from_the_system_instruction(self):
+        _, captured = self._generate("---\nlanguage: en_us\n---\nCustom persona")
+        self.assertEqual(captured["system_instruction"], "Custom persona")
+        self.assertNotIn("language:", captured["system_instruction"])
+
+    def test_headings_honor_the_declared_language_without_ai_summary(self):
+        result, captured = self._generate(
+            "---\nlanguage: pt_br\n---\nPersona", ai_summary=False
+        )
+        self.assertIn("### ✨ Funcionalidades", result.markdown)
+        self.assertNotIn("### Summary", result.markdown)
+        self.assertEqual(result.summary, "")
+        self.assertEqual(captured, {})
+
+    def test_absent_front_matter_keeps_the_interface_language(self):
+        result, captured = self._generate("Persona")
+        self.assertIn("English", captured["prompt"])
+        self.assertIn("### ✨ Features", result.markdown)
+        self.assertIn("**Contributors:**", result.markdown)
+
+    def test_malformed_front_matter_falls_back_without_crashing(self):
+        skill = "---\nlanguage: [oops\n---\nBody"
+        result, captured = self._generate(skill)
+        self.assertEqual(captured["system_instruction"], skill)
+        self.assertIn("### ✨ Features", result.markdown)
+
+    def test_unsupported_language_code_is_ignored(self):
+        result, captured = self._generate("---\nlanguage: de_de\n---\nPersona")
+        self.assertIn("English", captured["prompt"])
+        self.assertIn("### ✨ Features", result.markdown)
+
+    def test_interface_language_is_restored_after_the_call(self):
+        before_lang = i18n.CURRENT_LANG
+        before_translations = i18n.TRANSLATIONS
+        self._generate("---\nlanguage: pt_br\n---\nPersona")
+        self.assertEqual(i18n.CURRENT_LANG, before_lang)
+        self.assertIs(i18n.TRANSLATIONS, before_translations)
+
+    def test_language_switch_produces_a_different_cache_prompt(self):
+        _, english = self._generate("---\nlanguage: en_us\n---\nPersona")
+        _, portuguese = self._generate("---\nlanguage: pt_br\n---\nPersona")
+        self.assertNotEqual(english["prompt"], portuguese["prompt"])
 
 
 class TestAskVersionPrompt(EngineTestCase):

@@ -178,6 +178,16 @@ gitpr release
 
 Na primeira execução em modo markdown, o CLI baixa o template de skill `.gitpr.release.md` dos templates do projeto. O download respeita o idioma atual da interface (variantes remotas como `gitpr.release.pt_br.md` são salvas localmente como `.gitpr.release.md`), nunca sobrescreve um arquivo local existente e nunca falha por erro de rede — a execução prossegue com a persona embutida. O download é totalmente pulado em `--format json`, que é stdout-only. O arquivo é carregado como system instruction da IA (persona: **Release Manager**, contrato estrito de JSON) — edite-o localmente para customizar o resumo executivo. Veja a [documentação de Skills e Templates](skill-template.md) para o mecanismo geral.
 
+A skill também pode começar com um bloco de front matter YAML declarando o idioma da seção:
+
+```markdown
+---
+language: en_us
+---
+```
+
+Quando `language` é `en_us`, `pt_br`, `pt_pt`, `es_es` ou `fr_fr`, ele sobrescreve o idioma da interface naquela execução — tanto o prompt do resumo da IA quanto os títulos das categorias — sem alterar `GITPR_LANG` nem qualquer configuração global. O bloco é removido antes de o corpo virar a instrução de sistema, e um valor não suportado é ignorado. Sem front matter, o comportamento não muda. O template baixado no primeiro uso não traz front matter, então adicione o bloco manualmente depois dele.
+
 ### 4.2 Geração e Degradação Suave
 
 Intervalos com mais de 200 commits são resumidos em lotes (Map-Reduce, com aviso como `📦 Large commit range detected!`), e as respostas passam pelo cache MD5 padrão do GitPR, então execuções inalteradas não repetem chamadas de IA. Duas observações: o cache é chaveado pelo prompt — editar o `.gitpr.release.md` não invalida resumos cacheados — e o resumo usa sempre a mesma infraestrutura de IA dos outros comandos do GitPR (provedor configurado, saída JSON, retry automático). Veja a [documentação de Provedores de IA](providers-ia.md).

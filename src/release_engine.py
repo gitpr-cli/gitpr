@@ -24,6 +24,7 @@ import os
 import re
 import subprocess
 import sys
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -43,14 +44,19 @@ from src.changelog_builder import (
 from src.commit_classifier import classify_commits, pr_number_from_merge
 from src.config import get_api_key, get_api_model, get_ai_provider
 from src.core import get_skill_context
-from src.i18n import CURRENT_LANG, __
+from src.i18n import __
 from src.infrastructure.scm import detect_provider_from_remote, repo_web_base
+from src.skill_frontmatter import split_front_matter
 from src.version_bump import parse_semver_tag, suggest_next_version
 
 # Commits per AI batch: beyond this, the summary goes through Map-Reduce
 # batches to stay safely inside the token window (same philosophy as the
 # diff map-reduce used by the other engines).
 _SUMMARY_BATCH_SIZE = 200
+
+# Languages a release skill may declare. Only codes with a shipped dictionary
+# are accepted: set_lang() would otherwise try to download a nonexistent one.
+_SKILL_LANGUAGES = frozenset({"en_us", "pt_br", "pt_pt", "es_es", "fr_fr"})
 
 # git log placeholder record/field separators: subjects and bodies almost never
 # contain ASCII control characters, so parsing is unambiguous.
@@ -513,7 +519,11 @@ def _collect_merge_pr_map(root, since_used):
 
 
 def _language_for_prompt():
-    """Maps the interface language code to a spoken language name."""
+    """Maps the active language code to a spoken language name."""
+    # Imported lazily: set_lang() rebinds the module global, so a top-level
+    # ``from src.i18n import CURRENT_LANG`` would pin the value read at import.
+    from src.i18n import CURRENT_LANG
+
     names = {
         "pt_br": "Brazilian Portuguese",
         "pt_pt": "European Portuguese",
@@ -521,7 +531,56 @@ def _language_for_prompt():
         "fr_fr": "French",
         "en_us": "English",
     }
-    return names.get(CURRENT_LANG.lower(), "English")
+    return names.get(CURRENT_LANG.lower().replace("-", "_"), "English")
+
+
+def _normalized_skill_language(value):
+    """Returns a supported language code, or None when the value is unusable."""
+    if not isinstance(value, str):
+        return None
+    code = value.strip().lower().replace("-", "_")
+    return code if code in _SKILL_LANGUAGES else None
+
+
+def _load_release_skill(quiet=False):
+    """Reads the release skill once, splitting its language declaration.
+
+    The skill may start with a YAML front matter block declaring
+    ``language:``; it is stripped so the AI receives only the persona body.
+
+    Returns:
+        ``(body, language)``: the body without the front matter (empty when
+        there is no skill) and the supported language code, or None.
+    """
+    raw = get_skill_context("release", quiet=quiet) or ""
+    metadata, body = split_front_matter(raw)
+    return body, _normalized_skill_language(metadata.get("language"))
+
+
+@contextmanager
+def _declared_language(language):
+    """Applies the skill's language to i18n for the duration of the block.
+
+    ``set_lang`` rebinds module-level globals, so the previous values are
+    restored directly on exit — calling ``set_lang`` again would re-run the
+    translation lookup (and possibly a download).
+    """
+    if not language:
+        yield
+        return
+
+    from src import i18n
+
+    if i18n.CURRENT_LANG == language:
+        yield
+        return
+
+    previous = (i18n.CURRENT_LANG, i18n.TRANSLATIONS)
+    try:
+        i18n.set_lang(language)
+        yield
+    finally:
+        i18n.CURRENT_LANG, i18n.TRANSLATIONS = previous
 
 
 def _summarize_batch(provider, api_key, api_model, commits, system_instruction, quiet=False):
@@ -563,12 +622,11 @@ def _summarize_batch(provider, api_key, api_model, commits, system_instruction, 
     return summary
 
 
-def _generate_summary(provider, api_key, api_model, commits, quiet=False):
+def _generate_summary(provider, api_key, api_model, commits, system_instruction, quiet=False):
     """Executive summary with Map-Reduce for very long ranges. None on failure."""
-    # Skill-first: the user's .gitpr.release.md overrides the summary persona
-    # (same consumption rule as the other engines). "quiet" keeps the skill
-    # loading messages off stdout (mandatory for --format json).
-    system_instruction = get_skill_context("release", quiet=quiet) or __(
+    # The caller reads the skill once (its language also drives the headings),
+    # so only the persona body arrives here.
+    system_instruction = system_instruction or __(
         "You are a Release Manager. Write the release summary for the changelog of a software project."
     )
     if len(commits) <= _SUMMARY_BATCH_SIZE:
@@ -815,63 +873,75 @@ def generate_release_notes(
                 )
             )
 
-    # ── AI executive summary (optional, graceful degradation) ───────────────
-    summary = ""
-    if ai_summary:
-        resolved_provider = provider or get_ai_provider()
-        api_key = get_api_key(resolved_provider)
-        api_model = get_api_model(resolved_provider, task_complexity="advanced")
-        if not api_key:
-            warnings.append(
-                __(
-                    "AI summary skipped: no API key configured for {provider}. Generate one with --install.",
-                    provider=resolved_provider,
-                )
-            )
-        else:
-            _say(
-                quiet,
-                __(
-                    "🤖 Generating executive summary using {provider} ({api_model})...",
-                    provider=resolved_provider.capitalize(),
-                    api_model=api_model,
-                ),
-                fg="cyan",
-                dim=True,
-            )
-            summary = _generate_summary(
-                resolved_provider, api_key, api_model, commits, quiet=quiet
-            ) or ""
-            if not summary:
-                warnings.append(
-                    __("AI summary failed: changelog generated without a summary.")
-                )
+    # ── Skill: declared language + AI persona (read once) ───────────────────
+    # The front matter may declare the section language; the body is the AI
+    # persona. Reading the skill here — not inside the summary helper — lets
+    # the headings honour the declaration even when the summary is disabled.
+    skill_body, skill_language = _load_release_skill(quiet=quiet or not ai_summary)
 
-    # ── Assemble the result ──────────────────────────────────────────────────
-    generated_at = datetime.now().isoformat(timespec="seconds")
-    sections, breaking_changes = organize_commits(commits)
-    contributors = normalize_contributors(commits)
-    markdown = build_release_section(
-        target_version,
-        generated_at,
-        summary,
-        sections,
-        breaking_changes,
-        contributors,
-        links=_build_link_context(root, commits),
-    )
-    return ReleaseNotesResult(
-        version=target_version,
-        previous_tag=since_used,
-        previous_version=previous_version,
-        generated_at=generated_at,
-        summary=summary,
-        sections=sections,
-        breaking_changes=breaking_changes,
-        contributors=contributors,
-        markdown=markdown,
-        warnings=warnings,
-    )
+    with _declared_language(skill_language):
+        # ── AI executive summary (optional, graceful degradation) ───────────
+        summary = ""
+        if ai_summary:
+            resolved_provider = provider or get_ai_provider()
+            api_key = get_api_key(resolved_provider)
+            api_model = get_api_model(resolved_provider, task_complexity="advanced")
+            if not api_key:
+                warnings.append(
+                    __(
+                        "AI summary skipped: no API key configured for {provider}. Generate one with --install.",
+                        provider=resolved_provider,
+                    )
+                )
+            else:
+                _say(
+                    quiet,
+                    __(
+                        "🤖 Generating executive summary using {provider} ({api_model})...",
+                        provider=resolved_provider.capitalize(),
+                        api_model=api_model,
+                    ),
+                    fg="cyan",
+                    dim=True,
+                )
+                summary = _generate_summary(
+                    resolved_provider,
+                    api_key,
+                    api_model,
+                    commits,
+                    skill_body,
+                    quiet=quiet,
+                ) or ""
+                if not summary:
+                    warnings.append(
+                        __("AI summary failed: changelog generated without a summary.")
+                    )
+
+        # ── Assemble the result ──────────────────────────────────────────────
+        generated_at = datetime.now().isoformat(timespec="seconds")
+        sections, breaking_changes = organize_commits(commits)
+        contributors = normalize_contributors(commits)
+        markdown = build_release_section(
+            target_version,
+            generated_at,
+            summary,
+            sections,
+            breaking_changes,
+            contributors,
+            links=_build_link_context(root, commits),
+        )
+        return ReleaseNotesResult(
+            version=target_version,
+            previous_tag=since_used,
+            previous_version=previous_version,
+            generated_at=generated_at,
+            summary=summary,
+            sections=sections,
+            breaking_changes=breaking_changes,
+            contributors=contributors,
+            markdown=markdown,
+            warnings=warnings,
+        )
 
 
 def _find_version_section(content, version):
