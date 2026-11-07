@@ -836,9 +836,32 @@ class TestProviderSections(SectionedAppTestCase):
 class TestForgeSections(SectionedAppTestCase):
     """Item 2: the SCM section is split per forge, the token left loose."""
 
+    def setUp(self):
+        super().setUp()
+        # The forge belongs to the repository now (ADR-016): the screen derives
+        # it from the origin remote unless the project file overrides it. The
+        # remote is fixed here so no test depends on this checkout's origin.
+        self.origin = patch(
+            "src.ui.config_app.origin_remote_url",
+            return_value="https://example.invalid/owner/repo.git",
+        )
+        self.origin.start()
+        self.addCleanup(self.origin.stop)
+
+    def seed_project(self, provider):
+        """Records a forge override in the project file the screen reads."""
+        os.makedirs(os.path.dirname(self.project_path), exist_ok=True)
+        with open(self.project_path, "w", encoding="utf-8") as handle:
+            handle.write("scm:\n  provider: {}\n".format(provider))
+
     def test_the_default_forge_is_github(self):
         async def scenario():
-            self.seed("GITPR_SCM_PROVIDER=\n")
+            # An unrecognised remote falls back to GitHub.
+            self.origin.stop()
+            patcher = patch("src.ui.config_app.origin_remote_url", return_value=None)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+            self.seed("")
             app = self.make_app()
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -848,44 +871,107 @@ class TestForgeSections(SectionedAppTestCase):
                 self.assertIn("row_GITHUB_TOKEN_ENCRYPTED", rows)
                 self.assertNotIn("row_GITPR_SCM_ORGANIZATION", rows)
                 self.assertNotIn("row_GITPR_SCM_USERNAME", rows)
-                self.assertTrue(app.query_one("#grp_github").display)
-                self.assertFalse(app.query_one("#grp_azure_devops").display)
+                # The read-only row names the forge in use and where it came
+                # from; the model behind it holds the forge key.
+                select = app.query_one("#value_PROJECT_EFFECTIVE_PROVIDER", Select)
+                self.assertTrue(select.value.startswith("GitHub"))
+                self.assertTrue(select.disabled)
+                self.assertEqual(
+                    app.effective_value(FIELDS_BY_KEY["PROJECT_EFFECTIVE_PROVIDER"]),
+                    "github",
+                )
 
         run(scenario())
 
-    def test_another_forge_hides_the_github_group(self):
+    def test_every_forge_token_row_is_always_listed(self):
+        # One machine, several forges: hiding the slot of a forge that is not
+        # the current one is what left a repository without its token.
         async def scenario():
-            self.seed("GITPR_SCM_PROVIDER=azure_devops\n")
+            self.seed("")
             app = self.make_app()
             async with app.run_test() as pilot:
                 await pilot.pause()
                 self.goto(app, "scm")
                 await pilot.pause()
                 rows = self.shown_rows(app)
-                self.assertIn("row_GITPR_SCM_ORGANIZATION", rows)
-                self.assertNotIn("row_GITHUB_TOKEN_ENCRYPTED", rows)
+                for key in (
+                    "GITHUB_TOKEN_ENCRYPTED",
+                    "GITLAB_TOKEN_ENCRYPTED",
+                    "BITBUCKET_TOKEN_ENCRYPTED",
+                    "AZURE_DEVOPS_TOKEN_ENCRYPTED",
+                ):
+                    self.assertIn("row_" + key, rows)
+                # The base URLs travel with their own forge, so they are listed
+                # for every forge as well.
+                for key in (
+                    "GITHUB_BASE_URL",
+                    "GITLAB_BASE_URL",
+                    "BITBUCKET_BASE_URL",
+                    "AZURE_DEVOPS_BASE_URL",
+                ):
+                    self.assertIn("row_" + key, rows)
 
         run(scenario())
 
-    def test_the_scm_token_is_listed_for_every_forge_and_stays_hidden(self):
-        # Item 1: it was landing in the Unknown section. It is read for every
-        # forge, so it sits outside the forge groups — and it is a secret, so
-        # its value is never rendered back.
+    def test_the_project_override_moves_the_extras_to_that_forge(self):
         async def scenario():
-            for provider in ("", "azure_devops"):
-                self.seed(
-                    "GITPR_SCM_PROVIDER={}\nGITPR_SCM_TOKEN=segredo\n".format(provider)
+            self.seed_project("azure_devops")
+            self.seed("")
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "scm")
+                await pilot.pause()
+                rows = self.shown_rows(app)
+                # The extras belong to the forge in use...
+                self.assertIn("row_GITPR_SCM_ORGANIZATION", rows)
+                self.assertIn("row_GITPR_SCM_PROJECT", rows)
+                self.assertNotIn("row_GITPR_SCM_USERNAME", rows)
+                # ...but every token slot stays reachable.
+                self.assertIn("row_GITHUB_TOKEN_ENCRYPTED", rows)
+                select = app.query_one("#value_PROJECT_EFFECTIVE_PROVIDER", Select)
+                self.assertTrue(select.value.startswith("Azure DevOps"))
+                self.assertEqual(
+                    app.effective_value(FIELDS_BY_KEY["PROJECT_EFFECTIVE_PROVIDER"]),
+                    "azure_devops",
                 )
-                app = self.make_app()
-                async with app.run_test() as pilot:
-                    await pilot.pause()
-                    self.goto(app, "scm")
-                    await pilot.pause()
-                    self.assertIn("row_GITPR_SCM_TOKEN", self.shown_rows(app))
-                    control = app.query_one("#value_GITPR_SCM_TOKEN", Input)
-                    self.assertEqual(control.value, "")
-                    self.assertTrue(control.disabled)
-                    self.assertNotIn("GITPR_SCM_TOKEN", app.unknown_keys)
+                self.assertTrue(app.query_one("#grp_azure_devops").display)
+
+        run(scenario())
+
+    def test_picking_another_forge_refilters_the_extras_before_saving(self):
+        async def scenario():
+            self.seed_project("azure_devops")
+            self.seed("")
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "scm")
+                await pilot.pause()
+                app.query_one("#value_PROJECT_SCM_PROVIDER", Select).value = "bitbucket"
+                await pilot.pause()
+                rows = self.shown_rows(app)
+                self.assertIn("row_GITPR_SCM_USERNAME", rows)
+                self.assertNotIn("row_GITPR_SCM_ORGANIZATION", rows)
+
+        run(scenario())
+
+    def test_the_raw_ci_token_is_listed_outside_the_forge_groups(self):
+        # Item 1: it was landing in the Unknown section. It is the one raw
+        # token read for every forge, so it sits outside the forge groups — and
+        # it is a secret, so its value is never rendered back.
+        async def scenario():
+            self.seed("GITPR_SCM_TOKEN=segredo\n")
+            app = self.make_app()
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                self.goto(app, "scm")
+                await pilot.pause()
+                self.assertIn("row_GITPR_SCM_TOKEN", self.shown_rows(app))
+                control = app.query_one("#value_GITPR_SCM_TOKEN", Input)
+                self.assertEqual(control.value, "")
+                self.assertTrue(control.disabled)
+                self.assertNotIn("GITPR_SCM_TOKEN", app.unknown_keys)
 
         run(scenario())
 

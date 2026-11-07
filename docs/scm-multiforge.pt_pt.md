@@ -1,6 +1,8 @@
 # Documentação Técnica: SCM Multi-Forge (ScmProvider)
 
-O GitPR publica Pull Requests e issues através de uma única abstração, o `ScmProvider`, que suporta quatro forges de alojamento Git: GitHub, GitLab, Bitbucket Cloud e Azure DevOps. Todos os fluxos de publicação — o publicador interativo de PR (modo predefinido), a publicação direta (`--no-edit`) e a TUI de issues (`-is`) — resolvem o provider configurado a partir do remote `origin` do repositório e chamam a API do forge através dele.
+O GitPR publica Pull Requests e issues através de uma única abstração, o `ScmProvider`, que suporta quatro forges de alojamento Git: GitHub, GitLab, Bitbucket Cloud e Azure DevOps. Todos os fluxos de publicação — o publicador interativo de PR (modo predefinido), a publicação direta (`--no-edit`) e a TUI de issues (`-is`) — resolvem o provider **do repositório onde estão a ser executados** e chamam a API do forge através dele.
+
+O forge pertence ao repositório, não à máquina: o GitPR deteta-o a partir do remote `origin` (ou lê um override explícito versionado com o projeto) e mantém **um token encriptado por forge** em `~/.gitpr/.env`. Uma máquina pode, portanto, trabalhar com um repositório GitLab e um repositório GitHub ao mesmo tempo, cada um com a sua credencial.
 
 Sem configuração de SCM, o GitPR mantém o comportamento legado exclusivo do GitHub — zero migração e saída byte-idêntica.
 
@@ -15,9 +17,13 @@ Sem configuração de SCM, o GitPR mantém o comportamento legado exclusivo do G
 | Bitbucket Cloud | `bitbucket` | `https://api.bitbucket.org/2.0` | Nome de utilizador + App Password (HTTP Basic) |
 | Azure DevOps | `azure_devops` | `https://dev.azure.com` | Personal Access Token (PAT) |
 
-### 1.1 Deteção Automática a partir do Remote Origin
+### 1.1 Qual o Forge que um Repositório Usa
 
-O forge ativo é detetado a partir do URL do remote `origin` com uma correspondência de substring sem diferenciar maiúsculas de minúsculas:
+O forge é resolvido por repositório, nesta ordem:
+
+1. **Override do projeto** — `scm.provider` em `.gitpr/conf/gitpr.config.yml`, versionado com o repositório. Vence sempre, e é assim que se corrige um host self-managed cujo domínio não nomeia o forge.
+2. **Deteção do remote origin** — correspondência de substring, sem diferenciar maiúsculas de minúsculas, no URL do `origin`.
+3. **`github`** — a predefinição histórica.
 
 | O URL do remote contém | Provider |
 | --- | --- |
@@ -25,6 +31,14 @@ O forge ativo é detetado a partir do URL do remote `origin` com uma correspond�
 | `bitbucket` | `bitbucket` |
 | `dev.azure.com` ou `visualstudio.com` | `azure_devops` |
 | qualquer outra coisa (predefinido) | `github` |
+
+```yaml
+# .gitpr/conf/gitpr.config.yml — versione para partilhar o forge com a equipa
+scm:
+  provider: gitlab
+```
+
+Um valor desconhecido no ficheiro de projeto é ignorado com um aviso (um ficheiro malformado nunca pode derrubar todos os comandos), e a deteção decide no lugar dele.
 
 ```bash
 git remote get-url origin
@@ -48,14 +62,14 @@ gitpr --init
 
 | Passo | O que acontece |
 | --- | --- |
-| 1. Deteção do forge | Deteta o forge a partir do remote `origin` e pede confirmação (pode escolher outro forge) |
+| 1. Deteção do forge | Deteta o forge a partir do remote `origin` e pede confirmação (pode escolher outro forge; um host que não nomeia forge é perguntado, nunca presumido) |
 | 2. Extras do provider | O Azure DevOps pede `organization` e `project`; o Bitbucket pede o `username`, que faz parte da credencial |
-| 3. Base da API | Base da API personalizada para todos os forges, exceto GitHub (GitLab/Azure DevOps self-managed, enterprise) |
+| 3. Base da API | Base da API personalizada para todos os forges, exceto GitHub; o valor já guardado para esse forge é oferecido como predefinição |
 | 4. Token | Pede o PAT — ou a App Password no Bitbucket |
 | 5. Validação | `test_connection()` — até 3 tentativas; HTTP 401 (token expirado) volta a pedir com aviso amarelo; outras falhas abortam a vermelho |
-| 6. Persistência | Apenas em caso de sucesso: guarda `GITPR_SCM_PROVIDER`, o token encriptado com Fernet e os extras em `~/.gitpr/.env` |
+| 6. Persistência | Apenas em caso de sucesso: guarda o token encriptado com Fernet no slot do seu forge (`GITLAB_TOKEN_ENCRYPTED`, …), a base da API e os extras, e regista `scm.provider` no ficheiro de projeto **apenas quando o forge escolhido difere do detetado** |
 
-Nada é guardado quando a validação falha. Execute `gitpr --init` novamente a qualquer momento para mudar de forge ou renovar um token expirado.
+Nada é guardado quando a validação falha. Execute `gitpr --init` novamente em cada repositório para mudar de forge ou renovar um token expirado; os tokens dos outros forges ficam intactos. Valores de versões anteriores (`GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED`, `GITPR_SCM_BASE_URL`) são migrados automaticamente no primeiro comando após a atualização.
 
 ---
 
@@ -65,15 +79,17 @@ Alternativa ao wizard: edite o `~/.gitpr/.env` diretamente. Consulte o [guia de 
 
 | Variável | Forge | Descrição |
 | --- | --- | --- |
-| `GITPR_SCM_PROVIDER` | todos | Chave do provider ativo (`github`, `gitlab`, `bitbucket`, `azure_devops`); vazio = comportamento legado do GitHub |
-| `GITPR_SCM_TOKEN` | todos | Token cru, apenas para ambientes de CI/CD |
-| `GITPR_SCM_TOKEN_ENCRYPTED` | todos | Token encriptado com Fernet, gravado pelo `gitpr --init` e pelo fluxo de reautenticação |
-| `GITPR_SCM_BASE_URL` | todos | Base da API personalizada (self-managed/enterprise); vazio = SaaS público |
+| `GITPR_SCM_TOKEN` | todos | Token cru, apenas para ambientes de CI/CD — único e global, consultado antes de qualquer token guardado |
+| `GITHUB_TOKEN_ENCRYPTED` | `github` | Token encriptado com Fernet do forge GitHub |
+| `GITLAB_TOKEN_ENCRYPTED` | `gitlab` | Token encriptado com Fernet do forge GitLab |
+| `BITBUCKET_TOKEN_ENCRYPTED` | `bitbucket` | Token encriptado com Fernet do forge Bitbucket |
+| `AZURE_DEVOPS_TOKEN_ENCRYPTED` | `azure_devops` | Token encriptado com Fernet do forge Azure DevOps |
+| `GITHUB_BASE_URL` / `GITLAB_BASE_URL` / `BITBUCKET_BASE_URL` / `AZURE_DEVOPS_BASE_URL` | próprio forge | Base da API personalizada (self-managed/enterprise); vazio = SaaS público |
 | `GITPR_SCM_ORGANIZATION` | `azure_devops` | Nome da organização — obrigatório (erro fail-fast indica a variável em falta) |
 | `GITPR_SCM_PROJECT` | `azure_devops` | Nome do projeto — obrigatório |
 | `GITPR_SCM_USERNAME` | `bitbucket` | Nome de utilizador do Bitbucket — obrigatório (App Password usa HTTP Basic) |
 
-O GitHub sem configuração de SCM mantém o armazenamento legado `GITHUB_TOKEN_ENCRYPTED` — zero migração.
+Cada forge lê apenas o seu slot: um token de GitLab nunca responde por um repositório GitHub. O GitHub sem configuração de SCM mantém o armazenamento `GITHUB_TOKEN_ENCRYPTED` — zero migração.
 
 ---
 
@@ -99,7 +115,9 @@ F3 chama `provider.create_issue()` no forge configurado. O Azure DevOps não pos
 
 ### 4.3 Expiração do Token e Reautenticação (HTTP 401)
 
-Quando o token é rejeitado (HTTP 401), o GitPR remove o token expirado do `.env` e pede um novo — até 3 tentativas. Prefira os fluxos interativos (`gitpr`, `gitpr -is`) para reautenticar: o `--no-edit` publica diretamente e não pode voltar a pedir.
+Quando o token é rejeitado (HTTP 401), o GitPR remove o token expirado do slot **daquele** forge e pede um novo — até 3 tentativas. Prefira os fluxos interativos (`gitpr`, `gitpr -is`) para reautenticar: o `--no-edit` publica diretamente e não pode voltar a pedir.
+
+Uma execução não interativa (hooks do git, servidor MCP, CI) nunca pede e nunca apaga a credencial guardada: para com uma mensagem a indicar `gitpr --init` nesse repositório.
 
 ---
 

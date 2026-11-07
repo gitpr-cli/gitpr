@@ -6,8 +6,9 @@ local operation end to end: the AI leg is always stubbed here, so a test that
 reaches a provider is a test that escaped its own stubs, and it should fail in
 the test that did it rather than quietly pass against a live key.
 
-The interface language is pinned, so assertions can name the text they expect
-instead of depending on the developer's ``~/.gitpr/langs``.
+The interface language is pinned by the root ``tests/conftest.py``, so
+assertions here can name the text they expect instead of depending on the
+developer's ``~/.gitpr/langs``.
 
 What is deliberately *not* here is a git guard. Every test in this directory
 that touches a repository touches one the fixture created under ``tempfile``,
@@ -82,18 +83,3 @@ def no_network(monkeypatch):
         "requests.adapters.HTTPAdapter.send",
     ):
         monkeypatch.setattr(target, lambda *args, **kwargs: _blocked())
-
-
-@pytest.fixture(autouse=True)
-def english_interface(monkeypatch):
-    """Pin the interface language so assertions can name the expected text.
-
-    English is the one language that needs no translation file — ``__()`` falls
-    back to the key itself — so the suite does not depend on whatever the
-    developer's ``~/.gitpr/langs`` happens to hold. A test that wants another
-    language patches ``src.i18n`` itself, which wins over this.
-    """
-    import src.i18n
-
-    monkeypatch.setattr(src.i18n, "CURRENT_LANG", "en_us")
-    monkeypatch.setattr(src.i18n, "TRANSLATIONS", {})

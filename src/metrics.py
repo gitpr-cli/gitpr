@@ -880,10 +880,10 @@ def cycle_report(repo_filter=None, since=None, until=None):
         return _cycle_unavailable(__("this directory has no origin remote"))
 
     try:
-        from src.config import get_scm_settings
+        from src.scm_settings import get_scm_settings
         from src.infrastructure.scm.factory import resolve_scm_provider
 
-        provider = resolve_scm_provider(get_scm_settings())
+        provider = resolve_scm_provider(get_scm_settings(remote_url=remote))
         repo = provider.parse_repo_ref(remote)
     except Exception as error:  # unparsable remote, unusable configuration
         return _cycle_unavailable(str(error))

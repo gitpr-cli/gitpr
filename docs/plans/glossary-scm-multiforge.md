@@ -16,26 +16,39 @@
 | **id vs number** | `PullRequestResult.id` = identificador usado em chamadas subsequentes (GitLab: `iid` do MR, **nunca** o `id` global do projeto; Azure: `pullRequestId`). `number` = número visível ao usuário (GitLab `iid`, GitHub `number`, Bitbucket `id`, Azure `pullRequestId`). |
 | **draft** | PR em rascunho. GitHub/Azure/Bitbucket têm flag nativa; GitLab não tem no create da API v4 — vira prefixo `"Draft: "` no título. |
 | **issue** | Item rastreável criado via `create_issue`: GitHub Issues, GitLab Issues, Bitbucket Issue Tracker. **Azure DevOps não tem** (Work Items dependem do process template) → `ScmNotSupportedError`. Bitbucket exige o Issue Tracker habilitado no repositório. |
-| **token** | Credencial de API: PAT (GitHub/GitLab/Azure) ou App Password (Bitbucket, exige `username`). Sempre criptografada em repouso (Fernet); `GITPR_SCM_TOKEN` cru só para CI. |
-| **base_url** | URL da API do forge. Omitida = SaaS público (`default_base_url()`); customizada = self-managed (GitLab, Bitbucket Server — fora de escopo —, Azure) ou enterprise. |
+| **token** | Credencial de API: PAT (GitHub/GitLab/Azure) ou App Password (Bitbucket, exige `username`). Sempre criptografada em repouso (Fernet), guardada no slot do **próprio** forge; `GITPR_SCM_TOKEN` cru só para CI. |
+| **token slot** | A chave `<PROVIDER>_TOKEN_ENCRYPTED` do forge resolvido (`GITHUB_TOKEN_ENCRYPTED`, `GITLAB_TOKEN_ENCRYPTED`, `BITBUCKET_TOKEN_ENCRYPTED`, `AZURE_DEVOPS_TOKEN_ENCRYPTED`). Um forge nunca responde pelo token de outro. |
+| **base_url** | URL da API do forge. Omitida = SaaS público (`default_base_url()`); customizada = self-managed (GitLab, Bitbucket Server — fora de escopo —, Azure) ou enterprise. Guardada por forge (`<PROVIDER>_BASE_URL`). |
 | **extra** | Campos de config adicionais do provider, validados no `__init__` (fail-fast): `organization`/`project` (Azure), `username` (Bitbucket). |
 | **ScmProviderError** | Exceção única dos providers: `http_status` = código HTTP (4xx/5xx) ou `0` (falha de rede, sem resposta HTTP); `message` = melhor esforço da mensagem do servidor (rede já localizada). |
 | **ScmNotSupportedError** | Subclasse para operação sem equivalente no forge (ex.: `create_issue` no Azure). |
-| **detect_provider_from_remote** | Heurística por substring na URL do remote (case-insensitive): `gitlab` → gitlab; `bitbucket` → bitbucket; `dev.azure.com`/`visualstudio.com` → azure_devops; **qualquer outro → github (default)**. |
+| **detect_provider_from_remote** | Heurística por substring na URL do remote (case-insensitive): `gitlab` → gitlab; `bitbucket` → bitbucket; `dev.azure.com`/`visualstudio.com` → azure_devops; **qualquer outro → `default`** — `github` quando chamada com um argumento, `None` ("não reconhecido") quando o resolvedor pede para distinguir. |
+| **provider override** | Valor de `scm.provider` no `.gitpr/conf/gitpr.config.yml`. Versão com o repositório e **sempre** vence a detecção do remote — é a saída para um self-hosted cujo domínio não nomeia o forge. |
+| **effective provider** | O forge que o repositório usa agora, depois da precedência override → detecção → `github`, junto da origem (`project`, `remote`, `default`). É o que a TUI mostra e o que qualquer comando usa. |
+| **one-shot migration** | Movimento automático, na primeira chamada do resolvedor, de `GITPR_SCM_PROVIDER`/`GITPR_SCM_TOKEN_ENCRYPTED`/`GITPR_SCM_BASE_URL` para o slot do forge que o par nomeia. Idempotente, nunca sobrescreve um slot já preenchido e nunca quebra o comando quando o `.env` não pode ser escrito. |
 | **api-version** | Query param obrigatório em toda chamada REST do Azure DevOps (`7.1`). |
 
-## Chaves de configuração (dotenv plano, `~/.gitpr/.env`)
+## Chaves de configuração
+
+**Por repositório — `.gitpr/conf/gitpr.config.yml` (versionado):**
 
 | Chave | Significado |
 |---|---|
-| `GITPR_SCM_PROVIDER` | Provider ativo (default `github`; sem chave = comportamento GitHub atual). |
-| `GITPR_SCM_TOKEN` | Token cru (CI apenas). |
-| `GITPR_SCM_TOKEN_ENCRYPTED` | Token criptografado (Fernet), escrito por `gitpr --init`/reauth. |
-| `GITPR_SCM_BASE_URL` | API base customizada (self-managed/enterprise). |
+| `scm.provider` | Override do forge. Ausente = detecção do remote `origin`. Gravado por `gitpr --init` só quando diverge da detecção. |
+
+**Por máquina — `~/.gitpr/.env` (dotenv plano):**
+
+| Chave | Significado |
+|---|---|
+| `GITPR_SCM_TOKEN` | Token cru (CI apenas). Único e global, consultado antes de qualquer slot. |
+| `GITHUB_TOKEN_ENCRYPTED` / `GITLAB_TOKEN_ENCRYPTED` / `BITBUCKET_TOKEN_ENCRYPTED` / `AZURE_DEVOPS_TOKEN_ENCRYPTED` | Token criptografado (Fernet) de cada forge, escrito por `gitpr --init`/reauth. |
+| `GITHUB_BASE_URL` / `GITLAB_BASE_URL` / `BITBUCKET_BASE_URL` / `AZURE_DEVOPS_BASE_URL` | API base customizada de cada forge (self-managed/enterprise). |
 | `GITPR_SCM_ORGANIZATION` / `GITPR_SCM_PROJECT` | Obrigatórias para `azure_devops`. |
 | `GITPR_SCM_USERNAME` | Obrigatório para `bitbucket` (App Password). |
 
-GitHub sem config SCM cai no `GITHUB_TOKEN_ENCRYPTED` legado — zero migração.
+`GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED` e `GITPR_SCM_BASE_URL` estão
+**aposentadas**: a migração one-shot as move para o slot do forge que nomeiam e
+remove as linhas.
 
 ## Notas de fidelidade de API
 

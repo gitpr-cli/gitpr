@@ -907,7 +907,7 @@ def _resolve_pr_target(base, quiet):
 
     help=__(
 
-        "Interactive SCM forge wizard: detects the repository's forge, configures the provider, and stores the access token encrypted."
+        "Interactive SCM forge wizard for this repository: detects the forge from the origin remote, stores its access token encrypted in ~/.gitpr/.env, and records a project override only when the forge is not the detected one."
 
     ),
 
@@ -2712,7 +2712,9 @@ def cli(
 
         # Validate or request the forge token
 
-        github_token, provider = validate_or_request_scm_token(provider, repo_info)
+        github_token, provider = validate_or_request_scm_token(
+            provider, repo_info, allow_prompt=may_ask
+        )
 
 
 
@@ -2754,7 +2756,7 @@ def cli(
 
                 github_token, provider = validate_or_request_scm_token(
 
-                    provider, repo_info
+                    provider, repo_info, allow_prompt=may_ask
 
                 )
 
@@ -3706,7 +3708,9 @@ def cli(
 
 
 
-        github_token, provider = validate_or_request_scm_token(provider, repo_info)
+        github_token, provider = validate_or_request_scm_token(
+            provider, repo_info, allow_prompt=may_ask
+        )
 
         if not github_token:
 
@@ -3736,7 +3740,9 @@ def cli(
 
 
 
-    github_token, provider = validate_or_request_scm_token(provider, repo_info)
+    github_token, provider = validate_or_request_scm_token(
+        provider, repo_info, allow_prompt=may_ask
+    )
 
     if not github_token:
 
@@ -3866,7 +3872,9 @@ def cli(
 
             click.secho(f"\n{app.final_message}\n", fg="yellow")
 
-            github_token, provider = validate_or_request_scm_token(provider, repo_info)
+            github_token, provider = validate_or_request_scm_token(
+                provider, repo_info, allow_prompt=may_ask
+            )
 
             if not github_token:
 
@@ -4192,7 +4200,9 @@ def release(since_tag, target_version, publish, draft, output_format, force):
 
 
 
-    from src.config import get_release_settings, get_scm_settings
+    from src.config import get_release_settings
+
+    from src.scm_settings import get_scm_settings
 
     from src.infrastructure.scm.base import ScmNotSupportedError, ScmProviderError
 
@@ -4440,8 +4450,6 @@ def release(since_tag, target_version, publish, draft, output_format, force):
 
     effective_draft = draft or settings["publish_draft_by_default"]
 
-    scm_provider = resolve_scm_provider(get_scm_settings())
-
     from src.core import get_origin_remote_url
 
 
@@ -4459,6 +4467,16 @@ def release(since_tag, target_version, publish, draft, output_format, force):
         )
 
         raise click.exceptions.Exit(1)
+
+    scm_warnings = []
+
+    scm_provider = resolve_scm_provider(
+        get_scm_settings(remote_url=remote_url, warnings=scm_warnings)
+    )
+
+    for warning in scm_warnings:
+
+        click.secho(warning, fg="yellow")
 
     try:
 
@@ -11844,11 +11862,11 @@ def _resolve_scm_context():
 
 
 
-    Reads the origin remote URL, detects the forge when no GITPR_SCM_PROVIDER
+    Reads the origin remote URL, asks src.scm_settings for the forge of *this
 
-    is configured, builds the provider through the factory (which falls back
+    repository* (project override, then remote detection, then GitHub), builds
 
-    to the legacy GitHub token when needed) and parses the repository ref.
+    the provider through the factory and parses the repository ref.
 
 
 
@@ -11858,11 +11876,9 @@ def _resolve_scm_context():
 
     """
 
-    from src.config import get_scm_settings
+    from src.scm_settings import get_scm_settings
 
     from src.core import get_origin_remote_url
-
-    from src.infrastructure.scm import detect_provider_from_remote
 
 
 
@@ -11886,11 +11902,13 @@ def _resolve_scm_context():
 
 
 
-    settings = get_scm_settings()
+    warnings = []
 
-    if not settings.get("provider"):
+    settings = get_scm_settings(remote_url=raw_remote, warnings=warnings)
 
-        settings["provider"] = detect_provider_from_remote(raw_remote)
+    for warning in warnings:
+
+        click.secho(warning, fg="yellow")
 
 
 

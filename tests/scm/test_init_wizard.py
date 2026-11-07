@@ -4,23 +4,35 @@ The wizard does its imports lazily inside the function body, so the patch
 targets are the package/module attributes it re-imports at call time:
   - src.infrastructure.scm.{detect_provider_from_remote, resolve_scm_provider,
     provider_display_name, provider_is_github}
+  - src.scm_settings.migrate_legacy_scm_config
   - src.tui_issue.{_show_auth_instructions, _error_message,
     _no_longer_valid_message}
-  - src.core.{get_origin_remote_url, describe_repo, set_key, encrypt_data}
+  - src.core.{get_origin_remote_url, describe_repo, set_key, encrypt_data,
+    project_config_path, read_project_config, write_project_field_values}
   - src.core.click.* (echo/secho/confirm/prompt)
 
 A FakeProvider stands in for the real providers: with_token() returns itself,
 test_connection() raises ScmProviderError when error_status is set, and
 default_base_url() reports the cloud default per forge. Nothing real is
-persisted: set_key and encrypt_data are mocked, and every test asserts that
-NOTHING is written when validation fails ("persist only on success").
+persisted: set_key and encrypt_data are mocked, the project file is mocked, and
+every test asserts that NOTHING is written when validation fails ("persist only
+on success").
+
+ADR-016: the token goes to the slot of its own forge, and the project override
+is written only when the chosen forge is not the one the remote implies.
 """
 
+import os
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from src import core
 from src.infrastructure.scm import ScmProviderError
+from src.project_config import ProjectConfig
+from src.scm_settings import BASE_URL_KEYS, EXTRA_ENV_KEYS
+
+_PROJECT_PATH = Path("/repo/.gitpr/conf/gitpr.config.yml")
 
 # Cloud default base URLs per forge — mirrors the real providers.
 _DEFAULT_BASE_URLS = {
@@ -89,6 +101,11 @@ class TestScmInitWizard(unittest.TestCase):
     """run_scm_init_wizard flow: detect, extras, token, persist-only-on-success."""
 
     def setUp(self):
+        # A machine-wide GITLAB_BASE_URL must not leak into these tests; the
+        # empty value reads as "not configured", exactly like an absent key.
+        scoped_keys = list(BASE_URL_KEYS.values()) + list(EXTRA_ENV_KEYS.values())
+        mock.patch.dict(os.environ, {key: "" for key in scoped_keys}).start()
+
         self.secho = mock.patch.object(core.click, "secho").start()
         self.echo = mock.patch.object(core.click, "echo").start()
         self.confirm = mock.patch.object(core.click, "confirm", return_value=True).start()
@@ -116,6 +133,9 @@ class TestScmInitWizard(unittest.TestCase):
             "src.infrastructure.scm.provider_is_github",
             side_effect=lambda provider: provider.name == "github",
         ).start()
+        self.migrate = mock.patch(
+            "src.scm_settings.migrate_legacy_scm_config"
+        ).start()
         self.instructions = mock.patch("src.tui_issue._show_auth_instructions").start()
         self.error_message = mock.patch(
             "src.tui_issue._error_message", return_value="simulated failure"
@@ -124,6 +144,17 @@ class TestScmInitWizard(unittest.TestCase):
             "src.tui_issue._no_longer_valid_message", return_value="token no longer valid"
         ).start()
         self.translations = mock.patch("src.i18n.TRANSLATIONS", {}).start()
+        # Project file: no override recorded unless a test says otherwise.
+        self.project_path = mock.patch(
+            "src.core.project_config_path", return_value=_PROJECT_PATH
+        ).start()
+        self.read_project = mock.patch(
+            "src.core.read_project_config",
+            return_value=ProjectConfig(path=_PROJECT_PATH),
+        ).start()
+        self.write_project = mock.patch(
+            "src.core.write_project_field_values"
+        ).start()
         self.addCleanup(mock.patch.stopall)
 
     def _run_github_success(self, tokens=("ghp_token123",)):
@@ -144,9 +175,13 @@ class TestScmInitWizard(unittest.TestCase):
         self.confirm.assert_not_called()
         self.set_key.assert_not_called()
 
+    def test_the_legacy_configuration_is_migrated_first(self):
+        self._run_github_success()
+        self.migrate.assert_called_once_with()
+
     # -- github success path ---------------------------------------------
 
-    def test_github_flow_success_persists_provider_and_encrypted_token(self):
+    def test_github_flow_success_persists_token_in_the_github_slot(self):
         self._run_github_success()
         # Banner + explanation + repository line.
         self.secho.assert_any_call(
@@ -167,14 +202,14 @@ class TestScmInitWizard(unittest.TestCase):
         provider_arg, repo_display = self.instructions.call_args[0]
         self.assertEqual(provider_arg.name, "github")
         self.assertEqual(repo_display, "owner/repo")
-        # Persisted exactly: provider key + encrypted token (no extras).
-        self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_PROVIDER", "github")
-        self.set_key.assert_any_call(
-            mock.ANY, "GITPR_SCM_TOKEN_ENCRYPTED", "enc:ghp_token123"
+        # Only the credential is written: confirming the detected forge does not
+        # need an override, so the project file stays as it is.
+        self.set_key.assert_called_once_with(
+            mock.ANY, "GITHUB_TOKEN_ENCRYPTED", "enc:ghp_token123"
         )
-        self.assertEqual(self.set_key.call_count, 2)
+        self.write_project.assert_not_called()
         self.secho.assert_any_call(
-            "✅ SCM forge configured: GitHub! Pull requests and issues will use it from now on.\n",
+            "✅ GitHub is the forge of owner/repo! Pull requests and issues will use it from now on.\n",
             fg="green",
             bold=True,
         )
@@ -203,7 +238,7 @@ class TestScmInitWizard(unittest.TestCase):
 
     # -- declined detection / manual forge key ---------------------------
 
-    def test_declined_detection_prompts_forge_key_and_keeps_default_base_url(self):
+    def test_declined_detection_prompts_forge_key_and_records_the_override(self):
         self.confirm.return_value = False
         self.resolve.side_effect = _provider_factory()
         self.prompt.side_effect = ["gitlab", "", "gl_token"]
@@ -213,12 +248,27 @@ class TestScmInitWizard(unittest.TestCase):
             "Enter the forge key (github, gitlab, bitbucket, azure_devops):"
         )
         self.resolve.assert_called_once_with({"provider": "gitlab"})
-        self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_PROVIDER", "gitlab")
-        self.assertNotIn(
-            "GITPR_SCM_BASE_URL",
-            [call.args[1] for call in self.set_key.call_args_list],
+        self.set_key.assert_called_once_with(
+            mock.ANY, "GITLAB_TOKEN_ENCRYPTED", "enc:gl_token"
+        )
+        self.write_project.assert_called_once_with(
+            {"PROJECT_SCM_PROVIDER": "gitlab"}, path=_PROJECT_PATH
         )
         self.prompt.assert_any_call("Paste your GitLab token here", hide_input=True)
+
+    def test_an_unknown_remote_asks_for_the_forge_without_confirming(self):
+        self.detect.return_value = None
+        self.resolve.side_effect = _provider_factory()
+        self.prompt.side_effect = ["gitlab", "", "gl_token"]
+        core.run_scm_init_wizard()
+        self.confirm.assert_not_called()
+        self.secho.assert_any_call(
+            "⚠️ The forge of this remote is not recognised. Choose it below.",
+            fg="yellow",
+        )
+        self.write_project.assert_called_once_with(
+            {"PROJECT_SCM_PROVIDER": "gitlab"}, path=_PROJECT_PATH
+        )
 
     def test_invalid_forge_key_reprompts_until_valid(self):
         self.confirm.return_value = False
@@ -231,11 +281,40 @@ class TestScmInitWizard(unittest.TestCase):
             if call.args[0].startswith("Enter the forge key")
         ]
         self.assertEqual(len(forge_prompts), 2)
-        self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_PROVIDER", "gitlab")
+        self.set_key.assert_called_once_with(
+            mock.ANY, "GITLAB_TOKEN_ENCRYPTED", "enc:gl_token"
+        )
+
+    def test_an_existing_override_is_rewritten_when_it_disagrees(self):
+        """Detection says GitLab, the file overrides to GitHub, and the user
+        confirms GitLab: the override must be corrected, not left in place."""
+        self.detect.return_value = "gitlab"
+        self.read_project.return_value = ProjectConfig(
+            path=_PROJECT_PATH, provider="github"
+        )
+        self.resolve.side_effect = _provider_factory()
+        self.prompt.side_effect = ["", "gl_token"]
+        core.run_scm_init_wizard()
+        self.write_project.assert_called_once_with(
+            {"PROJECT_SCM_PROVIDER": "gitlab"}, path=_PROJECT_PATH
+        )
+
+    def test_an_override_that_already_agrees_is_not_rewritten(self):
+        self.detect.return_value = "gitlab"
+        self.read_project.return_value = ProjectConfig(
+            path=_PROJECT_PATH, provider="gitlab"
+        )
+        self.resolve.side_effect = _provider_factory()
+        self.prompt.side_effect = ["", "gl_token"]
+        core.run_scm_init_wizard()
+        self.write_project.assert_not_called()
+        self.set_key.assert_called_once_with(
+            mock.ANY, "GITLAB_TOKEN_ENCRYPTED", "enc:gl_token"
+        )
 
     # -- base URL handling -----------------------------------------------
 
-    def test_custom_base_url_is_persisted(self):
+    def test_custom_base_url_is_persisted_in_the_provider_slot(self):
         self.detect.return_value = "gitlab"
         self.resolve.side_effect = _provider_factory()
         self.prompt.side_effect = ["https://gitlab.example.com/api/v4", "gl_token"]
@@ -250,9 +329,29 @@ class TestScmInitWizard(unittest.TestCase):
             {"provider": "gitlab", "base_url": "https://gitlab.example.com/api/v4"}
         )
         self.set_key.assert_any_call(
-            mock.ANY, "GITPR_SCM_BASE_URL", "https://gitlab.example.com/api/v4"
+            mock.ANY, "GITLAB_BASE_URL", "https://gitlab.example.com/api/v4"
         )
-        self.assertEqual(self.set_key.call_count, 3)  # provider + token + base URL
+        self.assertEqual(self.set_key.call_count, 2)  # token + base URL
+
+    def test_the_stored_base_url_is_offered_as_the_default(self):
+        """Re-running the wizard must validate against the host the next run
+        will actually use, not against the cloud default."""
+        self.detect.return_value = "gitlab"
+        os.environ["GITLAB_BASE_URL"] = "https://gitlab.example.com/api/v4"
+        self.resolve.side_effect = _provider_factory()
+        self.prompt.side_effect = ["", "gl_token"]
+        core.run_scm_init_wizard()
+        self.prompt.assert_any_call(
+            "API base URL:", default="https://gitlab.example.com/api/v4"
+        )
+
+    def test_choosing_the_cloud_default_clears_a_stored_base_url(self):
+        self.detect.return_value = "gitlab"
+        os.environ["GITLAB_BASE_URL"] = "https://gitlab.example.com/api/v4"
+        self.resolve.side_effect = _provider_factory()
+        self.prompt.side_effect = ["https://gitlab.com/api/v4", "gl_token"]
+        core.run_scm_init_wizard()
+        self.set_key.assert_any_call(mock.ANY, "GITLAB_BASE_URL", "")
 
     def test_github_never_asks_for_base_url(self):
         self._run_github_success()
@@ -281,9 +380,8 @@ class TestScmInitWizard(unittest.TestCase):
         )
         self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_ORGANIZATION", "northwind")
         self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_PROJECT", "webapp")
-        self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_PROVIDER", "azure_devops")
         self.set_key.assert_any_call(
-            mock.ANY, "GITPR_SCM_TOKEN_ENCRYPTED", "enc:az_token"
+            mock.ANY, "AZURE_DEVOPS_TOKEN_ENCRYPTED", "enc:az_token"
         )
         self.prompt.assert_any_call("Paste your Azure DevOps token here", hide_input=True)
 
@@ -297,8 +395,43 @@ class TestScmInitWizard(unittest.TestCase):
             {"provider": "bitbucket", "username": "bob"}
         )
         self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_USERNAME", "bob")
-        self.set_key.assert_any_call(mock.ANY, "GITPR_SCM_PROVIDER", "bitbucket")
+        self.set_key.assert_any_call(
+            mock.ANY, "BITBUCKET_TOKEN_ENCRYPTED", "enc:bb_token"
+        )
         self.prompt.assert_any_call("Paste your Bitbucket token here", hide_input=True)
+
+    # -- persistence failures --------------------------------------------
+
+    def test_a_failed_token_write_does_not_claim_the_forge_is_configured(self):
+        self.resolve.side_effect = _provider_factory()
+        self.prompt.side_effect = ["ghp_token123"]
+        self.set_key.side_effect = PermissionError("read-only HOME")
+        core.run_scm_init_wizard()
+        self.secho.assert_any_call(
+            "⚠️ The GitHub token was validated but could not be saved in "
+            f"{core.ENV_FILE}: read-only HOME",
+            fg="yellow",
+        )
+        configured = [
+            call
+            for call in self.secho.call_args_list
+            if str(call.args[0]).startswith("✅ GitHub is the forge")
+        ]
+        self.assertEqual(configured, [])
+
+    def test_a_failed_override_write_still_saves_the_token(self):
+        self.confirm.return_value = False
+        self.resolve.side_effect = _provider_factory()
+        self.prompt.side_effect = ["gitlab", "", "gl_token"]
+        self.write_project.side_effect = OSError("disk full")
+        core.run_scm_init_wizard()
+        self.secho.assert_any_call(
+            "⚠️ Could not record the forge in the project configuration: disk full",
+            fg="yellow",
+        )
+        self.set_key.assert_called_once_with(
+            mock.ANY, "GITLAB_TOKEN_ENCRYPTED", "enc:gl_token"
+        )
 
     # -- validation failures: nothing persisted --------------------------
 
@@ -320,6 +453,7 @@ class TestScmInitWizard(unittest.TestCase):
             fg="red",
         )
         self.set_key.assert_not_called()
+        self.write_project.assert_not_called()
 
     def test_network_failure_aborts_without_retry_or_persist(self):
         self.resolve.side_effect = _provider_factory(error_status=0)

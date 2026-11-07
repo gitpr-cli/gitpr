@@ -6,10 +6,10 @@ if it ever did, publishing a pull request would start depending on a third
 party being up. The network is therefore banned for every test under
 ``tests/badge``, so an accidental request fails the test that provoked it.
 
-Two smaller guarantees live here as well: the interface language is pinned, so
-the CLI assertions can name the expected text, and the linter's local metric is
+One smaller guarantee lives here as well: the linter's local metric is
 neutralised, so running this suite does not write into the developer's own
-``~/.gitpr/metrics``.
+``~/.gitpr/metrics``. The interface language, which the CLI assertions here
+name, is pinned by the root ``tests/conftest.py``.
 """
 
 import ipaddress
@@ -88,18 +88,3 @@ def no_linter_metrics(monkeypatch):
     ``~/.gitpr/metrics`` is a side effect nobody asked for.
     """
     monkeypatch.setattr("src.linter_engine.log_local_metric", lambda *a, **k: None)
-
-
-@pytest.fixture(autouse=True)
-def english_interface(monkeypatch):
-    """Pin the interface language so assertions can name the expected text.
-
-    English is the one language that needs no translation file — `__()` falls
-    back to the key itself — so the suite does not depend on whatever the
-    developer's ``~/.gitpr/langs`` happens to hold. The badge text itself is
-    English in every language; this is about the CLI around it.
-    """
-    import src.i18n
-
-    monkeypatch.setattr(src.i18n, "CURRENT_LANG", "en_us")
-    monkeypatch.setattr(src.i18n, "TRANSLATIONS", {})

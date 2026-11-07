@@ -8,8 +8,9 @@ answer is stubbed in the module that asks for it, so a test that reaches a
 provider is a test that escaped its own stubs, and it should fail where it did
 rather than quietly pass against a live key.
 
-The language is pinned so assertions can name the text they expect instead of
-depending on whatever ``~/.gitpr/langs`` holds on the machine running the suite.
+The language is pinned by the root ``tests/conftest.py``, so assertions here can
+name the text they expect instead of depending on whatever ``~/.gitpr/langs``
+holds on the machine running the suite.
 
 What is deliberately *not* here is a guard against writing. These tests drive
 ``gitpr policy use``, which writes a lockfile — into a repository the fixture
@@ -83,12 +84,3 @@ def no_network(monkeypatch):
         "requests.adapters.HTTPAdapter.send",
     ):
         monkeypatch.setattr(target, lambda *args, **kwargs: _blocked())
-
-
-@pytest.fixture(autouse=True)
-def english_interface(monkeypatch):
-    """Pin the interface language so assertions can name the expected text."""
-    import src.i18n
-
-    monkeypatch.setattr(src.i18n, "CURRENT_LANG", "en_us")
-    monkeypatch.setattr(src.i18n, "TRANSLATIONS", {})

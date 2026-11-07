@@ -1058,11 +1058,11 @@ def _resolve_scm_target():
     inside a tool call the answer is a JSON field, not a line on stderr.  The
     error string is empty on success and meant for the user as-is.
     """
-    from src.config import get_scm_settings
+    from src.scm_settings import get_scm_settings
     from src.core import get_origin_remote_url
     from src.infrastructure.scm import (
         ScmProviderError,
-        detect_provider_from_remote,
+        provider_display_name,
         resolve_scm_provider,
     )
 
@@ -1074,9 +1074,7 @@ def _resolve_scm_target():
             __("Remote repository not identified. Run 'gitpr --init' to configure the SCM forge."),
         )
 
-    settings = _safe_call(get_scm_settings) or {}
-    if not settings.get("provider"):
-        settings["provider"] = detect_provider_from_remote(raw_remote)
+    settings = _safe_call(get_scm_settings, remote_url=raw_remote) or {}
 
     try:
         provider = resolve_scm_provider(settings)
@@ -1085,6 +1083,18 @@ def _resolve_scm_target():
         # ValueError: the remote does not parse for the detected forge.
         # ScmProviderError: provider fail-fast (Azure without org/project, ...).
         return None, None, str(error)
+
+    if not provider.token:
+        # An MCP tool call cannot stop and ask (ADR-016), so an unauthenticated
+        # forge is answered with the command that fixes it.
+        return (
+            None,
+            None,
+            __(
+                "No {provider} token is configured for this repository. Run 'gitpr --init' here to add one.",
+                provider=provider_display_name(provider),
+            ),
+        )
 
     return provider, repo_ref, ""
 

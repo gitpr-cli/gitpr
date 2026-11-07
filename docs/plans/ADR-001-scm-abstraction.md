@@ -4,6 +4,7 @@
 - **Data:** 2026-09-05
 - **Contexto:** spec [2026-09-02_multi_skill_gitpr_multiforge_spec.md](2026-09-02_multi_skill_gitpr_multiforge_spec.md), entrevista (grilling) e plano aprovado
 - **Glossário:** [glossary-scm-multiforge.md](glossary-scm-multiforge.md)
+- **Superado em parte por:** [ADR-016](ADR-016-per-provider-scm-settings.md) — a seção 5 (config dotenv global) e o fallback de token foram substituídos pelo resolvedor por repositório de `src/scm_settings.py`. O contrato `ScmProvider`, o modelo de erros, o `--init` e o shim continuam valendo.
 
 ## Contexto
 

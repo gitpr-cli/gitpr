@@ -8,12 +8,13 @@ from src.infrastructure.scm import (
     provider_display_name,
     provider_is_github,
 )
+from src.scm_settings import TOKEN_KEYS
 
 
 MAX_TOKEN_ATTEMPTS = 3
 
 
-def _remove_expired_token(env_var="GITHUB_TOKEN_ENCRYPTED"):
+def _remove_expired_token(env_var):
     """Removes the expired *env_var* line from the .env file."""
     import os
 
@@ -31,27 +32,23 @@ def _remove_expired_token(env_var="GITHUB_TOKEN_ENCRYPTED"):
         pass  # Non-critical — the user can manually remove it if needed
 
 
-def _scm_token_configured():
-    """True when GITPR_SCM_TOKEN* holds a credential (raw or encrypted).
-
-    GitHub flows keep the legacy GITHUB_TOKEN_ENCRYPTED store unless the user
-    explicitly configured the multi-forge token store.
-    """
-    from src.config import get_scm_token
-
-    return bool(get_scm_token())
-
-
 def _token_env_var(provider):
-    """.env key that receives a re-authenticated token for *provider*.
+    """.env key that stores the token of *provider*'s forge.
 
-    GitHub without multi-forge config keeps the legacy GITHUB_TOKEN_ENCRYPTED
-    store (zero migration, byte parity); GitHub configured through GITPR_SCM_*
-    and every other forge persist to GITPR_SCM_TOKEN_ENCRYPTED.
+    Each forge owns one slot (ADR-016). A provider without a known name falls
+    back to the GitHub slot, which is the historical default.
     """
-    if provider_is_github(provider) and not _scm_token_configured():
-        return "GITHUB_TOKEN_ENCRYPTED"
-    return "GITPR_SCM_TOKEN_ENCRYPTED"
+    name = getattr(provider, "name", "") or "github"
+    return TOKEN_KEYS.get(name, TOKEN_KEYS["github"])
+
+
+def _needs_init_message(provider):
+    """Where a non-interactive run is told to configure the missing token."""
+    return __(
+        "🔐 No valid {provider} token is configured for this repository. "
+        "Run 'gitpr --init' here to add one.",
+        provider=provider_display_name(provider),
+    )
 
 
 def _show_auth_instructions(provider, repo_display):
@@ -122,7 +119,21 @@ def _prompt_and_save_token(provider, repo_display, env_var):
 
     encrypted_token = encrypt_data(raw_token.strip())
 
-    set_key(ENV_FILE, env_var, encrypted_token)
+    try:
+        set_key(ENV_FILE, env_var, encrypted_token)
+    except OSError as exc:
+        # A read-only HOME must not throw away a token the forge just
+        # accepted: it stays usable for this run and the next one asks again.
+        click.secho(
+            __(
+                "⚠️ Token validated, but it could not be saved in {path}: {error}. It only works for this run.",
+                path=ENV_FILE,
+                error=str(exc),
+            ),
+            fg="yellow",
+        )
+        return raw_token.strip()
+
     click.secho(__("✅ Token encrypted and safely saved in .env!"), fg="green")
 
     return raw_token.strip()
@@ -168,16 +179,19 @@ def _no_longer_valid_message(provider, error_msg):
     )
 
 
-def validate_or_request_scm_token(provider, repo_display):
+def validate_or_request_scm_token(provider, repo_display, allow_prompt=True):
     """
     Ensures the forge has a valid token, validating it against the forge API
     and re-prompting (up to MAX_TOKEN_ATTEMPTS chances) when it is missing,
     expired or invalid.
 
-    Token storage follows the forge configuration (see _token_env_var):
-    GitHub without multi-forge config keeps the legacy GITHUB_TOKEN_ENCRYPTED
-    store — zero migration for existing users. Connectivity/server-side
-    failures abort with a message: they cannot be fixed by re-prompting.
+    The token is stored in the slot of the provider's own forge
+    (see _token_env_var). ``allow_prompt=False`` is the non-interactive
+    contract — hooks, MCP and CI: a missing or rejected token returns
+    (None, provider) with a message pointing at ``gitpr --init``, without
+    asking for anything and without deleting the stored credential.
+    Connectivity/server-side failures abort with a message: they cannot be
+    fixed by re-prompting.
 
     Returns (token, provider) on success — when a fresh token was saved the
     returned provider carries it (via with_token) — or (None, provider) when
@@ -209,6 +223,9 @@ def validate_or_request_scm_token(provider, repo_display):
                     click.secho(
                         _no_longer_valid_message(provider, error_msg), fg="yellow"
                     )
+                    if not allow_prompt:
+                        click.secho(_needs_init_message(provider), fg="yellow")
+                        return None, provider
                     click.secho(
                         __(
                             "📋 Attempt {attempt} of {max}",
@@ -230,6 +247,9 @@ def validate_or_request_scm_token(provider, repo_display):
                     return None, provider
         else:
             # No token found — first run or already removed
+            if not allow_prompt:
+                click.secho(_needs_init_message(provider), fg="yellow")
+                return None, provider
             if attempt == 1:
                 if github_flow:
                     click.secho(__("🔐 No GitHub token found."), fg="yellow", dim=True)

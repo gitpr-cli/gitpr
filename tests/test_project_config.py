@@ -21,6 +21,7 @@ from src.project_config import (
     DEFAULT_BASE_BRANCH,
     HEADER_COMMENT,
     PROJECT_CONFIG_RELATIVE_PATH,
+    SCM_PROVIDER_FIELD,
     SOURCE_AUTO,
     SOURCE_CLI,
     SOURCE_ENV,
@@ -313,6 +314,53 @@ class TestReadProjectConfig(TempDirTestCase):
             load_project_field_values(path=path), {BASE_BRANCH_FIELD: "develop"}
         )
 
+    def test_missing_scm_section_reads_as_no_override(self):
+        path = self.write(
+            self.root / "gitpr.config.yml",
+            "pull_request:\n  base_branch: develop\n",
+        )
+
+        config = read_project_config(path=path)
+
+        self.assertEqual(config.provider, "")
+        self.assertEqual(config.error, "")
+
+    def test_both_sections_are_read_independently(self):
+        path = self.write(
+            self.root / "gitpr.config.yml",
+            "pull_request:\n  base_branch: develop\nscm:\n  provider: gitlab\n",
+        )
+
+        config = read_project_config(path=path)
+
+        self.assertEqual(config.base_branch, "develop")
+        self.assertEqual(config.provider, "gitlab")
+        self.assertEqual(config.error, "")
+        self.assertEqual(
+            load_project_field_values(path=path),
+            {BASE_BRANCH_FIELD: "develop", SCM_PROVIDER_FIELD: "gitlab"},
+        )
+
+    def test_a_bad_scm_section_does_not_hide_the_branch(self):
+        path = self.write(
+            self.root / "gitpr.config.yml",
+            "pull_request:\n  base_branch: develop\nscm: gitlab\n",
+        )
+
+        config = read_project_config(path=path)
+
+        self.assertEqual(config.base_branch, "develop")
+        self.assertIn("scm", config.error)
+
+    def test_the_scm_provider_must_be_text(self):
+        path = self.write(
+            self.root / "gitpr.config.yml", "scm:\n  provider: 42\n"
+        )
+
+        config = read_project_config(path=path)
+
+        self.assertIn("provider", config.error)
+
 
 class TestWriteProjectFieldValues(TempDirTestCase):
     def test_writes_the_branch_and_keeps_the_header(self):
@@ -376,6 +424,53 @@ class TestWriteProjectFieldValues(TempDirTestCase):
 
         with self.assertRaises(ValueError):
             write_project_field_values({BASE_BRANCH_FIELD: "develop"}, path=path)
+
+        self.assertEqual(path.read_text(encoding="utf-8"), before)
+
+    def test_writes_the_forge_into_its_own_section(self):
+        path = self.write(
+            self.root / "gitpr.config.yml",
+            "pull_request:\n  base_branch: develop\n",
+        )
+
+        write_project_field_values({SCM_PROVIDER_FIELD: "gitlab"}, path=path)
+
+        self.assertEqual(
+            yaml.safe_load(path.read_text(encoding="utf-8")),
+            {"pull_request": {"base_branch": "develop"}, "scm": {"provider": "gitlab"}},
+        )
+
+    def test_writing_the_branch_keeps_the_forge(self):
+        path = self.write(
+            self.root / "gitpr.config.yml", "scm:\n  provider: gitlab\n"
+        )
+
+        write_project_field_values({BASE_BRANCH_FIELD: "develop"}, path=path)
+
+        self.assertEqual(
+            yaml.safe_load(path.read_text(encoding="utf-8")),
+            {"pull_request": {"base_branch": "develop"}, "scm": {"provider": "gitlab"}},
+        )
+
+    def test_clearing_the_forge_drops_the_empty_section(self):
+        path = self.write(
+            self.root / "gitpr.config.yml",
+            "pull_request:\n  base_branch: develop\nscm:\n  provider: gitlab\n",
+        )
+
+        write_project_field_values({SCM_PROVIDER_FIELD: ""}, path=path)
+
+        self.assertEqual(
+            yaml.safe_load(path.read_text(encoding="utf-8")),
+            {"pull_request": {"base_branch": "develop"}},
+        )
+
+    def test_refuses_to_overwrite_an_scm_that_is_not_a_mapping(self):
+        path = self.write(self.root / "gitpr.config.yml", "scm: gitlab\n")
+        before = path.read_text(encoding="utf-8")
+
+        with self.assertRaises(ValueError):
+            write_project_field_values({SCM_PROVIDER_FIELD: "gitlab"}, path=path)
 
         self.assertEqual(path.read_text(encoding="utf-8"), before)
 

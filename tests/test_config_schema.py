@@ -19,6 +19,8 @@ from src.config_schema import (
     FIELDS_BY_KEY,
     GROUPS_BY_ID,
     KINDS,
+    PROJECT_EFFECTIVE_PROVIDER,
+    PROJECT_SCM_PROVIDER,
     SKILL_LABELS,
     STORE_ENV,
     STORE_PROJECT,
@@ -265,49 +267,49 @@ class TestVisibilityGating(unittest.TestCase):
 
     def test_visibility_controllers_match_the_schema(self):
         """The screen re-filters only when a controller changes, so the derived
-        set is what keeps a new gate from being inert until the next save."""
+        set is what keeps a new gate from being inert until the next save.
+
+        The forge override is listed by hand on purpose: the SCM sub-sections
+        are gated on the EFFECTIVE forge (which also reflects remote detection),
+        and the row the user actually changes is the override."""
         declared = {
             key for field in FIELDS for key, _allowed in field.show_if
         }
-        self.assertEqual(VISIBILITY_CONTROLLERS, frozenset(declared))
+        self.assertEqual(
+            VISIBILITY_CONTROLLERS, frozenset(declared) | {PROJECT_SCM_PROVIDER}
+        )
 
-    def test_the_default_state_never_hides_every_gated_field(self):
-        """On a fresh install a controller sits at its declared default. If no
-        gated field accepted that value, the whole sub-section would be missing
-        from the screen with nothing left to explain why.
-
-        Note that "" does NOT have to appear in every gate: the empty SCM
-        provider means GitHub, so the Bitbucket group is correctly invisible
-        until the user picks Bitbucket — only the GitHub group has to answer
-        for the default."""
+    def test_every_gated_field_is_reachable(self):
+        """A gate whose allowed values never intersect the controller's own
+        choices would hide its fields forever, with nothing on screen to
+        explain why."""
         by_controller = {}
         for field in FIELDS:
             for key, allowed in field.show_if:
                 by_controller.setdefault(key, []).append((field.key, allowed))
         for key, gates in by_controller.items():
-            default = FIELDS_BY_KEY[key].default
+            field = FIELDS_BY_KEY[key]
+            reachable = set(field.choices) or {field.default}
             self.assertTrue(
-                any(default in allowed for _field, allowed in gates),
-                f"{key} defaults to {default!r}, which hides every field it "
-                f"gates: {sorted(f for f, _a in gates)}",
+                any(reachable & set(allowed) for _field, allowed in gates),
+                f"{key} can only be {sorted(reachable)}, which hides every "
+                f"field it gates: {sorted(f for f, _a in gates)}",
             )
 
-    def test_the_empty_scm_provider_is_github(self):
-        """The gate that carries the rule above: "" and "github" are the same
-        forge, which is why the legacy GitHub token is reachable without ever
-        running --init."""
-        github = [
-            field
-            for field in FIELDS
-            if field.group == "github" and field.show_if
-        ]
-        self.assertTrue(github, "no field is gated on the GitHub group")
-        for field in github:
-            self.assertIn(
-                "",
-                field.show_if[0][1],
-                f"{field.key}: '' does not reach the GitHub group",
-            )
+    def test_the_scm_token_rows_are_never_gated(self):
+        """Every forge may hold a credential at the same time (ADR-016):
+        hiding three of four is exactly what made a single global slot look
+        like the right design. Only the extras follow the effective forge."""
+        for key in (
+            "GITHUB_TOKEN_ENCRYPTED",
+            "GITLAB_TOKEN_ENCRYPTED",
+            "BITBUCKET_TOKEN_ENCRYPTED",
+            "AZURE_DEVOPS_TOKEN_ENCRYPTED",
+        ):
+            field = FIELDS_BY_KEY[key]
+            self.assertEqual(field.show_if, (), f"{key} is gated")
+            self.assertEqual(field.category, "scm")
+            self.assertEqual(field.validator, VALIDATOR_SCM_TOKEN)
 
 
 class TestVersionMarkers(unittest.TestCase):
@@ -449,8 +451,20 @@ class TestProjectSection(unittest.TestCase):
             "PROJECT_CONFIG_FILE",
             "PROJECT_BASE_BRANCH",
             "PROJECT_EFFECTIVE_BASE",
+            PROJECT_SCM_PROVIDER,
+            PROJECT_EFFECTIVE_PROVIDER,
         ):
             self.assertEqual(FIELDS_BY_KEY[key].store, STORE_PROJECT)
+
+    def test_the_project_keys_mirror_project_config_constants(self):
+        """The schema cannot import the YAML layer, so the two spellings are
+        kept in step by a test instead of by an import."""
+        from src import project_config
+
+        self.assertEqual(PROJECT_SCM_PROVIDER, project_config.SCM_PROVIDER_FIELD)
+        self.assertEqual(
+            PROJECT_EFFECTIVE_PROVIDER, project_config.EFFECTIVE_PROVIDER_FIELD
+        )
 
     def test_every_other_field_stays_in_the_env_store(self):
         others = [field.key for field in FIELDS if not field.key.startswith("PROJECT_")]
