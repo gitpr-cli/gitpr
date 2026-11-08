@@ -79,6 +79,7 @@ from src.config_schema import (
     KIND_BOOL,
     KIND_BRANCH,
     KIND_ENUM,
+    KIND_FLOAT,
     KIND_SECRET,
     KIND_STR,
     KIND_VERSION,

@@ -221,3 +221,13 @@ The aggregated count of files with and without blame history during reviewer sug
 computation (`files_with_blame` and `files_without_blame`), displayed as a single informative
 console line when unblamable files (new or binary) are present, replacing per-file warnings.
 _Avoid_: blame report, blame log, unblamable list
+
+**Token price rate**:
+The cost in currency units per million input or completion tokens configured via
+`GITPR_METRICS_PRICE_<MODEL>_INPUT` or `GITPR_METRICS_PRICE_<MODEL>_OUTPUT` in `~/.gitpr/.env`.
+_Avoid_: token fee, model cost, pricing multiplier
+
+**Metrics currency**:
+The currency code or symbol (`GITPR_METRICS_CURRENCY`, default `USD`) used to label and
+calculate financial cost estimates across telemetry surfaces.
+_Avoid_: cost unit, price currency, billing symbol

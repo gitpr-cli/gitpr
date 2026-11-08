@@ -22,6 +22,7 @@ from src.i18n import __
 # Widget kinds. Each one maps to a different control in ui/config_app.py.
 KIND_BOOL = "bool"
 KIND_INT = "int"
+KIND_FLOAT = "float"
 KIND_STR = "str"
 KIND_ENUM = "enum"
 KIND_TEMPLATE = "template"
@@ -39,6 +40,7 @@ KIND_BRANCH = "branch"
 KINDS = (
     KIND_BOOL,
     KIND_INT,
+    KIND_FLOAT,
     KIND_STR,
     KIND_ENUM,
     KIND_TEMPLATE,
@@ -396,6 +398,16 @@ FIELDS = (
         seeded=True,
     ),
     ConfigField(
+        key="GITPR_METRICS_CURRENCY",
+        label=__("Metrics Currency"),
+        description=__(
+            "Currency code used in telemetry and cost reports (default USD)."
+        ),
+        category="ai",
+        kind=KIND_STR,
+        default="",
+    ),
+    ConfigField(
         key="GEMINI_API_MODEL_PRIMARY",
         label=__("Gemini Advanced Model"),
         description=__("Model used for the complex tasks."),
@@ -406,6 +418,28 @@ FIELDS = (
         seeded=True,
     ),
     ConfigField(
+        key="GITPR_METRICS_PRICE_GEMINI_PRO_LATEST_INPUT",
+        label=__("Gemini Advanced Model - Input Price"),
+        description=__(
+            "Cost per million input tokens for the advanced model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
+    ),
+    ConfigField(
+        key="GITPR_METRICS_PRICE_GEMINI_PRO_LATEST_OUTPUT",
+        label=__("Gemini Advanced Model - Output Price"),
+        description=__(
+            "Cost per million completion tokens for the advanced model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
+    ),
+    ConfigField(
         key="GEMINI_API_MODEL_SECONDARY",
         label=__("Gemini Fast Model"),
         description=__("Model used for the simple tasks."),
@@ -414,6 +448,28 @@ FIELDS = (
         default="gemini-flash-lite-latest",
         show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
         seeded=True,
+    ),
+    ConfigField(
+        key="GITPR_METRICS_PRICE_GEMINI_FLASH_LITE_LATEST_INPUT",
+        label=__("Gemini Fast Model - Input Price"),
+        description=__(
+            "Cost per million input tokens for the fast model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
+    ),
+    ConfigField(
+        key="GITPR_METRICS_PRICE_GEMINI_FLASH_LITE_LATEST_OUTPUT",
+        label=__("Gemini Fast Model - Output Price"),
+        description=__(
+            "Cost per million completion tokens for the fast model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
     ),
     ConfigField(
         key="GEMINI_API_KEY_ENCRYPTED",
@@ -438,6 +494,28 @@ FIELDS = (
         seeded=True,
     ),
     ConfigField(
+        key="GITPR_METRICS_PRICE_DEEPSEEK_V4_PRO_INPUT",
+        label=__("DeepSeek Advanced Model - Input Price"),
+        description=__(
+            "Cost per million input tokens for the advanced model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
+    ),
+    ConfigField(
+        key="GITPR_METRICS_PRICE_DEEPSEEK_V4_PRO_OUTPUT",
+        label=__("DeepSeek Advanced Model - Output Price"),
+        description=__(
+            "Cost per million completion tokens for the advanced model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
+    ),
+    ConfigField(
         key="DEEPSEEK_API_MODEL_SECONDARY",
         label=__("DeepSeek Fast Model"),
         description=__("Model used for the simple tasks."),
@@ -446,6 +524,28 @@ FIELDS = (
         default="deepseek-v4-flash",
         show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
         seeded=True,
+    ),
+    ConfigField(
+        key="GITPR_METRICS_PRICE_DEEPSEEK_V4_FLASH_INPUT",
+        label=__("DeepSeek Fast Model - Input Price"),
+        description=__(
+            "Cost per million input tokens for the fast model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
+    ),
+    ConfigField(
+        key="GITPR_METRICS_PRICE_DEEPSEEK_V4_FLASH_OUTPUT",
+        label=__("DeepSeek Fast Model - Output Price"),
+        description=__(
+            "Cost per million completion tokens for the fast model."
+        ),
+        category="ai",
+        kind=KIND_FLOAT,
+        default="",
+        show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
     ),
     ConfigField(
         key="DEEPSEEK_API_KEY_ENCRYPTED",
@@ -1594,6 +1694,16 @@ def validate_field_value(field, value):
             return __("Use a whole number greater than zero.")
         if parsed <= 0:
             return __("Use a whole number greater than zero.")
+
+    elif field.kind == KIND_FLOAT:
+        if not value:
+            return ""
+        try:
+            parsed = float(value)
+        except ValueError:
+            return __("Use a number greater than or equal to zero.")
+        if parsed < 0:
+            return __("Use a number greater than or equal to zero.")
 
     elif field.kind == KIND_ENUM:
         if value not in field.choices:

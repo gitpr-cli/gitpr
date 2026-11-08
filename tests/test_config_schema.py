@@ -564,5 +564,38 @@ class TestTUIDebtsResolved(unittest.TestCase):
         self.assertIn("--base", banner_output)
         self.assertIn("--plugins", banner_output)
 
+
+class TestFloatValidation(unittest.TestCase):
+    def test_float_validation_accepts_valid_numbers(self):
+        from src.config_schema import ConfigField, KIND_FLOAT, validate_field_value
+
+        field = ConfigField(
+            key="TEST_FLOAT",
+            label="Test",
+            description="Test",
+            category="ai",
+            kind=KIND_FLOAT,
+        )
+        self.assertEqual(validate_field_value(field, "0"), "")
+        self.assertEqual(validate_field_value(field, "0.0"), "")
+        self.assertEqual(validate_field_value(field, "1.25"), "")
+        self.assertEqual(validate_field_value(field, "10.00"), "")
+        self.assertEqual(validate_field_value(field, ""), "")
+
+    def test_float_validation_rejects_negative_or_invalid(self):
+        from src.config_schema import ConfigField, KIND_FLOAT, validate_field_value
+
+        field = ConfigField(
+            key="TEST_FLOAT",
+            label="Test",
+            description="Test",
+            category="ai",
+            kind=KIND_FLOAT,
+        )
+        self.assertNotEqual(validate_field_value(field, "-1"), "")
+        self.assertNotEqual(validate_field_value(field, "-0.01"), "")
+        self.assertNotEqual(validate_field_value(field, "abc"), "")
+        self.assertNotEqual(validate_field_value(field, "1.2.3"), "")
+
 if __name__ == "__main__":
     unittest.main()

@@ -1750,6 +1750,19 @@ class TestCost:
         assert report["total"] == pytest.approx(0.42)
         assert report["unpriced"] == []
 
+    def test_built_in_rate_prices_gemini_aliases(self, home, monkeypatch):
+        """gemini-pro-latest and gemini-flash-lite-latest have built-in list prices."""
+        monkeypatch.delenv("GITPR_METRICS_CURRENCY", raising=False)
+        self._row("gemini-pro-latest", 1_000_000, 1_000_000)
+        self._row("gemini-flash-lite-latest", 1_000_000, 1_000_000)
+
+        report = cost_report()
+
+        models = {m["model"]: m["cost"] for m in report["models"]}
+        assert models["gemini-pro-latest"] == pytest.approx(1.25 + 10.00)
+        assert models["gemini-flash-lite-latest"] == pytest.approx(0.10 + 0.40)
+        assert report["unpriced"] == []
+
     def test_a_configured_rate_wins_over_the_built_in_one(self, home, monkeypatch):
         monkeypatch.delenv("GITPR_METRICS_CURRENCY", raising=False)
         self._priced(monkeypatch, "deepseek-v4-flash", 1.0, 0.0)
