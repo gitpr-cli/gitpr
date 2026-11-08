@@ -291,6 +291,8 @@ DEFAULT_MODEL_PRICES = {
     "deepseek-v4-pro": (0.435, 0.87),
     "gemini-2.5-pro": (1.25, 10.00),
     "gemini-2.5-flash-lite": (0.10, 0.40),
+    "gemini-pro-latest": (1.25, 10.00),
+    "gemini-flash-lite-latest": (0.10, 0.40),
 }
 
 # Providers that run on this machine. There is no invoice behind them, so their
