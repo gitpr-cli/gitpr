@@ -30,9 +30,22 @@ gitpr --install
 
 VS Code et Cursor partagent le même paquet VSIX (`natanfiuza.gitpr`) :
 
-- **VS Code Marketplace** : Recherchez `GitPR` (`natanfiuza.gitpr`).
-- **Cursor / Open VSX** : Recherchez `GitPR` ou installez depuis le fichier `.vsix`.
-- **Depuis les Sources (VSIX Local)** :
+- **Via GitHub Releases (Téléchargement Direct du VSIX)** :
+  Téléchargez le dernier fichier `gitpr-*.vsix` depuis la page des [Releases de GitPR](https://github.com/natanfiuza/gitpr/releases) et installez-le en une seule commande :
+  ```bash
+  # Pour VS Code
+  code --install-extension gitpr-0.1.0.vsix
+
+  # Pour Cursor
+  cursor --install-extension gitpr-0.1.0.vsix
+  ```
+  Ou via l'interface graphique : ouvrez la vue des **Extensions** (`Ctrl+Shift+X` / `Cmd+Shift+X`), cliquez sur le menu **`...`** (Plus d'actions) en haut à droite, sélectionnez **Installer depuis le fichier VSIX...** et choisissez le fichier téléchargé.
+
+- **Marketplaces (Boutiques Officielles)** :
+  - **VS Code Marketplace** : Recherchez `GitPR` (`natanfiuza.gitpr`).
+  - **Cursor / Open VSX** : Recherchez `GitPR` dans la vue des extensions.
+
+- **Depuis les Sources (Compilation Locale)** :
   ```bash
   cd extensions/vscode
   npm install

@@ -204,11 +204,13 @@ the marketplace publication workflow and must strictly match `version` in
 `extensions/vscode/package.json`.
 _Avoid_: extension tag, vsix tag, marketplace version
 
-**Fail-fast secret check**:
-The strict gate inside the marketplace publication workflow that halts execution
-immediately with a fatal error if either `VSCE_PAT` or `OVSX_PAT` is missing on a
-release tag run, preventing phantom releases.
-_Avoid_: secret check, env fallback, optional token skip
+**Granular marketplace gate**:
+The non-blocking credential evaluation mechanism in the marketplace publication workflow
+that checks each marketplace secret (VSCE_PAT, OVSX_PAT) independently. It publishes to
+services with active tokens while emitting informative step notices and summary status
+for missing credentials, ensuring official VSIX GitHub Releases are never obstructed by
+absent third-party marketplace tokens.
+_Avoid_: fail-fast secret check, all-or-nothing check, blocking token validation
 
 **Documentation link**:
 A canonical public URL pointing to `https://gitpr.natanfiuza.dev.br/docs/<slug>`

@@ -10,8 +10,11 @@ The publication is fully automated via GitHub Actions (`.github/workflows/extens
 1. Validates that the git tag version strictly matches `extensions/vscode/package.json`.
 2. Compiles TypeScript and runs mocha integration tests.
 3. Packages the extension into a `.vsix` bundle containing the official icon and license.
-4. Checks that repository secrets `VSCE_PAT` and `OVSX_PAT` are configured (**Fail-Fast Secret Check**).
-5. Publishes the bundle to both Visual Studio Marketplace and Open VSX Registry.
+4. **Creates an official GitHub Release** with the `.vsix` bundle permanently attached for direct download.
+5. Evaluates `VSCE_PAT` and `OVSX_PAT` independently (**Granular Marketplace Gate**):
+   - If `VSCE_PAT` is configured, publishes to Visual Studio Marketplace.
+   - If `OVSX_PAT` is configured, publishes to Open VSX Registry.
+   - If either secret is missing, logs an informative notice and summary table in the workflow without blocking the GitHub Release.
 
 ---
 
@@ -102,7 +105,7 @@ This produces `gitpr-0.1.0.vsix` containing `images/icon.png`, `LICENSE.txt`, co
 
 ## 4. Triggering the Automated Release
 
-Once `VSCE_PAT` and `OVSX_PAT` are added to GitHub Secrets:
+When you are ready to publish a new release:
 
 1. Ensure `extensions/vscode/package.json` has the version you want to release (e.g., `"version": "0.1.0"`).
 2. Commit any pending changes to `main` or your release branch.
@@ -114,7 +117,8 @@ Once `VSCE_PAT` and `OVSX_PAT` are added to GitHub Secrets:
 4. GitHub Actions will run the **Editor Extension** workflow:
    - Validates that `ext-v0.1.0` matches `0.1.0`.
    - Runs tests and builds the VSIX.
-   - Publishes directly to both Visual Studio Marketplace and Open VSX.
+   - **Creates the GitHub Release** with `gitpr-0.1.0.vsix` attached as an asset.
+   - Automatically publishes to Visual Studio Marketplace and/or Open VSX Registry if their respective secrets (`VSCE_PAT`, `OVSX_PAT`) are configured. If not yet configured, the VSIX remains available on GitHub Releases and marketplace publication will activate once secrets are added.
 
 ---
 
