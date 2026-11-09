@@ -72,11 +72,37 @@ jobs:
           name: gitpr-vscode-vsix
           path: extensions/vscode/*.vsix
 
-  publish:
-    name: Publish to VS Code Marketplace & Open VSX
+  github-release:
+    name: Create GitHub Release with VSIX
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/ext-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: gitpr-vscode-vsix
+          path: extensions/vscode
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: GitPR Extension ${{ github.ref_name }}
+          files: extensions/vscode/*.vsix
+          generate_release_notes: true
+
+  publish-marketplaces:
+    name: Publish to Marketplaces (Granular)
     needs: build-and-test
     if: startsWith(github.ref, 'refs/tags/ext-v') || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     env:
       VSCE_PAT: ${{ secrets.VSCE_PAT }}
       OVSX_PAT: ${{ secrets.OVSX_PAT }}
@@ -95,30 +121,43 @@ jobs:
           name: gitpr-vscode-vsix
           path: extensions/vscode
 
-      - name: Validate Publishing Credentials
-        if: startsWith(github.ref, 'refs/tags/ext-v')
-        run: |
-          missing=0
-          if [ -z "$VSCE_PAT" ]; then
-            echo "::error::Missing repository secret VSCE_PAT! Required to publish to Visual Studio Marketplace."
-            missing=1
-          fi
-          if [ -z "$OVSX_PAT" ]; then
-            echo "::error::Missing repository secret OVSX_PAT! Required to publish to Open VSX Registry."
-            missing=1
-          fi
-          if [ $missing -eq 1 ]; then
-            echo "FATAL: Required publishing secrets are missing from GitHub repository settings. Aborting release."
-            exit 1
-          fi
-          echo "OK: All publishing secrets are configured."
-
       - name: Publish to VS Code Marketplace
-        if: env.VSCE_PAT != ''
         working-directory: extensions/vscode
-        run: npx @vscode/vsce publish --packagePath *.vsix -p "$VSCE_PAT"
+        run: |
+          if [ -n "$VSCE_PAT" ]; then
+            echo "Publishing to Visual Studio Marketplace..."
+            npx @vscode/vsce publish --packagePath *.vsix -p "$VSCE_PAT"
+            echo "VSCE_STATUS=published" >> $GITHUB_ENV
+          else
+            echo "::notice::VSCE_PAT is not configured in repository secrets. Skipping VS Code Marketplace publication."
+            echo "VSCE_STATUS=skipped" >> $GITHUB_ENV
+          fi
 
       - name: Publish to Open VSX (Cursor)
-        if: env.OVSX_PAT != ''
         working-directory: extensions/vscode
-        run: npx ovsx publish *.vsix -p "$OVSX_PAT"
+        run: |
+          if [ -n "$OVSX_PAT" ]; then
+            echo "Publishing to Open VSX Registry..."
+            npx ovsx publish *.vsix -p "$OVSX_PAT"
+            echo "OVSX_STATUS=published" >> $GITHUB_ENV
+          else
+            echo "::notice::OVSX_PAT is not configured in repository secrets. Skipping Open VSX publication."
+            echo "OVSX_STATUS=skipped" >> $GITHUB_ENV
+          fi
+
+      - name: Report Marketplace Summary
+        run: |
+          echo "### 🧩 Extension Marketplace Publication Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Marketplace | Target IDEs | Status | Notes |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|---|---|" >> $GITHUB_STEP_SUMMARY
+          if [ "$VSCE_STATUS" = "published" ]; then
+            echo "| Visual Studio Marketplace | VS Code | ✅ Published | Available at marketplace.visualstudio.com |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Visual Studio Marketplace | VS Code | ⚠️ Skipped | Secret VSCE_PAT not configured |" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ "$OVSX_STATUS" = "published" ]; then
+            echo "| Open VSX Registry | Cursor, VSCodium | ✅ Published | Available at open-vsx.org |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Open VSX Registry | Cursor, VSCodium | ⚠️ Skipped | Secret OVSX_PAT not configured |" >> $GITHUB_STEP_SUMMARY
+          fi
