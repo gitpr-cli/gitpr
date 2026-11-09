@@ -32,6 +32,14 @@ When run in an interactive terminal, GitPR guides you through a 4-step workflow:
    - Executes the commit (`git commit -m "..."`) with the co-author signature trailer.
    - Displays real-time logs and the commit SHA upon completion, with a **"Close"** button to dismiss.
 
+> [!WARNING]
+> **Migration Note (Interactive Workflow vs. Silent Legacy):**  
+> Prior to v1.4.4, `gitpr -c` (`--commit`) was a purely non-interactive, silent console command: it generated the commit message and printed it to `stdout` without staging files or executing `git commit`. Starting in v1.4.4, running `gitpr -c` in an interactive terminal launches the 4-step TUI workflow and executes the commit upon confirmation.
+> 
+> In CI pipelines, headless environments, or automation scripts:
+> - **In Git hooks and commit file injection:** Always pass `--hook <file-path>` (`gitpr --commit --hook <file>`). This keeps execution strictly non-interactive and writes the message directly into the target file without prompts or TUI modals.
+> - **In automated scripts without a TTY:** GitPR detects non-interactive runs (`may_ask == False`) and falls back to displaying the suggestion on the console without opening modals and **without creating a commit**. If your automation relies on auto-committing pending changes during PR publication, use `gitpr --no-edit`.
+
 ---
 
 ## 2. Conventional Commits Format
@@ -57,6 +65,10 @@ gitpr --commit --hook <temporary-file-path>
 ```
 
 The `--hook` flag keeps the execution strictly non-interactive: no TUI or modals are opened, and the suggested message is injected directly into the Git editor.
+
+> [!TIP]
+> **CI & Headless Automation Best Practice:**  
+> If you invoke GitPR from automated CI/CD jobs, git hooks, or shell scripts where interactive prompts must never block, always use `gitpr --commit --hook <file>`. For standalone console inspection without committing, ensure the execution runs in a non-interactive pipe or pass `--no-unstaged-check` and `--quiet` as needed.
 
 ---
 

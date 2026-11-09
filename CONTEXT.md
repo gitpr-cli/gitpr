@@ -16,6 +16,13 @@ The act of asking PyPI which release is currently published. It can be muted by
 configuration, and a check that gets no answer never blocks.
 _Avoid_: version verification, ping
 
+**Update check switch**:
+The environment switch (`GITPR_SKIP_UPDATE_CHECK`) that mutes the update check
+during local checkout development and offline automation. Parsed strictly as a
+boolean, only explicit truthy values (`1`, `true`, `yes`, `on`, `y`) disable the
+check, while falsey values such as `0` or `false` leave it enabled.
+_Avoid_: skip flag, update bypass, disable check, bypass switch
+
 **Release cache**:
 The remembered answer of the update check together with the moment it was
 obtained.
@@ -38,9 +45,11 @@ generating a commit or pull request.
 _Avoid_: file picker, stage chooser, unstaged dialog
 
 **Commit flow**:
-The interactive sequence triggered by `gitpr -c` (or during PR publication) that
-coordinates unstaged file selection, AI commit message generation, review/editing
-in a modal, and commit execution with animated progress.
+The interactive sequence triggered by `gitpr -c` (or during PR publication) in an
+interactive run that coordinates unstaged file selection, AI commit message
+generation, review/editing in a modal, and commit execution with animated
+progress. Non-interactive runs fall back to displaying the suggested message or
+injecting it via hook mode without executing a commit.
 _Avoid_: commit wizard, auto-commit script, commit generator
 
 **PR target base**:

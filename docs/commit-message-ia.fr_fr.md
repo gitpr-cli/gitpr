@@ -32,6 +32,14 @@ Lorsqu'il est exécuté dans un terminal interactif, GitPR vous guide à travers
    - Exécute le commit (`git commit -m "..."`) en incluant la signature de co-auteur.
    - Affiche les journaux en temps réel et le hash du commit généré, avec le bouton **"Fermer"** pour terminer.
 
+> [!WARNING]
+> **Note de Migration (Flux Interactif vs. Silencieux Legacy) :**  
+> Avant la version v1.4.4, la commande `gitpr -c` (`--commit`) était strictement une commande de console non interactive et silencieuse : elle générait le message et l'affichait sur `stdout` sans ajouter de fichiers au stage ni exécuter `git commit`. À partir de la v1.4.4, l'exécution de `gitpr -c` dans un terminal interactif lance le flux TUI en 4 étapes et exécute le commit après confirmation.
+> 
+> Dans les pipelines CI, les environnements headless ou les scripts d'automatisation :
+> - **Dans les Git hooks et l'injection dans un fichier de commit :** Utilisez toujours `--hook <chemin-du-fichier>` (`gitpr --commit --hook <fichier>`). Cela garantit une exécution strictement non interactive et écrit directement le message dans le fichier cible sans invites ni modales TUI.
+> - **Dans les scripts automatisés sans TTY :** GitPR détecte les exécutions non interactives (`may_ask == False`) et bascule vers l'affichage de la suggestion sur la console sans ouvrir de modales et **sans créer de commit**. Si votre automatisation dépend du commit automatique des modifications en attente lors de la publication de PR, utilisez `gitpr --no-edit`.
+
 ---
 
 ## 2. Format Conventional Commits
@@ -57,6 +65,10 @@ gitpr --commit --hook <chemin-du-fichier-temporaire>
 ```
 
 Le flag `--hook` maintient l'exécution strictement non interactive : aucun écran TUI ni modale n'est ouvert, et le message suggéré est injecté directement dans l'éditeur de Git.
+
+> [!TIP]
+> **Bonnes pratiques pour la CI et l'automatisation headless :**  
+> Lorsque vous appelez GitPR depuis des jobs CI/CD automatisés, des git hooks ou des scripts shell où les invites interactives ne doivent jamais bloquer, utilisez toujours `gitpr --commit --hook <fichier>`. Pour une inspection ponctuelle sur la console sans commiter, assurez-vous que l'exécution s'exécute dans un pipe non interactif ou passez `--no-unstaged-check` et `--quiet` selon vos besoins.
 
 ---
 
