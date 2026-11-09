@@ -318,6 +318,9 @@ pull_request:
 
 GitPR creates the file on the first invocation inside a git repository and in `--install`, seeded with `PR_DEFAULT_BASE` when it is set and `main` otherwise. It is **never overwritten** once it exists, and GitPR never runs `git add` — versioning it is a deliberate team decision. If the user's `.gitignore` excludes the path, the seed says so.
 
+> [!IMPORTANT]
+> **Workflow Change / Runtime Creation Notice:** GitPR seeds `.gitpr/conf/gitpr.config.yml` on the first command execution inside any git repository. If your CI/CD pipelines require a pristine working tree, or if you work with monorepos, see [§9.4 Migration & Workflow Note: CI/CD, Monorepos and Clean Trees](#94-migration--workflow-note-cicd-monorepos-and-clean-trees) for details on the `GITPR_SKIP_PROJECT_CONFIG_SEED` opt-out switch.
+
 Edit it by hand or through `gitpr config` → **Project** ([Interactive Configuration Screen](config-tui.md)). Both write the same file: the branch is set, not merged.
 
 An unreadable file — broken YAML, a value that is not text — is reported as a warning and the resolution continues down the chain; the file is never overwritten by accident.
@@ -333,6 +336,61 @@ Whatever the source, the target branch must exist on `origin`. It is verified ri
 A pull request also cannot target the branch it is opened from, so the resolved target may not be the branch checked out. When it is — a project file pinned to `develop` published from `develop`, say — an interactive run opens a small screen asking for the replacement: the same branch picker as `gitpr config`, minus the current branch. The choice is written to the project file and the run continues from there.
 
 The picker is skipped when there is nobody to ask: `--quiet`, a non-interactive stdin (hooks, CI, editors) and a `--base` flag naming the current branch all keep the error instead. A `--base` value is a deliberate choice for that run, not stale configuration, so GitPR reports it rather than silently rewriting the project file.
+
+### 9.4 Migration & Workflow Note: CI/CD, Monorepos and Clean Trees
+
+The runtime seeding of `.gitpr/conf/gitpr.config.yml` introduces an important behavior change that teams operating automated pipelines or monorepos must account for.
+
+#### 1. CI/CD Clean Working Tree Checks
+
+Many CI/CD workflows enforce clean working trees before or after running tools (e.g. static analysis, testing, or linting):
+
+```bash
+# Common CI guard step:
+git status --porcelain
+git diff --exit-code
+```
+
+When GitPR runs in CI (for example, executing `gitpr --linter` in a pre-merge step or `gitpr --review` in a workflow), it will automatically create `.gitpr/conf/gitpr.config.yml` if the repository does not already track it. This creates an untracked file in `.gitpr/conf/`, causing strict clean-tree checks to fail.
+
+To prevent GitPR from creating the file in CI, set the `GITPR_SKIP_PROJECT_CONFIG_SEED` environment variable:
+
+```bash
+export GITPR_SKIP_PROJECT_CONFIG_SEED=true
+# or inline:
+GITPR_SKIP_PROJECT_CONFIG_SEED=true gitpr --linter
+```
+
+When this variable is set (to `true`, `1`, or any non-empty value), GitPR completely bypasses the project configuration seed step.
+
+##### GitHub Actions Example:
+
+```yaml
+- name: Run GitPR Static Linter
+  env:
+    GITPR_SKIP_PROJECT_CONFIG_SEED: "true"
+  run: |
+    gitpr --linter
+```
+
+##### GitLab CI Example:
+
+```yaml
+gitpr_lint:
+  stage: test
+  variables:
+    GITPR_SKIP_PROJECT_CONFIG_SEED: "true"
+  script:
+    - gitpr --linter
+```
+
+#### 2. Monorepo Dynamics
+
+In monorepos containing multiple packages, services, or sub-projects:
+
+- **Single Root Anchor:** GitPR locates the project configuration file relative to the Git repository root using `git rev-parse --show-toplevel`. Running GitPR from a sub-directory (`packages/frontend/` or `services/api/`) will still resolve to and seed `<repo-root>/.gitpr/conf/gitpr.config.yml`.
+- **Team Commitment:** The intended workflow is to commit `.gitpr/conf/gitpr.config.yml` once at the root of the monorepo on the default branch (e.g., setting `pull_request.base_branch: main` or `develop`). Once committed, GitPR detects that the file already exists and never touches it again.
+- **Opting Out in Monorepos:** If individual sub-projects or local tools run GitPR without wishing to modify the monorepo root, either commit the file once at the root or set `GITPR_SKIP_PROJECT_CONFIG_SEED=true` in the environment or developer dotfiles.
 
 ---
 
@@ -443,6 +501,7 @@ The first time you use `F3` or `--no-edit`, GitPR will:
 | `GITPR_SKIP_UNSTAGED_CHECK` | `false` | Set to `true` to skip the unstaged files check entirely at startup |
 | `GITPR_SHOW_LOGS` | `true` | Set to `false` to hide commit/push progress logs in the TUI |
 | `GITPR_AUTO_MERGE` | `false` | Set to `true` to auto-merge PRs after creation/update without prompting |
+| `GITPR_SKIP_PROJECT_CONFIG_SEED` | `false` | Set to `true` (or `1`) to disable automatic seeding of `.gitpr/conf/gitpr.config.yml` (recommended for CI pipelines with clean-tree checks) |
 | `OUTPUT_FILE_NAME` | `{branch}_{datetime}_PR_DESC.md` | Default filename pattern for PR descriptions |
 | `OUTPUT_FILE_NAME_REVIEW` | `{branch}_{datetime}_PR_REVIEW.txt` | Default filename pattern for code reviews |
 | `OUTPUT_FILE_NAME_FULLREVIEW` | `{branch}_{datetime}_PR_FULLREVIEW.txt` | Default filename pattern for full reviews |
