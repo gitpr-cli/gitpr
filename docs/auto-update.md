@@ -26,6 +26,15 @@ Versions are compared according to PEP 440: a remote pre-release is ignored whil
 
 There is no flag, fallback or compatibility mode that keeps an outdated **installed release** running — updating is the only way to continue. A checkout used for local development has a single escape switch, documented in [Installing GitPR from Source](tutorial/install-from-source.md).
 
+### Escape Switch for Local Development (`GITPR_SKIP_UPDATE_CHECK`)
+
+For local checkout development and offline test environments, GitPR supports muting the update check via `GITPR_SKIP_UPDATE_CHECK=1` in `~/.gitpr/.env` or the execution shell.
+
+> [!WARNING]
+> **Migration Note (Strict Boolean Parsing):**  
+> Since version 1.4.3, `GITPR_SKIP_UPDATE_CHECK` is evaluated by a strict boolean parser: only explicit truthy values (`1`, `true`, `yes`, `on`, `y`, case-insensitive) disable the update check.  
+> In earlier versions, any non-empty string in the environment was treated as truthy by variable presence checks. Legacy automations or scripts that configured `GITPR_SKIP_UPDATE_CHECK=false` or `=0` expecting to mute the check now leave the check **enabled**, causing the update gate to run and potentially block execution. To mute the check, explicitly set `GITPR_SKIP_UPDATE_CHECK=1` or `true`.
+
 ### Exemptions
 
 The block never fires for:

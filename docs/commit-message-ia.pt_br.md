@@ -32,6 +32,14 @@ Ao executar em um terminal interativo, o GitPR guia você por um fluxo de 4 etap
    - Executa o commit (`git commit -m "..."`) incluindo a assinatura de coautoria.
    - Apresenta os logs em tempo real e o hash do commit gerado, com o botão **"Fechar"** para encerrar.
 
+> [!WARNING]
+> **Nota de Migração (Fluxo Interativo vs. Legado Silencioso):**  
+> Antes da versão v1.4.4, o comando `gitpr -c` (`--commit`) era estritamente um comando de console não-interativo e silencioso: ele gerava a mensagem e a exibia no `stdout` sem adicionar arquivos ao stage nem executar `git commit`. A partir da v1.4.4, executar `gitpr -c` em um terminal interativo abre o fluxo TUI de 4 etapas e executa o commit após confirmação.
+> 
+> Em pipelines de CI, ambientes headless ou automações:
+> - **Em Git hooks e injeção em arquivo de commit:** Use sempre `--hook <caminho-do-arquivo>` (`gitpr --commit --hook <arquivo>`). Isso garante execução estritamente não-interativa e grava a mensagem diretamente no arquivo de destino sem prompts ou modais TUI.
+> - **Em scripts automatizados sem TTY:** O GitPR detecta execuções não-interativas (`may_ask == False`) e recorre à exibição da sugestão no console sem abrir modais e **sem criar o commit**. Se a automação depender de auto-commit de alterações pendentes durante publicação de PR, use `gitpr --no-edit`.
+
 ---
 
 ## 2. Formato Conventional Commits
@@ -57,6 +65,10 @@ gitpr --commit --hook <caminho-do-arquivo-temporario>
 ```
 
 A flag `--hook` mantém a execução estritamente não-interativa: nenhuma tela TUI ou modal é aberta, e a mensagem sugerida é injetada diretamente no editor do Git.
+
+> [!TIP]
+> **Boas Práticas para CI e Automação Headless:**  
+> Ao invocar o GitPR a partir de pipelines CI/CD automatizadas, git hooks ou scripts de shell onde prompts interativos nunca devem travar, use sempre `gitpr --commit --hook <arquivo>`. Para inspeção avulsa no console sem comitar, garanta a execução em um pipe não-interativo ou passe `--no-unstaged-check` e `--quiet` conforme a necessidade.
 
 ---
 

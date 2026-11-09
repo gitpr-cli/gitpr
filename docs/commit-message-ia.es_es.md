@@ -32,6 +32,14 @@ Al ejecutarse en un terminal interactivo, GitPR te guía a través de un flujo d
    - Ejecuta el commit (`git commit -m "..."`) incluyendo la firma de coautoría.
    - Muestra los registros en tiempo real y el hash del commit generado, con el botón **"Cerrar"** para finalizar.
 
+> [!WARNING]
+> **Nota de Migración (Flujo Interactivo vs. Legado Silencioso):**  
+> Antes de la versión v1.4.4, el comando `gitpr -c` (`--commit`) era estrictamente un comando de consola no interactivo y silencioso: generaba el mensaje y lo mostraba en `stdout` sin añadir archivos al stage ni ejecutar `git commit`. A partir de la versión v1.4.4, ejecutar `gitpr -c` en un terminal interactivo abre el flujo TUI de 4 pasos y ejecuta el commit tras confirmarlo.
+> 
+> En pipelines de CI, entornos headless o scripts de automatización:
+> - **En Git hooks e inyección en archivo de commit:** Usa siempre `--hook <ruta-del-archivo>` (`gitpr --commit --hook <archivo>`). Esto garantiza una ejecución estrictamente no interactiva y escribe el mensaje directamente en el archivo de destino sin ventanas modales TUI ni preguntas.
+> - **En scripts automatizados sin TTY:** GitPR detecta ejecuciones no interactivas (`may_ask == False`) y recurre a mostrar la sugerencia en la consola sin abrir modales y **sin crear el commit**. Si la automatización depende del auto-commit de cambios pendientes durante la publicación de PR, usa `gitpr --no-edit`.
+
 ---
 
 ## 2. Formato Conventional Commits
@@ -57,6 +65,10 @@ gitpr --commit --hook <ruta-del-archivo-temporal>
 ```
 
 La flag `--hook` mantiene la ejecución estrictamente no interactiva: no se abre ninguna pantalla TUI ni modal, y el mensaje sugerido se inyecta directamente en el editor de Git.
+
+> [!TIP]
+> **Buenas prácticas para CI y automatización headless:**  
+> Al invocar GitPR desde trabajos CI/CD automatizados, git hooks o scripts de shell donde los avisos interactivos nunca deben bloquear, usa siempre `gitpr --commit --hook <archivo>`. Para inspección puntual en la consola sin hacer commit, asegúrate de que la ejecución corra en un pipe no interactivo o pasa `--no-unstaged-check` y `--quiet` según sea necesario.
 
 ---
 

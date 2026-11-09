@@ -26,6 +26,15 @@ Las versiones se comparan según PEP 440: una pre-release remota se ignora mient
 
 No existe ninguna flag, fallback ni modo de compatibilidad que mantenga en ejecución una **release instalada** desactualizada — actualizar es la única forma de continuar. Un checkout usado para desarrollo local tiene una única variable de escape, documentada en [Instalar GitPR desde el código fuente](tutorial/install-from-source.es_es.md).
 
+### Interruptor de Escape para Desarrollo Local (`GITPR_SKIP_UPDATE_CHECK`)
+
+Para desarrollo en checkout local y entornos de prueba offline, GitPR permite silenciar la comprobación de actualización mediante `GITPR_SKIP_UPDATE_CHECK=1` en el archivo `~/.gitpr/.env` o en la consola.
+
+> [!WARNING]
+> **Nota de Migración (Analizador Booleano Estricto):**  
+> Desde la versión 1.4.3, `GITPR_SKIP_UPDATE_CHECK` se evalúa mediante un analizador booleano estricto: solo los valores explícitamente verdaderos (`1`, `true`, `yes`, `on`, `y`, sin distinción entre mayúsculas y minúsculas) desactivan la comprobación de actualización.  
+> En versiones anteriores, cualquier cadena no vacía en el entorno se consideraba verdadera por simple comprobación de presencia de la variable. Las automatizaciones o scripts heredados que configuraban `GITPR_SKIP_UPDATE_CHECK=false` o `=0` esperando silenciar la comprobación ahora la dejan **activa**, provocando que el portero de actualización se ejecute y potencialmente bloquee la ejecución. Para silenciar la comprobación, configure explícitamente `GITPR_SKIP_UPDATE_CHECK=1` o `true`.
+
 ### Excepciones
 
 El bloqueo nunca se activa para:

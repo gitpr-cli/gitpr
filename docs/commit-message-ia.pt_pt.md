@@ -32,6 +32,14 @@ Ao executar num terminal interativo, o GitPR guia o utilizador por um fluxo de 4
    - Executa o commit (`git commit -m "..."`) incluindo a assinatura de coautoria.
    - Apresenta os registos em tempo real e o hash do commit gerado, com o botão **"Fechar"** para terminar.
 
+> [!WARNING]
+> **Nota de Migração (Fluxo Interativo vs. Legado Silencioso):**  
+> Antes da versão v1.4.4, o comando `gitpr -c` (`--commit`) era estritamente um comando de consola não interativo e silencioso: gerava a mensagem e apresentava-a no `stdout` sem adicionar ficheiros ao stage nem executar `git commit`. A partir da v1.4.4, executar `gitpr -c` num terminal interativo abre o fluxo TUI de 4 etapas e executa o commit após confirmação.
+> 
+> Em pipelines de CI, ambientes headless ou automações:
+> - **Em Git hooks e injeção em ficheiro de commit:** Utilize sempre `--hook <caminho-do-ficheiro>` (`gitpr --commit --hook <ficheiro>`). Isto garante execução estritamente não interativa e grava a mensagem diretamente no ficheiro de destino sem pedidos ou modais TUI.
+> - **Em scripts automatizados sem TTY:** O GitPR deteta execuções não interativas (`may_ask == False`) e recorre à apresentação da sugestão na consola sem abrir modais e **sem criar o commit**. Se a automação depender de auto-commit de alterações pendentes durante a publicação de PR, utilize `gitpr --no-edit`.
+
 ---
 
 ## 2. Formato Conventional Commits
@@ -57,6 +65,10 @@ gitpr --commit --hook <caminho-do-ficheiro-temporario>
 ```
 
 A flag `--hook` mantém a execução estritamente não-interativa: nenhum ecrã TUI ou modal é aberto, e a mensagem sugerida é injetada diretamente no editor do Git.
+
+> [!TIP]
+> **Boas Práticas para CI e Automação Headless:**  
+> Ao invocar o GitPR a partir de pipelines CI/CD automatizadas, git hooks ou scripts de shell onde prompts interativos nunca devem bloquear, utilize sempre `gitpr --commit --hook <ficheiro>`. Para inspeção avulsa na consola sem efetuar commit, assegure a execução num pipe não interativo ou passe `--no-unstaged-check` e `--quiet` conforme necessário.
 
 ---
 

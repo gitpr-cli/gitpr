@@ -26,6 +26,15 @@ As versões são comparadas segundo o PEP 440: um pré-release remoto é ignorad
 
 Não existe flag, fallback ou modo de compatibilidade que mantenha uma **release instalada** desatualizada a funcionar — atualizar é a única forma de continuar. Um checkout usado para desenvolvimento local tem uma única chave de escape, documentada em [Instalar o GitPR a partir do código-fonte](tutorial/install-from-source.pt_pt.md).
 
+### Chave de Escape para Desenvolvimento Local (`GITPR_SKIP_UPDATE_CHECK`)
+
+Para desenvolvimento em checkout local e ambientes de teste offline, o GitPR permite silenciar a verificação de atualização via `GITPR_SKIP_UPDATE_CHECK=1` no ficheiro `~/.gitpr/.env` ou no terminal.
+
+> [!WARNING]
+> **Nota de Migração (Analisador Booleano Estrito):**  
+> Desde a versão 1.4.3, `GITPR_SKIP_UPDATE_CHECK` é interpretado por um analisador booleano estrito: apenas valores explicitamente verdadeiros (`1`, `true`, `yes`, `on`, `y`, insensíveis a maiúsculas/minúsculas) desativam a verificação de versão.  
+> Em versões anteriores, qualquer cadeia de caracteres não-vazia no ambiente era considerada verdadeira pela verificação de presença da variável. Automações ou scripts legados que definiam `GITPR_SKIP_UPDATE_CHECK=false` ou `=0` esperando silenciar a verificação deixam agora a verificação **ativa**, fazendo o portão de versão correr e potencialmente bloquear a execução. Para silenciar a verificação, defina explicitamente `GITPR_SKIP_UPDATE_CHECK=1` ou `true`.
+
 ### Exceções
 
 O bloqueio nunca é accionado para:

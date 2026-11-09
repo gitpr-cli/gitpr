@@ -162,6 +162,10 @@ Four details worth knowing before you rely on it:
   command, because `load_dotenv` does not override a variable that already
   exists in the environment.
 
+> [!WARNING]
+> **Migration Note (Strict Boolean Parsing):**  
+> Since GitPR 1.4.3, `GITPR_SKIP_UPDATE_CHECK` is evaluated strictly. In earlier versions, any non-empty string in the environment was treated as truthy by variable presence checks. Automations or scripts that previously set `GITPR_SKIP_UPDATE_CHECK=false` or `0` expecting to mute the check now leave it **enabled**, causing the update gate to execute. Always use `1` or `true` if you intend to mute the check.
+
 ---
 
 ## 6. What never blocks
