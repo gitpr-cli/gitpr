@@ -46,3 +46,24 @@ def test_context_md_defines_legacy_ci_action_contract():
     assert "**Legacy CI action contract**:" in content
     assert "action.yml" in content
     assert "CI Check" in content
+
+
+def test_action_yml_and_adr_0011_reference_migration_guide():
+    """ADR-0011 and action.yml must reference the unified check migration."""
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    adr_path = repo_root / "docs/adr/0011-action-unified-check-migration.md"
+    assert adr_path.is_file(), "Missing docs/adr/0011-action-unified-check-migration.md"
+
+    adr_content = adr_path.read_text(encoding="utf-8")
+    assert "action.yml" in adr_content
+    assert "gitpr check" in adr_content
+    assert "--linter" in adr_content
+    assert "--fullreview" in adr_content
+    assert "SARIF" in adr_content
+    assert "docs/check-ci.md" in adr_content
+
+    action_path = repo_root / "action.yml"
+    assert action_path.is_file(), "Missing action.yml"
+    action_content = action_path.read_text(encoding="utf-8")
+    assert "gitpr check" in action_content
+    assert "docs/check-ci" in action_content

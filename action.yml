@@ -1,3 +1,14 @@
+# ==============================================================================
+# GitPR Unified CI Check Composite Action
+#
+# NOTE (Migration Guide):
+# Since modern versions of GitPR, this action runs the unified 'gitpr check'
+# pipeline, generating SARIF 2.1.0, JSON, or JUnit XML artifacts instead of
+# legacy text files (*_PR_FULLREVIEW.txt).
+# For migration steps and before/after workflow comparisons, see:
+# https://gitpr.natanfiuza.dev.br/docs/check-ci#7-migration-guide
+# ==============================================================================
+
 name: 'GitPR Unified CI Check'
 description: 'Automates Code Review, Linter, Secrets, Risk, and Baseline in CI using AI (Gemini/DeepSeek) and produces SARIF/JSON/JUnit reports.'
 author: 'Natan Fiuza'

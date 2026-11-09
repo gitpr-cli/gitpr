@@ -5,6 +5,9 @@
 ### Summary
 This release improves configuration management and issue automation, including source-control settings scoped per repository and platform, along with automatic issue closing support across multiple forges. The commit experience is now safer in environments without an interactive terminal, while review suggestions now consider files both with and without authorship history. New capabilities let projects seed their configuration files, add token trend and latency charts, and configure smart exclusions through a dedicated interface with per-project overrides and centralized defaults. Help and documentation also improved, with language-aware links, clearer direction to the issue autoclose documentation, collapsed binary hunks, and broader smart exclusions. Extension publishing was hardened with marketplace metadata, and the version was bumped to 1.6.0.
 
+### ⚠️ Breaking Changes
+- **Composite Action (`action.yml`)**: Modern versions run the unified `gitpr check` pipeline producing SARIF 2.1.0/JSON/JUnit artifacts instead of legacy `*_PR_FULLREVIEW.txt` text files. See the migration guide in [`docs/check-ci.md`](docs/check-ci.md#7-migration-guide) and [ADR-0011](docs/adr/0011-action-unified-check-migration.md).
+
 ### ✨ Features
 - scope SCM forge settings per repository and forge ([ee012fa](https://github.com/gitpr-cli/gitpr/commit/ee012fa51c1b8b353f58ebb61dbb9a337e1538d6)) · 2026-11-07
 - add multiforge issue autoclose support ([fe35c96](https://github.com/gitpr-cli/gitpr/commit/fe35c969b150f2f1c3127ec7f38409bae7c5c115)) · 2026-11-07
@@ -22,6 +25,7 @@ This release improves configuration management and issue automation, including s
 - point close-issue help links to autoclose docs ([a33bbbb](https://github.com/gitpr-cli/gitpr/commit/a33bbbb1b6f1f2fa39fb4b8f15b59d006adc3339)) · 2026-11-04
 
 ### 📚 Docs
+- document action.yml contract break and migration in ADR-0011 · 2026-11-09
 - add project status report v0.0.22 ([4723bd5](https://github.com/gitpr-cli/gitpr/commit/4723bd59d86696554a4303e052171b88bdb7b96d)) · 2026-11-04
 
 ### 🔧 Chores
