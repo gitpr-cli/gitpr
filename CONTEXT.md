@@ -219,6 +219,13 @@ query string; localized links append `?lang=pt_br`, `?lang=pt_pt`, `?lang=es`,
 or `?lang=fr` matching the documentation site's language parameter contract.
 _Avoid_: raw GitHub doc URL, blob link, localized doc filename URL
 
+**Documentation site fallback**:
+The graceful degradation contract of the official documentation website (`https://gitpr.natanfiuza.dev.br/docs/`)
+where requests carrying localized query parameters (`?lang=es`, `?lang=fr`, `?lang=pt_br`, `?lang=pt_pt`)
+return HTTP 200 with canonical English content whenever a specific localized translation is pending or not
+yet published, preventing 404 HTTP errors for users following CLI and README links.
+_Avoid_: 404 fallback, missing doc error, broken link
+
 
 **Latency histogram**:
 The distribution of timed ledger executions (`duration_ms > 0`) across fixed
