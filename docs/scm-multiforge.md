@@ -91,6 +91,20 @@ Alternative to the wizard: edit `~/.gitpr/.env` directly. See the [GitHub PAT in
 
 Each forge reads only its own slot: a GitLab token never answers for a GitHub repository. GitHub without SCM configuration keeps using `GITHUB_TOKEN_ENCRYPTED` — zero migration.
 
+### 3.1 Migration Note: Automated Provisioning & Per-Forge Slots
+
+> [!WARNING]
+> **Migration Note for Infrastructure & Provisioning Scripts:**  
+> The legacy machine-wide configuration keys `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED`, and `GITPR_SCM_BASE_URL` have been permanently retired. The automatic runtime migration removes these lines from `~/.gitpr/.env` on the first execution.  
+> 
+> Automated machine provisioning scripts (Ansible, Docker, devcontainers, dotfiles, or VM bootstrapping) must now populate the dedicated per-forge slots directly:
+> - GitHub: `GITHUB_TOKEN_ENCRYPTED` (and optionally `GITHUB_BASE_URL`)
+> - GitLab: `GITLAB_TOKEN_ENCRYPTED` (and optionally `GITLAB_BASE_URL`)
+> - Bitbucket: `BITBUCKET_TOKEN_ENCRYPTED` (and `GITPR_SCM_USERNAME`)
+> - Azure DevOps: `AZURE_DEVOPS_TOKEN_ENCRYPTED` (and `GITPR_SCM_ORGANIZATION` + `GITPR_SCM_PROJECT`)
+> 
+> For self-managed hosts with custom domains, configure the project override in `.gitpr/conf/gitpr.config.yml` (`scm.provider: <forge>`) instead of attempting to define a global provider in `.env`. Ephemeral CI environments should continue using the single unencrypted `GITPR_SCM_TOKEN`. For architectural details, see [ADR-0020](adr/0020-per-repo-scm-provisioning-migration.md) and [ADR-016](plans/ADR-016-per-provider-scm-settings.md).
+
 ---
 
 ## 4. Using GitPR with the Configured Forge
