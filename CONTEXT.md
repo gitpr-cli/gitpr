@@ -83,14 +83,14 @@ It holds settings that belong to the team, starting with the PR target base, as
 opposed to the machine-wide `~/.gitpr/.env`.
 _Avoid_: config file, .env
 
-**Project configuration seed**:
+**Runtime project configuration seed**:
 The automated runtime creation of `.gitpr/conf/gitpr.config.yml` upon first execution
-inside a Git repository (or via `--install` / `seed`), pre-populating it with the
-PR target base branch (`PR_DEFAULT_BASE` or `main`). It is never overwritten once created.
-_Avoid_: auto-config, auto-init, wizard file
+inside a Git repository, pre-populating it exclusively with the PR target base
+branch (`PR_DEFAULT_BASE` or `main`). It is never overwritten once created.
+_Avoid_: auto-config, auto-init, wizard file, project seed
 
 **Project configuration seed opt-out**:
-The explicit suppression of the project configuration seed via setting the
+The explicit suppression of the runtime project configuration seed via setting the
 environment variable `GITPR_SKIP_PROJECT_CONFIG_SEED=true` (or `1`), essential
 for CI/CD pipelines enforcing pristine working tree checks and monorepos where
 the root file is omitted or managed externally.
@@ -256,10 +256,11 @@ _Avoid_: token graph, token curve, usage chart
 
 **Project configuration seed**:
 The explicit action of initializing repository-level configuration files
-(.gitpr/conf/gitpr.config.yml, .gitpr/conf/gitpr.smart-excludes.json,
-and .gitpr/skill/.gitpr.linter.yml) with baseline templates, idempotently
-without overwriting existing files unless explicitly forced. Distinct from
-machine-wide configuration seeding in ~/.gitpr/.env.
+(`.gitpr/conf/gitpr.config.yml`, `.gitpr/conf/gitpr.smart-excludes.json`,
+and `.gitpr/skill/.gitpr.linter.yml`) with baseline templates via `gitpr seed` or
+the setup wizard (`gitpr --install`), idempotently without overwriting existing files
+unless explicitly forced. Distinct from machine-wide configuration seeding in
+`~/.gitpr/.env` and runtime project configuration seeding.
 _Avoid_: init repo, template copy, conf generator
 
 **Blame summary**:
