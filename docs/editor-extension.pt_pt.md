@@ -55,7 +55,7 @@ Tanto o VS Code como o Cursor partilham o mesmo pacote VSIX (`natanfiuza.gitpr`)
   ```
 
 > [!TIP]
-> Para obter instruções sobre como configurar os publishers, obter os PATs e disparar o release automatizado nos marketplaces, consulte o [Guia de Publicação nos Marketplaces](marketplace-publishing-guide.md).
+> Para obter instruções sobre como configurar os publishers, obter os PATs e disparar o release automatizado nos marketplaces, consulte o [Guia de Publicação nos Marketplaces](marketplace-publishing-guide.pt_pt.md).
 
 ---
 
