@@ -223,6 +223,30 @@ class TestCollapseBinaryHunksUnit(unittest.TestCase):
         self.assertIn("Binary files a/unknown.blob and b/unknown.blob differ", filtered)
         self.assertNotIn("\ufffd", filtered)
 
+    @patch("src.core.call_ai_model")
+    @patch("src.core.get_api_key", return_value="dummy_key")
+    @patch("src.core.get_cached_response", return_value=None)
+    def test_generate_pr_content_defensively_collapses_binary_hunks(
+        self, mock_cache, mock_key, mock_call
+    ):
+        from src.core import generate_pr_content
+
+        mock_call.return_value = {"commit_message": "chore: test"}
+        raw_diff = (
+            "diff --git a/model.custom b/model.custom\n"
+            "index 0000000..1111111 100644\n"
+            "--- /dev/null\n"
+            "+++ b/model.custom\n"
+            "@@ -0,0 +1 @@\n"
+            "+" + ("\ufffd" * 16) + "\n"
+        )
+        res = generate_pr_content("commit", "commit", raw_diff, provider="gemini")
+        self.assertIsNotNone(res)
+        self.assertTrue(mock_call.called)
+        sent_prompt = mock_call.call_args[0][3]
+        self.assertIn("Binary files /dev/null and b/model.custom differ", sent_prompt)
+        self.assertNotIn("\ufffd", sent_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

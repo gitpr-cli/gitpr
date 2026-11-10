@@ -301,7 +301,7 @@ class TestSmartExcludesBinaryCoverage:
             # 6. Compiled binaries / libraries / bytecode
             "*.exe", "*.dll", "*.so", "*.dylib", "*.a", "*.lib", "*.o", "*.obj", "*.class", "*.pyd", "*.wasm",
             # 7. Databases / datasets / ML weights / raw binary
-            "*.sqlite", "*.sqlite3", "*.db", "*.parquet", "*.pkl", "*.npy", "*.npz", "*.pt", "*.onnx", "*.safetensors", "*.bin", "*.dat",
+            "*.sqlite", "*.sqlite3", "*.db", "*.parquet", "*.pkl", "*.npy", "*.npz", "*.pt", "*.onnx", "*.safetensors", "*.arrow", "*.gguf", "*.tflite", "*.keras", "*.bin", "*.dat",
             # 8. Certificates / keystores
             "*.p12", "*.pfx", "*.der", "*.cer", "*.jks", "*.keystore",
         }
