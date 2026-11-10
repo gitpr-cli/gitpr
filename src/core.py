@@ -170,6 +170,10 @@ _FALLBACK_SMART_EXCLUDES = [
     "*.pth",
     "*.onnx",
     "*.safetensors",
+    "*.arrow",
+    "*.gguf",
+    "*.tflite",
+    "*.keras",
     "*.bin",
     "*.dat",
     "*.p12",
@@ -1155,6 +1159,10 @@ def generate_pr_content(
             fg="yellow",
         )
         return None
+
+    # Defensive Binary hunk guard: collapse any U+FFFD-heavy binary hunks that
+    # slipped past path excludes or were passed as a raw diff by an external caller.
+    diff_text = collapse_binary_hunks(diff_text)
 
     t_start = time.perf_counter()
 
