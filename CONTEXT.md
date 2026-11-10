@@ -278,3 +278,21 @@ _Avoid_: token fee, model cost, pricing multiplier
 The currency code or symbol (`GITPR_METRICS_CURRENCY`, default `USD`) used to label and
 calculate financial cost estimates across telemetry surfaces.
 _Avoid_: cost unit, price currency, billing symbol
+
+**Forge token slot**:
+The environment variable slot dedicated to a specific Git hosting forge in `~/.gitpr/.env`
+(`GITHUB_TOKEN_ENCRYPTED`, `GITLAB_TOKEN_ENCRYPTED`, `BITBUCKET_TOKEN_ENCRYPTED`,
+`AZURE_DEVOPS_TOKEN_ENCRYPTED`) storing Fernet-encrypted credentials.
+_Avoid_: provider credential, scm secret, global scm token
+
+**Legacy SCM provisioning keys**:
+The retired machine-wide environment keys (`GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED`,
+`GITPR_SCM_BASE_URL`) that are automatically migrated and removed from `~/.gitpr/.env`
+on the first run of the tool.
+_Avoid_: old scm envs, global scm config, deprecated provider keys
+
+**Per-forge SCM provisioning**:
+The provisioning model where automated machine configuration scripts populate
+dedicated per-forge token and base URL slots in `~/.gitpr/.env` instead of legacy
+global keys, and set repository-level forge overrides in `.gitpr/conf/gitpr.config.yml`.
+_Avoid_: multi-forge setup, global scm provisioning, generic forge configuration
