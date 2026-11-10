@@ -238,6 +238,21 @@ The continuous daily time series of token consumption from ledger executions
 over the active window, with zero-consumption days explicitly preserved.
 _Avoid_: token history, usage sparkline, token graph
 
+**Dashboard chart pane**:
+The tab pane in the metrics dashboard dedicated to 2D ASCII visualization of
+latency distribution and token consumption time series.
+_Avoid_: graph tab, metrics chart screen, visual dashboard tab
+
+**Vertical latency histogram**:
+The two-dimensional column chart depicting execution frequency on the vertical
+axis against discrete latency buckets on the horizontal axis.
+_Avoid_: vertical time chart, bar latency plot, latency graph
+
+**Token time-series chart**:
+The two-dimensional grid chart rendering daily token consumption volume against
+continuous date intervals.
+_Avoid_: token graph, token curve, usage chart
+
 
 **Project configuration seed**:
 The explicit action of initializing repository-level configuration files
