@@ -17,7 +17,15 @@ different story about one ledger.
 """
 
 from textual.app import App, ComposeResult
-from textual.widgets import Header, Footer, Static, DataTable, ProgressBar
+from textual.widgets import (
+    Header,
+    Footer,
+    Static,
+    DataTable,
+    ProgressBar,
+    TabbedContent,
+    TabPane,
+)
 from textual.containers import Vertical, VerticalScroll
 from textual.binding import Binding
 from collections import Counter
@@ -25,6 +33,11 @@ import os
 
 from src import ledger
 from src.i18n import __
+from src.ascii_chart import (
+    render_vertical_histogram,
+    render_token_timeseries,
+    render_empty_card,
+)
 from src.metrics import (
     TITLE,
     WARN,
@@ -119,9 +132,26 @@ class MetricsApp(App):
         width: 100%;
         display: none;
     }
+    #main_tabs {
+        height: 1fr;
+    }
+    #charts_container {
+        height: 1fr;
+        margin: 0 2;
+        padding: 1 0;
+    }
+    #latency_chart_panel, #token_chart_panel {
+        background: $surface;
+        border: solid $accent;
+        padding: 1 2;
+        margin-bottom: 1;
+        height: auto;
+    }
     """
 
     BINDINGS = [
+        Binding("1", "switch_tab('tab_events')", __("Events"), priority=True),
+        Binding("2", "switch_tab('tab_charts')", __("Charts"), priority=True),
         Binding("f5", "refresh", __("Refresh")),
         Binding("escape", "quit", __("Exit")),
     ]
@@ -141,15 +171,20 @@ class MetricsApp(App):
         repo_text = self.repo_filter or __("All repositories")
         yield Static(f"\U0001f4c1 {__('Repository')}: {repo_text}", id="repo_label")
 
-        yield Static("", id="summary")
+        with TabbedContent(id="main_tabs"):
+            with TabPane(__("Events"), id="tab_events"):
+                yield Static("", id="summary")
+                with VerticalScroll(id="sections"):
+                    yield Static("", id="sections_notice")
+                    for section_id in SECTION_IDS:
+                        yield Static("", id=section_id)
+                with Vertical(id="table_container"):
+                    yield DataTable(id="events_table")
 
-        with VerticalScroll(id="sections"):
-            yield Static("", id="sections_notice")
-            for section_id in SECTION_IDS:
-                yield Static("", id=section_id)
-
-        with Vertical(id="table_container"):
-            yield DataTable(id="events_table")
+            with TabPane(__("Charts & Trends"), id="tab_charts"):
+                with VerticalScroll(id="charts_container"):
+                    yield Static("", id="latency_chart_panel")
+                    yield Static("", id="token_chart_panel")
 
         yield Static("", id="status_bar")
 
@@ -214,14 +249,14 @@ class MetricsApp(App):
         """Background worker: reads the ledger, or the files while it is absent."""
         if self.using_ledger:
             rows = self._load_from_ledger()
-            sections = self._load_sections()
+            sections, chart_data = self._load_sections()
         else:
             rows = self._load_from_files()
-            sections = self._load_sections(with_ledger=False)
+            sections, chart_data = self._load_sections(with_ledger=False)
 
-        self.call_from_thread(self._finish_scan, rows, sections)
+        self.call_from_thread(self._finish_scan, rows, sections, chart_data)
 
-    def _load_sections(self, with_ledger: bool = True) -> list:
+    def _load_sections(self, with_ledger: bool = True) -> tuple:
         """The metric sections, through the readers the terminal also uses.
 
         Same readers, same lines, only the markup differs: a metric drawn here
@@ -263,10 +298,16 @@ class MetricsApp(App):
         sections = list(zip(SECTION_IDS, readers, renderers))
         if not with_ledger:
             sections = sections[-1:]
-        return [
-            (f"#{section_id}", renderer(reader(**scope)))
-            for section_id, reader, renderer in sections
-        ]
+        rendered = []
+        chart_data = {}
+        for section_id, reader, renderer in sections:
+            data = reader(**scope)
+            rendered.append((f"#{section_id}", renderer(data)))
+            if section_id == "section_latency":
+                chart_data["latency"] = data
+            elif section_id == "section_token_trend":
+                chart_data["token_trend"] = data
+        return rendered, chart_data
 
     def _load_from_ledger(self) -> list:
         """Rows in the window, newest first, filtered by repository.
@@ -334,15 +375,19 @@ class MetricsApp(App):
         except Exception:
             pass  # Widget may not exist yet or may have been removed
 
-    def _finish_scan(self, rows: list, sections: list = None) -> None:
+    def _finish_scan(
+        self, rows: list, sections: list = None, chart_data: dict = None
+    ) -> None:
         """Called on the main thread when loading is complete."""
         self.query_one("#loading_overlay").display = False
         self.events = rows
         self._populate_table()
         self._update_summary()
-        self._render_sections(sections)
+        self._render_sections(sections, chart_data)
 
-    def _render_sections(self, sections: list = None) -> None:
+    def _render_sections(
+        self, sections: list = None, chart_data: dict = None
+    ) -> None:
         """Draws the shared section lines, in Textual markup.
 
         While the ledger is absent the four readers that query it have nothing
@@ -366,6 +411,50 @@ class MetricsApp(App):
             widget.display = bool(lines)
             if lines:
                 widget.update(self._markup(lines))
+
+        # Render 2D charts in Tab 2
+        try:
+            latency_widget = self.query_one("#latency_chart_panel", Static)
+            token_widget = self.query_one("#token_chart_panel", Static)
+            if chart_data is None and self.using_ledger:
+                scope = {
+                    "repo_filter": self.repo_filter or None,
+                    "since": self.since,
+                    "until": self.until,
+                }
+                chart_data = {
+                    "latency": latency_report(**scope),
+                    "token_trend": token_trend_report(**scope),
+                }
+
+            if self.using_ledger and chart_data:
+                latency_widget.update(
+                    render_vertical_histogram(chart_data.get("latency"))
+                )
+                token_widget.update(
+                    render_token_timeseries(chart_data.get("token_trend"))
+                )
+            else:
+                latency_widget.update(
+                    render_empty_card(
+                        __("Latency Distribution"),
+                        __(
+                            "Cost and latency metrics need the ledger — "
+                            "run `gitpr metrics migrate` to import the event files."
+                        ),
+                    )
+                )
+                token_widget.update(
+                    render_empty_card(
+                        __("Token Trend"),
+                        __(
+                            "Token trend metrics need the ledger — "
+                            "run `gitpr metrics migrate` to import the event files."
+                        ),
+                    )
+                )
+        except Exception:
+            pass
 
     @staticmethod
     def _markup(lines: list) -> str:
@@ -454,6 +543,14 @@ class MetricsApp(App):
     # ------------------------------------------------------------------
     # Actions
     # ------------------------------------------------------------------
+
+    def action_switch_tab(self, tab_id: str) -> None:
+        """Switch active tab in TabbedContent (1 for Events, 2 for Charts)."""
+        try:
+            tabs = self.query_one("#main_tabs", TabbedContent)
+            tabs.active = tab_id
+        except Exception:
+            pass
 
     def action_refresh(self) -> None:
         """Reload data from its source (F5)."""
