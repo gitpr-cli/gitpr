@@ -33,7 +33,8 @@ For local checkout development and offline test environments, GitPR supports mut
 > [!WARNING]
 > **Migration Note (Strict Boolean Parsing):**  
 > Since version 1.4.3, `GITPR_SKIP_UPDATE_CHECK` is evaluated by a strict boolean parser: only explicit truthy values (`1`, `true`, `yes`, `on`, `y`, case-insensitive) disable the update check.  
-> In earlier versions, any non-empty string in the environment was treated as truthy by variable presence checks. Legacy automations or scripts that configured `GITPR_SKIP_UPDATE_CHECK=false` or `=0` expecting to mute the check now leave the check **enabled**, causing the update gate to run and potentially block execution. To mute the check, explicitly set `GITPR_SKIP_UPDATE_CHECK=1` or `true`.
+> In earlier versions, any non-empty string in the environment was treated as truthy by variable presence checks. Legacy automations or scripts that configured `GITPR_SKIP_UPDATE_CHECK=false` or `=0` expecting to mute the check now leave the check **enabled**, causing the update gate to run and potentially block execution. To mute the check, explicitly set `GITPR_SKIP_UPDATE_CHECK=1` or `true`.  
+> See also [ADR-0021 (Strict Boolean Update Check Migration)](adr/0021-strict-boolean-update-check-migration.md).
 
 ### Exemptions
 

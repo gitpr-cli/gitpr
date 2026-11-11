@@ -33,7 +33,8 @@ Pour le développement sur un checkout local et les environnements de test hors 
 > [!WARNING]
 > **Note de Migration (Analyseur Booléen Strict) :**  
 > Depuis la version 1.4.3, `GITPR_SKIP_UPDATE_CHECK` est interprété par un analyseur booléen strict : seules les valeurs explicitement vraies (`1`, `true`, `yes`, `on`, `y`, insensibles à la casse) désactivent la vérification de mise à jour.  
-> Dans les versions antérieures, toute chaîne non vide dans l'environnement était traitée comme vraie par une simple vérification de présence de variable. Les automatisations ou scripts existants qui définissaient `GITPR_SKIP_UPDATE_CHECK=false` ou `=0` en espérant désactiver la vérification laissent désormais la vérification **activée**, ce qui fait fonctionner le portail de mise à jour et peut bloquer l'exécution. Pour désactiver la vérification, définissez explicitement `GITPR_SKIP_UPDATE_CHECK=1` ou `true`.
+> Dans les versions antérieures, toute chaîne non vide dans l'environnement était traitée comme vraie par une simple vérification de présence de variable. Les automatisations ou scripts existants qui définissaient `GITPR_SKIP_UPDATE_CHECK=false` ou `=0` en espérant désactiver la vérification laissent désormais la vérification **activée**, ce qui fait fonctionner le portail de mise à jour et peut bloquer l'exécution. Pour désactiver la vérification, définissez explicitement `GITPR_SKIP_UPDATE_CHECK=1` ou `true`.  
+> Voir aussi [ADR-0021 (Migration de l'Analyseur Booléen Strict)](adr/0021-strict-boolean-update-check-migration.md).
 
 ### Exceptions
 
