@@ -77,6 +77,7 @@ def test_marketplace_publishing_guide_token_preservation():
         "npm run package",
         "package.json",
         ".vsix",
+        "scripts/marketplace-setup-wizard.sh",
     ]
 
     for rel_path in MARKETPLACE_GUIDE_DOC_FILES:

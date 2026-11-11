@@ -18,6 +18,21 @@ The publication is fully automated via GitHub Actions (`.github/workflows/extens
 
 ---
 
+## Quick Setup with the Marketplace Setup Wizard (Recommended)
+
+To streamline token generation, local CLI validation, and repository secret provisioning, run the interactive setup wizard:
+
+```bash
+chmod +x scripts/marketplace-setup-wizard.sh
+./scripts/marketplace-setup-wizard.sh
+```
+
+The wizard guides you through Azure DevOps and Open VSX registration, opens configuration pages, validates tokens locally (`vsce verify-pat`, `ovsx verify-pat`), provisions `VSCE_PAT` and `OVSX_PAT` to your GitHub repository secrets via `gh secret set`, and optionally prompts to push the `ext-v0.1.0` release tag.
+
+For detailed manual instructions, follow the sections below.
+
+---
+
 ## 1. Visual Studio Marketplace Setup (Microsoft / VS Code)
 
 ### Step 1.1: Azure DevOps Organization
