@@ -164,7 +164,8 @@ Four details worth knowing before you rely on it:
 
 > [!WARNING]
 > **Migration Note (Strict Boolean Parsing):**  
-> Since GitPR 1.4.3, `GITPR_SKIP_UPDATE_CHECK` is evaluated strictly. In earlier versions, any non-empty string in the environment was treated as truthy by variable presence checks. Automations or scripts that previously set `GITPR_SKIP_UPDATE_CHECK=false` or `0` expecting to mute the check now leave it **enabled**, causing the update gate to execute. Always use `1` or `true` if you intend to mute the check.
+> Since GitPR 1.4.3, `GITPR_SKIP_UPDATE_CHECK` is evaluated strictly. In earlier versions, any non-empty string in the environment was treated as truthy by variable presence checks. Automations or scripts that previously set `GITPR_SKIP_UPDATE_CHECK=false` or `0` expecting to mute the check now leave it **enabled**, causing the update gate to execute. Always use `1` or `true` if you intend to mute the check.  
+> See also [ADR-0021 (Strict Boolean Update Check Migration)](../adr/0021-strict-boolean-update-check-migration.md).
 
 ---
 

@@ -167,7 +167,8 @@ Cuatro detalles que conviene conocer antes de depender de ella:
 
 > [!WARNING]
 > **Nota de Migración (Analizador Booleano Estricto):**  
-> Desde GitPR 1.4.3, `GITPR_SKIP_UPDATE_CHECK` se evalúa estrictamente. En versiones anteriores, cualquier cadena no vacía en el entorno se trataba como verdadera mediante comprobación de presencia de variable. Las automatizaciones o scripts que anteriormente configuraban `GITPR_SKIP_UPDATE_CHECK=false` o `0` esperando silenciar la comprobación ahora la dejan **activa**, provocando que el portero de actualización se ejecute. Utilice siempre `1` o `true` si su intención es silenciar la comprobación.
+> Desde GitPR 1.4.3, `GITPR_SKIP_UPDATE_CHECK` se evalúa estrictamente. En versiones anteriores, cualquier cadena no vacía en el entorno se trataba como verdadera mediante comprobación de presencia de variable. Las automatizaciones o scripts que anteriormente configuraban `GITPR_SKIP_UPDATE_CHECK=false` o `0` esperando silenciar la comprobación ahora la dejan **activa**, provocando que el portero de actualización se ejecute. Utilice siempre `1` o `true` si su intención es silenciar la comprobación.  
+> Consulte también [ADR-0021 (Migración del Analizador Booleano Estricto)](../adr/0021-strict-boolean-update-check-migration.md).
 
 ---
 

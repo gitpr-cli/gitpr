@@ -33,7 +33,8 @@ Para desarrollo en checkout local y entornos de prueba offline, GitPR permite si
 > [!WARNING]
 > **Nota de Migración (Analizador Booleano Estricto):**  
 > Desde la versión 1.4.3, `GITPR_SKIP_UPDATE_CHECK` se evalúa mediante un analizador booleano estricto: solo los valores explícitamente verdaderos (`1`, `true`, `yes`, `on`, `y`, sin distinción entre mayúsculas y minúsculas) desactivan la comprobación de actualización.  
-> En versiones anteriores, cualquier cadena no vacía en el entorno se consideraba verdadera por simple comprobación de presencia de la variable. Las automatizaciones o scripts heredados que configuraban `GITPR_SKIP_UPDATE_CHECK=false` o `=0` esperando silenciar la comprobación ahora la dejan **activa**, provocando que el portero de actualización se ejecute y potencialmente bloquee la ejecución. Para silenciar la comprobación, configure explícitamente `GITPR_SKIP_UPDATE_CHECK=1` o `true`.
+> En versiones anteriores, cualquier cadena no vacía en el entorno se consideraba verdadera por simple comprobación de presencia de la variable. Las automatizaciones o scripts heredados que configuraban `GITPR_SKIP_UPDATE_CHECK=false` o `=0` esperando silenciar la comprobación ahora la dejan **activa**, provocando que el portero de actualización se ejecute y potencialmente bloquee la ejecución. Para silenciar la comprobación, configure explícitamente `GITPR_SKIP_UPDATE_CHECK=1` o `true`.  
+> Consulte también [ADR-0021 (Migración del Analizador Booleano Estricto)](adr/0021-strict-boolean-update-check-migration.md).
 
 ### Excepciones
 
