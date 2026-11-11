@@ -479,7 +479,7 @@ This is useful for scripting, CI/CD pipelines, and one-off queries where you don
 
 📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/mcp-integration](https://gitpr.natanfiuza.dev.br/docs/mcp-integration) — available in 5 languages (EN, PT-BR, PT-PT, ES, FR).
 
-> 🧩 **Official VS Code & Cursor Extension** — Prefer native editor commands, SCM toolbar buttons, and inline `Problems` diagnostics? Download the ready-to-use `.vsix` from [GitHub Releases](https://github.com/natanfiuza/gitpr/releases) or see the [Editor Extension Guide](https://gitpr.natanfiuza.dev.br/docs/editor-extension) for 1-click install in VS Code and Cursor.
+> 🧩 **Official VS Code & Cursor Extension** — Prefer native editor commands, SCM toolbar buttons, and inline `Problems` diagnostics? Download the ready-to-use `.vsix` from [GitHub Releases](https://github.com/natanfiuza/gitpr/releases) or see the [Editor Extension Guide](https://gitpr.natanfiuza.dev.br/docs/editor-extension) for 1-click install in VS Code and Cursor. Maintainers can run `scripts/marketplace-setup-wizard.sh` to configure and publish to Visual Studio Marketplace and Open VSX Registry.
 
 > 💬 **MCP Prompts** — GitPR also exposes 7 pre-defined message templates (prompts) for common flows like "Review PR", "Generate Commit Message", and "Create Issue from Diff". See the [MCP Prompts guide](https://gitpr.natanfiuza.dev.br/docs/mcp-prompts) for the full list.
 

@@ -18,6 +18,21 @@ A publicação é totalmente automatizada via GitHub Actions (`.github/workflows
 
 ---
 
+## Configuração Rápida com o Assistente de Marketplaces (Recomendado)
+
+Para agilizar a geração de tokens, validação local via CLI e aprovisionamento de segredos no repositório, execute o assistente interativo:
+
+```bash
+chmod +x scripts/marketplace-setup-wizard.sh
+./scripts/marketplace-setup-wizard.sh
+```
+
+O assistente orienta o registo no Azure DevOps e no Open VSX, abre as páginas de configuração no navegador, valida os tokens localmente (`vsce verify-pat`, `ovsx verify-pat`), aprovisiona `VSCE_PAT` e `OVSX_PAT` nos secrets do repositório GitHub via `gh secret set`, e oferece opcionalmente a criação e envio da etiqueta (tag) de lançamento `ext-v0.1.0`.
+
+Para instruções manuais detalhadas, siga as secções abaixo.
+
+---
+
 ## 1. Configuração do Visual Studio Marketplace (Microsoft / VS Code)
 
 ### Passo 1.1: Organização no Azure DevOps

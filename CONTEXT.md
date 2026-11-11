@@ -212,6 +212,12 @@ for missing credentials, ensuring official VSIX GitHub Releases are never obstru
 absent third-party marketplace tokens.
 _Avoid_: fail-fast secret check, all-or-nothing check, blocking token validation
 
+**Marketplace setup wizard**:
+The interactive guided script (`scripts/marketplace-setup-wizard.sh`) that assists
+the maintainer in generating, locally validating (`vsce verify-pat`, `ovsx verify-pat`),
+and provisioning `VSCE_PAT` and `OVSX_PAT` credentials into GitHub repository secrets.
+_Avoid_: token script, publish wizard, marketplace helper
+
 **Documentation link**:
 A canonical public URL pointing to `https://gitpr.natanfiuza.dev.br/docs/<slug>`
 without a `.md` extension or locale suffix in the path. English links carry no

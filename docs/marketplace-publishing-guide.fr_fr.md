@@ -18,6 +18,21 @@ La publication est entièrement automatisée via GitHub Actions (`.github/workfl
 
 ---
 
+## Configuration Rapide avec l'Assistant Marketplace (Recommandé)
+
+Pour accélérer la génération des jetons, la validation locale via CLI et l'approvisionnement des secrets dans le dépôt, exécutez l'assistant interactif :
+
+```bash
+chmod +x scripts/marketplace-setup-wizard.sh
+./scripts/marketplace-setup-wizard.sh
+```
+
+L'assistant vous guide lors de l'enregistrement sur Azure DevOps et Open VSX, ouvre les pages de configuration dans le navigateur, valide les jetons localement (`vsce verify-pat`, `ovsx verify-pat`), approvisionne `VSCE_PAT` et `OVSX_PAT` dans les secrets GitHub via `gh secret set`, et propose éventuellement la création et l'envoi du tag de release `ext-v0.1.0`.
+
+Pour des instructions manuelles détaillées, suivez les sections ci-dessous.
+
+---
+
 ## 1. Configuration du Visual Studio Marketplace (Microsoft / VS Code)
 
 ### Étape 1.1 : Organisation Azure DevOps
