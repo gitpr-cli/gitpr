@@ -1099,20 +1099,136 @@ def estimate_token_count(text):
     return len(text) // 4
 
 
-def split_diff_into_chunks(diff_text, max_tokens=90000):
-    """Splits the diff based on the token limit while preserving file header integrity."""
+def _split_line_chunk(text, max_tokens):
+    """Splits arbitrary text by lines (and character slices if needed) keeping each part <= max_tokens."""
+    chunks = []
+    current = ""
+    for line in text.splitlines(keepends=True):
+        if estimate_token_count(line) > max_tokens:
+            if current:
+                chunks.append(current)
+                current = ""
+            step = max_tokens * 4
+            for start in range(0, len(line), step):
+                slice_str = line[start : start + step]
+                chunks.append(slice_str)
+        elif estimate_token_count(current + line) > max_tokens and current:
+            chunks.append(current)
+            current = line
+        else:
+            current += line
+    if current:
+        chunks.append(current)
+    return chunks or [text]
+
+
+def _split_giant_file(file_diff, max_part_tokens):
+    """Splits a single file diff that exceeds max_part_tokens into smaller parts."""
+    fn_match = re.search(r"^diff --git a/(\S+) b/\S+", file_diff, flags=re.MULTILINE)
+    file_name = fn_match.group(1) if fn_match else "file"
+
+    hunk_match = re.search(
+        r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@", file_diff, flags=re.MULTILINE
+    )
+    if hunk_match:
+        header = file_diff[: hunk_match.start()]
+        body = file_diff[hunk_match.start() :]
+    else:
+        header = ""
+        body = file_diff
+
+    hunk_parts = re.split(
+        r"(^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@.*)", body, flags=re.MULTILINE
+    )
+    raw_hunks = []
+    if len(hunk_parts) > 1:
+        if hunk_parts[0].strip():
+            raw_hunks.append(hunk_parts[0])
+        for j in range(1, len(hunk_parts), 2):
+            hunk_content = hunk_parts[j] + (
+                hunk_parts[j + 1] if j + 1 < len(hunk_parts) else ""
+            )
+            raw_hunks.append(hunk_content)
+    else:
+        raw_hunks = [body]
+
+    sub_chunks = []
+    current_sub = ""
+    header_clean = header.strip()
+
+    def _format_part(sub_content, idx):
+        prefix = (
+            f"{header_clean}\n# [{file_name} - part {idx}]\n\n"
+            if header_clean
+            else f"# [{file_name} - part {idx}]\n\n"
+        )
+        return prefix + sub_content
+
+    part_idx = 1
+    for hunk in raw_hunks:
+        if estimate_token_count(hunk) > max_part_tokens:
+            if current_sub:
+                sub_chunks.append(_format_part(current_sub, part_idx))
+                part_idx += 1
+                current_sub = ""
+            line_pieces = _split_line_chunk(hunk, max_part_tokens)
+            for piece in line_pieces:
+                sub_chunks.append(_format_part(piece, part_idx))
+                part_idx += 1
+        elif (
+            estimate_token_count(current_sub + hunk) > max_part_tokens
+            and current_sub
+        ):
+            sub_chunks.append(_format_part(current_sub, part_idx))
+            part_idx += 1
+            current_sub = hunk
+        else:
+            current_sub += hunk
+
+    if current_sub:
+        sub_chunks.append(_format_part(current_sub, part_idx))
+
+    return sub_chunks or [file_diff]
+
+
+def split_diff_into_chunks(diff_text, max_tokens=90000, max_part_tokens=None):
+    """Splits the diff based on the token limit while preserving file header integrity.
+
+    - max_tokens: Diff size threshold that triggers Map-Reduce (default 90,000).
+    - max_part_tokens: Maximum tokens per batch chunk (default 50,000).
+    """
+    if max_part_tokens is None:
+        max_part_tokens = 50000
+    if max_part_tokens > max_tokens:
+        max_part_tokens = max_tokens
+
     if estimate_token_count(diff_text) <= max_tokens:
         return [diff_text]
 
-    parts = re.split(r"(^diff --git a/)", diff_text, flags=re.MULTILINE)
+    parts = re.split(r"(^diff --git (?:[abciwos12]/|\S+ ))", diff_text, flags=re.MULTILINE)
+    if len(parts) <= 1:
+        return _split_line_chunk(diff_text, max_part_tokens)
+
+    file_diffs = []
+    if parts[0].strip():
+        file_diffs.append(parts[0])
+    for i in range(1, len(parts), 2):
+        file_d = parts[i] + (parts[i + 1] if i + 1 < len(parts) else "")
+        file_diffs.append(file_d)
+
     chunks = []
     current_chunk = ""
 
-    for i in range(1, len(parts), 2):
-        file_diff = parts[i] + parts[i + 1] if i + 1 < len(parts) else parts[i]
-
-        if (
-            estimate_token_count(current_chunk + file_diff) > max_tokens
+    for file_diff in file_diffs:
+        file_tokens = estimate_token_count(file_diff)
+        if file_tokens > max_part_tokens:
+            if current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = ""
+            file_sub_chunks = _split_giant_file(file_diff, max_part_tokens)
+            chunks.extend(file_sub_chunks)
+        elif (
+            estimate_token_count(current_chunk + file_diff) > max_part_tokens
             and current_chunk
         ):
             chunks.append(current_chunk)
@@ -1369,7 +1485,11 @@ def generate_pr_content(
         fg="cyan",
     )
 
-    chunks = split_diff_into_chunks(diff_text, max_tokens=90000)
+    from src.config import get_map_reduce_thresholds
+    max_tokens, max_part_tokens = get_map_reduce_thresholds(provider)
+    chunks = split_diff_into_chunks(
+        diff_text, max_tokens=max_tokens, max_part_tokens=max_part_tokens
+    )
     total_meta = {
         "prompt_tokens": 0,
         "completion_tokens": 0,
@@ -1478,6 +1598,70 @@ def generate_pr_content(
             fg="yellow",
         )
         diff_unificado = "\n\n".join(resumos_parciais)
+
+        if estimate_token_count(diff_unificado) > max_tokens:
+            click.secho(
+                __("🔄 Large summary set detected! Running intermediate reduction..."),
+                fg="cyan",
+                dim=True,
+            )
+            intermediate_summaries = []
+            curr_batch = []
+            curr_tokens = 0
+            for item in resumos_parciais:
+                item_tok = estimate_token_count(item)
+                if curr_tokens + item_tok > max_part_tokens and curr_batch:
+                    batch_str = "\n\n".join(curr_batch)
+                    inter_prompt = (
+                        __(
+                            "Generate ONLY a JSON object in the format {json_format} consolidating these technical summaries into a unified summary:\n",
+                            json_format='{"resumo": "..."}',
+                        )
+                        + batch_str
+                    )
+                    inter_res = call_ai_model(
+                        provider,
+                        api_key,
+                        api_model,
+                        inter_prompt,
+                        instrucao_sistema,
+                        quiet=True,
+                        action=f"{action_folder}_inter_reduce",
+                    )
+                    if inter_res and "resumo" in inter_res:
+                        intermediate_summaries.append(inter_res["resumo"])
+                        _aggregate_meta(inter_res.pop("_telemetry_meta", None))
+                    else:
+                        intermediate_summaries.append(batch_str)
+                    curr_batch = [item]
+                    curr_tokens = item_tok
+                else:
+                    curr_batch.append(item)
+                    curr_tokens += item_tok
+            if curr_batch:
+                batch_str = "\n\n".join(curr_batch)
+                inter_prompt = (
+                    __(
+                        "Generate ONLY a JSON object in the format {json_format} consolidating these technical summaries into a unified summary:\n",
+                        json_format='{"resumo": "..."}',
+                    )
+                    + batch_str
+                )
+                inter_res = call_ai_model(
+                    provider,
+                    api_key,
+                    api_model,
+                    inter_prompt,
+                    instrucao_sistema,
+                    quiet=True,
+                    action=f"{action_folder}_inter_reduce",
+                )
+                if inter_res and "resumo" in inter_res:
+                    intermediate_summaries.append(inter_res["resumo"])
+                    _aggregate_meta(inter_res.pop("_telemetry_meta", None))
+                else:
+                    intermediate_summaries.append(batch_str)
+            diff_unificado = "\n\n".join(intermediate_summaries)
 
         if action_type == "commit":
             prompt = (

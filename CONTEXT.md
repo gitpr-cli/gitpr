@@ -23,6 +23,23 @@ boolean, only explicit truthy values (`1`, `true`, `yes`, `on`, `y`) disable the
 check, while falsey values such as `0` or `false` leave it enabled.
 _Avoid_: skip flag, update bypass, disable check, bypass switch
 
+**Map-reduce trigger threshold**:
+The total token count of a diff above which GitPR switches from a single AI call
+to the multi-batch Map-Reduce pipeline (`GITPR_MAP_REDUCE_MAX_TOKENS`, default 90,000).
+_Avoid_: diff limit, chunk ceiling, map limit
+
+**Map-reduce part size**:
+The maximum token ceiling for an individual batch sent during the Map phase
+(`GITPR_MAP_REDUCE_MAX_PART_TOKENS`, default 50,000). Guarantees that no single
+batch reaches AI provider context limits.
+_Avoid_: chunk size, batch limit, piece tokens
+
+**Cascade chunking**:
+The partitioning algorithm that progressively splits huge diffs: first by file
+boundaries, then by hunks (`@@`), and finally by line slices when an individual
+file or hunk exceeds the map-reduce part size, repeating the file header on every slice.
+_Avoid_: hard split, arbitrary slicing, raw truncation
+
 **Release cache**:
 The remembered answer of the update check together with the moment it was
 obtained.

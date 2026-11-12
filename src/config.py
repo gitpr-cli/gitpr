@@ -249,6 +249,59 @@ def get_linter_timeout():
     return _positive_float(os.getenv("GITPR_LINTER_TIMEOUT"), _DEFAULT_LINTER_TIMEOUT)
 
 
+DEFAULT_MAP_REDUCE_MAX_TOKENS = 90000
+DEFAULT_MAP_REDUCE_MAX_PART_TOKENS = 50000
+
+
+def _positive_int_from_raw(raw, fallback):
+    """Parses raw as a positive int, falling back on non-positive or invalid input."""
+    if raw is None:
+        return fallback
+    try:
+        val = int(str(raw).strip())
+        return val if val > 0 else fallback
+    except (TypeError, ValueError):
+        return fallback
+
+
+def get_map_reduce_thresholds(provider=None):
+    """Returns (max_tokens, max_part_tokens) for Map-Reduce chunking.
+
+    Resolution hierarchy:
+    1. Provider-specific: GITPR_MAP_REDUCE_MAX_TOKENS_<PROVIDER>
+    2. Generic: GITPR_MAP_REDUCE_MAX_TOKENS
+    3. Baseline default: 90,000 tokens
+
+    For part tokens:
+    1. Provider-specific: GITPR_MAP_REDUCE_MAX_PART_TOKENS_<PROVIDER>
+    2. Generic: GITPR_MAP_REDUCE_MAX_PART_TOKENS
+    3. Baseline default: 50,000 tokens
+
+    Guarantees max_part_tokens <= max_tokens.
+    """
+    load_dotenv(ENV_FILE)
+    prov_key = (provider or "").strip().upper()
+
+    trigger_val = None
+    if prov_key:
+        trigger_val = os.getenv(f"GITPR_MAP_REDUCE_MAX_TOKENS_{prov_key}")
+    if trigger_val is None or not str(trigger_val).strip():
+        trigger_val = os.getenv("GITPR_MAP_REDUCE_MAX_TOKENS")
+    max_tokens = _positive_int_from_raw(trigger_val, DEFAULT_MAP_REDUCE_MAX_TOKENS)
+
+    part_val = None
+    if prov_key:
+        part_val = os.getenv(f"GITPR_MAP_REDUCE_MAX_PART_TOKENS_{prov_key}")
+    if part_val is None or not str(part_val).strip():
+        part_val = os.getenv("GITPR_MAP_REDUCE_MAX_PART_TOKENS")
+    max_part_tokens = _positive_int_from_raw(part_val, DEFAULT_MAP_REDUCE_MAX_PART_TOKENS)
+
+    if max_part_tokens > max_tokens:
+        max_part_tokens = max_tokens
+
+    return max_tokens, max_part_tokens
+
+
 # Metrics pricing.
 #
 # Two layers, the second overriding the first per model:
