@@ -79,7 +79,9 @@ Abaixo do cabeçalho vêm as secções, pela ordem em que são lidas:
 | Secção | O que responde |
 |--------|----------------|
 | 💰 Custo | Quantos tokens, e quanto custaram por modelo |
+| 📈 Tendência de Tokens | Consumo diário contínuo de tokens (até 14 dias, preservando dias com zero) com sparkline Unicode (`▁▂▃▄▅▆▇█`), pico, média diária e barras horizontais diárias |
 | 🧪 Qualidade | Taxa de aprovação do linter e com que frequência o caminho map-reduce disparou |
+| 📊 Latência | Distribuição de execuções cronometradas (`duration_ms > 0`) em 5 intervalos de latência (`< 1s`, `1–5s`, `5–15s`, `15–30s`, `≥ 30s`) com Média, Mediana (P50) e P95 |
 | 🧩 Módulos | Que módulos as execuções tocaram, e quantos tokens cada um levou |
 | 🤖 Fornecedores | Execuções e tokens por fornecedor — incluindo os que nunca chamam uma IA |
 | ⏱ Ciclo | Quanto demoraram os pull requests com merge deste repositório, lidos da forja |
@@ -253,7 +255,7 @@ Abre um **dashboard TUI** (Textual) restrito ao repositório da cópia de trabal
 
 - **Barra de resumo:** total de entradas, linhas reconstruídas, total de tokens, duração total, top comandos
 - **Tabela de eventos:** timestamp, comando, estado, provedor, tokens, duração
-- **Secções:** custo, qualidade, módulos, fornecedores e o ciclo — as mesmas linhas
+- **Secções:** custo, tendência de tokens, qualidade, histograma de latência, módulos, fornecedores e o ciclo — as mesmas linhas
   que `gitpr metrics` imprime, desenhadas com markup do Textual em vez das cores
   do click
 - **Barra de estado:** o intervalo de tempo que a tabela cobre e quantas entradas tem
