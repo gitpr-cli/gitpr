@@ -484,6 +484,28 @@ FIELDS = (
         show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
     ),
     ConfigField(
+        key="GITPR_MAP_REDUCE_MAX_TOKENS_GEMINI",
+        label=__("Gemini Map-Reduce Trigger Tokens"),
+        description=__(
+            "Maximum total diff tokens before triggering Map-Reduce processing for Gemini."
+        ),
+        category="ai",
+        kind=KIND_INT,
+        default="90000",
+        show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
+    ),
+    ConfigField(
+        key="GITPR_MAP_REDUCE_MAX_PART_TOKENS_GEMINI",
+        label=__("Gemini Map-Reduce Part Size"),
+        description=__(
+            "Maximum tokens per batch chunk during Gemini Map-Reduce processing."
+        ),
+        category="ai",
+        kind=KIND_INT,
+        default="50000",
+        show_if=(("DEFAULT_AI_PROVIDER", ("gemini",)),),
+    ),
+    ConfigField(
         key="DEEPSEEK_API_MODEL_PRIMARY",
         label=__("DeepSeek Advanced Model"),
         description=__("Model used for the complex tasks."),
@@ -560,6 +582,28 @@ FIELDS = (
         show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
     ),
     ConfigField(
+        key="GITPR_MAP_REDUCE_MAX_TOKENS_DEEPSEEK",
+        label=__("DeepSeek Map-Reduce Trigger Tokens"),
+        description=__(
+            "Maximum total diff tokens before triggering Map-Reduce processing for DeepSeek."
+        ),
+        category="ai",
+        kind=KIND_INT,
+        default="90000",
+        show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
+    ),
+    ConfigField(
+        key="GITPR_MAP_REDUCE_MAX_PART_TOKENS_DEEPSEEK",
+        label=__("DeepSeek Map-Reduce Part Size"),
+        description=__(
+            "Maximum tokens per batch chunk during DeepSeek Map-Reduce processing."
+        ),
+        category="ai",
+        kind=KIND_INT,
+        default="50000",
+        show_if=(("DEFAULT_AI_PROVIDER", ("deepseek",)),),
+    ),
+    ConfigField(
         key="OLLAMA_API_MODEL_PRIMARY",
         label=__("Ollama Advanced Model"),
         description=__("Local model used for the complex tasks."),
@@ -578,6 +622,28 @@ FIELDS = (
         default="llama3",
         show_if=(("DEFAULT_AI_PROVIDER", ("ollama",)),),
         seeded=True,
+    ),
+    ConfigField(
+        key="GITPR_MAP_REDUCE_MAX_TOKENS_OLLAMA",
+        label=__("Ollama Map-Reduce Trigger Tokens"),
+        description=__(
+            "Maximum total diff tokens before triggering Map-Reduce processing for Ollama."
+        ),
+        category="ai",
+        kind=KIND_INT,
+        default="90000",
+        show_if=(("DEFAULT_AI_PROVIDER", ("ollama",)),),
+    ),
+    ConfigField(
+        key="GITPR_MAP_REDUCE_MAX_PART_TOKENS_OLLAMA",
+        label=__("Ollama Map-Reduce Part Size"),
+        description=__(
+            "Maximum tokens per batch chunk during Ollama Map-Reduce processing."
+        ),
+        category="ai",
+        kind=KIND_INT,
+        default="50000",
+        show_if=(("DEFAULT_AI_PROVIDER", ("ollama",)),),
     ),
     # ----------------------------------------------------------- Pull request
     ConfigField(

@@ -342,9 +342,15 @@ def _chunk_count(diff_text):
     back, and the callers that need it (the MCP tool especially) have no
     terminal to read the "processing in N batches" line from.
     """
+    from src.config import get_map_reduce_thresholds
     from src.core import split_diff_into_chunks
 
     try:
-        return len(split_diff_into_chunks(diff_text, max_tokens=90000))
+        max_tokens, max_part_tokens = get_map_reduce_thresholds()
+        return len(
+            split_diff_into_chunks(
+                diff_text, max_tokens=max_tokens, max_part_tokens=max_part_tokens
+            )
+        )
     except Exception:
         return 1

@@ -170,7 +170,12 @@ def generate_issue_content(context_text, context_type="diff"):
             total_meta["duration_ms"] += new_meta.get("duration_ms", 0)
 
     if context_type == "diff":
-        chunks = split_diff_into_chunks(context_text, max_tokens=90000)
+        from src.config import get_map_reduce_thresholds
+
+        max_tokens, max_part_tokens = get_map_reduce_thresholds(provider)
+        chunks = split_diff_into_chunks(
+            context_text, max_tokens=max_tokens, max_part_tokens=max_part_tokens
+        )
     else:
         chunks = [context_text]
 
