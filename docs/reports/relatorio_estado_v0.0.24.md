@@ -961,7 +961,6 @@ O **GitPR** é uma ferramenta de CLI (Command Line Interface) avançada para aut
 * **Nota de migração do SCM por repositório:** as chaves `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED` e `GITPR_SCM_BASE_URL` foram retiradas do `.env` pela migração automática. Quem automatizou a escrita dessas chaves precisa saber que agora há um slot por forge. **Item herdado, ainda aberto.**
 * **Traduzir `docs/metricas-telemetria.*`:** PT-BR, PT-PT, ES e FR seguem atrás do original em inglês. **Item herdado, ainda aberto.**
 * **Acompanhar o host self-hosted não reconhecido:** a resolução por remote só reconhece domínios que contêm o nome da forge; um GitLab/GitHub em domínio customizado cai para GitHub até alguém rodar `gitpr --init` e gravar o override. **Item herdado, ainda aberto.**
-* **Provedor Anthropic Claude:** Suporte direto à API do Claude (`claude-sonnet-5`). **Item herdado, ainda aberto.**
 * **Mais provedores:** OpenAI direto, provedores locais adicionais. **Item herdado, ainda aberto.**
 * **Nota de migração do `GITPR_SKIP_UPDATE_CHECK`:** ✅ **concluído** — `docs/auto-update.*` e o tutorial de instalação descrevem o parser estrito.
 * **Nota de migração do `-c` interativo:** ✅ **concluído** — `docs/commit-message-ia.*` nos 5 idiomas explica o fluxo sem TTY e o `--hook`.
