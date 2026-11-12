@@ -1,5 +1,6 @@
 from click.testing import CliRunner
 from src.main import cli
+import sys
 import asyncio
 from unittest.mock import MagicMock, patch
 import pytest
@@ -177,6 +178,10 @@ class TestCommitAppUnit:
 class TestCommitAppHeadlessFlow:
     """Headless integration tests using Textual run_test()."""
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="Textual app.run_test pilot.pause blocks on Windows headless without a real TTY",
+    )
     def test_headless_full_flow(self):
         async def _test():
             unstaged = [("src/foo.py", "M")]
@@ -223,6 +228,7 @@ class TestCliCommitRouting:
         runner = CliRunner()
         with patch("src.main._may_ask_the_user", return_value=True), \
              patch("src.main.setup_environment"), \
+             patch("src.main.check_internet_connection", return_value=True), \
              patch("src.ui.commit_app.CommitApp.run") as mock_run:
             result = runner.invoke(cli, ["-c"])
             assert mock_run.called
