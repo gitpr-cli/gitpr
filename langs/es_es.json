@@ -1493,6 +1493,7 @@
   "⚠️ The AI's grouping could not be read; every unit stays ungrouped.": "⚠️ No se pudo leer el agrupamiento de la IA; todas las unidades quedan sin agrupar.",
   "⚠️ The forge of this remote is not recognised. Choose it below.": "⚠️ El forge de este remote no se reconoce. Elígelo abajo.",
   "⚠️ The issue was created, but it could not be recorded locally for automatic closure: {error}": "⚠️ La issue se creó, pero no se pudo registrar localmente para el cierre automático: {error}",
+  "⚠️ The origin remote does not name a forge, so GitPR is using GitHub. Run 'gitpr --init' to choose the right forge for this repository.": "⚠️ El remote origin no nombra ningún forge, por lo que GitPR está usando GitHub. Ejecute 'gitpr --init' para elegir el forge correcto para este repositorio.",
   "⚠️ The provided token is also invalid: {error_msg}": "⚠️ El token proporcionado también es inválido: {error_msg}",
   "⚠️ The {provider} token was validated but could not be saved in {path}: {error}": "⚠️ El token de {provider} se validó pero no se pudo guardar en {path}: {error}",
   "⚠️ There is nothing to apply: the plan has no groups.": "⚠️ No hay nada que aplicar: el plan no tiene grupos.",

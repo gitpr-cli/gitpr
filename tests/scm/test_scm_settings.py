@@ -150,6 +150,48 @@ class TestPrecedence(ScmSettingsTestCase):
         self.assertEqual(settings.provider, "github")
         self.assertEqual(settings.source, scm_settings.SOURCE_DEFAULT)
 
+    def test_an_unrecognised_remote_warns_until_the_forge_is_configured(self):
+        self.remote = "https://git.example.invalid/owner/repo.git"
+        warnings = []
+
+        settings = scm_settings.resolve_scm_settings(warnings=warnings)
+
+        self.assertEqual(settings.source, scm_settings.SOURCE_DEFAULT)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("does not name a forge", warnings[0])
+        self.assertIn("gitpr --init", warnings[0])
+
+    def test_a_missing_remote_does_not_warn_about_the_fallback(self):
+        # No remote has its own error at the call sites; the fallback warning
+        # is for an existing remote that names no forge.
+        self.remote = None
+        warnings = []
+
+        scm_settings.resolve_scm_settings(warnings=warnings)
+
+        self.assertEqual(warnings, [])
+
+    def test_a_github_remote_is_recognised_without_a_warning(self):
+        self.remote = "https://github.com/owner/repo.git"
+        warnings = []
+
+        settings = scm_settings.resolve_scm_settings(warnings=warnings)
+
+        self.assertEqual(settings.provider, "github")
+        self.assertEqual(settings.source, scm_settings.SOURCE_REMOTE)
+        self.assertEqual(warnings, [])
+
+    def test_a_project_override_silences_the_fallback_warning(self):
+        self.project_provider = "gitlab"
+        self.remote = "https://git.example.invalid/owner/repo.git"
+        warnings = []
+
+        settings = scm_settings.resolve_scm_settings(warnings=warnings)
+
+        self.assertEqual(settings.provider, "gitlab")
+        self.assertEqual(settings.source, scm_settings.SOURCE_PROJECT)
+        self.assertEqual(warnings, [])
+
     def test_an_unknown_project_value_is_ignored_with_a_warning(self):
         self.project_provider = "svn"
         self.remote = "https://gitlab.com/group/proj.git"

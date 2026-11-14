@@ -96,7 +96,10 @@ próprio slot de credencial. Dez decisões vinculantes:
   vez (interativo) ou falham com "run `gitpr --init`" (CI, hooks, MCP).
 - Um remote que não contenha o nome do forge na URL (ex.: GitLab self-hosted
   em `git.empresa.com`) resolve para `github` depois da migração. A migração
-  emite um aviso, e o `gitpr --init` grava o override no projeto.
+  emite um aviso, e o `gitpr --init` grava o override no projeto. Enquanto
+  nenhum override existir, o fallback avisa **a cada execução** nos fluxos de
+  console (PR, issues, `release --publish`) — visualidade escolhida em troca de
+  repetição; `github.com` é um forge reconhecido e nunca dispara o aviso.
 - HOME somente leitura degrada com aviso; o token vale para o processo atual.
 
 **Fora de escopo:** um token por **repositório** do mesmo forge (keyring),
