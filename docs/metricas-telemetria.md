@@ -251,12 +251,16 @@ gitpr metrics dashboard
 
 Opens a **TUI dashboard** (Textual) scoped to the working copy's repository:
 
+- **Two tabs:** `Events` (key `1`) holds the summary bar, the sections and the events table;
+  `Charts & Trends` (key `2`) holds the charts
 - **Summary bar:** total entries, reconstructed rows, total tokens, total duration, top commands
 - **Events table:** timestamp, command, status, provider, tokens, duration
+- **Charts tab:** a vertical latency histogram — the five buckets drawn as bars, each with its
+  count and share — and a daily token time series for up to 14 days, with total, peak and daily average
 - **Sections:** cost, token trend, quality, latency histogram, modules, providers and the cycle — the same lines
   `gitpr metrics` prints, drawn with Textual markup instead of click colours
 - **Status bar:** the time range the table covers and how many entries it holds
-- **Keyboard shortcuts:** `F5` to refresh, `Esc` to exit
+- **Keyboard shortcuts:** `1` / `2` to switch tabs, `F5` to refresh, `Esc` to exit
 
 While the ledger does not exist yet, the dashboard reads the cache and event
 files instead, shows a progress bar while it scans, and says so on the status

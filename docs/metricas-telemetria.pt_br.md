@@ -252,13 +252,18 @@ gitpr metrics dashboard
 
 Abre um **dashboard TUI** (Textual) restrito ao repositório da cópia de trabalho:
 
+- **Duas abas:** `Eventos` (tecla `1`) guarda a barra de resumo, as seções e a tabela de eventos;
+  `Gráficos e Tendências` (tecla `2`) guarda os gráficos
 - **Barra de resumo:** total de entradas, linhas reconstruídas, total de tokens, duração total, top comandos
 - **Tabela de eventos:** timestamp, comando, status, provedor, tokens, duração
+- **Aba de gráficos:** um histograma vertical de latência — as cinco faixas desenhadas como barras,
+  cada uma com sua contagem e sua participação — e uma série temporal diária de tokens para até
+  14 dias, com total, pico e média diária
 - **Seções:** custo, tendência de tokens, qualidade, histograma de latência, módulos, provedores e o ciclo — as mesmas linhas
   que `gitpr metrics` imprime, desenhadas com markup do Textual em vez das cores
   do click
 - **Barra de status:** o intervalo de tempo que a tabela cobre e quantas entradas ela tem
-- **Atalhos:** `F5` para atualizar, `Esc` para sair
+- **Atalhos:** `1` / `2` para trocar de aba, `F5` para atualizar, `Esc` para sair
 
 Enquanto o livro-razão ainda não existir, o dashboard lê o cache e os arquivos de
 evento, mostra uma barra de progresso durante a varredura e avisa isso na barra
