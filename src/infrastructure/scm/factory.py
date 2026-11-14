@@ -70,10 +70,13 @@ def resolve_scm_provider(config: dict) -> ScmProvider:
 def detect_provider_from_remote(remote_url: str, default: Optional[str] = "github") -> Optional[str]:
     """Guess the forge from a git remote URL (case-insensitive substrings).
 
-    Order matters only for URLs that match several hosts — none exist today.
-    Anything unknown returns *default*: "github" reproduces the historical
-    behavior, while ``default=None`` lets a caller tell "recognised as GitHub"
-    apart from "not recognised at all" (self-hosted hosts need the latter).
+    The named forges are checked first, so a URL that mentions one of them wins
+    even when it also contains "github". Anything unknown returns *default*:
+    "github" reproduces the historical behavior, while ``default=None`` lets a
+    caller tell "recognised as GitHub" apart from "not recognised at all"
+    (self-hosted hosts need the latter). For that reason the GitHub check runs
+    before the ``None`` return: ``github.com`` is a recognised forge, not an
+    unknown host.
     """
     url = (remote_url or "").lower()
     if "gitlab" in url:
@@ -82,10 +85,10 @@ def detect_provider_from_remote(remote_url: str, default: Optional[str] = "githu
         return "bitbucket"
     if "dev.azure.com" in url or "visualstudio.com" in url:
         return "azure_devops"
-    if default is None:
-        return None
     if "github" in url:
         return "github"
+    if default is None:
+        return None
     return default
 
 

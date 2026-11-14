@@ -319,3 +319,15 @@ The provisioning model where automated machine configuration scripts populate
 dedicated per-forge token and base URL slots in `~/.gitpr/.env` instead of legacy
 global keys, and set repository-level forge overrides in `.gitpr/conf/gitpr.config.yml`.
 _Avoid_: multi-forge setup, global scm provisioning, generic forge configuration
+
+**Provider detection**:
+The inference of a repository's forge from the name of a forge appearing anywhere in the
+`origin` remote URL. A host whose URL names no forge is _not recognised_ — it is not read
+as GitHub by detection itself, so the wizard asks instead of assuming.
+_Avoid_: remote guessing, URL parsing, auto-detect
+
+**Default fallback**:
+The resolution of a repository to GitHub when the project has no override and the remote
+names no recognised forge. It is announced by a warning on every run until an override is
+recorded, because the repository will otherwise be driven as GitHub.
+_Avoid_: silent default, fallback provider, legacy mode

@@ -127,6 +127,16 @@ class TestDetectProviderFromRemote(unittest.TestCase):
             "gitlab",
         )
 
+    def test_github_is_recognised_even_when_the_caller_asks_to_distinguish(self):
+        # The GitHub check must run before the `default=None` return: a
+        # `github.com` remote is a recognised forge, not an unknown host.
+        for url in (
+            "https://github.com/owner/repo.git",
+            "git@github.com:owner/repo.git",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(detect_provider_from_remote(url, default=None), "github")
+
     def test_the_default_is_passed_through(self):
         self.assertEqual(
             detect_provider_from_remote("https://example.com/junk.git", default="bitbucket"),

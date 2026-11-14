@@ -28,7 +28,7 @@ from pathlib import Path
 from unittest import mock
 
 from src import core
-from src.infrastructure.scm import ScmProviderError
+from src.infrastructure.scm import ScmProviderError, detect_provider_from_remote
 from src.project_config import ProjectConfig
 from src.scm_settings import BASE_URL_KEYS, EXTRA_ENV_KEYS
 
@@ -178,6 +178,20 @@ class TestScmInitWizard(unittest.TestCase):
     def test_the_legacy_configuration_is_migrated_first(self):
         self._run_github_success()
         self.migrate.assert_called_once_with()
+
+    def test_a_real_github_remote_is_recognised_and_needs_no_override(self):
+        """Detection itself, not a mock, must recognise `github.com` — otherwise
+        the wizard would ask for a forge and commit a spurious `scm.provider`
+        override on every GitHub repository."""
+        self.detect.side_effect = detect_provider_from_remote
+
+        self._run_github_success()
+
+        self.confirm.assert_called_once_with(
+            "Detected forge: GitHub. Configure GitPR to use it for pull requests and issues?",
+            default=True,
+        )
+        self.write_project.assert_not_called()
 
     # -- github success path ---------------------------------------------
 

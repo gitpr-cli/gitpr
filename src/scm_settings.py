@@ -366,6 +366,13 @@ def _ignored_provider_warning(choice) -> str:
     )
 
 
+def _default_provider_warning() -> str:
+    return __(
+        "⚠️ The origin remote does not name a forge, so GitPR is using GitHub. "
+        "Run 'gitpr --init' to choose the right forge for this repository."
+    )
+
+
 def resolve_scm_settings(
     start_dir=None, remote_url=None, config_path=None, warnings=None
 ) -> ScmSettings:
@@ -390,6 +397,11 @@ def resolve_scm_settings(
     choice = resolve_provider_choice(project_file.provider, remote)
     if choice.ignored:
         collected.append(_ignored_provider_warning(choice))
+    if remote and choice.source == SOURCE_DEFAULT:
+        # An existing remote that names no forge: the repository is about to be
+        # driven as GitHub unless someone records an override. The absent-remote
+        # case has its own error at the call sites.
+        collected.append(_default_provider_warning())
 
     token = _token_for(choice.key)
     if os.getenv(RAW_TOKEN_KEY):
