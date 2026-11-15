@@ -58,13 +58,12 @@ La detección es una heurística por nombre: `detect_provider_from_remote()` ace
 | --- | --- | --- |
 | Los comandos de PR y de issue imprimen el aviso de abajo y apuntan a GitHub. | La URL del `origin` no nombra un forge reconocido, así que la resolución cae en el valor por defecto `github` (`source = default`). | Ejecute `gitpr --init` en el repositorio — pregunta por el forge — o registre `scm.provider` en `.gitpr/conf/gitpr.config.yml`. |
 | `gitpr --init` imprime "El forge de este remote no se reconoce" y pide la clave del forge. | La detección informa "no reconocido" (`None`) para un host que no nombra forge; el wizard nunca asume GitHub. | Elija el forge: el wizard registra el override porque la elección difiere del valor detectado. |
-| Un host GitHub Enterprise (`github.acme.com`) se detecta como GitHub, pero la publicación falla con `Could not parse GitHub repository from remote URL: …`. | El provider de GitHub solo analiza el literal `github.com`; `GITHUB_BASE_URL` cambia la base de la API, no el análisis del remote. | No soportado hoy — mantenga el remote del repositorio en `github.com`. |
+| Un host GitHub Enterprise (`github.acme.com`) se detecta como GitHub, o usa un dominio arbitrario (`git.acme.com`). | Los hosts que contienen `github` se detectan como GitHub y se analizan normalmente; `GITHUB_BASE_URL` apunta a la API Enterprise. Los dominios arbitrarios sin `github` siguen cayendo en el valor por defecto. | Defina `GITHUB_BASE_URL` (p. ej. `https://github.acme.com/api/v3`) en `~/.gitpr/.env`; para dominios arbitrarios sin `github`, registre también `scm.provider: github` en `.gitpr/conf/gitpr.config.yml`. |
 
 El forge pertenece al repositorio: el override se versiona en `.gitpr/conf/gitpr.config.yml` y viaja con todo el equipo, mientras que la base URL de la API y el token cifrado quedan en el `~/.gitpr/.env` de cada máquina. Quien clone un repositorio self-managed ejecuta `gitpr --init` una vez (o aprovisiona esos slots) antes de publicar.
 
 ```text
 ⚠️ El remote origin no nombra ningún forge, por lo que GitPR está usando GitHub. Ejecute 'gitpr --init' para elegir el forge correcto para este repositorio.
-Could not parse GitHub repository from remote URL: https://github.acme.com/owner/repo.git
 ```
 
 ---
@@ -101,7 +100,7 @@ Alternativa al wizard: edita `~/.gitpr/.env` directamente. Consulta la [guía de
 | `GITLAB_TOKEN_ENCRYPTED` | `gitlab` | Token cifrado con Fernet del forge GitLab |
 | `BITBUCKET_TOKEN_ENCRYPTED` | `bitbucket` | Token cifrado con Fernet del forge Bitbucket |
 | `AZURE_DEVOPS_TOKEN_ENCRYPTED` | `azure_devops` | Token cifrado con Fernet del forge Azure DevOps |
-| `GITHUB_BASE_URL` / `GITLAB_BASE_URL` / `BITBUCKET_BASE_URL` / `AZURE_DEVOPS_BASE_URL` | forge propio | Base de API personalizada (self-managed/enterprise); vacía = SaaS público. En GitHub solo redirige las llamadas de la API: un remote en un dominio personalizado sigue sin analizarse — véase la [§1.2](#12-cuando-el-remote-origin-no-nombra-ningún-forge). |
+| `GITHUB_BASE_URL` / `GITLAB_BASE_URL` / `BITBUCKET_BASE_URL` / `AZURE_DEVOPS_BASE_URL` | forge propio | Base de API personalizada (self-managed/enterprise); vacía = SaaS público. En GitHub Enterprise (p. ej. `https://github.acme.com/api/v3`), los remotes en dominios personalizados se analizan automáticamente — véase la [§1.2](#12-cuando-el-remote-origin-no-nombra-ningún-forge). |
 | `GITPR_SCM_ORGANIZATION` | `azure_devops` | Nombre de la organización — obligatorio (el error fail-fast indica la variable ausente) |
 | `GITPR_SCM_PROJECT` | `azure_devops` | Nombre del proyecto — obligatorio |
 | `GITPR_SCM_USERNAME` | `bitbucket` | Usuario de Bitbucket — obligatorio (App Password usa HTTP Basic) |

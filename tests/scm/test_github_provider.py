@@ -1043,5 +1043,58 @@ class TestEmailToHandle(unittest.TestCase):
         self.assertIsNone(_provider().email_to_handle("ghost@example.com"))
 
 
+class TestParseRepoRef(unittest.TestCase):
+    """Tests for GitHubProvider.parse_repo_ref across github.com and Enterprise hosts."""
+
+    def test_github_com_https_and_ssh_variants(self):
+        provider = _provider()
+        cases = [
+            "https://github.com/natanfiuza/gitpr.git",
+            "https://github.com/natanfiuza/gitpr",
+            "https://github.com/natanfiuza/gitpr/",
+            "git@github.com:natanfiuza/gitpr.git",
+            "ssh://git@github.com/natanfiuza/gitpr.git",
+        ]
+        for url in cases:
+            with self.subTest(url=url):
+                repo = provider.parse_repo_ref(url)
+                self.assertEqual(repo.raw, url)
+                self.assertEqual(repo.workspace, "natanfiuza")
+                self.assertEqual(repo.name, "gitpr")
+                self.assertEqual(repo.provider, "github")
+
+    def test_github_enterprise_custom_domain_variants(self):
+        provider = _provider()
+        cases = [
+            "https://github.acme.com/platform/web-app.git",
+            "http://github.acme.com/platform/web-app",
+            "git@github.acme.com:platform/web-app.git",
+            "ssh://git@github.acme.com:2222/platform/web-app.git",
+            "https://user:token@github.acme.com/platform/web-app.git",
+        ]
+        for url in cases:
+            with self.subTest(url=url):
+                repo = provider.parse_repo_ref(url)
+                self.assertEqual(repo.raw, url)
+                self.assertEqual(repo.workspace, "platform")
+                self.assertEqual(repo.name, "web-app")
+                self.assertEqual(repo.provider, "github")
+
+    def test_rejects_malformed_or_invalid_depth_urls(self):
+        provider = _provider()
+        invalid = [
+            "",
+            "   ",
+            "not-a-url",
+            "https://github.acme.com/only-owner",
+            "https://github.acme.com/group/subgroup/repo.git",
+            "https://github.com/owner/.git",
+        ]
+        for url in invalid:
+            with self.subTest(url=url):
+                with self.assertRaises(ValueError):
+                    provider.parse_repo_ref(url)
+
+
 if __name__ == "__main__":
     unittest.main()
