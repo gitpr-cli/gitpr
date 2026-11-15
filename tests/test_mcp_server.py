@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import click
@@ -1058,6 +1059,13 @@ class TestInstallConfigDescriptions(unittest.TestCase):
         compact_names = {t["name"] for t in compact}
         catalog_names = {t["name"] for t in catalog["tools"]}
         self.assertEqual(compact_names, catalog_names)
+
+    def test_install_for_unknown_editor_lists_all_valid_options(self):
+        """Unknown editor error includes claude-code and all CLI --install choices."""
+        ok, msg = mcp_server._install_for_editor("unknown-editor", Path("."))
+        self.assertFalse(ok)
+        for option in ("vscode", "cursor", "claude-code", "claude", "zed", "auto"):
+            self.assertIn(option, msg)
 
 
 class TestWriteRealStdout(unittest.TestCase):

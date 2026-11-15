@@ -42,7 +42,7 @@
 | **P4** | Observabilidade de Map-Reduce (ADR-0022, `src/config.py`, `src/metrics.py`) | `docs/metricas-telemetria.*` (5 idiomas) ainda não documenta o impacto de custo e latência do Map-Reduce (`GITPR_MAP_REDUCE_MAX_TOKENS`, `GITPR_MAP_REDUCE_MAX_PART_TOKENS`, variantes por provedor e colunas `map_reduce`/`chunks_count`/`duration_ms`), e `docs/adr/0022-map-reduce-per-provider-token-partitioning.md` não referencia métricas | Etapa 4 (Concluída) |
 | **P5** | Migração SCM em ambientes efêmeros (ADR-0020, `src/scm_settings.py`) | `docs/scm-multiforge.*` (5 idiomas) e `docs/adr/0020-per-repo-scm-provisioning-migration.md` ainda não explicitam o comportamento de `migrate_legacy_scm_config()` quando `.env` é read-only ou gera `OSError`/`PermissionError` (`persisted=False` com fallback ativo em `os.environ`) | Etapa 5 (Concluída) |
 | **P6** | Self-hosted / GitHub Enterprise (`docs/scm-multiforge.md` §1.2 e §3, `src/infrastructure/scm/github_provider.py`) | `GitHubProvider.parse_repo_ref` aceita apenas o literal `github.com`, fazendo remotes GitHub Enterprise (`github.acme.com`) falharem mesmo com `GITHUB_BASE_URL`; `docs/scm-multiforge.*` ainda documenta essa limitação | Etapa 6 (Concluída) |
-| **P7** | Consistência CLI/i18n em `src/mcp_server.py` | `_install_for_editor` (`src/mcp_server.py`, linha ~2901) omite `claude-code` da mensagem de erro de editor inválido, apesar de `--install` (`choices` na linha ~3058) aceitar `claude-code` | Etapa 7 |
+| **P7** | Consistência CLI/i18n em `src/mcp_server.py` | `_install_for_editor` (`src/mcp_server.py`, linha ~2901) omite `claude-code` da mensagem de erro de editor inválido, apesar de `--install` (`choices` na linha ~3058) aceitar `claude-code` | Etapa 7 (Concluída) |
 | **P8** | Cobertura `pt_pt` da extensão VS Code (`v0.0.25`, `extensions/vscode/`) | Existem bundles `en`, `pt-br`, `es` e `fr`, porém faltam `extensions/vscode/package.nls.pt-pt.json` e `extensions/vscode/l10n/bundle.l10n.pt-pt.json` | Etapa 8 |
 | **M1** | Operação de release Git / PyPI (`v0.0.25`) | Recriação/ajuste da tag `v1.7.0` (se necessário) e publicação de release/tag da `1.8.0` no repositório remoto | Seção 3 |
 | **M2** | Publicação da extensão nos marketplaces (`v0.0.25`) | Execução de `scripts/marketplace-setup-wizard.sh` / workflow `ext-v*` com PATs reais do VS Marketplace e Open VSX | Seção 3 |
@@ -189,7 +189,7 @@
 
 ---
 
-### Etapa 7 — Incluir `claude-code` na mensagem de erro de `--install` em `src/mcp_server.py` e sincronizar i18n
+### Etapa 7 — Incluir `claude-code` na mensagem de erro de `--install` em `src/mcp_server.py` e sincronizar i18n ✅ Concluída
 
 - **Objetivo:** Alinhar a mensagem de erro de editor desconhecido em `_install_for_editor` (`src/mcp_server.py`, linha ~2901) com as opções reais aceitas pelo argumento `--install` (`choices` na linha ~3058), mantendo 100% de paridade nos 6 dicionários JSON de idioma.
 - **Origem no Relatório:** Auditoria de consistência CLI/MCP e contrato `TestNoMissingKeys` (`tests/test_i18n.py`).

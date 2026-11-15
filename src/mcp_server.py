@@ -2898,7 +2898,7 @@ def _install_for_editor(editor: str, project_root: Path) -> tuple[bool, str]:
         return (
             False,
             __(
-                "Unknown editor: '{editor}'. Valid options: vscode, cursor, claude, zed, auto",
+                "Unknown editor: '{editor}'. Valid options: vscode, cursor, claude-code, claude, zed, auto",
                 editor=editor,
             ),
         )
