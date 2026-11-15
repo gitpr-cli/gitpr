@@ -9,8 +9,8 @@ from packaging.version import InvalidVersion, Version
 # Canonical Single Source of Truth (SSOT) for GitPR package version (PyPI distribution)
 # ── Must stay ABOVE the i18n import: i18n.py lazily imports __lang_version__
 #     from here, and pyproject.toml reads __version__ via setuptools attr:.
-__version__ = "1.8.0"  # GitPR current package version (Canonical SSOT)
-__lang_version__ = "v0.0.43"  # Language dictionary version control (asset, independent of package version)
+__version__ = "1.9.0"  # GitPR current package version (Canonical SSOT)
+__lang_version__ = "v0.0.44"  # Language dictionary version control (asset, independent of package version)
 __scripts_version__ = (
     "v0.0.4"  # Git Hook scripts version control (independent from __lang_version__)
 )
