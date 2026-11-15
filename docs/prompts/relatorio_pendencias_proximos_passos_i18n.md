@@ -40,8 +40,8 @@
 | **P2** | Auditoria ADR-0019 / dívida de paridade (`tests/unit/test_docs_translation_parity.py`) | Traduções `.pt_br`, `.pt_pt`, `.es_es`, `.fr_fr` de `docs/config-tui.*` e `docs/pull-request-publication.*` estão defasadas em relação ao inglês (ausência de `GITPR_SKIP_PROJECT_CONFIG_SEED`, §4, §9.1 `[!IMPORTANT]`, §9.4, §14 e §15 Ex. 9–10); `"pull-request-publication"` segue em `_PARITY_EXCEPTIONS`; `tests/unit/test_project_config_seed_docs.py` não existe | Etapa 2 (Concluída) |
 | **P3** | Auditoria i18n/docs (`v0.0.25`, `tests/unit/test_docs_translation_parity.py`, `README*.md`) | `docs/github-issue-prompt-com-gh.md` permanece na raiz de `docs/` listado em `_EN_ONLY`, impedindo 100% (51/51) de cobertura multilíngue na raiz de `docs/`; os 5 `README*.md` não linkam 6 guias (`gitpr-issue-option`, `guia-regex-gitpr`, `marketplace-publishing-guide`, `otimizacao-de-tokens`, `untracked-files`, `version-markers`), e os 4 READMEs traduzidos também omitem `mentor-mode` | Etapa 3 (Concluída) |
 | **P4** | Observabilidade de Map-Reduce (ADR-0022, `src/config.py`, `src/metrics.py`) | `docs/metricas-telemetria.*` (5 idiomas) ainda não documenta o impacto de custo e latência do Map-Reduce (`GITPR_MAP_REDUCE_MAX_TOKENS`, `GITPR_MAP_REDUCE_MAX_PART_TOKENS`, variantes por provedor e colunas `map_reduce`/`chunks_count`/`duration_ms`), e `docs/adr/0022-map-reduce-per-provider-token-partitioning.md` não referencia métricas | Etapa 4 (Concluída) |
-| **P5** | Migração SCM em ambientes efêmeros (ADR-0020, `src/scm_settings.py`) | `docs/scm-multiforge.*` (5 idiomas) e `docs/adr/0020-per-repo-scm-provisioning-migration.md` ainda não explicitam o comportamento de `migrate_legacy_scm_config()` quando `.env` é read-only ou gera `OSError`/`PermissionError` (`persisted=False` com fallback ativo em `os.environ`) | Etapa 5 |
-| **P6** | Self-hosted / GitHub Enterprise (`docs/scm-multiforge.md` §1.2 e §3, `src/infrastructure/scm/github_provider.py`) | `GitHubProvider.parse_repo_ref` aceita apenas o literal `github.com`, fazendo remotes GitHub Enterprise (`github.acme.com`) falharem mesmo com `GITHUB_BASE_URL`; `docs/scm-multiforge.*` ainda documenta essa limitação | Etapa 6 |
+| **P5** | Migração SCM em ambientes efêmeros (ADR-0020, `src/scm_settings.py`) | `docs/scm-multiforge.*` (5 idiomas) e `docs/adr/0020-per-repo-scm-provisioning-migration.md` ainda não explicitam o comportamento de `migrate_legacy_scm_config()` quando `.env` é read-only ou gera `OSError`/`PermissionError` (`persisted=False` com fallback ativo em `os.environ`) | Etapa 5 (Concluída) |
+| **P6** | Self-hosted / GitHub Enterprise (`docs/scm-multiforge.md` §1.2 e §3, `src/infrastructure/scm/github_provider.py`) | `GitHubProvider.parse_repo_ref` aceita apenas o literal `github.com`, fazendo remotes GitHub Enterprise (`github.acme.com`) falharem mesmo com `GITHUB_BASE_URL`; `docs/scm-multiforge.*` ainda documenta essa limitação | Etapa 6 (Concluída) |
 | **P7** | Consistência CLI/i18n em `src/mcp_server.py` | `_install_for_editor` (`src/mcp_server.py`, linha ~2901) omite `claude-code` da mensagem de erro de editor inválido, apesar de `--install` (`choices` na linha ~3058) aceitar `claude-code` | Etapa 7 |
 | **P8** | Cobertura `pt_pt` da extensão VS Code (`v0.0.25`, `extensions/vscode/`) | Existem bundles `en`, `pt-br`, `es` e `fr`, porém faltam `extensions/vscode/package.nls.pt-pt.json` e `extensions/vscode/l10n/bundle.l10n.pt-pt.json` | Etapa 8 |
 | **M1** | Operação de release Git / PyPI (`v0.0.25`) | Recriação/ajuste da tag `v1.7.0` (se necessário) e publicação de release/tag da `1.8.0` no repositório remoto | Seção 3 |
@@ -146,7 +146,7 @@
 
 ---
 
-### Etapa 5 — Documentar migração SCM em `.env` somente leitura / efêmero (`persisted=False`) em `docs/scm-multiforge.*` e ADR-0020
+### Etapa 5 — Documentar migração SCM em `.env` somente leitura / efêmero (`persisted=False`) em `docs/scm-multiforge.*` e ADR-0020 ✅ Concluída
 
 - **Objetivo:** Documentar claramente o comportamento resiliente de `migrate_legacy_scm_config()` em runners CI/CD ou sistemas com `~/.gitpr/.env` protegido/somente leitura, onde a persistência falha (`persisted=False`) sem abortar a execução.
 - **Origem no Relatório:** Auditoria pós-ADR-0020 (`src/scm_settings.py` e `docs/scm-multiforge.*`).
@@ -167,7 +167,7 @@
 
 ---
 
-### Etapa 6 — Suportar domínios customizados do GitHub Enterprise em `GitHubProvider.parse_repo_ref`
+### Etapa 6 — Suportar domínios customizados do GitHub Enterprise em `GitHubProvider.parse_repo_ref` ✅ Concluída
 
 - **Objetivo:** Permitir que repositórios hospedados em GitHub Enterprise Server (ex.: `github.acme.com`) tenham `owner/repo` extraídos corretamente em URLs HTTPS e SSH, alinhando `GitHubProvider.parse_repo_ref` ao padrão host-agnóstico de `GitLabProvider.parse_repo_ref`, e atualizar a documentação que hoje aponta essa limitação.
 - **Origem no Relatório:** `docs/survey/20261114_self_hosted_forge_detection_surveyfacts.md` (item 3) e `docs/scm-multiforge.md` (§1.2 linha 61 e §3 linha 104).

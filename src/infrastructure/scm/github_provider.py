@@ -68,6 +68,15 @@ def _handle_from_noreply(email):
     return local if _USERNAME_RE.match(local) else None
 
 
+# Matches any git remote URL: optional user@, host (with optional port), then
+# ":" (ssh) or "/" (https) and the repository path. The host is permissive so
+# GitHub Enterprise Server domains (e.g. github.acme.com) parse alongside
+# github.com, while parse_repo_ref still enforces a two-segment owner/repo.
+_REMOTE_RE = re.compile(
+    r"^(?:[^/@]+@)?(?P<host>[^/:]+(?::\d+)?)[:/](?P<path>.+?)(?:\.git)?/?$"
+)
+
+
 class GitHubProvider(ScmProvider):
     """GitHub (github.com SaaS and GitHub Enterprise base_urls)."""
 
@@ -79,17 +88,25 @@ class GitHubProvider(ScmProvider):
     # -- parsing ---------------------------------------------------------
 
     def parse_repo_ref(self, remote_url: str) -> RepoRef:
-        match = re.search(
-            r"github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?/?$", remote_url.strip()
-        )
+        url = (remote_url or "").strip()
+        if "://" in url:
+            url = url.split("://", 1)[1]
+        match = _REMOTE_RE.match(url)
         if not match:
             raise ValueError(
                 f"Could not parse GitHub repository from remote URL: {remote_url}"
             )
+        path = match.group("path").strip("/")
+        parts = [p for p in path.split("/") if p]
+        if len(parts) != 2:
+            raise ValueError(
+                f"Could not parse GitHub repository from remote URL: {remote_url}"
+            )
+        workspace, name = parts
         return RepoRef(
             raw=remote_url,
-            workspace=match.group(1),
-            name=match.group(2).rstrip("/"),
+            workspace=workspace,
+            name=name,
             provider=self.name,
         )
 
