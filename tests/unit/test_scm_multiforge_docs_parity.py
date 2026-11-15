@@ -41,6 +41,14 @@ def test_scm_multiforge_files_exist_and_have_migration_note_section():
             f"{rel_path} section 3.1 must link to ADR-0020"
         )
 
+        # Must document read-only / ephemeral .env fallback behavior
+        assert "persisted=False" in content, (
+            f"{rel_path} section 3.1 must document persisted=False fallback"
+        )
+        assert "os.environ" in content, (
+            f"{rel_path} section 3.1 must document in-memory os.environ fallback"
+        )
+
 
 def test_adr_0020_exists_and_references_docs_and_adr_016():
     """ADR-0020 must exist and cross-reference scm-multiforge.md and ADR-016."""
@@ -58,6 +66,9 @@ def test_adr_0020_exists_and_references_docs_and_adr_016():
     assert "AZURE_DEVOPS_TOKEN_ENCRYPTED" in content
     assert "ADR-016" in content
     assert "scm-multiforge.md" in content
+    assert "persisted=False" in content
+    assert "os.environ" in content
+    assert "PermissionError" in content
 
 
 def test_context_md_defines_scm_provisioning_terms():
