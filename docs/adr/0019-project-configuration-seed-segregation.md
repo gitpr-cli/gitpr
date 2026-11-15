@@ -43,3 +43,7 @@ Decidimos adotar a seguinte arquitetura de **Segregação de Responsabilidades**
 - **Segurança da Árvore de Trabalho:** Comandos de rotina do GitPR não injetam arquivos secundários de configuração sem consentimento ou intenção manifesta.
 - **Onboarding Padronizado:** Novos repositórios e membros de equipe contam com `gitpr seed` ou `gitpr --install` para provisionar o ambiente local em segundos.
 - **Terminologia Alinhada:** Atualização no modelo de domínio (`CONTEXT.md`) separando o `Runtime project configuration seed` do `Project configuration seed` explícito.
+
+## Referências Cruzadas
+- [Pull Request Publication — §9.4 Migration & Workflow Note (`GITPR_SKIP_PROJECT_CONFIG_SEED`)](../pull-request-publication.md#94-migration--workflow-note-cicd-monorepos-and-clean-trees)
+- [Interactive Configuration Screen — §1.8 The Project Section](../config-tui.md#18-the-project-section)

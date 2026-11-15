@@ -95,27 +95,50 @@ gitpr --no-edit
 
 ## 4. Gerenciamento de Arquivos Unstaged
 
-Antes do início da geração do PR, o GitPR verifica se há arquivos unstaged e oferece uma interface modal para gerenciá-los. Essa verificação ocorre bem no início da execução do `gitpr`, antes de qualquer chamada de IA.
+O GitPR verifica arquivos unstaged antes de **todos** os comandos de IA — não apenas na geração de PR. A verificação ocorre antes de qualquer chamada de IA.
+
+| Comando | Comportamento quando há arquivos unstaged |
+|---------|------------------------------------------|
+| `gitpr` (PR padrão) | Interativo — abre o modal TUI para fazer stage, pular ou cancelar |
+| `gitpr -c` (commit) | Aviso — alerta que os arquivos unstaged NÃO entrarão no commit. Faz auto-stage se `GITPR_AUTO_STAGE=true` |
+| `gitpr -r` (review) | Informativo — indica que os arquivos unstaged ainda estão incluídos no diff. Nunca faz auto-stage |
+| `gitpr -f` (fullreview) | Informativo — indica que os arquivos unstaged ainda estão incluídos no diff. Nunca faz auto-stage |
+| `gitpr -is` (issue, modo diff) | Informativo — indica que os arquivos unstaged ainda estão incluídos no diff. Nunca faz auto-stage |
+
+Use `--no-unstaged-check` para pular a verificação em uma única execução, ou defina `GITPR_SKIP_UNSTAGED_CHECK=true` para desativá-la permanentemente.
+
+Use `gitpr --status` para obter uma listagem rápida, sem IA, dos arquivos não commitados por categoria (novos/modificados/removidos). 📖 [Documentação completa](git-status.pt_br.md)
 
 ### 4.1 Fluxo da Verificação de Inicialização
 
 ```
-gitpr inicia
-  ├─ GITPR_SKIP_UNSTAGED_CHECK=true → pular a verificação inteira, prosseguir
-  ├─ Nenhum arquivo unstaged detectado → prosseguir
-  ├─ GITPR_AUTO_STAGE=true → git add automático de tudo → prosseguir
-  └─ Arquivos unstaged encontrados → TUI StageFilesApp abre
-      ├─ [Stage Selected] → git add <selecionados> → prosseguir
-      ├─ [Skip] → prosseguir sem fazer stage
-      └─ [Cancel] → abortar (sair sem gerar o PR)
+gitpr starts
+  ├─ GITPR_SKIP_UNSTAGED_CHECK=true → skip entire check, proceed
+  ├─ --no-unstaged-check flag → skip entire check, proceed
+  ├─ No unstaged files detected → proceed
+  ├─ Action is "pr":
+  │   ├─ GITPR_AUTO_STAGE=true → auto git add all → proceed
+  │   └─ Unstaged files found → StageFilesApp TUI opens
+  │       ├─ [Stage Selected] → git add <selected> → proceed
+  │       ├─ [Skip] → proceed without staging
+  │       └─ [Cancel] → abort (exit without generating PR)
+  ├─ Action is "commit":
+  │   ├─ GITPR_AUTO_STAGE=true → auto git add all → proceed
+  │   └─ Warning: "files will NOT be included in the commit" → proceed
+  └─ Action is "review"/"fullreview"/"issue":
+      └─ Informational: "files will still be included in this analysis" → proceed
 ```
+
+> **Nota:** A verificação de unstaged é **pulada** quando o GitPR roda dentro de um hook do Git (flag `--hook`), pois qualquer prompt ou TUI travaria o processo de `git commit`.
 
 ### 4.2 Detecção de Arquivos
 
 Os arquivos unstaged são detectados via `git status --porcelain`, procurando por:
 - `??` — arquivos não rastreados (untracked)
-- ` M` — modificados, mas não em stage (alterações na working tree)
-- ` D` — deletados, mas não em stage
+- ` M`, `MM`, `AM`, `RM` — modificados, mas não em stage (alterações na working tree)
+- ` D`, `MD`, `AD`, `RD` — deletados, mas não em stage
+
+Códigos combinados (ex.: `MM` = modificado em stage + modificado na working tree) são normalizados para seus rótulos canônicos (`mod`/`del`).
 
 ### 4.3 Variáveis de Ambiente
 
@@ -295,6 +318,9 @@ pull_request:
 
 O GitPR cria o arquivo na primeira invocação dentro de um repositório git e no `--install`, preenchido com o `PR_DEFAULT_BASE` quando definido e `main` caso contrário. Ele **nunca é sobrescrito** depois de existir, e o GitPR nunca executa `git add` — versioná-lo é uma decisão deliberada do time. Se o `.gitignore` do usuário excluir o caminho, o seed avisa.
 
+> [!IMPORTANT]
+> **Aviso de Mudança de Fluxo / Criação em Runtime:** O GitPR semeia `.gitpr/conf/gitpr.config.yml` na primeira execução de comando dentro de qualquer repositório git. Se os seus pipelines de CI/CD exigem uma árvore de trabalho limpa, ou se você trabalha com monorepos, consulte [§9.4 Nota de Migração e Fluxo de Trabalho: CI/CD, Monorepos e Árvores Limpas](#94-nota-de-migração-e-fluxo-de-trabalho-cicd-monorepos-e-árvores-limpas) para detalhes sobre a chave de opt-out `GITPR_SKIP_PROJECT_CONFIG_SEED`.
+
 Edite-o à mão ou por `gitpr config` → **Projeto** ([Tela de Configuração Interativa](config-tui.pt_br.md)). Ambos escrevem o mesmo arquivo: a branch é definida, não mesclada.
 
 Um arquivo ilegível — YAML quebrado, um valor que não é texto — é reportado como aviso e a resolução continua pela cadeia; o arquivo nunca é sobrescrito por acidente.
@@ -310,6 +336,61 @@ Qualquer que seja a origem, a branch de destino precisa existir em `origin`. Ela
 Um pull request também não pode mirar a branch de onde ele parte, então o alvo resolvido não pode ser a branch em checkout. Quando é — um arquivo de projeto fixado em `develop` publicado a partir de `develop`, por exemplo — uma execução interativa abre uma tela pequena pedindo o substituto: o mesmo seletor de branches do `gitpr config`, sem a branch atual. A escolha é gravada no arquivo do projeto e a execução continua a partir dela.
 
 O seletor é pulado quando não há quem perguntar: `--quiet`, um stdin não interativo (hooks, CI, editores) e um `--base` apontando para a branch atual mantêm o erro. Um valor em `--base` é uma escolha deliberada daquela execução, não configuração desatualizada, então o GitPR o informa em vez de reescrever o arquivo do projeto em silêncio.
+
+### 9.4 Nota de Migração e Fluxo de Trabalho: CI/CD, Monorepos e Árvores Limpas
+
+A semeadura em tempo de execução de `.gitpr/conf/gitpr.config.yml` introduz uma mudança de comportamento importante que times que operam pipelines automatizados ou monorepos devem considerar.
+
+#### 1. Verificações de Árvore de Trabalho Limpa em CI/CD
+
+Muitos fluxos de CI/CD exigem árvores de trabalho limpas antes ou depois de executar ferramentas (ex.: análise estática, testes ou linting):
+
+```bash
+# Etapa comum de verificação em CI:
+git status --porcelain
+git diff --exit-code
+```
+
+Quando o GitPR roda em CI (por exemplo, executando `gitpr --linter` em uma etapa de pré-merge ou `gitpr --review` em um workflow), ele criará automaticamente `.gitpr/conf/gitpr.config.yml` caso o repositório ainda não o rastreie. Isso gera um arquivo não rastreado em `.gitpr/conf/`, fazendo verificações estritas de árvore limpa falharem.
+
+Para impedir que o GitPR crie o arquivo no CI, defina a variável de ambiente `GITPR_SKIP_PROJECT_CONFIG_SEED`:
+
+```bash
+export GITPR_SKIP_PROJECT_CONFIG_SEED=true
+# ou inline:
+GITPR_SKIP_PROJECT_CONFIG_SEED=true gitpr --linter
+```
+
+Quando essa variável está definida (como `true`, `1` ou qualquer valor não vazio), o GitPR ignora completamente a etapa de semeadura da configuração do projeto.
+
+##### Exemplo no GitHub Actions:
+
+```yaml
+- name: Run GitPR Static Linter
+  env:
+    GITPR_SKIP_PROJECT_CONFIG_SEED: "true"
+  run: |
+    gitpr --linter
+```
+
+##### Exemplo no GitLab CI:
+
+```yaml
+gitpr_lint:
+  stage: test
+  variables:
+    GITPR_SKIP_PROJECT_CONFIG_SEED: "true"
+  script:
+    - gitpr --linter
+```
+
+#### 2. Dinâmica de Monorepos
+
+Em monorepos que contêm múltiplos pacotes, serviços ou subprojetos:
+
+- **Âncora Única na Raiz:** O GitPR localiza o arquivo de configuração do projeto em relação à raiz do repositório Git usando `git rev-parse --show-toplevel`. Executar o GitPR a partir de um subdiretório (`packages/frontend/` ou `services/api/`) ainda resolverá e semeará `<repo-root>/.gitpr/conf/gitpr.config.yml`.
+- **Compromisso do Time:** O fluxo pretendido é commitar `.gitpr/conf/gitpr.config.yml` uma vez na raiz do monorepo na branch padrão (por exemplo, definindo `pull_request.base_branch: main` ou `develop`). Uma vez commitado, o GitPR detecta que o arquivo já existe e nunca mais o toca.
+- **Opt-Out em Monorepos:** Se subprojetos individuais ou ferramentas locais executarem o GitPR sem desejar modificar a raiz do monorepo, commite o arquivo uma vez na raiz ou defina `GITPR_SKIP_PROJECT_CONFIG_SEED=true` no ambiente ou nos dotfiles do desenvolvedor.
 
 ---
 
@@ -420,6 +501,7 @@ Na primeira vez que você usar `F3` ou `--no-edit`, o GitPR irá:
 | `GITPR_SKIP_UNSTAGED_CHECK` | `false` | Defina como `true` para pular completamente a verificação de arquivos unstaged ao iniciar |
 | `GITPR_SHOW_LOGS` | `true` | Defina como `false` para ocultar os logs de progresso de commit/push na TUI |
 | `GITPR_AUTO_MERGE` | `false` | Defina como `true` para mesclar PRs automaticamente após a criação/atualização sem perguntar |
+| `GITPR_SKIP_PROJECT_CONFIG_SEED` | `false` | Defina como `true` (ou `1`) para desativar a semeadura automática de `.gitpr/conf/gitpr.config.yml` (recomendado para pipelines de CI com verificações de árvore limpa) |
 | `OUTPUT_FILE_NAME` | `{branch}_{datetime}_PR_DESC.md` | Padrão de nome de arquivo para descrições de PR |
 | `OUTPUT_FILE_NAME_REVIEW` | `{branch}_{datetime}_PR_REVIEW.txt` | Padrão de nome de arquivo para code reviews |
 | `OUTPUT_FILE_NAME_FULLREVIEW` | `{branch}_{datetime}_PR_FULLREVIEW.txt` | Padrão de nome de arquivo para revisões completas |
@@ -495,7 +577,22 @@ GITPR_AUTO_STAGE=true GITPR_AUTO_MERGE=true gitpr --no-edit
 # → O PR é mesclado automaticamente após a criação
 ```
 
-### Exemplo 9: Diretório de saída customizado
+### Exemplo 9: Listagem rápida de arquivos unstaged
+
+```bash
+gitpr --status
+# → Lista todas as alterações não commitadas em 3 categorias (novos/modificados/removidos)
+# → Sem IA, sem rede, instantâneo
+```
+
+### Exemplo 10: Pular verificação de unstaged para um único commit
+
+```bash
+gitpr -c --no-unstaged-check
+# → Gera mensagem de commit sem verificar arquivos unstaged
+```
+
+### Exemplo 11: Diretório de saída customizado
 
 ```bash
 # Em ~/.gitpr/.env:
