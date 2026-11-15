@@ -3,7 +3,7 @@
 ## [1.8.0] - 2026-11-14
 
 ### Summary
-Version 1.7.0 improves usability, documentation, and setup workflows. It adds a warning when a repository remote does not match a known forge, introduces per-provider token thresholds for map-reduce workflows, and adjusts the Windows headless flow to avoid the internet check. Documentation updates cover the dashboard charts tab, localized metrics charts for token trends and latency, marketplace publishing and credentials setup, update-check migration, and per-repository source-control provisioning guidance, with added translation and parity checks. The release also removes an outdated provider reference from an earlier report and refreshes the changelog and version information.
+Version 1.8.0 improves usability, documentation, and setup workflows. It adds a warning when a repository remote does not match a known forge, introduces per-provider token thresholds for map-reduce workflows, and adjusts the Windows headless flow to avoid the internet check. Documentation updates cover the dashboard charts tab, localized metrics charts for token trends and latency, marketplace publishing and credentials setup, update-check migration, and per-repository source-control provisioning guidance, with added translation and parity checks. The release also removes an outdated provider reference from an earlier report and refreshes the changelog and version information.
 
 ### ✨ Features
 - warn when origin remote names no known forge ([c3da6ba](https://github.com/gitpr-cli/gitpr/commit/c3da6ba5e9a576c25e7838f17ea0651233f29b77)) · 2026-11-14
