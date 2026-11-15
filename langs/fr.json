@@ -1176,7 +1176,7 @@
   "Unknown API error": "Erreur API inconnue",
   "Unknown SCM provider: {provider}. Valid providers: {providers}": "Fournisseur SCM inconnu : {provider}. Fournisseurs valides : {providers}",
   "Unknown date": "Date inconnue",
-  "Unknown editor: '{editor}'. Valid options: vscode, cursor, claude, zed, auto": "Éditeur inconnu : '{editor}'. Options valides : vscode, cursor, claude, zed, auto",
+  "Unknown editor: '{editor}'. Valid options: vscode, cursor, claude-code, claude, zed, auto": "Éditeur inconnu : '{editor}'. Options valides : vscode, cursor, claude-code, claude, zed, auto",
   "Unknown error": "Erreur inconnue",
   "Unknown key(s) in the baseline: {keys}.": "Clé(s) inconnue(s) dans le baseline : {keys}.",
   "Unknown key(s) in {where}: {keys}. GitPR ignores nothing in silence.": "Clé(s) inconnue(s) dans {where} : {keys}. GitPR n'ignore rien en silence.",
