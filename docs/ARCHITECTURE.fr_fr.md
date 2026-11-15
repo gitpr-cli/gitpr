@@ -246,9 +246,9 @@ Chaque fonctionnalité dispose d'un guide dédié dans `docs/` (anglais canoniqu
 
 Tutoriels (en portugais uniquement) :
 
-* [github-issue-prompt-com-gh.md](github-issue-prompt-com-gh.md) — Formater et mettre à jour des issues via la gh CLI  
-* [como_reverter_commit_git_localmente.md](como_reverter_commit_git_localmente.md) — Annuler des commits localement  
-* [testar_sem_usar_pypi.md](testar_sem_usar_pypi.md) — Tester sans dépenser une version sur PyPI  
+* [github-issue-prompt-com-gh.md](extra/github-issue-prompt-com-gh.md) — Formater et mettre à jour des issues via la gh CLI  
+* [como_reverter_commit_git_localmente.md](extra/como_reverter_commit_git_localmente.md) — Annuler des commits localement  
+* [testar_sem_usar_pypi.md](extra/testar_sem_usar_pypi.md) — Tester sans dépenser une version sur PyPI  
 * [otimizacao-de-tokens.md](otimizacao-de-tokens.md) — Optimisation des tokens dans les fichiers de contexte (.gitpr.*.md)  
 
 ---

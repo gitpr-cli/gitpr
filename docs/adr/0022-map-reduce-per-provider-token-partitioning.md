@@ -4,7 +4,7 @@
 - **Data:** 2026-11-11
 - **Decisores:** Natan Fiuza, Antigravity
 - **Contexto:** Erros de estouro de janela de contexto (limite de 1.048.576 tokens / $2^{20}$ no Gemini) em execuções de Map-Reduce causados por arquivos gigantes indivisíveis e ausência de separação entre o teto de disparo e o teto por lote.
-- **Relacionados:** [ADR-0014 (Canonical Package Version SSOT)](0014-canonical-package-version-ssot.md), [ADR-0021 (Strict Boolean Update Check Migration)](0021-strict-boolean-update-check-migration.md), [How GitPR Handles Huge Diffs (`docs/map-reduce-diff.md`)](../map-reduce-diff.md)
+- **Relacionados:** [ADR-0014 (Canonical Package Version SSOT)](0014-canonical-package-version-ssot.md), [ADR-0021 (Strict Boolean Update Check Migration)](0021-strict-boolean-update-check-migration.md), [How GitPR Handles Huge Diffs (`docs/map-reduce-diff.md`)](../map-reduce-diff.md), [Metrics & Telemetry — Map-Reduce Cost and Latency (`docs/metricas-telemetria.md`)](../metricas-telemetria.md#map-reduce-cost-and-latency)
 - **Glossário:** [CONTEXT.md](../../CONTEXT.md) (`Map-reduce trigger threshold`, `Map-reduce part size`, `Cascade chunking`)
 
 ---
@@ -57,3 +57,4 @@ Formaliza-se a separação de responsabilidades e a cascata de fatiamento no pip
 
 ### Negativas / Riscos
 - Diffs contendo arquivos únicos gigantescos resultarão em um número maior de chamadas parciais de API, aumentando o tempo total de execução proporcionalmente ao volume de fatias.
+- **Observabilidade de Custo e Latência:** Cada execução particionada registra `map_reduce=1`, `chunks_count` e `duration_ms` agregado no ledger de telemetria; o impacto financeiro por modelo e o ajuste prático dos limiares por provedor estão documentados em [Metrics & Telemetry — Map-Reduce Cost and Latency](../metricas-telemetria.md#map-reduce-cost-and-latency).

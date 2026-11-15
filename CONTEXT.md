@@ -331,3 +331,14 @@ The resolution of a repository to GitHub when the project has no override and th
 names no recognised forge. It is announced by a warning on every run until an override is
 recorded, because the repository will otherwise be driven as GitHub.
 _Avoid_: silent default, fallback provider, legacy mode
+
+**Canonical doc**:
+A top-level guide in `docs/` written in English as the source of truth and mirrored across
+all four localized suffixes (`.pt_br.md`, `.pt_pt.md`, `.es_es.md`, `.fr_fr.md`) with
+identical structural anchors.
+_Avoid_: root doc, base guide, translated doc
+
+**Extra doc**:
+A standalone how-to or auxiliary tutorial stored in `docs/extra/` (such as Portuguese-only
+operational notes) that sits outside the 5-language parity contract of `docs/`.
+_Avoid_: unlisted doc, english-only doc, orphan tutorial
