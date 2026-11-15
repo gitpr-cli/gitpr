@@ -137,6 +137,56 @@ an unconfigured zero would understate the bill.
 - **A total that leaves models out says so** — `Total (partial)` — instead of
   letting a sum of the priced rows read as the whole bill.
 
+### Map-Reduce Cost and Latency
+
+When a diff exceeds `GITPR_MAP_REDUCE_MAX_TOKENS` (default `90,000` tokens),
+GitPR switches from a single AI call to the Map-Reduce pipeline: it splits the
+diff into `N` batches capped at `GITPR_MAP_REDUCE_MAX_PART_TOKENS` (default
+`50,000` tokens) and executes `N` **Map** calls plus `1` final **Reduce** call
+(with an intermediate pre-reduce step if the combined summaries still exceed the
+trigger threshold), pausing 1 second between calls to respect rate limits.
+
+- **`map_reduce`** — recorded as `1` on the trigger row (`command="map_reduce"`,
+  `status="triggered"`) and on the main command row; the `🧪 Quality` section
+  uses it to report the map-reduce firing rate across provider-answered runs.
+- **`chunks_count`** — recorded on the `map_reduce` trigger row with the exact
+  number of Map batches (`N`) generated for that diff.
+- **`duration_ms`** — accumulated across all Map calls, any intermediate
+  pre-reduce calls, and the final Reduce call on the main command row, shifting
+  chunked runs toward higher buckets in `📊 Latency`.
+
+For a ~200,000-token diff split into `chunks_count = 4` Map batches plus `1`
+Reduce call (~10,000 output tokens across summaries and synthesis), the
+built-in `DEFAULT_MODEL_PRICES` rates compare as follows:
+
+| Model | List Rate (Input / Output per 1M) | Estimated Cost (200k in / 10k out) |
+|-------|-----------------------------------|------------------------------------|
+| `gemini-2.5-flash-lite` | USD 0.10 / USD 0.40 | ~USD 0.024 |
+| `gemini-2.5-pro` | USD 1.25 / USD 10.00 | ~USD 0.350 |
+| `deepseek-v4-flash` | USD 0.14 / USD 0.28 | ~USD 0.031 |
+| `deepseek-v4-pro` | USD 0.435 / USD 0.87 | ~USD 0.096 |
+| `ollama` / `local` | USD 0.00 / USD 0.00 | USD 0.000 |
+
+To balance latency and token budget, tune the thresholds globally or per
+`<PROVIDER>` (`_GEMINI`, `_DEEPSEEK`, `_OLLAMA`) in `~/.gitpr/.env` (or via
+`gitpr config`), keeping `max_part_tokens <= max_tokens`:
+
+```ini
+GITPR_MAP_REDUCE_MAX_TOKENS=90000
+GITPR_MAP_REDUCE_MAX_PART_TOKENS=50000
+GITPR_MAP_REDUCE_MAX_TOKENS_GEMINI=120000
+GITPR_MAP_REDUCE_MAX_PART_TOKENS_GEMINI=60000
+GITPR_MAP_REDUCE_MAX_TOKENS_DEEPSEEK=60000
+GITPR_MAP_REDUCE_MAX_PART_TOKENS_DEEPSEEK=30000
+```
+
+- **Higher thresholds (fewer batches):** reduce `chunks_count`, 1-second
+  inter-batch pauses, and repeated prompt overhead, lowering latency when the
+  model's context window allows it.
+- **Lower thresholds (smaller batches):** keep each Map call safely inside
+  tighter context windows (such as local Ollama models or smaller tiers) at the
+  cost of more calls and higher `duration_ms`.
+
 ### The Cycle Metric
 
 The ⏱ section is the only metric here that does not come from the ledger, and it

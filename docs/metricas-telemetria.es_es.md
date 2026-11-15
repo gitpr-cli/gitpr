@@ -141,6 +141,57 @@ mitad con un cero no configurado subestimaría la cuenta.
 - **Un total que deja modelos fuera lo dice** — `Total (parcial)` — en vez de
   dejar que una suma de las filas tarifadas parezca la cuenta entera.
 
+### Coste y Latencia de Map-Reduce
+
+Cuando un diff supera `GITPR_MAP_REDUCE_MAX_TOKENS` (por defecto `90.000` tokens),
+GitPR cambia de una sola llamada al pipeline Map-Reduce: divide el diff en `N`
+lotes limitados por `GITPR_MAP_REDUCE_MAX_PART_TOKENS` (por defecto `50.000`
+tokens) y ejecuta `N` llamadas de **Map** más `1` llamada final de **Reduce**
+(con una prerreducción intermedia si los resúmenes combinados aún superan el
+umbral), pausando 1 segundo entre llamadas para respetar los límites de tasa.
+
+- **`map_reduce`** — registrado como `1` en la fila de disparo (`command="map_reduce"`,
+  `status="triggered"`) y en la fila principal del comando; la sección `🧪 Quality`
+  lo utiliza para informar la tasa de activación de Map-Reduce entre las
+  ejecuciones respondidas por el proveedor.
+- **`chunks_count`** — registrado en la fila de disparo `map_reduce` con el número
+  exacto de lotes de Map (`N`) generados para ese diff.
+- **`duration_ms`** — acumulado a lo largo de todas las llamadas Map, las posibles
+  prerreducciones intermedias y la llamada final de Reduce en la fila principal,
+  desplazando esas ejecuciones hacia tramos más altos en `📊 Latency`.
+
+Para un diff de ~200.000 tokens dividido en `chunks_count = 4` lotes de Map más
+`1` llamada de Reduce (~10.000 tokens de salida entre resúmenes y síntesis), las
+tarifas integradas en `DEFAULT_MODEL_PRICES` se comparan así:
+
+| Modelo | Tarifa de Lista (Entrada / Salida por 1M) | Coste Estimado (200k ent. / 10k sal.) |
+|--------|-------------------------------------------|---------------------------------------|
+| `gemini-2.5-flash-lite` | USD 0.10 / USD 0.40 | ~USD 0.024 |
+| `gemini-2.5-pro` | USD 1.25 / USD 10.00 | ~USD 0.350 |
+| `deepseek-v4-flash` | USD 0.14 / USD 0.28 | ~USD 0.031 |
+| `deepseek-v4-pro` | USD 0.435 / USD 0.87 | ~USD 0.096 |
+| `ollama` / `local` | USD 0.00 / USD 0.00 | USD 0.000 |
+
+Para equilibrar latencia y presupuesto de tokens, ajusta los umbrales de forma
+global o por `<PROVIDER>` (`_GEMINI`, `_DEEPSEEK`, `_OLLAMA`) en `~/.gitpr/.env`
+(o mediante `gitpr config`), manteniendo `max_part_tokens <= max_tokens`:
+
+```ini
+GITPR_MAP_REDUCE_MAX_TOKENS=90000
+GITPR_MAP_REDUCE_MAX_PART_TOKENS=50000
+GITPR_MAP_REDUCE_MAX_TOKENS_GEMINI=120000
+GITPR_MAP_REDUCE_MAX_PART_TOKENS_GEMINI=60000
+GITPR_MAP_REDUCE_MAX_TOKENS_DEEPSEEK=60000
+GITPR_MAP_REDUCE_MAX_PART_TOKENS_DEEPSEEK=30000
+```
+
+- **Umbrales más altos (menos lotes):** reducen `chunks_count`, las pausas de 1
+  segundo entre lotes y la sobrecarga de prompt repetido, bajando la latencia
+  cuando la ventana de contexto del modelo lo permite.
+- **Umbrales más bajos (lotes más pequeños):** mantienen cada llamada Map con
+  holgura dentro de ventanas más estrechas (como modelos locales en Ollama o
+  niveles más pequeños), a cambio de más llamadas y mayor `duration_ms`.
+
 ### La Métrica de Ciclo
 
 La sección ⏱ es la única métrica de aquí que no viene del registro, y no puede

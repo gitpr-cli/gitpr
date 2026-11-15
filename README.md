@@ -550,6 +550,7 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 * [**Local Git Hooks (Shift-Left)**](https://gitpr.natanfiuza.dev.br/docs/git-hooks-locais) — How to use `gitpr --installhooks` to create guardrails on the developer's machine and use AI to automatically write commit messages.
 * [**Hook Scripts Versioning & Auto-Sync**](https://gitpr.natanfiuza.dev.br/docs/hooks-versioning) — How the automatic versioning and i18n-aware synchronization system keeps your Git hooks up to date.
 * [**Customizable Static Linter**](https://gitpr.natanfiuza.dev.br/docs/linter-regras-customizadas) — How to create validation rules in `.gitpr.linter.yml`, bridge external linters (ESLint, PHPCS, Stylelint), and generate Markdown reports for CI/CD and pre-commit hooks.
+* [**Performant Regular Expressions Guide**](https://gitpr.natanfiuza.dev.br/docs/guia-regex-gitpr) — How to write safe regex rules in `.gitpr.linter.yml` without catastrophic backtracking.
 * [**CI/CD Integration (GitHub Actions)**](https://gitpr.natanfiuza.dev.br/docs/github-ci-linter) — How to run GitPR in the pipeline to block "Merge" of PRs with violations.
 
 ### Core Features
@@ -562,19 +563,23 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 * [**Remote Pull Request Review (gitpr review-pr)**](https://gitpr.natanfiuza.dev.br/docs/review-pr) — How the `gitpr review-pr` subcommand reviews a pull request that is already open on the forge, fetching its diff from the API without checking out its branch.
 * [**AI Commit Messages**](https://gitpr.natanfiuza.dev.br/docs/commit-message-ia) — How to generate messages in the Conventional Commits standard and integrate with Git Hooks.
 * [**Issue Generation and TUI Interface**](https://gitpr.natanfiuza.dev.br/docs/issue-tui-help) — How to use the terminal graphical interface (TUI) and the 3 context engines to manage structured Issues.
+* [**Issue Creation Options (gitpr -is)**](https://gitpr.natanfiuza.dev.br/docs/gitpr-issue-option) — How the triple context engine (`gitpr -is`, `-is -ht`, `-is -b`) generates standardized What/Why/Where/How issues.
 * [**Automatic Issue Closure (--close-issue)**](https://gitpr.natanfiuza.dev.br/docs/issue-autoclose) — How the issue created by `gitpr -is` is recorded in `.gitpr/conf/github.yml`, the gate order that decides when the next pull request offers `close #N`, why the record survives a failed publish, and how the line is kept from being duplicated.
 * [**Code Archaeologist (Git Blame)**](https://gitpr.natanfiuza.dev.br/docs/blame-arqueologo) — How to trace the origin of business rules with `git blame` and AI.
 * [**Skills and Templates System**](https://gitpr.natanfiuza.dev.br/docs/skill-template) — How to customize AI behavior with `.gitpr.*.md` files.
 * [**Release Notes & Changelog (gitpr release)**](https://gitpr.natanfiuza.dev.br/docs/release-notes) — How the `gitpr release` subcommand generates the changelog / release notes of a repository from the delta of the previous version, links every commit, pull request and contributor, suggests the next semantic version and publishes releases on the forge.
 * [**Fix Command (gitpr fix)**](https://gitpr.natanfiuza.dev.br/docs/fix-command) — How the `gitpr fix` subcommand turns the findings of the last review into patches you read before they touch your tree, classifies each one by safety, and undoes an applied patch on demand.
+* [**Junior Mentor Mode (gitpr mentor)**](https://gitpr.natanfiuza.dev.br/docs/mentor-mode) — Additive, opt-in pedagogical explanations (`--mentor` or `gitpr mentor`) with analogies and key engineering takeaways.
 * [**Split Command (gitpr split)**](https://gitpr.natanfiuza.dev.br/docs/split-command) — How the `gitpr split` subcommand reads a working tree holding several concerns, groups the hunks by intent with AI, and turns them into ordered atomic commits without ever writing to your files.
 * [**Local Risk Scoring (gitpr risk)**](https://gitpr.natanfiuza.dev.br/docs/risk-scoring) — How the `gitpr risk` command evaluates regression risk, decomposes signals (50/30/20 formula), and highlights high-risk areas in code reviews offline.
 * [**Policy Packs (gitpr policy)**](https://gitpr.natanfiuza.dev.br/docs/policy-packs) — How a repository adopts a versioned Policy Pack that carries skills, linter rules, severity overrides, critical paths and risk weights together, the precedence ladder that combines packs, the lockfile the team commits, and the three failures that abort instead of silently degrading.
 * [**Baseline & Auditable Suppressions (gitpr baseline)**](https://gitpr.natanfiuza.dev.br/docs/baseline-suppressions) — How a legacy repository records the findings it already has, how a run classifies them as `new`, `existing`, `resolved`, `ignored` or `accepted_debt`, why only `new` blocks, what the fingerprint hashes and what it deliberately leaves out, the four scopes of a suppression, the checksum that catches a hand edit, and the `baseline:` block a Policy Pack may carry.
+* [**Untracked Files Behavior**](https://gitpr.natanfiuza.dev.br/docs/untracked-files) — Why GitPR ignores untracked files by default for security, token economy, and Git lifecycle alignment.
 
 ### Configuration & Infrastructure
 
 * [**Editor Extension (VS Code & Cursor)**](https://gitpr.natanfiuza.dev.br/docs/editor-extension) — Thin-client VSIX extension driving `gitpr-mcp` over stdio for SCM commit generation, Markdown code reviews, two-step PR publishing, and inline `Problems` diagnostics.
+* [**Marketplace Publishing Guide**](https://gitpr.natanfiuza.dev.br/docs/marketplace-publishing-guide) — Step-by-step release automation for publishing the GitPR Editor Extension to Visual Studio Marketplace and Open VSX Registry.
 * [**Interactive Configuration TUI (gitpr config)**](https://gitpr.natanfiuza.dev.br/docs/config-tui) — Master-detail terminal interface to view, edit, and validate settings in `~/.gitpr/.env`.
 * [**Multi-Forge SCM Integration**](https://gitpr.natanfiuza.dev.br/docs/scm-multiforge) — Unified SCM provider layer for GitHub, GitLab, Bitbucket Cloud, and Azure DevOps with `--init` wizard.
 * [**Suggested Reviewers**](https://gitpr.natanfiuza.dev.br/docs/suggested-reviewers) — Automatic reviewer suggestion via Git blame of added lines mapped to forge logins.
@@ -582,6 +587,8 @@ If you want to implement GitPR as an automated quality barrier in your team, che
 * [**Install Wizard**](https://gitpr.natanfiuza.dev.br/docs/install-wizard) — Step-by-step guided setup for configuring GitPR in a new project.
 * [**AI Providers**](https://gitpr.natanfiuza.dev.br/docs/providers-ia) — Configuration and selection between Google Gemini, DeepSeek, and Ollama.
 * [**Auto-Updater**](https://gitpr.natanfiuza.dev.br/docs/auto-update) — How GitPR's automatic update and the mandatory update block work.
+* [**Version Markers (OTA Resources)**](https://gitpr.natanfiuza.dev.br/docs/version-markers) — How `~/.gitpr/.env` version markers track and refresh OTA translations, spinner words, smart excludes, linter presets, and hook scripts.
+* [**Token Optimization in Context Files**](https://gitpr.natanfiuza.dev.br/docs/otimizacao-de-tokens) — Standards for keeping `.gitpr.*.md` system instructions under 150 tokens for low latency and fewer hallucinations.
 * [**Architecture**](https://gitpr.natanfiuza.dev.br/docs/ARCHITECTURE) — Project architecture, design patterns, and technical stack overview.
 * [**GitHub Token (PAT) Integration and Security**](https://gitpr.natanfiuza.dev.br/docs/github-pat-integration) — Understand how GitPR creates issues directly in the repository with authentication.
 * [**Internationalization (i18n)**](https://gitpr.natanfiuza.dev.br/docs/i18n_explanation) — Architecture, usage patterns, and how to add new languages.

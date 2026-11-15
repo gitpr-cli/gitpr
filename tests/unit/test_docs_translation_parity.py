@@ -11,9 +11,7 @@ from pathlib import Path
 _LANGS = (".pt_br", ".pt_pt", ".es_es", ".fr_fr")
 
 # Documents kept in English only, on purpose.
-_EN_ONLY = {
-    "github-issue-prompt-com-gh": "how-to in English only (docs/plans/2026-08-18_architecture_multilang.md)",
-}
+_EN_ONLY = {}
 
 # Known drift, recorded as debt: repair the translation, then delete the line. The entry is a
 # snapshot of the divergence so the reason survives without re-running the comparison.

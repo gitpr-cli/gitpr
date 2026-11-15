@@ -37,8 +37,8 @@
 | ID | Origem / Referência | Pendência Verificada no Repositório | Destino |
 | --- | --- | --- | --- |
 | **P1** | SSOT de versão (`v0.0.24`/`v0.0.25`, `tests/unit/test_version_consistency.py`) | `CLAUDE.md` (linha 8) e `GEMINI.md` (linha 8) ainda exibem `1.7.0`, divergindo de `src/updater.py` (`__version__ = "1.8.0"`) | Etapa 1 (Concluída) |
-| **P2** | Auditoria ADR-0019 / dívida de paridade (`tests/unit/test_docs_translation_parity.py`) | Traduções `.pt_br`, `.pt_pt`, `.es_es`, `.fr_fr` de `docs/config-tui.*` e `docs/pull-request-publication.*` estão defasadas em relação ao inglês (ausência de `GITPR_SKIP_PROJECT_CONFIG_SEED`, §4, §9.1 `[!IMPORTANT]`, §9.4, §14 e §15 Ex. 9–10); `"pull-request-publication"` segue em `_PARITY_EXCEPTIONS`; `tests/unit/test_project_config_seed_docs.py` não existe | Etapa 2 |
-| **P3** | Auditoria i18n/docs (`v0.0.25`, `tests/unit/test_docs_translation_parity.py`, `README*.md`) | `docs/github-issue-prompt-com-gh.md` permanece na raiz de `docs/` listado em `_EN_ONLY`, impedindo 100% (51/51) de cobertura multilíngue na raiz de `docs/`; os 5 `README*.md` não linkam 6 guias (`gitpr-issue-option`, `guia-regex-gitpr`, `marketplace-publishing-guide`, `otimizacao-de-tokens`, `untracked-files`, `version-markers`), e os 4 READMEs traduzidos também omitem `mentor-mode` | Etapa 3 |
+| **P2** | Auditoria ADR-0019 / dívida de paridade (`tests/unit/test_docs_translation_parity.py`) | Traduções `.pt_br`, `.pt_pt`, `.es_es`, `.fr_fr` de `docs/config-tui.*` e `docs/pull-request-publication.*` estão defasadas em relação ao inglês (ausência de `GITPR_SKIP_PROJECT_CONFIG_SEED`, §4, §9.1 `[!IMPORTANT]`, §9.4, §14 e §15 Ex. 9–10); `"pull-request-publication"` segue em `_PARITY_EXCEPTIONS`; `tests/unit/test_project_config_seed_docs.py` não existe | Etapa 2 (Concluída) |
+| **P3** | Auditoria i18n/docs (`v0.0.25`, `tests/unit/test_docs_translation_parity.py`, `README*.md`) | `docs/github-issue-prompt-com-gh.md` permanece na raiz de `docs/` listado em `_EN_ONLY`, impedindo 100% (51/51) de cobertura multilíngue na raiz de `docs/`; os 5 `README*.md` não linkam 6 guias (`gitpr-issue-option`, `guia-regex-gitpr`, `marketplace-publishing-guide`, `otimizacao-de-tokens`, `untracked-files`, `version-markers`), e os 4 READMEs traduzidos também omitem `mentor-mode` | Etapa 3 (Concluída) |
 | **P4** | Observabilidade de Map-Reduce (ADR-0022, `src/config.py`, `src/metrics.py`) | `docs/metricas-telemetria.*` (5 idiomas) ainda não documenta o impacto de custo e latência do Map-Reduce (`GITPR_MAP_REDUCE_MAX_TOKENS`, `GITPR_MAP_REDUCE_MAX_PART_TOKENS`, variantes por provedor e colunas `map_reduce`/`chunks_count`/`duration_ms`), e `docs/adr/0022-map-reduce-per-provider-token-partitioning.md` não referencia métricas | Etapa 4 |
 | **P5** | Migração SCM em ambientes efêmeros (ADR-0020, `src/scm_settings.py`) | `docs/scm-multiforge.*` (5 idiomas) e `docs/adr/0020-per-repo-scm-provisioning-migration.md` ainda não explicitam o comportamento de `migrate_legacy_scm_config()` quando `.env` é read-only ou gera `OSError`/`PermissionError` (`persisted=False` com fallback ativo em `os.environ`) | Etapa 5 |
 | **P6** | Self-hosted / GitHub Enterprise (`docs/scm-multiforge.md` §1.2 e §3, `src/infrastructure/scm/github_provider.py`) | `GitHubProvider.parse_repo_ref` aceita apenas o literal `github.com`, fazendo remotes GitHub Enterprise (`github.acme.com`) falharem mesmo com `GITHUB_BASE_URL`; `docs/scm-multiforge.*` ainda documenta essa limitação | Etapa 6 |
@@ -72,7 +72,7 @@
 
 ---
 
-### Etapa 2 — Sincronizar traduções de `docs/config-tui.*` e `docs/pull-request-publication.*` e criar testes de paridade ADR-0019
+### Etapa 2 — Sincronizar traduções de `docs/config-tui.*` e `docs/pull-request-publication.*` e criar testes de paridade ADR-0019 ✅ Concluída
 
 - **Objetivo:** Levar `GITPR_SKIP_PROJECT_CONFIG_SEED` e as seções expandidas de `docs/config-tui.md` e `docs/pull-request-publication.md` às quatro traduções, zerar a dívida `"pull-request-publication"` em `_PARITY_EXCEPTIONS` e cobrir o contrato ADR-0019 com teste unitário dedicado.
 - **Origem no Relatório:** Auditoria pós-ADR-0019 (`GITPR_SKIP_PROJECT_CONFIG_SEED`) e dívida registrada em `tests/unit/test_docs_translation_parity.py`.
@@ -99,7 +99,7 @@
 
 ---
 
-### Etapa 3 — Mover `github-issue-prompt-com-gh.md` para `docs/extra/`, remover `_EN_ONLY` e completar os índices dos `README*.md`
+### Etapa 3 — Mover `github-issue-prompt-com-gh.md` para `docs/extra/`, remover `_EN_ONLY` e completar os índices dos `README*.md` ✅ Concluída
 
 - **Objetivo:** Alcançar cobertura 51/51 (100%) de 5 idiomas na raiz de `docs/` movendo o how-to avulso para `docs/extra/`, e atualizar a seção `📚` dos cinco `README*.md` com os guias canônicos ausentes.
 - **Origem no Relatório:** Auditoria de i18n/docs (`v0.0.25`) e inventário de `docs/` vs. `README*.md`.
