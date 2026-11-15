@@ -24,7 +24,6 @@ _PARITY_EXCEPTIONS = {
     "git-status": "fences 14 vs 14 (pt_br) / 8",
     "linter-regras-customizadas": "headings 16 vs 14 (pt_br) / 10, table rows 9 vs 0 in three languages",
     "mentor-mode": "headings 6 vs 4, table rows 11 vs 4, bullets 3 vs 0 (pt_pt/es_es/fr_fr)",
-    "pull-request-publication": "headings 54 vs 47, table rows 99 vs 91, bullets 16 vs 13, fences 58 vs 46",
     "skill-template": "table rows 20 vs 18",
 }
 
