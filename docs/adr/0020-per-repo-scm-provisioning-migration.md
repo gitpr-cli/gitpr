@@ -67,6 +67,8 @@ Formaliza-se a governança e o contrato de migração para scripts de provisiona
 - Elimina a ambiguidade em automações de setup de máquinas e ambientes de desenvolvimento.
 - Permite que templates de provisionamento configurem credenciais para múltiplos forges simultaneamente em uma única máquina ou imagem base.
 - Garante total conformidade com a arquitetura definida no ADR-016.
+- **Resiliência em ambientes somente leitura / efêmeros:** quando `~/.gitpr/.env` está protegido contra escrita (por exemplo, volumes montados `:ro` em containers ou runners CI/CD efêmeros), `migrate_legacy_scm_config()` (`src/scm_settings.py`) captura `(OSError, PermissionError)` ao tentar persistir ou remover chaves, retorna `MigrationResult(..., persisted=False, warning=...)` sem abortar o comando, materializa os valores migrados em `os.environ` e remove `GITPR_SCM_PROVIDER`, `GITPR_SCM_TOKEN_ENCRYPTED` e `GITPR_SCM_BASE_URL` do ambiente em memória do processo ativo.
 
 ### Negativas / Riscos
 - Scripts legados de provisionamento que dependiam da gravação estática de `GITPR_SCM_PROVIDER` precisarão ser atualizados para gravar os slots específicos e, quando aplicável, o arquivo de configuração do repositório `.gitpr/conf/gitpr.config.yml`.
+- Em ambientes com `~/.gitpr/.env` somente leitura (`persisted=False`), a migração não consegue limpar o arquivo em disco e continuará emitindo o aviso a cada execução até que as chaves legadas sejam removidas da imagem/script ou substituídas por `GITPR_SCM_TOKEN`.

@@ -122,6 +122,10 @@ Cada forge lê apenas o seu slot: um token de GitLab nunca responde por um repos
 > 
 > Para servidores self-hosted em domínios customizados, configure o override no arquivo do projeto em `.gitpr/conf/gitpr.config.yml` (`scm.provider: <forge>`) em vez de tentar fixar um provedor global no `.env`. Ambientes CI efêmeros devem continuar utilizando `GITPR_SCM_TOKEN` (token cru não criptografado). Detalhes arquiteturais no [ADR-0020](adr/0020-per-repo-scm-provisioning-migration.md) e [ADR-016](plans/ADR-016-per-provider-scm-settings.md).
 
+> [!NOTE]
+> **`~/.gitpr/.env` somente leitura ou efêmero:**  
+> Se `~/.gitpr/.env` estiver montado como somente leitura (por exemplo, volumes `:ro` em containers) ou não puder ser modificado (`OSError`/`PermissionError`), `migrate_legacy_scm_config()` não aborta a execução: ela retorna `persisted=False`, emite um aviso a cada comando e degrada com segurança para `os.environ` em memória (materializando os slots por forge e removendo as chaves legadas no processo atual). Para evitar avisos repetidos em runners efêmeros, remova as chaves legadas da imagem base ou do script de provisionamento, ou utilize `GITPR_SCM_TOKEN`.
+
 ---
 
 ## 4. Usando o GitPR com o Forge Configurado
