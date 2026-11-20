@@ -1,6 +1,6 @@
 # Documentación Técnica: Insignia de Pull Request
 
-Todo pull request publicado por GitPR lleva una insignia pequeña al pie del cuerpo: `GitPR` y los recuentos del linter para el cambio. Se arma a partir de una medición que GitPR hizo de verdad — el linter estático local, sobre el diff que se está publicando — y es una imagen Markdown que shields.io renderiza en el navegador de quien lee, así que no se pide nada a la red mientras se escribe el pull request.
+Todo pull request publicado por GitPR lleva una insignia pequeña al pie del cuerpo: `GitPR` y los recuentos del linter para el cambio. Se arma a partir de una medición que GitPR hizo de verdad — el linter estático local, sobre el diff que se está publicando — y es una imagen Markdown que [BadgeForge](https://devtools.natanfiuza.dev.br/) renderiza en el navegador de quien lee, así que no se pide nada a la red mientras se escribe el pull request.
 
 Hay una segunda insignia, estática, para el README de tu proyecto. `gitpr badge --readme` imprime el fragmento y no escribe nada.
 
@@ -17,13 +17,13 @@ Todas las opciones del subcomando, como las muestra `gitpr badge -h` (o `--help`
 ```bash
 gitpr badge                          # qué es, más el fragmento
 gitpr badge --readme                 # solo el fragmento, listo para pipe
-gitpr badge --style for-the-badge    # otro estilo de shields.io
+gitpr badge --style for-the-badge    # otro estilo de BadgeForge
 ```
 
 | Opción | Descripción |
 | --- | --- |
 | **`--readme`** | Imprime solo el fragmento, sin nada alrededor — seguro para `>>` y para pipe |
-| **`--style <style>`** | `flat` (por defecto), `flat-square` o `for-the-badge`. Un valor desconocido avisa en stderr y recurre a `flat` |
+| **`--style <style>`** | `flat` (por defecto), `flat-square`, `plastic` o `for-the-badge`. Un valor desconocido avisa en stderr y recurre a `flat` |
 | **`-h` / `--help`** | Ayuda más el enlace de la documentación en el idioma actual |
 
 | Característica | Descripción |
@@ -50,7 +50,7 @@ Dos reglas moldean el texto:
 - **Un cero aparece junto a un recuento distinto de cero.** `0 errors · 2 warnings` dice lo que se midió; esconder el cero daría a entender que los errores nunca se contaron. Cada recuento se pluraliza por su cuenta, así que `1 error · 1 warning` se escribe así.
 - **La insignia nunca afirma una revisión.** Informa lo que el linter contó, en el vocabulario del linter. Una insignia verde significa *no se encontró ninguna violación de regla*, no *este código fue revisado y aprobado* — la revisión por IA es otro paso, sin participación alguna en esto.
 
-Lo que ves en el pull request es una sola imagen. `GitPR | 0 errors · 2 warnings` es como la dibuja shields.io, no una segunda línea de texto en el cuerpo, y la imagen es un enlace a [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
+Lo que ves en el pull request es una sola imagen. `GitPR | 0 errors · 2 warnings` es como la dibuja BadgeForge, no una segunda línea de texto en el cuerpo, y la imagen es un enlace a [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
 
 El texto de la insignia es **inglés fijo**, sea cual sea el idioma de la interfaz. Como el cuerpo del pull request en el que está, es un artefacto público que sobrevive a la máquina que lo escribió, y aterriza en un repositorio cuyos lectores pueden no hablar tu idioma.
 
@@ -89,7 +89,7 @@ Con la flag desactivada, no se arma ninguna insignia y no se imprime ningún avi
 La insignia que puedes poner en tu propio proyecto es otra: estática, siempre la misma, y dice lo que hace la herramienta, no lo que midió.
 
 ```markdown
-[![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
+[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/quality-checked.svg?color=blue&logo=gitpr&style=flat)](https://gitpr.natanfiuza.dev.br/)
 ```
 
 `gitpr badge` la imprime con una explicación breve; `gitpr badge --readme` imprime la línea sola, que es lo que quieres para `gitpr badge --readme >> README.md`. De una forma u otra el comando solo imprime — colocarla es decisión tuya, porque solo tú sabes dónde queda bien en tu README.

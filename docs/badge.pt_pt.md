@@ -1,6 +1,6 @@
 # Documentação Técnica: Selo de Pull Request
 
-Todo o pull request publicado pelo GitPR leva um selo pequeno no rodapé do corpo: `GitPR` e as contagens do linter para a alteração. É montado a partir de uma medição que o GitPR fez de facto — o linter estático local, sobre o diff que está a ser publicado — e é uma imagem Markdown que o shields.io renderiza no navegador de quem lê, por isso nada é pedido à rede enquanto o pull request é escrito.
+Todo o pull request publicado pelo GitPR leva um selo pequeno no rodapé do corpo: `GitPR` e as contagens do linter para a alteração. É montado a partir de uma medição que o GitPR fez de facto — o linter estático local, sobre o diff que está a ser publicado — e é uma imagem Markdown que o [BadgeForge](https://devtools.natanfiuza.dev.br/) renderiza no navegador de quem lê, por isso nada é pedido à rede enquanto o pull request é escrito.
 
 Há um segundo selo, estático, para o README do seu projeto. `gitpr badge --readme` imprime o snippet e não escreve nada.
 
@@ -17,13 +17,13 @@ Todas as opções do subcomando, como mostradas por `gitpr badge -h` (ou `--help
 ```bash
 gitpr badge                          # o que é, mais o snippet
 gitpr badge --readme                 # só o snippet, pronto para pipe
-gitpr badge --style for-the-badge    # outro estilo do shields.io
+gitpr badge --style for-the-badge    # outro estilo do BadgeForge
 ```
 
 | Opção | Descrição |
 | --- | --- |
 | **`--readme`** | Imprime apenas o snippet, sem nada em volta — seguro para `>>` e para pipe |
-| **`--style <style>`** | `flat` (predefinido), `flat-square` ou `for-the-badge`. Um valor desconhecido avisa no stderr e recua para `flat` |
+| **`--style <style>`** | `flat` (predefinido), `flat-square`, `plastic` ou `for-the-badge`. Um valor desconhecido avisa no stderr e recua para `flat` |
 | **`-h` / `--help`** | Ajuda mais a ligação da documentação no idioma atual |
 
 | Característica | Descrição |
@@ -50,7 +50,7 @@ Duas regras moldam o texto:
 - **Um zero aparece ao lado de uma contagem diferente de zero.** `0 errors · 2 warnings` diz o que foi medido; esconder o zero daria a entender que os erros nunca foram contados. Cada contagem é pluralizada por conta própria, por isso `1 error · 1 warning` é escrito assim.
 - **O selo nunca afirma uma revisão.** Relata o que o linter contou, no vocabulário do linter. Um selo verde significa *nenhuma violação de regra foi encontrada*, não *este código foi revisto e aprovado* — a revisão por IA é outro passo, sem qualquer participação nisto.
 
-O que vê no pull request é uma única imagem. `GitPR | 0 errors · 2 warnings` é como o shields.io a desenha, não uma segunda linha de texto no corpo, e a imagem é uma ligação para [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
+O que vê no pull request é uma única imagem. `GitPR | 0 errors · 2 warnings` é como o BadgeForge a desenha, não uma segunda linha de texto no corpo, e a imagem é uma ligação para [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
 
 O texto do selo é **inglês fixo**, seja qual for o idioma da interface. Como o corpo do pull request em que fica, é um artefacto público que sobrevive à máquina que o escreveu, e aterra num repositório cujos leitores podem não falar o seu idioma.
 
@@ -89,7 +89,7 @@ Com a flag desligada, nenhum selo é montado e nenhum aviso é impresso: o pull 
 O selo que pode colocar no seu próprio projeto é outro: estático, sempre o mesmo, e diz o que a ferramenta faz, e não o que mediu.
 
 ```markdown
-[![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
+[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/quality-checked.svg?color=blue&logo=gitpr&style=flat)](https://gitpr.natanfiuza.dev.br/)
 ```
 
 `gitpr badge` imprime-o com uma explicação curta; `gitpr badge --readme` imprime a linha sozinha, que é o que quer para `gitpr badge --readme >> README.md`. De uma forma ou de outra o comando só imprime — colocá-lo é decisão sua, porque só você sabe onde fica bem no seu README.

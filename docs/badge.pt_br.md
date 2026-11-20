@@ -1,6 +1,6 @@
 # Documentação Técnica: Selo de Pull Request
 
-Todo pull request publicado pelo GitPR leva um selo pequeno no rodapé do corpo: `GitPR` e as contagens do linter para a mudança. Ele é montado a partir de uma medição que o GitPR de fato fez — o linter estático local, sobre o diff que está sendo publicado — e é uma imagem Markdown que o shields.io renderiza no navegador de quem lê, então nada é buscado na rede enquanto o pull request é escrito.
+Todo pull request publicado pelo GitPR leva um selo pequeno no rodapé do corpo: `GitPR` e as contagens do linter para a mudança. Ele é montado a partir de uma medição que o GitPR de fato fez — o linter estático local, sobre o diff que está sendo publicado — e é uma imagem Markdown que o [BadgeForge](https://devtools.natanfiuza.dev.br/) renderiza no navegador de quem lê, então nada é buscado na rede enquanto o pull request é escrito.
 
 Há um segundo selo, estático, para o README do seu projeto. `gitpr badge --readme` imprime o snippet e não escreve nada.
 
@@ -17,13 +17,13 @@ Todas as opções do subcomando, como mostradas por `gitpr badge -h` (ou `--help
 ```bash
 gitpr badge                          # o que é, mais o snippet
 gitpr badge --readme                 # só o snippet, pronto para pipe
-gitpr badge --style for-the-badge    # outro estilo do shields.io
+gitpr badge --style for-the-badge    # outro estilo do BadgeForge
 ```
 
 | Opção | Descrição |
 | --- | --- |
 | **`--readme`** | Imprime apenas o snippet, sem nada em volta — seguro para `>>` e para pipe |
-| **`--style <style>`** | `flat` (padrão), `flat-square` ou `for-the-badge`. Um valor desconhecido avisa no stderr e cai para `flat` |
+| **`--style <style>`** | `flat` (padrão), `flat-square`, `plastic` ou `for-the-badge`. Um valor desconhecido avisa no stderr e cai para `flat` |
 | **`-h` / `--help`** | Ajuda mais o link da documentação no idioma atual |
 
 | Característica | Descrição |
@@ -50,7 +50,7 @@ Duas regras moldam o texto:
 - **Um zero aparece ao lado de uma contagem diferente de zero.** `0 errors · 2 warnings` diz o que foi medido; esconder o zero daria a entender que os erros nunca foram contados. Cada contagem é pluralizada por conta própria, então `1 error · 1 warning` é escrito assim.
 - **O selo nunca afirma uma revisão.** Ele relata o que o linter contou, no vocabulário do linter. Um selo verde significa *nenhuma violação de regra foi encontrada*, não *este código foi revisado e aprovado* — a revisão por IA é outro passo, sem participação nenhuma nisto.
 
-O que você vê no pull request é uma única imagem. `GitPR | 0 errors · 2 warnings` é como o shields.io a desenha, não uma segunda linha de texto no corpo, e a imagem é um link para [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
+O que você vê no pull request é uma única imagem. `GitPR | 0 errors · 2 warnings` é como o BadgeForge a desenha, não uma segunda linha de texto no corpo, e a imagem é um link para [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
 
 O texto do selo é **inglês fixo**, qualquer que seja o idioma da interface. Como o corpo do pull request em que ele fica, é um artefato público que sobrevive à máquina que o escreveu, e aterrissa num repositório cujos leitores podem não falar o seu idioma.
 
@@ -89,7 +89,7 @@ Com a flag desligada, nenhum selo é montado e nenhum aviso é impresso: o pull 
 O selo que você pode colocar no seu próprio projeto é outro: estático, sempre o mesmo, e ele diz o que a ferramenta faz, e não o que ela mediu.
 
 ```markdown
-[![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
+[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/quality-checked.svg?color=blue&logo=gitpr&style=flat)](https://gitpr.natanfiuza.dev.br/)
 ```
 
 `gitpr badge` o imprime com uma explicação curta; `gitpr badge --readme` imprime a linha sozinha, que é o que você quer para `gitpr badge --readme >> README.md`. De um jeito ou de outro o comando só imprime — colocá-lo é decisão sua, porque só você sabe onde ele fica bem no seu README.

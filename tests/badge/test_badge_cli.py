@@ -58,7 +58,9 @@ class TestTheReadmeSnippet:
     def test_the_snippet_is_ready_to_paste(self):
         stdout = _run("--readme").stdout
 
-        assert stdout.startswith("[![GitPR](https://img.shields.io/badge/")
+        assert stdout.startswith(
+            "[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/"
+        )
         assert stdout.strip().endswith("](https://gitpr.natanfiuza.dev.br/)")
 
 
@@ -68,10 +70,10 @@ class TestTheStyle:
         stdout = _run("--readme", "--style", style).stdout
 
         assert stdout.strip() == build_readme_badge(style)
-        assert f"?style={style}" in stdout
+        assert f"&style={style}" in stdout
 
     def test_the_default_style_is_flat(self):
-        assert "?style=flat" in _run("--readme").stdout
+        assert "&style=flat" in _run("--readme").stdout
 
     def test_an_unknown_style_warns_and_falls_back(self):
         result = _run("--readme", "--style", "holographic")

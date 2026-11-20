@@ -2,7 +2,7 @@
 
 from src.branding.badge_builder import append_badge
 
-BADGE = "[![GitPR](https://img.shields.io/badge/GitPR-no_issues-brightgreen)](x)"
+BADGE = "[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/no_issues.svg?color=brightgreen&logo=gitpr)](x)"
 
 BODY = "## Summary\n\nAdds the ownership check."
 
@@ -42,9 +42,14 @@ class TestItDoesNotStack:
         assert append_badge(moved, BADGE) == moved
 
     def test_a_different_badge_does_not_count_as_ours(self):
-        somebody_else = "[![Build](https://img.shields.io/badge/build-passing-green)](x)"
+        somebody_else = "[![Build](https://devtools.natanfiuza.dev.br/api/badges/static/build/passing.svg?color=green)](x)"
 
         assert append_badge(BODY, somebody_else) == f"{BODY}\n\n---\n\n{somebody_else}"
+
+    def test_a_legacy_shields_badge_is_still_recognized(self):
+        legacy = f"{BODY}\n\n---\n\n[![GitPR](https://img.shields.io/badge/GitPR-no_issues-brightgreen)](x)"
+
+        assert append_badge(legacy, BADGE) == legacy
 
 
 class TestNothingToAdd:

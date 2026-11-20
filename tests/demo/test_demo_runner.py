@@ -190,7 +190,7 @@ class TestTheBadgeOnThePrStep:
     """
 
     def test_the_pr_artifact_carries_the_badge(self, state):
-        assert "img.shields.io/badge/GitPR" in state.artifacts["pr"]
+        assert "devtools.natanfiuza.dev.br/api/badges/static/GitPR/" in state.artifacts["pr"]
 
     def test_the_badge_closes_the_body(self, state):
         """It is a footer under the description, not a replacement."""
@@ -198,12 +198,12 @@ class TestTheBadgeOnThePrStep:
 
     def test_a_lone_warning_is_yellow(self, state):
         """laravel-bug-fix records one warning and no errors."""
-        assert "GitPR-0_errors_%C2%B7_1_warning-yellow" in state.artifacts["pr"]
+        assert "GitPR/0_errors_%C2%B7_1_warning.svg?color=yellow&logo=gitpr" in state.artifacts["pr"]
 
     def test_a_recorded_error_is_red(self):
         state = new_state("security-issue")
 
-        assert "GitPR-1_error_%C2%B7_1_warning-red" in state.artifacts["pr"]
+        assert "GitPR/1_error_%C2%B7_1_warning.svg?color=red&logo=gitpr" in state.artifacts["pr"]
 
     def test_the_counts_come_from_the_scenario_not_from_the_working_tree(
         self, tmp_path, monkeypatch
@@ -215,7 +215,7 @@ class TestTheBadgeOnThePrStep:
 
         state = new_state("security-issue")
 
-        assert "1_error_%C2%B7_1_warning-red" in state.artifacts["pr"]
+        assert "1_error_%C2%B7_1_warning.svg?color=red&logo=gitpr" in state.artifacts["pr"]
 
     def test_the_step_explains_where_the_badge_comes_from(self, state):
         """A raw shields.io line under the body needs saying out loud."""

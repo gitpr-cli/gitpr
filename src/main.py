@@ -4786,7 +4786,7 @@ def demo(scenario_name, lang, no_tui):
 
     show_default=True,
 
-    help=__("shields.io style: flat, flat-square or for-the-badge."),
+    help=__("BadgeForge style: flat, flat-square, plastic or for-the-badge."),
 
 )
 

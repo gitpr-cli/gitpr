@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://gitpr.natanfiuza.dev.br/"><img src="https://img.shields.io/badge/GitPR-quality--checked-blue" alt="GitPR"></a>
+  <a href="https://gitpr.natanfiuza.dev.br/"><img src="https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/quality-checked.svg?color=blue&logo=gitpr&style=flat" alt="GitPR"></a>
 </p>
 
 GitPR CLI is a command-line automation tool that uses **Google Gemini**, **DeepSeek**, and **Ollama** artificial intelligence to analyze your code changes (git diff) or entire files. The tool automatically generates commit messages in the *Conventional Commits* standard, detailed Pull Request descriptions, and deep Code Reviews aimed at reducing technical debt.
@@ -138,7 +138,7 @@ The tool will sync with the remote (`git fetch`), compare your changes with the 
 You can pass the following *flags* for specific actions:
 
 * `gitpr demo`: **Guided tour** over an example diff that ships with the tool — the commit message, the code review and the pull request description, produced by the real pipeline on a recorded example. Needs no API key, no Git repository and no connection, which makes it the first thing to run on a new machine. Use `--scenario <name>` for another example, `--lang <code>` for another language, `--no-tui` for plain text. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/demo)
-* `gitpr badge`: **Adoption badge for your README.** Prints the Markdown snippet — `--readme` prints only the line, `--style` picks the shields.io style (`flat`, `flat-square`, `for-the-badge`). Nothing is written to your README. Published pull requests carry a badge of their own, with the linter counts of the diff; `GITPR_BADGE=false` turns it off. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/badge)
+* `gitpr badge`: **Adoption badge for your README.** Prints the Markdown snippet — `--readme` prints only the line, `--style` picks the BadgeForge style (`flat`, `flat-square`, `plastic`, `for-the-badge`). Nothing is written to your README. Published pull requests carry a badge of their own, with the linter counts of the diff; `GITPR_BADGE=false` turns it off. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/badge)
 * `gitpr config`: **Interactive configuration screen.** Opens a master-detail TUI to view, edit, search, and validate all settings stored in `~/.gitpr/.env` (with secret encryption and live validation). 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/config-tui)
 * `gitpr release`: **Changelog and Release Notes generator.** Scans commits since the previous version, categorizes them according to Conventional Commits, suggests a semantic version bump, generates an AI executive summary, and optionally publishes the release to your forge. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/release-notes)
 * `gitpr fix [<finding_id>]`: **Review findings patch application & rollback.** Turns findings from the last code review (`gitpr -r`) into safe, reviewable unified diffs. Includes safety classification (`safe`, `review_required`, `experimental`), `--all-safe` batching, `--force` validation, and `--rollback <patch-id>`. 📖 [Full docs](https://gitpr.natanfiuza.dev.br/docs/fix-command)
@@ -316,7 +316,7 @@ It is built from a real measurement, never from a claim: red when a blocking fin
 
 For your own README there is a static badge. `gitpr badge --readme` prints the line and writes nothing — pasting it is your call:
 
-[![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
+[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/quality-checked.svg?color=blue&logo=gitpr&style=flat)](https://gitpr.natanfiuza.dev.br/)
 
 📖 **Full documentation:** [gitpr.natanfiuza.dev.br/docs/badge](https://gitpr.natanfiuza.dev.br/docs/badge)
 

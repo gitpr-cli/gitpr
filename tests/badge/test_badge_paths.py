@@ -111,7 +111,7 @@ class TestTheTuiPublisher:
         with patch("src.ui.pr_publish_app.get_current_branch", return_value="feat/x"):
             app = _app(tmp_path, BODY)
 
-        assert "shields.io" not in app.pr_body
+        assert "devtools.natanfiuza.dev.br" not in app.pr_body
 
 
 class TestTheDirectPublisher:
@@ -139,7 +139,7 @@ class TestTheDirectPublisher:
             {"commit_message": "feat: add thing", "pr_description": BODY}, tmp_path
         )
 
-        assert "shields.io" not in request.description
+        assert "devtools.natanfiuza.dev.br" not in request.description
 
 
 class TestTheNotice:

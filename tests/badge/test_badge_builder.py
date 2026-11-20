@@ -15,7 +15,7 @@ from src.branding.badge_builder import (
 )
 from src.branding.badge_data import BadgeCounts
 
-PR_PREFIX = "[![GitPR](https://img.shields.io/badge/GitPR-"
+PR_PREFIX = "[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/"
 PR_SUFFIX = f")]({BRAND_URL})"
 
 
@@ -25,23 +25,29 @@ class TestTheColourRule:
     def test_an_error_is_red(self):
         badge = build_pr_badge(BadgeCounts(errors=1, warnings=0))
 
-        assert badge == f"{PR_PREFIX}1_error_%C2%B7_0_warnings-red{PR_SUFFIX}"
+        assert badge == (
+            f"{PR_PREFIX}1_error_%C2%B7_0_warnings.svg?color=red&logo=gitpr{PR_SUFFIX}"
+        )
 
     def test_warnings_alone_are_yellow(self):
         badge = build_pr_badge(BadgeCounts(errors=0, warnings=2))
 
-        assert badge == f"{PR_PREFIX}0_errors_%C2%B7_2_warnings-yellow{PR_SUFFIX}"
+        assert badge == (
+            f"{PR_PREFIX}0_errors_%C2%B7_2_warnings.svg?color=yellow&logo=gitpr{PR_SUFFIX}"
+        )
 
     def test_a_clean_diff_is_green(self):
         badge = build_pr_badge(BadgeCounts(errors=0, warnings=0))
 
-        assert badge == f"{PR_PREFIX}no_issues-brightgreen{PR_SUFFIX}"
+        assert badge == (
+            f"{PR_PREFIX}no_issues.svg?color=brightgreen&logo=gitpr{PR_SUFFIX}"
+        )
 
     def test_errors_win_over_warnings(self):
         """A blocking finding is never softened by a lesser one next to it."""
         badge = build_pr_badge(BadgeCounts(errors=3, warnings=9))
 
-        assert badge.endswith("-red" + PR_SUFFIX)
+        assert "color=red&logo=gitpr" + PR_SUFFIX in badge
 
 
 class TestTheMessage:
@@ -56,7 +62,7 @@ class TestTheMessage:
     def test_each_count_pluralises_on_its_own(self):
         badge = build_pr_badge(BadgeCounts(errors=1, warnings=1))
 
-        assert "1_error_%C2%B7_1_warning-" in badge
+        assert "1_error_%C2%B7_1_warning.svg" in badge
 
     def test_a_clean_diff_does_not_say_0_errors(self):
         """"0 errors · 0 warnings" reads as noise; the badge says it plainly."""
@@ -78,12 +84,12 @@ class TestTheLink:
 
     def test_the_readme_badge_shows_the_product_and_a_modest_claim(self):
         assert build_readme_badge().startswith(
-            "[![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue"
+            "[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/quality-checked.svg?color=blue&logo=gitpr"
         )
 
 
 class TestTheEscaping:
-    """shields.io reads the segments itself, so they have to be written its way."""
+    """BadgeForge reads the segments itself, so they have to be written its way."""
 
     def test_the_middle_dot_reaches_the_url_as_ascii(self):
         """The separator between the counts is not ASCII in the message."""
@@ -92,11 +98,11 @@ class TestTheEscaping:
         assert "%C2%B7" in badge
         assert "·" not in badge
 
-    def test_a_space_becomes_an_underscore_and_a_dash_is_doubled(self):
-        """The README message carries both, and neither is a separator."""
+    def test_a_dash_stays_literal_in_badgeforge(self):
+        """BadgeForge keeps dashes literal, unlike shields.io."""
         badge = build_readme_badge()
 
-        assert "quality--checked" in badge
+        assert "quality-checked.svg" in badge
 
     def test_the_whole_url_is_ascii(self):
         badge = build_pr_badge(BadgeCounts(errors=1, warnings=1))
@@ -115,11 +121,11 @@ class TestTheStyle:
         assert DEFAULT_STYLE == "flat"
 
     def test_the_readme_badge_carries_the_style(self):
-        assert "?style=for-the-badge" in build_readme_badge("for-the-badge")
+        assert "&style=for-the-badge" in build_readme_badge("for-the-badge")
 
     def test_an_unknown_style_falls_back_to_the_default(self):
         assert normalize_style("neon") == DEFAULT_STYLE
-        assert f"?style={DEFAULT_STYLE}" in build_readme_badge("neon")
+        assert f"&style={DEFAULT_STYLE}" in build_readme_badge("neon")
 
     def test_the_pr_badge_does_not_carry_a_style(self):
         """It is always the default one — nothing on the PR path configures it."""
