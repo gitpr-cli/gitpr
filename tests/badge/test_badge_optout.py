@@ -90,7 +90,7 @@ class TestSwitchedOnByDefault:
 
         attach_pr_badge(pr_data, DIFF)
 
-        assert "img.shields.io" in pr_data["pr_description"]
+        assert "devtools.natanfiuza.dev.br" in pr_data["pr_description"]
 
     def test_an_absent_variable_keeps_the_badge(self, project, pr_data):
         attach_pr_badge(pr_data, DIFF)

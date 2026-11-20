@@ -2,7 +2,7 @@
 
 The URL is constructed and never fetched: a badge that needs the network to be
 written would fail exactly where the product cannot afford to — the moment a
-pull request is published. shields.io renders it in the reader's browser.
+pull request is published. BadgeForge renders it in the reader's browser.
 
 The text is fixed English on purpose. The badge is a public artefact that ends
 up inside someone else's repository, next to the PR body the AI wrote, so it
@@ -14,31 +14,31 @@ from urllib.parse import quote
 from src.branding.badge_data import collect_linter_counts
 from src.config import badge_enabled
 
-# Where the badge points, and where shields.io renders it from.
+# Where the badge points, and where BadgeForge renders it from.
 BRAND_URL = "https://gitpr.natanfiuza.dev.br/"
-SHIELDS_BASE = "https://img.shields.io/badge/"
+BADGEFORGE_BASE = "https://devtools.natanfiuza.dev.br/api/badges/static/"
 
 BADGE_LABEL = "GitPR"
 README_MESSAGE = "quality-checked"
 README_COLOR = "blue"
 
-# The styles shields.io ships. The PR badge is always the default one.
-VALID_STYLES = ("flat", "flat-square", "for-the-badge")
+# The styles BadgeForge ships (excluding social, which ignores color).
+VALID_STYLES = ("flat", "flat-square", "plastic", "for-the-badge")
 DEFAULT_STYLE = "flat"
 
 # Identifies a badge GitPR already put in a body, so appending twice is a no-op.
-_BADGE_MARKER = "img.shields.io/badge/GitPR"
+_BADGE_MARKER = "devtools.natanfiuza.dev.br/api/badges/static/GitPR/"
+_LEGACY_BADGE_MARKER = "img.shields.io/badge/GitPR"
 
 
 def _escape(text):
-    """Encode a badge segment the way shields.io reads it.
+    """Encode a badge segment the way BadgeForge reads it.
 
-    Its own escaping comes first — a literal dash and underscore are doubled so
-    a single one still means separator — and the percent-encoding after it
-    covers what is left, so the URL stays pure ASCII (the separator between the
-    counts is a middle dot).
+    Underscores are doubled so a single underscore still means space, slashes
+    are pre-encoded so ``quote`` produces ``%252F`` as BadgeForge expects, and
+    dashes and dots stay literal.
     """
-    escaped = text.replace("-", "--").replace("_", "__").replace(" ", "_")
+    escaped = text.replace("_", "__").replace(" ", "_").replace("/", "%2F")
     return quote(escaped, safe="")
 
 
@@ -65,15 +65,18 @@ def _color(counts):
 
 def _snippet(message, color, style, style_in_url):
     """The linked image, in the shape GitHub and the forges render."""
-    url = f"{SHIELDS_BASE}{_escape(BADGE_LABEL)}-{_escape(message)}-{color}"
+    url = (
+        f"{BADGEFORGE_BASE}{_escape(BADGE_LABEL)}/{_escape(message)}.svg"
+        f"?color={color}&logo=gitpr"
+    )
     if style_in_url:
-        url += f"?style={style}"
+        url += f"&style={style}"
 
     return f"[![{BADGE_LABEL}]({url})]({BRAND_URL})"
 
 
 def normalize_style(style):
-    """The requested style if shields.io has it, the default otherwise."""
+    """The requested style if BadgeForge has it, the default otherwise."""
     return style if style in VALID_STYLES else DEFAULT_STYLE
 
 
@@ -99,7 +102,8 @@ def build_readme_badge(style=DEFAULT_STYLE):
 
 def has_badge(body):
     """Whether this body already carries the GitPR badge."""
-    return _BADGE_MARKER in (body or "")
+    text = body or ""
+    return _BADGE_MARKER in text or _LEGACY_BADGE_MARKER in text
 
 
 def append_badge(body, badge):

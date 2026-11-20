@@ -1,6 +1,6 @@
 # Technical Documentation: Pull Request Badge
 
-Every pull request GitPR publishes carries a small badge at the foot of the body: `GitPR` and the linter counts for the change. It is built from a measurement GitPR actually made — the local static linter, over the diff being published — and it is a Markdown image that shields.io renders in the reader's browser, so nothing is fetched while the pull request is being written.
+Every pull request GitPR publishes carries a small badge at the foot of the body: `GitPR` and the linter counts for the change. It is built from a measurement GitPR actually made — the local static linter, over the diff being published — and it is a Markdown image that [BadgeForge](https://devtools.natanfiuza.dev.br/) renders in the reader's browser, so nothing is fetched while the pull request is being written.
 
 There is a second, static badge for a project's own README. `gitpr badge --readme` prints the snippet and writes nothing.
 
@@ -17,13 +17,13 @@ All options of the subcommand, as shown by `gitpr badge -h` (or `--help`):
 ```bash
 gitpr badge                          # what it is, plus the snippet
 gitpr badge --readme                 # only the snippet, ready to pipe
-gitpr badge --style for-the-badge    # another shields.io style
+gitpr badge --style for-the-badge    # another BadgeForge style
 ```
 
 | Option | Description |
 | --- | --- |
 | **`--readme`** | Prints only the snippet, with nothing around it — safe for `>>` and for piping |
-| **`--style <style>`** | `flat` (default), `flat-square` or `for-the-badge`. An unknown value warns on stderr and falls back to `flat` |
+| **`--style <style>`** | `flat` (default), `flat-square`, `plastic` or `for-the-badge`. An unknown value warns on stderr and falls back to `flat` |
 | **`-h` / `--help`** | Help plus the documentation link for the current language |
 
 | Characteristic | Description |
@@ -50,7 +50,7 @@ Two rules shape the text:
 - **A zero is shown next to a non-zero count.** `0 errors · 2 warnings` says what was measured; hiding the zero would read as if errors were never counted. Each count pluralises on its own, so `1 error · 1 warning` is written that way.
 - **The badge never claims a review.** It reports what the linter counted, in the linter's vocabulary. A green badge means *no rule violation was found*, not *this code was reviewed and approved* — the AI review is a different step with no part in this.
 
-What you see on the pull request is a single image. `GitPR | 0 errors · 2 warnings` is how shields.io draws it, not a second line of text in the body, and the image is a link to [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
+What you see on the pull request is a single image. `GitPR | 0 errors · 2 warnings` is how BadgeForge draws it, not a second line of text in the body, and the image is a link to [gitpr.natanfiuza.dev.br](https://gitpr.natanfiuza.dev.br/).
 
 The badge text is **fixed English**, whatever the interface language is. Like the pull request body it sits in, it is a public artefact that outlives the machine that wrote it, and it lands in a repository whose readers may not share your language.
 
@@ -89,7 +89,7 @@ With the flag off, no badge is built and no notice is printed: the pull request 
 The badge you can put on your own project is a different one: static, always the same, and it says what the tool does rather than what it measured.
 
 ```markdown
-[![GitPR](https://img.shields.io/badge/GitPR-quality--checked-blue)](https://gitpr.natanfiuza.dev.br/)
+[![GitPR](https://devtools.natanfiuza.dev.br/api/badges/static/GitPR/quality-checked.svg?color=blue&logo=gitpr&style=flat)](https://gitpr.natanfiuza.dev.br/)
 ```
 
 `gitpr badge` prints it with a short explanation; `gitpr badge --readme` prints the line alone, which is what you want for `gitpr badge --readme >> README.md`. Either way the command only prints — placing it is your call, because only you know where it belongs in your README.

@@ -1320,7 +1320,7 @@
   "reading files before import": "lecture des fichiers avant importation",
   "schema {schema} · fingerprints {fingerprints} · GitPR {version}": "Format {schema} · fingerprints {fingerprints} · GitPR {version}",
   "schema_version is {found}; this GitPR writes {expected}.": "schema_version vaut {found} ; ce GitPR écrit {expected}.",
-  "shields.io style: flat, flat-square or for-the-badge.": "Style shields.io : flat, flat-square ou for-the-badge.",
+  "BadgeForge style: flat, flat-square, plastic or for-the-badge.": "Style BadgeForge : flat, flat-square, plastic ou for-the-badge.",
   "skills.{skill} declares no additional_context, so the pack does nothing for that skill. Remove the entry or add context to it.": "skills.{skill} ne déclare aucun additional_context, donc le pack ne fait rien pour cette skill. Supprimez l'entrée ou ajoutez-lui du contexte.",
   "the AI declared low confidence in it": "l'IA a déclaré une faible confiance",
   "the baseline block of the policy pack {pack}": "le bloc baseline du pack de politique {pack}",
